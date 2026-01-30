@@ -38,7 +38,21 @@ public class FirstPersonController : MonoBehaviour
             if (mainCamera != null)
             {
                 cameraTransform = mainCamera.transform;
+                Debug.Log("FirstPersonController: Cámara encontrada automáticamente");
             }
+            else
+            {
+                Debug.LogWarning("FirstPersonController: No se encontró ninguna cámara. Por favor asigna una cámara en el inspector o añade el tag 'MainCamera' a tu cámara.");
+            }
+        }
+    }
+
+    void OnValidate()
+    {
+        // Validación en el editor
+        if (characterController == null)
+        {
+            characterController = GetComponent<CharacterController>();
         }
     }
 
