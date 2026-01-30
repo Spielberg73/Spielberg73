@@ -54,6 +54,10 @@ public class FirstPersonController : MonoBehaviour
     [SerializeField] private float standHeight = 2f;
     [SerializeField] private float crouchTransitionSpeed = 8f;
 
+    [Header("Soporte Móvil")]
+    [SerializeField] private MobileControlsManager mobileControls;
+    [SerializeField] private bool useMobileControls = false;
+
     // Input System
     private PlayerInputActions inputActions;
     private Vector2 moveInput;
@@ -112,9 +116,24 @@ public class FirstPersonController : MonoBehaviour
 
     void Start()
     {
-        // Bloquear cursor
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
+        // Detectar controles móviles
+        if (mobileControls == null)
+        {
+            mobileControls = FindObjectOfType<MobileControlsManager>();
+        }
+
+        if (mobileControls != null)
+        {
+            useMobileControls = mobileControls.IsMobileControlsEnabled;
+            Debug.Log($"FirstPersonController: Mobile controls detected - {useMobileControls}");
+        }
+
+        // Bloquear cursor solo si no es móvil
+        if (!useMobileControls)
+        {
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
+        }
 
         // Encontrar cámara
         if (cameraTransform == null)
@@ -154,12 +173,32 @@ public class FirstPersonController : MonoBehaviour
 
     void Update()
     {
+        // Actualizar input desde controles móviles si están activos
+        if (mobileControls != null && mobileControls.IsMobileControlsEnabled)
+        {
+            UpdateMobileInput();
+        }
+
         CheckGrounded();
         HandleMovement();
         HandleRotation();
         HandleJump();
         HandleCrouch();
         HandleCameraEffects();
+    }
+
+    private void UpdateMobileInput()
+    {
+        // Sobrescribir input con controles móviles
+        moveInput = mobileControls.GetMovementInput();
+        lookInput = mobileControls.GetLookInput();
+
+        if (mobileControls.GetJumpInput())
+        {
+            jumpPressed = true;
+        }
+
+        isSprinting = mobileControls.GetSprintInput();
     }
 
     private void CheckGrounded()

@@ -27,6 +27,9 @@ public class InteractionSystem : MonoBehaviour
     [SerializeField] private bool highlightInteractables = true;
     [SerializeField] private Color highlightColor = Color.yellow;
 
+    [Header("Soporte Móvil")]
+    [SerializeField] private MobileControlsManager mobileControls;
+
     private IInteractable currentInteractable;
     private GameObject currentInteractableObject;
     private Outline currentOutline;
@@ -61,6 +64,12 @@ public class InteractionSystem : MonoBehaviour
             }
         }
 
+        // Buscar controles móviles
+        if (mobileControls == null)
+        {
+            mobileControls = FindObjectOfType<MobileControlsManager>();
+        }
+
         // Ocultar el prompt al inicio
         if (interactionPromptUI != null)
         {
@@ -71,6 +80,16 @@ public class InteractionSystem : MonoBehaviour
     void Update()
     {
         CheckForInteractable();
+
+        // Check mobile input
+        if (mobileControls != null && mobileControls.IsMobileControlsEnabled)
+        {
+            if (mobileControls.GetInteractInput() && currentInteractable != null)
+            {
+                currentInteractable.Interact(gameObject);
+                ClearCurrentInteractable();
+            }
+        }
     }
 
     private void CheckForInteractable()

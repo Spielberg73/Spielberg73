@@ -39,6 +39,9 @@ public class FlashlightController : MonoBehaviour
     [SerializeField] private AudioClip lowBatterySound;
     [SerializeField] private AudioClip outOfBatterySound;
 
+    [Header("Soporte Móvil")]
+    [SerializeField] private MobileControlsManager mobileControls;
+
     private PlayerInputActions inputActions;
     private float baseIntensity;
     private float targetIntensity;
@@ -69,6 +72,12 @@ public class FlashlightController : MonoBehaviour
         InitializeFlashlight();
         InitializeBatterySystem();
 
+        // Buscar controles móviles
+        if (mobileControls == null)
+        {
+            mobileControls = FindObjectOfType<MobileControlsManager>();
+        }
+
         baseIntensity = lightIntensity;
         targetIntensity = isOn ? lightIntensity : 0f;
         currentIntensity = targetIntensity;
@@ -84,6 +93,15 @@ public class FlashlightController : MonoBehaviour
     void Update()
     {
         if (flashlight == null) return;
+
+        // Check mobile input
+        if (mobileControls != null && mobileControls.IsMobileControlsEnabled)
+        {
+            if (mobileControls.GetFlashlightInput())
+            {
+                ToggleFlashlight();
+            }
+        }
 
         UpdateFlashlightEffects();
         UpdateBatteryEffects();
