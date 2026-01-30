@@ -1,186 +1,327 @@
-# Juego de Linterna en Primera Persona - Unity
+# 🔦 Juego de Linterna en Primera Persona - Unity 6
 
 ## Descripción
-Proyecto de Unity que implementa un juego en primera persona donde el protagonista usa una linterna para iluminarse en entornos oscuros.
+Proyecto profesional de Unity 6 que implementa un juego en primera persona con mecánicas avanzadas estilo Half-Life, sistema de batería, interacción con objetos y soporte completo para teclado/mouse y gamepad.
 
-## Características
-- ✅ Movimiento en primera persona (WASD + Mouse)
-- ✅ Sistema de linterna con encendido/apagado
-- ✅ Control de cámara con mouse
-- ✅ Física básica con gravedad y salto
-- ✅ Efectos de parpadeo opcionales para la linterna
-- ✅ Soporte para sonidos de linterna
+## ✨ Características Principales
 
-## Requisitos
-- Unity 2020.3 LTS o superior (recomendado Unity 2021 o 2022)
+### 🎮 Sistema de Control Profesional
+- ✅ **Input System moderno** de Unity con soporte para múltiples dispositivos
+- ✅ **Teclado + Mouse** completamente configurado
+- ✅ **Gamepad/Mando** con soporte nativo (Xbox, PlayStation, etc.)
+- ✅ **Cambio automático** entre esquemas de control
+
+### 🏃 Mecánicas de Movimiento Avanzadas
+- ✅ Movimiento fluido con **aceleración y deceleración** suaves
+- ✅ Sistema de **sprint** con efectos visuales
+- ✅ Sistema de **agacharse** (crouch) con transición suave
+- ✅ **Control aéreo** reducido para realismo
+- ✅ Salto con cooldown
+
+### 📸 Efectos Visuales Profesionales (Estilo Half-Life)
+- ✅ **Head Bob** - Balanceo de cámara al caminar/correr
+- ✅ **FOV Dinámico** - Campo de visión aumenta al correr
+- ✅ **Inclinación de Cámara** - Tilt al moverse lateralmente
+- ✅ Transiciones suaves entre estados
+
+### 🔋 Sistema de Batería Completo
+- ✅ Batería que se **drena** mientras la linterna está encendida
+- ✅ **Efectos de batería baja** - luz parpadeante y reducida
+- ✅ **Advertencias visuales y sonoras** cuando la batería es baja/crítica
+- ✅ **Baterías recogibles** para recargar
+- ✅ Sistema **activable/desactivable** para diferentes modos de juego
+
+### 💡 Sistema de Linterna Mejorado
+- ✅ Encendido/apagado con **transiciones suaves**
+- ✅ **Integrado con el sistema de batería**
+- ✅ Efectos de **parpadeo** opcionales
+- ✅ **Sombras suaves** para mejor atmósfera
+- ✅ Sonidos de encendido/apagado
+
+### 🎯 Sistema de Interacción
+- ✅ **Raycast** para detectar objetos interactuables
+- ✅ **Prompt de interacción** en UI
+- ✅ Sistema extensible mediante interfaz `IInteractable`
+- ✅ Soporte para **baterías y otros objetos**
+
+### 🎨 UI/HUD Profesional
+- ✅ **Indicador de batería** con barra y porcentaje
+- ✅ **Colores dinámicos** según nivel de batería
+- ✅ **Iconos** que cambian según el nivel
+- ✅ **Animaciones** de pulso en batería crítica
+- ✅ Mensajes de interacción
+
+## 🎯 Requisitos
+- Unity 2022.3 LTS o **Unity 6** (recomendado)
+- Input System Package (incluido en el proyecto)
+- TextMeshPro (incluido en el proyecto)
 - Sistema operativo: Windows, macOS o Linux
 
-## Configuración del Proyecto
+## 🚀 Inicio Rápido
 
-### 1. Importar el Proyecto en Unity
-
+### 1. Abrir el Proyecto
 1. Abre Unity Hub
-2. Haz clic en "Add" o "Agregar"
-3. Selecciona la carpeta raíz de este proyecto
-4. Selecciona la versión de Unity que deseas usar
-5. Haz clic en el proyecto para abrirlo
+2. Click en "Add" y selecciona la carpeta del proyecto
+3. Abre con Unity 2022.3+ o Unity 6
+4. Espera a que se importen los paquetes
 
-### 2. Configuración de la Escena
+### 2. Configurar Input System
+Unity te preguntará si quieres usar el nuevo Input System. **Acepta y reinicia Unity**.
 
-#### Crear el Jugador (Player)
+### 3. Abrir la Escena
+```
+Assets/Scenes/MainScene.unity
+```
 
-1. En la jerarquía, crea un objeto vacío: `GameObject > Create Empty`
-2. Nómbralo "Player"
-3. Añade un `CharacterController`:
-   - Selecciona el objeto Player
-   - En el Inspector: `Add Component > Character Controller`
-   - Ajusta el Height a 2 y el Radius a 0.5
+### 4. Presiona Play ▶️
+¡El juego está listo para probar!
 
-4. Añade el script `FirstPersonController`:
-   - Con el objeto Player seleccionado
-   - `Add Component > FirstPersonController`
+## 🎮 Controles
 
-5. Crea la cámara del jugador:
-   - Click derecho en Player: `Create Empty`
-   - Nómbralo "Camera"
-   - Posiciónalo en (0, 0.6, 0) para altura de los ojos
-   - Si no tienes una cámara, añade: `Add Component > Camera`
-   - Asigna esta cámara en el campo "Camera Transform" del FirstPersonController
+### Teclado + Mouse y Gamepad
 
-#### Configurar la Linterna
+| Acción | Teclado/Mouse | Gamepad |
+|--------|---------------|---------|
+| Mover | W/A/S/D | Stick Izquierdo |
+| Mirar | Mouse | Stick Derecho |
+| Saltar | Espacio | Botón A (Sur) |
+| Correr | Shift Izquierdo | L3 (Click Stick Izq) |
+| Linterna ON/OFF | F | Botón X (Oeste) |
+| Interactuar | E | Botón B (Este) |
+| Pausa | ESC | Start |
 
-1. Con el objeto "Camera" seleccionado:
-   - Click derecho: `Create Empty`
-   - Nómbralo "Flashlight"
-   - Posiciónalo ligeramente adelante: (0, -0.2, 0.5)
-
-2. Añade el script de linterna:
-   - Con Flashlight seleccionado
-   - `Add Component > FlashlightController`
-   - El script creará automáticamente un componente Light si no existe
-
-3. Opcional - Personalizar la luz:
-   - Ajusta "Light Intensity" (intensidad: 2-5 recomendado)
-   - Ajusta "Light Range" (rango: 10-20 recomendado)
-   - Ajusta "Spot Angle" (ángulo: 40-80 recomendado)
-   - Cambia "Light Color" si deseas un color específico
-
-#### Crear el Entorno
-
-1. Crea un plano para el suelo:
-   - `GameObject > 3D Object > Plane`
-   - Escálalo a (10, 1, 10) o más grande
-
-2. Añade algunos objetos para probar:
-   - `GameObject > 3D Object > Cube` (crea varios)
-   - Distribúyelos por la escena
-
-3. **IMPORTANTE**: Configura la iluminación ambiental oscura:
-   - `Window > Rendering > Lighting`
-   - En la pestaña "Environment":
-     - Desactiva "Skybox" o usa uno oscuro
-     - Ajusta "Environment Lighting > Source" a "Color"
-     - Cambia "Ambient Color" a negro o muy oscuro
-   - Elimina la luz direccional por defecto si existe
-
-4. Opcional - Añade un Skybox oscuro:
-   - `Assets > Create > Material`
-   - Nómbralo "DarkSkybox"
-   - Cambia Shader a `Skybox/Procedural`
-   - Ajusta los colores a tonos oscuros
-   - En `Window > Rendering > Lighting > Environment`
-   - Arrastra el material DarkSkybox al campo Skybox Material
-
-### 3. Controles del Juego
-
-- **W/A/S/D**: Movimiento
-- **Mouse**: Mirar alrededor
-- **F**: Encender/apagar linterna
-- **Espacio**: Saltar
-- **Shift Izquierdo**: Correr
-- **ESC**: Liberar/bloquear cursor
-
-### 4. Configuración Avanzada (Opcional)
-
-#### Efectos de Parpadeo de Linterna
-En el componente `FlashlightController`:
-- Marca "Enable Flicker"
-- Ajusta "Flicker Intensity" (0.05 - 0.2)
-- Ajusta "Flicker Speed" (5 - 15)
-
-#### Sonidos de Linterna
-1. Importa clips de audio (formato .wav, .mp3, o .ogg)
-2. En el componente `FlashlightController`:
-   - Asigna "Toggle On Sound"
-   - Asigna "Toggle Off Sound"
-
-## Estructura del Proyecto
+## 📁 Estructura del Proyecto
 
 ```
 Spielberg73/
 ├── Assets/
 │   ├── Scripts/
-│   │   ├── FirstPersonController.cs    # Control del jugador
-│   │   └── FlashlightController.cs     # Control de la linterna
-│   ├── Scenes/                         # Guarda tus escenas aquí
-│   ├── Materials/                      # Materiales del juego
-│   └── Prefabs/                        # Prefabs reutilizables
-├── ProjectSettings/                    # Configuración de Unity
-└── Packages/                           # Paquetes de Unity
+│   │   ├── FirstPersonController.cs          # Control del jugador (Input System)
+│   │   ├── FlashlightController.cs          # Sistema de linterna
+│   │   ├── BatterySystem.cs                 # Sistema de batería
+│   │   ├── BatteryPickup.cs                 # Baterías recogibles
+│   │   ├── InteractionSystem.cs             # Sistema de interacción
+│   │   ├── IInteractable.cs                 # Interfaz para objetos
+│   │   ├── BatteryUI.cs                     # UI de batería
+│   │   └── GameManager.cs                   # Gestor del juego
+│   ├── PlayerInputActions.inputactions      # Configuración de controles
+│   ├── Scenes/
+│   │   └── MainScene.unity                  # Escena principal
+│   ├── Materials/
+│   └── Prefabs/
+├── ProjectSettings/
+├── Packages/
+│   └── manifest.json                        # Paquetes (Input System, etc.)
+└── README.md
 ```
 
-## Scripts Principales
+## 🔧 Scripts Principales
 
 ### FirstPersonController.cs
-Controla el movimiento del jugador en primera persona:
-- Movimiento WASD con velocidad ajustable
-- Control de cámara con mouse
-- Sistema de gravedad
-- Salto
-- Opción de correr
+Controlador profesional con mecánicas estilo Half-Life:
+- Input System con soporte para gamepad
+- Aceleración y deceleración suaves
+- Head Bob, FOV dinámico, inclinación de cámara
+- Sistema de sprint y crouch
+- Control aéreo realista
+
+### BatterySystem.cs
+Sistema completo de batería:
+- Drenaje configurable
+- Eventos para UI y efectos
+- Modo activable/desactivable
+- Recargas con baterías recogibles
 
 ### FlashlightController.cs
-Gestiona el sistema de linterna:
-- Encendido/apagado con tecla F
-- Configuración personalizable de luz
-- Efectos de parpadeo opcionales
-- Sistema de sonidos opcionales
-- Métodos públicos para control programático
+Linterna integrada con batería:
+- Transiciones suaves de encendido/apagado
+- Efectos de batería baja
+- Parpadeo en batería crítica
+- Sonidos opcionales
 
-## Próximas Características Sugeridas
+### InteractionSystem.cs
+Sistema de interacción con objetos:
+- Raycast para detectar objetos
+- UI de interacción
+- Extensible con IInteractable
 
-- 🔋 Sistema de batería para la linterna
-- 👻 Enemigos u obstáculos que reaccionen a la luz
-- 🎯 Sistema de objetivos o puzzles
-- 🔊 Efectos de sonido ambiente
-- 🎨 Mejoras visuales y post-procesado
-- 🗺️ Sistema de niveles
-- 💾 Sistema de guardado
+### BatteryPickup.cs
+Baterías recogibles:
+- Efectos visuales (rotación, flotación)
+- Configuración de cantidad de recarga
+- Sonidos y partículas opcionales
 
-## Solución de Problemas
+### BatteryUI.cs
+Interfaz de usuario para batería:
+- Barra de progreso
+- Porcentaje numérico
+- Colores dinámicos
+- Animaciones de advertencia
 
-### El jugador se cae a través del suelo
-- Asegúrate de que el plano tenga un Collider
-- Verifica que el CharacterController esté configurado correctamente
+## 🎨 Efectos Visuales Profesionales
 
-### La linterna no se ve
-- Verifica que la iluminación ambiente esté oscura
-- Comprueba que el componente Light esté habilitado
-- Ajusta la intensidad y el rango de la luz
+### Head Bob (Balanceo)
+Simula el movimiento natural de la cabeza al caminar/correr
+- Configurable en `FirstPersonController`
+- Se puede desactivar si causa mareos
 
-### El mouse no funciona
-- Asegúrate de hacer clic en la ventana del juego
-- Presiona ESC para bloquear el cursor si está liberado
-- Verifica que la cámara esté asignada en el FirstPersonController
+### FOV Dinámico
+El campo de visión aumenta al correr para dar sensación de velocidad
+- Base: 60°, Sprint: +10°
+- Transiciones suaves
 
-### El movimiento no funciona
-- Verifica que haya un CharacterController en el objeto Player
-- Comprueba que el script FirstPersonController esté adjunto
-- Asegúrate de que no haya errores en la consola
+### Camera Tilt (Inclinación)
+La cámara se inclina sutilmente al moverte lateralmente
+- Simula inclinación corporal natural
+- Recomendado: 2-3 grados
 
-## Créditos
-Proyecto creado con Unity Engine
-Scripts desarrollados en C#
+## 🔋 Sistema de Batería
 
-## Licencia
+### Configuración
+```csharp
+// En BatterySystem
+batteryEnabled = true           // Activar sistema
+maxBattery = 100f              // Batería máxima
+drainRate = 5f                 // % por segundo
+batteryPickupAmount = 25f      // Cantidad por batería
+```
+
+### Estados
+```
+100% ──────── Verde   (Full)
+50%  ──────── Amarillo (Medium)
+20%  ──────── Naranja  (Low) + Advertencia
+5%   ──────── Rojo     (Critical) + Parpadeo
+0%   ──────── Apagado automático
+```
+
+### Crear Baterías Recogibles
+1. Crear objeto 3D (cubo, esfera, etc.)
+2. Añadir componente `BatteryPickup`
+3. Configurar cantidad (por defecto: 25%)
+4. ¡Listo! El objeto flotará y rotará automáticamente
+
+## 🎯 Sistema de Interacción
+
+### Crear Objetos Interactuables
+Implementa la interfaz `IInteractable`:
+
+```csharp
+public class MiObjeto : MonoBehaviour, IInteractable
+{
+    public string GetInteractionPrompt()
+    {
+        return "Presiona E para usar";
+    }
+
+    public void Interact(GameObject player)
+    {
+        Debug.Log("¡Interactuado!");
+    }
+
+    public bool CanInteract()
+    {
+        return true;
+    }
+
+    public Transform GetTransform()
+    {
+        return transform;
+    }
+}
+```
+
+## 🐛 Solución de Problemas
+
+### El Input System no funciona
+```
+1. Window > Package Manager > Input System > Reinstall
+2. Edit > Project Settings > Player > Active Input Handling > Input System Package (New)
+3. Reiniciar Unity
+```
+
+### Los controles no responden
+1. Verifica que `PlayerInputActions.inputactions` esté compilado
+2. Revisa la consola en busca de errores
+3. Intenta reimportar el asset
+
+### El gamepad no funciona
+1. Conecta el gamepad ANTES de abrir Unity
+2. `Window > Analysis > Input Debugger` para ver dispositivos
+3. Prueba con otro mando si es posible
+
+### La batería no se drena
+1. `BatterySystem.batteryEnabled = true`
+2. Verifica que FlashlightController tenga referencia al BatterySystem
+3. Revisa la consola
+
+### HeadBob causa mareos
+```csharp
+// En FirstPersonController
+enableHeadBob = false
+```
+
+## ⚙️ Configuraciones Recomendadas
+
+### Modo Terror/Survival
+```csharp
+walkSpeed = 3.5f
+sprintSpeed = 6f
+drainRate = 10f              // Batería se drena rápido
+batteryPickupAmount = 15f
+lightIntensity = 2f          // Luz más débil
+```
+
+### Modo Exploración
+```csharp
+walkSpeed = 5f
+sprintSpeed = 8f
+drainRate = 3f               // Batería dura más
+batteryPickupAmount = 30f
+lightIntensity = 4f          // Luz más fuerte
+```
+
+### Sin Batería (Infinita)
+```csharp
+// En BatterySystem
+batteryEnabled = false
+```
+
+## 🚀 Próximas Características Sugeridas
+
+- 🎯 Sistema de inventario completo
+- 👻 IA de enemigos que reaccionen a la luz
+- 🗺️ Sistema de niveles/misiones
+- 💾 Sistema de guardado y carga
+- 🎵 Audio dinámico según situación
+- 🌙 Ciclo día/noche
+- 📱 Soporte para controles táctiles (móvil)
+
+## 📝 Notas Técnicas
+
+### Input System vs Old Input
+Usamos el nuevo Input System porque:
+- ✅ Soporte nativo para gamepad
+- ✅ Remapping de controles en runtime
+- ✅ Mejor arquitectura
+- ✅ Múltiples dispositivos simultáneos
+
+### Unity 6 Optimizado
+Este proyecto aprovecha Unity 6 para:
+- Mejor rendimiento del Input System
+- Gráficos mejorados
+- Herramientas de debugging avanzadas
+
+## 📜 Licencia
 Este proyecto es de código abierto y está disponible para uso educativo y personal.
+
+## 👥 Créditos
+- Desarrollado con Unity Engine 6
+- Input System by Unity Technologies
+- Inspirado en Half-Life, FEAR, Amnesia
+
+---
+
+**Versión:** 2.0
+**Unity:** 6.0 / 2022.3 LTS
+**Input System:** 1.7.0
