@@ -10,6 +10,7 @@ public class FlashlightController : MonoBehaviour
     [Header("Referencias")]
     [SerializeField] private Light flashlight;
     [SerializeField] private BatterySystem batterySystem;
+    [SerializeField] private DustParticleController dustParticles;
 
     [Header("Configuración de Luz")]
     [SerializeField] private bool isOn = false;
@@ -71,6 +72,7 @@ public class FlashlightController : MonoBehaviour
     {
         InitializeFlashlight();
         InitializeBatterySystem();
+        InitializeDustParticles();
 
         // Buscar controles móviles
         if (mobileControls == null)
@@ -175,6 +177,32 @@ public class FlashlightController : MonoBehaviour
         }
     }
 
+    private void InitializeDustParticles()
+    {
+        // Buscar DustParticleController en la linterna
+        if (dustParticles == null)
+        {
+            dustParticles = GetComponentInChildren<DustParticleController>();
+        }
+
+        // Sincronizar configuración con la linterna
+        if (dustParticles != null && flashlight != null)
+        {
+            dustParticles.SetConeAngle(flashlight.spotAngle);
+            dustParticles.SetConeLength(flashlight.range);
+
+            // Estado inicial
+            if (isOn)
+            {
+                dustParticles.ActivateDust();
+            }
+            else
+            {
+                dustParticles.DeactivateDust();
+            }
+        }
+    }
+
     private void OnFlashlightToggle(InputAction.CallbackContext context)
     {
         ToggleFlashlight();
@@ -221,6 +249,12 @@ public class FlashlightController : MonoBehaviour
             flashlight.enabled = true;
         }
 
+        // Activar partículas de polvo
+        if (dustParticles != null)
+        {
+            dustParticles.ActivateDust();
+        }
+
         // Iniciar drenaje de batería
         if (batterySystem != null)
         {
@@ -236,6 +270,12 @@ public class FlashlightController : MonoBehaviour
     {
         isOn = false;
         targetIntensity = 0f;
+
+        // Desactivar partículas de polvo
+        if (dustParticles != null)
+        {
+            dustParticles.DeactivateDust();
+        }
 
         // Detener drenaje de batería
         if (batterySystem != null)
