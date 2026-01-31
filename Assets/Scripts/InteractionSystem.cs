@@ -32,7 +32,6 @@ public class InteractionSystem : MonoBehaviour
 
     private IInteractable currentInteractable;
     private GameObject currentInteractableObject;
-    private Outline currentOutline;
     private PlayerInputActions inputActions;
 
     void Awake()
@@ -156,12 +155,8 @@ public class InteractionSystem : MonoBehaviour
         // Ocultar UI
         HideInteractionPrompt();
 
-        // Quitar resaltado
-        if (currentOutline != null)
-        {
-            Destroy(currentOutline);
-            currentOutline = null;
-        }
+        // Nota: El resaltado está desactivado por ahora
+        // Si quieres resaltado, implementa tu propio sistema o usa un asset de Outline
 
         currentInteractableObject = null;
     }

@@ -299,5 +299,9 @@
                 }
             ]
         }
-    ]
+    ],
+    "generateWrapperCode": true,
+    "wrapperCodePath": "PlayerInputActions.cs",
+    "wrapperClassName": "PlayerInputActions",
+    "wrapperCodeNamespace": ""
 }
