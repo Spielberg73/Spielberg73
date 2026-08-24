@@ -25,6 +25,9 @@
   }
   .bar { display: flex; flex-wrap: wrap; gap: 10px 18px; justify-content: center;
          color: #8b95a8; font-size: 12px; max-width: 760px; text-align: center; }
+  #silencio { background: #1d2231; border: 1px solid #2b3245; border-radius: 4px;
+              color: #cfd6e4; font: inherit; font-size: 12px; padding: 1px 8px;
+              cursor: pointer; }
   kbd { background: #1d2231; border: 1px solid #2b3245; border-bottom-width: 2px;
         border-radius: 4px; padding: 1px 6px; font: 11px ui-monospace, monospace; color: #cfd6e4; }
   .pad { display: none; gap: 10px; margin-top: 6px; }
@@ -48,6 +51,7 @@
   <span><kbd>Enter</kbd> empezar</span>
   <span><kbd>R</kbd> reiniciar</span>
   <span><kbd>+</kbd> / <kbd>-</kbd> zoom</span>
+  <span><kbd>M</kbd> <button id="silencio" type="button">sonido: si</button></span>
 </div>
 <div class="pad">
   <button data-key="left">&larr;</button>
@@ -91,6 +95,8 @@
   };
 
   document.addEventListener("keydown", function (ev) {
+    audio.iniciar();
+    if (ev.code === "KeyM") { silenciar(); return; }
     if (ev.code === "KeyR") { world = NPCore.create(DATA); return; }
     if (ev.code === "Equal" || ev.code === "NumpadAdd") { setScale(scale + 1); return; }
     if (ev.code === "Minus" || ev.code === "NumpadSubtract") { setScale(scale - 1); return; }
@@ -112,12 +118,161 @@
     btn.addEventListener("mouseleave", release);
   });
 
+  /* ---------------------------------------------------------------- audio
+   * La Neo Geo hace el sonido con el YM2610; NeoPlat usa sus tres canales de
+   * onda cuadrada (SSG): dos para la musica y uno para los efectos. Aqui se
+   * imita con osciladores del navegador, avanzando la secuencia un paso por
+   * frame, igual que hace el driver de la consola.
+   */
+  var audio = {
+    ctx: null,
+    silencio: false,
+    canales: [],          // 0 y 1 = musica, 2 = efectos
+    tema: -1,
+    pistas: [],           // {pasos, i, resto}
+    efecto: null,         // {pasos, i, resto}
+    reloj: (DATA.sonido && DATA.sonido.reloj) || 4000000,
+
+    hz: function (periodo) { return periodo > 0 ? this.reloj / (16 * periodo) : 0; },
+
+    iniciar: function () {
+      if (this.ctx || this.silencio) return;
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      this.ctx = new Ctx();
+      for (var i = 0; i < 3; i++) {
+        var osc = this.ctx.createOscillator();
+        var gain = this.ctx.createGain();
+        osc.type = "square";
+        osc.frequency.value = 440;
+        gain.gain.value = 0;
+        osc.connect(gain).connect(this.ctx.destination);
+        osc.start();
+        this.canales.push({ osc: osc, gain: gain });
+      }
+      // ruido para los golpes: un buffer corto que se repite
+      var largo = Math.floor(this.ctx.sampleRate * 0.5);
+      var buffer = this.ctx.createBuffer(1, largo, this.ctx.sampleRate);
+      var datos = buffer.getChannelData(0);
+      for (var n = 0; n < largo; n++) datos[n] = Math.random() * 2 - 1;
+      this.ruidoBuffer = buffer;
+    },
+
+    voz: function (canal, periodo, volumen) {
+      if (!this.ctx) return;
+      var c = this.canales[canal];
+      var ahora = this.ctx.currentTime;
+      if (!periodo || volumen <= 0) {
+        c.gain.gain.setTargetAtTime(0, ahora, 0.005);
+        return;
+      }
+      c.osc.frequency.setValueAtTime(this.hz(periodo), ahora);
+      // el SSG tiene 16 pasos de volumen y suena logaritmico
+      var nivel = Math.pow(volumen / 15, 2) * 0.12;
+      c.gain.gain.setTargetAtTime(nivel, ahora, 0.005);
+    },
+
+    golpe: function (volumen, duracion) {
+      if (!this.ctx || !this.ruidoBuffer) return;
+      var fuente = this.ctx.createBufferSource();
+      var gain = this.ctx.createGain();
+      fuente.buffer = this.ruidoBuffer;
+      var ahora = this.ctx.currentTime;
+      var segundos = Math.max(0.03, duracion / 60);
+      gain.gain.setValueAtTime(Math.pow(volumen / 15, 2) * 0.16, ahora);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ahora + segundos);
+      fuente.connect(gain).connect(this.ctx.destination);
+      fuente.start();
+      fuente.stop(ahora + segundos);
+    },
+
+    tocarMusica: function (indice) {
+      if (!DATA.sonido || !DATA.sonido.musica.length) return;
+      if (indice === this.tema) return;
+      this.tema = indice;
+      this.pistas = [];
+      this.voz(0, 0, 0);
+      this.voz(1, 0, 0);
+      if (indice < 0) return;
+      var tema = DATA.sonido.musica[indice];
+      if (!tema) return;
+      for (var i = 0; i < tema.pistas.length && i < 2; i++)
+        this.pistas.push({ pasos: tema.pistas[i], i: 0, resto: 0, bucle: tema.bucle });
+    },
+
+    evento: function (bits) {
+      if (!DATA.sonido || !bits) return;
+      this.iniciar();
+      var eventos = DATA.sonido.eventos;
+      for (var clave in eventos) {
+        var bit = parseInt(clave, 10);
+        if (!(bits & bit)) continue;
+        var pasos = DATA.sonido.efectos[eventos[clave]];
+        if (pasos && pasos.length) this.efecto = { pasos: pasos, i: 0, resto: 0 };
+      }
+    },
+
+    /* Un paso por frame, igual que el driver de la consola. */
+    tick: function () {
+      if (!this.ctx || this.silencio) return;
+      var p, paso;
+      for (var t = 0; t < this.pistas.length; t++) {
+        p = this.pistas[t];
+        if (p.resto <= 0) {
+          if (p.i >= p.pasos.length) {
+            if (!p.bucle) { this.voz(t, 0, 0); continue; }
+            p.i = 0;
+          }
+          paso = p.pasos[p.i++];
+          p.resto = paso[1];
+          this.voz(t, paso[0], paso[2]);
+        }
+        p.resto--;
+      }
+      if (this.efecto) {
+        p = this.efecto;
+        if (p.resto <= 0) {
+          if (p.i >= p.pasos.length) {
+            this.efecto = null;
+            this.voz(2, 0, 0);
+          } else {
+            paso = p.pasos[p.i++];
+            p.resto = paso[1];
+            if (paso[3]) { this.golpe(paso[2], paso[1]); this.voz(2, 0, 0); }
+            else this.voz(2, paso[0], paso[2]);
+          }
+        }
+        if (this.efecto) this.efecto.resto--;
+      }
+    },
+
+    alternarSilencio: function () {
+      this.silencio = !this.silencio;
+      if (this.silencio) { this.voz(0, 0, 0); this.voz(1, 0, 0); this.voz(2, 0, 0); }
+      return this.silencio;
+    }
+  };
+
   function setScale(value) {
     scale = Math.max(1, Math.min(6, value));
     canvas.style.width = (NPCore.SCREEN_W * scale) + "px";
     canvas.style.height = (NPCore.SCREEN_H * scale) + "px";
   }
   setScale(Math.max(1, Math.min(4, Math.floor((window.innerWidth - 60) / NPCore.SCREEN_W))));
+
+  function silenciar() {
+    var boton = document.getElementById("silencio");
+    var callado = audio.alternarSilencio();
+    if (boton) boton.textContent = callado ? "sonido: no" : "sonido: si";
+  }
+  var botonSilencio = document.getElementById("silencio");
+  if (botonSilencio) botonSilencio.addEventListener("click", function () {
+    audio.iniciar();
+    silenciar();
+  });
+  document.querySelector("canvas").addEventListener("pointerdown", function () {
+    audio.iniciar();
+  });
 
   function loadImages(done) {
     var names = Object.keys(DATA.sheets), pending = names.length;
@@ -272,6 +427,10 @@
     while (acc >= 1000 / 60 && steps < 4) {
       world.step(input | latched);
       latched = 0;
+      if (world.sfx) audio.evento(world.sfx);
+      audio.tocarMusica(world.state === NPCore.STATE.PLAY ?
+                        (world.level.music || 0) - 1 : -1);
+      audio.tick();
       acc -= 1000 / 60;
       steps++;
     }
@@ -283,6 +442,7 @@
     data: DATA,
     get world() { return world; },
     get input() { return input; },
+    audio: audio,
     reiniciar: function () { world = NPCore.create(DATA); },
     pulsar: function (bits) { latched |= bits; },
     soltar: function (bits) { input &= ~bits; }

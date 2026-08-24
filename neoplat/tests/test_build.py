@@ -111,8 +111,18 @@ class TestGeneracion(unittest.TestCase):
 
     def test_archivos_generados(self):
         for esperado in ("src/gamedata.c", "src/gamedata.h", "src/np_world.c",
-                         "src/np_video.c", "src/np_hud.c", "src/main.c", "Makefile"):
+                         "src/np_video.c", "src/np_hud.c", "src/np_sound.c",
+                         "src/main.c", "src/sonido.z80", "Makefile"):
             self.assertTrue(os.path.isfile(os.path.join(self.out, esperado)), esperado)
+
+    def test_la_rom_de_sonido_lleva_el_driver(self):
+        nombre = [n for n in self.roms if n.endswith(".m1")]
+        self.assertEqual(len(nombre), 1, "falta la ROM M1")
+        with open(os.path.join(self.out, "rom", nombre[0]), "rb") as fh:
+            datos = fh.read()
+        self.assertEqual(datos[0], 0xF3, "el driver deberia empezar con 'di'")
+        self.assertEqual(datos[0x66], 0xF5, "falta el manejador de la NMI")
+        self.assertGreater(len(set(datos[:0x400])), 10, "la ROM M1 parece vacia")
 
     def test_roms_con_tamano_potencia_de_dos(self):
         for nombre, tamano in self.roms.items():
@@ -132,7 +142,7 @@ class TestGeneracion(unittest.TestCase):
         if not shutil.which("gcc"):
             self.skipTest("no hay gcc")
         fuentes = ["src/gamedata.c", "src/np_world.c", "src/np_video.c",
-                   "src/np_hud.c", "src/main.c"]
+                   "src/np_hud.c", "src/np_sound.c", "src/main.c"]
         for fuente in fuentes:
             resultado = subprocess.run(
                 ["gcc", "-std=c99", "-Wall", "-Wextra", "-Werror", "-fsyntax-only",

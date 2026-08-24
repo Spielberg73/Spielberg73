@@ -5,6 +5,7 @@
  */
 
 #include "np_video.h"
+#include "np_sound.h"
 #include "gamedata.h"
 
 static NpWorld world;      /* ~3 KB: mejor en RAM estatica que en la pila */
@@ -12,11 +13,13 @@ static NpWorld world;      /* ~3 KB: mejor en RAM estatica que en la pila */
 int main(void)
 {
     np_video_init();
+    np_sound_init();
     np_world_init(&world);
 
     for (;;) {
         uint16_t input = np_input_read();
         np_world_step(&world, input);
+        np_sound_update(&world);
         np_wait_vblank();
         np_video_frame(&world);
         *NP_REG_WATCHDOG = 0;      /* si no se toca, la placa se reinicia */

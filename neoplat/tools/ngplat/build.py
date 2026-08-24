@@ -55,6 +55,7 @@ class LevelBuild:
     background: int                            # color Neo Geo
     background_rgb: Tuple[int, int, int]
     layers: List[int] = field(default_factory=list)   # indices en Build.layers
+    music: int = 0                             # 0 = sin musica, si no indice + 1
 
 
 @dataclass
@@ -69,6 +70,7 @@ class Build:
     items: List[ActorBuild]
     layers: List[LayerBuild]
     levels: List[LevelBuild]
+    music_order: List[str] = field(default_factory=list)   # nombres, en orden
     font: Dict[str, int] = field(default_factory=dict)
     hud_palette: int = 0
     sin_table: List[int] = field(default_factory=list)
@@ -79,6 +81,8 @@ class Build:
     def stats(self) -> Dict[str, int]:
         return {
             "capas": len(self.layers),
+            "efectos": len(self.project.sound.efectos),
+            "musicas": len(self.project.sound.musica),
             "tiles_sprite": self.rom.sprite_tiles,
             "tiles_fix": self.rom.fix_tiles,
             "paletas": len(self.rom.palettes),
@@ -207,6 +211,9 @@ def build_project(project: Project) -> Build:
     enemy_index = {b.name: i for i, b in enumerate(enemies)}
     item_index = {b.name: i for i, b in enumerate(items)}
 
+    music_order = list(project.sound.musica)
+    music_index = {name: i + 1 for i, name in enumerate(music_order)}
+
     empty_index = tile_index.get(".", 0)
     levels: List[LevelBuild] = []
     for level in project.levels:
@@ -247,6 +254,7 @@ def build_project(project: Project) -> Build:
             background=gfx.ng_color(level.background),
             background_rgb=level.background,
             layers=[layer_index[n] for n in level.layers],
+            music=music_index.get(level.music, 0),
         ))
 
     font = gfx.build_font(rom)
@@ -255,7 +263,8 @@ def build_project(project: Project) -> Build:
     return Build(
         project=project, rom=rom, tiles=tiles, tile_index=tile_index, tileset=tileset,
         player=player, enemies=enemies, items=items, layers=layers, levels=levels,
-        font=font, hud_palette=hud_palette, sin_table=_sin_table(),
+        music_order=music_order, font=font, hud_palette=hud_palette,
+        sin_table=_sin_table(),
     )
 
 

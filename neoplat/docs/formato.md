@@ -167,6 +167,54 @@ niveles:
 Limites: la capa no puede pasar de 14 tiles de alto (224 px) y cada capa gasta
 21 sprites de los 381 de la consola, asi que con dos o tres capas vas sobrado.
 
+## `sonido`
+
+El chip de la Neo Geo (YM2610) tiene tres canales de onda cuadrada: **dos para
+la música y uno para los efectos**. Todo se escribe con notas, en castellano
+(`do re mi fa sol la si`) o en inglés (`c d e f g a b`), con `#` o `b` para las
+alteraciones, el número de octava detrás y `-` para los silencios. `|` separa
+compases y no suena.
+
+```yaml
+sonido:
+  efectos:
+    empezar: {notas: "do5 sol5", velocidad: 4}
+    salto:   {tipo: barrido, desde: 320, hasta: 900, duracion: 6}
+    moneda:  {notas: "mi6 sol6", velocidad: 3}
+    golpe:   {tipo: ruido, duracion: 10}
+  musica:
+    bosque:
+      velocidad: 8        # frames que dura cada nota (más alto = más lento)
+      volumen: 11         # 0 a 15
+      bucle: si
+      pistas:
+        - "do4 mi4 sol4 mi4 | fa4 la4 do5 la4"    # canal A: melodía
+        - "do3 -   do3 -    | fa3 -   fa3 -"      # canal B: acompañamiento
+```
+
+**Momentos que puedes sonorizar** (los produce el juego solo): `empezar`,
+`salto`, `doble_salto`, `moneda`, `pisar`, `golpe`, `muerte`, `meta`, `vida`.
+
+**Tipos de efecto**:
+
+| tipo | para qué sirve | opciones |
+|---|---|---|
+| `notas` | melodías cortas (moneda, meta) | `notas`, `velocidad`, `volumen` |
+| `barrido` | saltos y disparos: la frecuencia sube o baja | `desde`, `hasta`, `duracion` |
+| `ruido` | golpes y explosiones | `duracion`, `tono` |
+
+Cada nivel elige su música:
+
+```yaml
+niveles:
+  - nombre: "BOSQUE"
+    musica: bosque
+```
+
+Duraciones: `do4:2` dura el doble. Límites: 46 efectos, 14 músicas, 2 pistas
+por música (el tercer canal se reserva para los efectos) y notas entre `do1` y
+`do8` aproximadamente.
+
 ## `spawns`
 
 Relaciona símbolos del mapa con enemigos y objetos:
@@ -216,4 +264,6 @@ Los niveles se juegan en orden; al terminar el último sale `YOU WIN!`.
 | Paletas | 256 en total | error al compilar |
 | Sprites en pantalla | 96 para actores | los que sobran no se dibujan |
 | Capas de fondo | 21 sprites cada una | con 2 o 3 vas sobrado |
+| Efectos de sonido | 46 | error al compilar |
+| Músicas | 14, de 2 pistas | error al compilar |
 | Símbolos de tile | 255 | error al compilar |

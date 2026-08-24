@@ -119,6 +119,27 @@ Pinta encima de esos PNG (15 colores por capa) o añade otra capa. Si un nivel
 concreto quiere otras capas, se lo dices en el propio nivel con
 `fondos: [cielo]`.
 
+## 6c. Cambia la música
+
+La música y los efectos también están en el `game.yaml`, escritos con notas:
+
+```yaml
+sonido:
+  efectos:
+    salto: {tipo: barrido, desde: 320, hasta: 900, duracion: 6}
+    moneda: {notas: "mi6 sol6", velocidad: 3}
+  musica:
+    bosque:
+      velocidad: 8
+      pistas:
+        - "do4 mi4 sol4 mi4 | fa4 la4 do5 la4"
+        - "do3 -   do3 -    | fa3 -   fa3 -"
+```
+
+Cambia las notas y vuelve a lanzar `../ngplat probar`: el preview lo toca al
+momento (con <kbd>M</kbd> silencias). La primera pista es la melodía y la
+segunda el acompañamiento; el tercer canal del chip se queda para los efectos.
+
 ## 7. Añade un nivel
 
 Copia el bloque de un nivel y cambia el mapa. Se juegan en orden:

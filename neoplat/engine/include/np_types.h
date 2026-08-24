@@ -65,6 +65,21 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_ANIM_HURT 4
 #define NP_ANIM_SLOTS 5
 
+/* Eventos de sonido que produce la simulacion (un bit cada uno). Coinciden con
+ * EVENTO_BIT de tools/ngplat/sonido.py. La simulacion solo los marca; quien los
+ * hace sonar es la capa de sonido (la ROM M1 en la consola, Web Audio en el
+ * preview), asi que no afectan a la fisica. */
+#define NP_SFX_START   0x0001
+#define NP_SFX_JUMP    0x0002
+#define NP_SFX_DJUMP   0x0004
+#define NP_SFX_COIN    0x0008
+#define NP_SFX_STOMP   0x0010
+#define NP_SFX_HURT    0x0020
+#define NP_SFX_DIE     0x0040
+#define NP_SFX_GOAL    0x0080
+#define NP_SFX_LIFE    0x0100
+#define NP_SFX_SLOTS   9         /* cuantos eventos distintos hay */
+
 /* Estados del juego. */
 #define NP_STATE_TITLE     0
 #define NP_STATE_PLAY      1

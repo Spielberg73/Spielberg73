@@ -76,6 +76,16 @@ fondos:                          # capas de parallax, de lejos a cerca
   - {nombre: cielo, imagen: graficos/cielo.png, velocidad: 0.2, y: 0}
   - {nombre: arboles, imagen: graficos/arboles.png, velocidad: 0.5, y: 144}
 
+sonido:
+  efectos:
+    salto: {tipo: barrido, desde: 320, hasta: 900, duracion: 6}
+    moneda: {notas: "mi6 sol6", velocidad: 3}
+  musica:
+    bosque:
+      pistas:
+        - "do4 mi4 sol4 mi4 | fa4 la4 do5 la4"
+        - "do3 -   do3 -    | fa3 -   fa3 -"
+
 spawns: {s: seta, c: moneda}
 
 niveles:
@@ -125,16 +135,19 @@ neoplat/
 │   ├── gfx.py              PNG → paletas y tiles de Neo Geo (C ROM / S ROM)
 │   ├── build.py            empaqueta gráficos, tiles y niveles
 │   ├── codegen.py          genera gamedata.c/h, ROMs y Makefile
+│   ├── sonido.py           notas -> periodos del chip de sonido
+│   ├── m1.py / z80.py      driver de sonido del Z80 y su ensamblador
 │   ├── preview.py          genera el preview jugable
 │   ├── png.py / miniyaml.py  lectores propios (cero dependencias)
 │   └── art.py / scaffold.py  el proyecto de ejemplo
 ├── engine/
 │   ├── core/np_world.c     la simulación (física, colisiones, enemigos)
-│   ├── neogeo/             vídeo, HUD y mando de la consola
+│   ├── neogeo/             vídeo, HUD, sonido y mando de la consola
 │   └── host/np_trace.c     ejecuta la simulación en el ordenador (pruebas)
 ├── preview/np_core.js      la misma simulación, en JavaScript
 ├── examples/bosque-magico/ juego de ejemplo listo para compilar
-└── tests/                  57 pruebas + 24 de jugabilidad
+└── tests/                  92 pruebas + 24 de jugabilidad + bot que se pasa
+                            los niveles
 ```
 
 **El motor es C, no C++**, a propósito: el compilador de ngdevkit no trae
@@ -178,6 +191,9 @@ Verificado aquí:
   prueba, así que nunca se cuela un nivel imposible.
 - El preview se abre en Chromium durante las pruebas y se comprueba que dibuja
   lo que debe (capturas de pantalla revisadas a mano).
+- El driver de sonido del Z80 se ejecuta en un emulador incluido en las pruebas:
+  se comprueba que recibe las órdenes del 68000 y escribe en el chip los
+  periodos y volúmenes de las notas escritas en el `game.yaml`.
 
 **Todavía sin verificar en hardware ni emulador**: el kit convierte los
 gráficos al formato de la Neo Geo y programa el chip de vídeo según la
@@ -191,7 +207,8 @@ probable es que haya que ajustar el orden de bytes descrito en `docs/neogeo.md`
 
 Lo que aún no hace:
 
-- **Sonido**: las ROMs M1/V1 se generan vacías (silencio).
+- **Muestras digitales** (ROM V1): la música y los efectos usan los canales de
+  onda cuadrada del chip; las voces y percusiones sampleadas aún no.
 - **Jefes o eventos guionizados**: hay cinco comportamientos de enemigo fijos.
 - **Dos jugadores**.
 - **Zoom de sprites** (la Neo Geo lo permite; el motor no lo usa).

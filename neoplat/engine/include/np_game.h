@@ -73,6 +73,7 @@ typedef struct {
     uint16_t background;             /* color de fondo ya en formato Neo Geo */
     const uint8_t *layers;           /* indices en np_layers, de lejos a cerca */
     uint8_t layer_count;
+    uint8_t music;                   /* 0 = sin musica, si no indice + 1 */
 } NpLevel;
 
 /* Tablas que genera el compilador (definidas en gamedata.c). */
@@ -84,6 +85,9 @@ extern const NpLayer np_layers[];
 extern const uint8_t np_tile_kind[];     /* tipo de cada tile del proyecto */
 extern const uint16_t np_tile_gfx[];     /* tile grafico dentro de la ROM C */
 extern const np_fix np_sin_table[64];    /* seno en 24.8, un ciclo completo */
+/* Orden que hay que mandar al Z80 por cada evento de sonido (0 = sin sonido).
+ * El indice es el numero de bit de NP_SFX_*. */
+extern const uint8_t np_sfx_command[NP_SFX_SLOTS];
 
 extern const uint16_t np_level_count;
 extern const uint16_t np_layer_count;

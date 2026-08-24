@@ -7,6 +7,8 @@ import shutil
 from typing import Dict, List, Sequence
 
 from . import gfx
+from . import m1 as m1_mod
+from .sonido import EVENTOS
 from .build import (
     Build, actor_def_values, enemy_values, item_values, layer_values, player_values,
     tile_tables,
@@ -77,6 +79,9 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     header.append("#define NP_MAX_LEVEL_TILES_W %d" % max(l.width for l in build.levels))
     header.append("#define NP_HUD_ENABLED %d" % (1 if project.hud else 0))
     header.append("#define NP_LAYER_COUNT %d" % len(build.layers))
+    header.append("#define NP_MUSIC_COUNT %d" % len(build.music_order))
+    header.append("#define NP_SOUND_ENABLED %d"
+                  % (1 if (build.project.sound.efectos or build.project.sound.musica) else 0))
     header.append("#define NP_MAX_LEVEL_LAYERS %d"
                   % max([len(l.layers) for l in build.levels] + [0]))
     header.append("")
@@ -111,6 +116,17 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
             font_table[ord(char.lower())] = tile
     src.append("const uint8_t np_font_index[128] = {")
     src.append(_array(font_table))
+    src.append("};")
+    src.append("")
+
+    orden_efectos = [nombre for nombre in EVENTOS if nombre in project.sound.efectos]
+    comandos = [
+        (orden_efectos.index(nombre) + 1) if nombre in orden_efectos else 0
+        for nombre in EVENTOS
+    ]
+    src.append("/* Orden de sonido que se manda al Z80 por cada evento. */")
+    src.append("const uint8_t np_sfx_command[NP_SFX_SLOTS] = {")
+    src.append(_array(comandos))
     src.append("};")
     src.append("")
 
@@ -226,10 +242,10 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
         spawns = "np_level%d_spawns" % i if level.spawns else "0"
         capas = "np_level%d_layers" % i if level.layers else "0"
         src.append(
-            "    { %s, %d, %d, np_level%d_cells, %s, %d, %d, %d, 0x%04x, %s, %d },"
+            "    { %s, %d, %d, np_level%d_cells, %s, %d, %d, %d, 0x%04x, %s, %d, %d },"
             % (_c_string(level.name), level.width, level.height, i, spawns,
                len(level.spawns), level.start[0], level.start[1], level.background,
-               capas, len(level.layers))
+               capas, len(level.layers), level.music)
         )
     src.append("};")
     src.append("const uint16_t np_level_count = %d;" % len(build.levels))
@@ -249,6 +265,8 @@ ENGINE_FILES = [
     ("neogeo/np_video.h", "src/np_video.h"),
     ("neogeo/np_video.c", "src/np_video.c"),
     ("neogeo/np_hud.c", "src/np_hud.c"),
+    ("neogeo/np_sound.h", "src/np_sound.h"),
+    ("neogeo/np_sound.c", "src/np_sound.c"),
     ("neogeo/main.c", "src/main.c"),
 ]
 
@@ -266,7 +284,7 @@ def copy_engine(out_dir: str) -> List[str]:
 
 
 def write_rom_data(build: Build, out_dir: str, rom_id: str) -> Dict[str, int]:
-    """Escribe las ROMs graficas (C1/C2 para sprites, S1 para el plano fix)."""
+    """Escribe las ROMs de datos: graficos (C1/C2), plano fix (S1) y sonido (M1)."""
     rom_dir = os.path.join(out_dir, "rom")
     os.makedirs(rom_dir, exist_ok=True)
     written: Dict[str, int] = {}
@@ -282,6 +300,16 @@ def write_rom_data(build: Build, out_dir: str, rom_id: str) -> Dict[str, int]:
         with open(path, "wb") as fh:
             fh.write(bytes(padded))
         written[name] = len(padded)
+
+    # ROM M1: el driver de sonido para el Z80, con la musica y los efectos.
+    m1_rom, info = m1_mod.generar_m1(build.project.sound, build.music_order)
+    nombre_m1 = "%s-m1.m1" % rom_id
+    with open(os.path.join(rom_dir, nombre_m1), "wb") as fh:
+        fh.write(m1_rom)
+    written[nombre_m1] = len(m1_rom)
+    # el fuente del driver se deja al lado, para poder mirarlo o retocarlo
+    with open(os.path.join(out_dir, "src", "sonido.z80"), "w", encoding="utf-8") as fh:
+        fh.write(info["fuente"])
     return written
 
 

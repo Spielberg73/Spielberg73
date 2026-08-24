@@ -11,6 +11,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from . import sonido as sonido_mod
 from .errors import ProjectError
 
 # ---------------------------------------------------------------- utilidades
@@ -287,6 +288,7 @@ class Level:
     spawns: Dict[str, str]
     background: Tuple[int, int, int]
     layers: List[str] = field(default_factory=list)   # nombres de capas de fondo
+    music: str = ""                                   # nombre de la musica del nivel
     start: Tuple[int, int] = (0, 0)
 
 
@@ -310,6 +312,7 @@ class Project:
     enemies: Dict[str, Enemy]
     items: Dict[str, Item]
     layers: Dict[str, Layer]
+    sound: "sonido_mod.Sonido"
     levels: List[Level]
     warnings: List[str] = field(default_factory=list)
 
@@ -542,6 +545,85 @@ def _read_tiles(node: Node, root: str) -> Tuple[Tileset, Dict[str, TileDef]]:
     return Tileset(image=image, size=size), tiles
 
 
+def _read_sound(raw: Any, where: str = "sonido") -> "sonido_mod.Sonido":
+    """Lee los efectos y la musica. Todo es opcional: sin seccion, hay silencio."""
+    resultado = sonido_mod.Sonido()
+    if raw is None:
+        return resultado
+    node = Node(raw, where)
+
+    efectos = node.child("effects", "efectos", "sfx")
+    for clave, valor in (efectos.data or {}).items():
+        nombre = str(clave).strip().lower()
+        nombre = sonido_mod.EVENTO_ALIAS.get(nombre, nombre)
+        sub_where = "%s.efectos.%s" % (where, clave)
+        if nombre not in sonido_mod.EVENTOS:
+            raise ProjectError(
+                "'%s' no es un momento del juego con sonido" % clave,
+                hint="momentos validos: %s" % ", ".join(sonido_mod.EVENTOS),
+                where=sub_where,
+            )
+        sub = Node(valor, sub_where)
+        volumen = sub.int_(["volume", "volumen"], 12, 0, 15)
+        tipo = sub.choice(["type", "tipo"], {
+            "notas": "notas", "notes": "notas", "melodia": "notas", "melodía": "notas",
+            "barrido": "barrido", "sweep": "barrido",
+            "ruido": "ruido", "noise": "ruido",
+        }, "notas" if sub.has("notas", "notes") else
+           ("ruido" if sub.has("ruido", "noise") else
+            ("barrido" if sub.has("desde", "from") else "notas")))
+        if tipo == "notas":
+            texto = sub.str_(["notas", "notes", "melodia"], required=True)
+            velocidad = sub.int_(["speed", "velocidad", "duracion", "duración"], 4, 1, 60)
+            pasos = sonido_mod.parsear_notas(texto or "", velocidad, volumen, sub_where)
+        elif tipo == "barrido":
+            desde = sub.num(["from", "desde"], 300.0, 30.0, 4000.0)
+            hasta = sub.num(["to", "hasta"], 900.0, 30.0, 4000.0)
+            duracion = sub.int_(["duration", "duracion", "duración", "pasos"], 8, 2, 60)
+            pasos = sonido_mod.barrido(desde, hasta, duracion, volumen, sub_where)
+        else:
+            duracion = sub.int_(["duration", "duracion", "duración"], 8, 1, 60)
+            pasos = sonido_mod.ruido(duracion, volumen,
+                                     sub.int_(["tono", "tone"], 16, 1, 31))
+        resultado.efectos[nombre] = sonido_mod.Efecto(nombre=nombre, pasos=pasos)
+
+    musicas = node.child("music", "musica", "música", "canciones")
+    for clave, valor in (musicas.data or {}).items():
+        nombre = str(clave)
+        sub_where = "%s.musica.%s" % (where, nombre)
+        sub = Node(valor, sub_where)
+        velocidad = sub.int_(["speed", "velocidad", "tempo"], 8, 1, 60)
+        volumen = sub.int_(["volume", "volumen"], 11, 0, 15)
+        bucle = sub.bool_(["loop", "bucle", "repetir"], True)
+        pistas_raw = sub.raw("tracks", "pistas", "canales")
+        if pistas_raw is None:
+            raise ProjectError(
+                "la musica '%s' no tiene pistas" % nombre,
+                hint="anade 'pistas:' con una o dos lineas de notas",
+                where=sub_where,
+            )
+        if isinstance(pistas_raw, str):
+            pistas_raw = [pistas_raw]
+        if len(pistas_raw) > 2:
+            raise ProjectError(
+                "la musica '%s' tiene %d pistas y solo hay 2 canales libres"
+                % (nombre, len(pistas_raw)),
+                hint="el tercer canal del chip se reserva para los efectos",
+                where=sub_where,
+            )
+        pistas = [
+            sonido_mod.parsear_notas(str(pista), velocidad, volumen,
+                                     "%s.pistas[%d]" % (sub_where, i + 1))
+            for i, pista in enumerate(pistas_raw)
+        ]
+        resultado.musica[nombre] = sonido_mod.Musica(
+            nombre=nombre, velocidad=velocidad, pistas=pistas, bucle=bucle)
+
+    _warn_unknown(node, where, ["effects", "efectos", "sfx", "music", "musica",
+                                "música", "canciones"])
+    return resultado
+
+
 def _read_layers(raw: Any, root: str, where: str = "fondos") -> Dict[str, Layer]:
     """Lee las capas de parallax, de la mas lejana a la mas cercana."""
     if raw is None:
@@ -577,7 +659,8 @@ def _read_layers(raw: Any, root: str, where: str = "fondos") -> Dict[str, Layer]
 def _read_levels(raw_levels: Any, tiles: Dict[str, TileDef], spawn_names: List[str],
                  global_spawns: Dict[str, str], default_bg: Tuple[int, int, int],
                  warnings: List[str], necesitan_suelo: Optional[Dict[str, bool]] = None,
-                 layer_names: Optional[List[str]] = None) -> List[Level]:
+                 layer_names: Optional[List[str]] = None,
+                 music_names: Optional[List[str]] = None) -> List[Level]:
     if not raw_levels:
         raise ProjectError(
             "el juego no tiene niveles",
@@ -630,8 +713,15 @@ def _read_levels(raw_levels: Any, tiles: Dict[str, TileDef], spawn_names: List[s
                         hint="definela en la seccion 'fondos:'",
                         where=where,
                     )
+        musica = node.str_(["music", "musica", "música", "cancion"], "") or ""
+        if musica and musica not in (music_names or []):
+            raise ProjectError(
+                "el nivel usa la musica '%s', que no esta definida" % musica,
+                hint="definela en 'sonido: musica:'",
+                where=where,
+            )
         level = Level(name=name, rows=rows, spawns=spawns, background=background,
-                      layers=usadas)
+                      layers=usadas, music=musica)
         _validate_level(level, tiles, spawn_names, where, warnings, necesitan_suelo or {})
         levels.append(level)
     return levels
@@ -805,27 +895,31 @@ def load_project(path: str) -> Project:
         for name, enemy in enemies.items()
     }
     layers = _read_layers(top.raw("backgrounds", "fondos", "capas"), root)
+    sound = _read_sound(top.raw("sound", "sonido", "audio"))
     levels = _read_levels(
         top.raw("levels", "niveles"), tiles, list(enemies) + list(items),
         global_spawns, default_bg, warnings, necesitan_suelo, list(layers),
+        list(sound.musica),
     )
 
     known_top = {
         "game", "juego", "player", "jugador", "tiles", "tileset", "bloques",
         "enemies", "enemigos", "items", "objetos", "levels", "niveles",
         "spawns", "simbolos", "símbolos", "backgrounds", "fondos", "capas",
+        "sound", "sonido", "audio",
     }
     extra_top = [key for key in data if key not in known_top]
     if extra_top:
         raise ProjectError(
             "seccion desconocida '%s'" % extra_top[0],
             hint="secciones validas: juego, jugador, tiles, enemigos, objetos, "
-                 "fondos, spawns, niveles",
+                 "fondos, sonido, spawns, niveles",
             where=os.path.basename(path),
         )
 
     return Project(
         root=root, title=title.upper()[:24], author=author[:24], lives=lives,
         time_limit=time_limit, hud=hud, player=player, tileset=tileset, tiles=tiles,
-        enemies=enemies, items=items, layers=layers, levels=levels, warnings=warnings,
+        enemies=enemies, items=items, layers=layers, sound=sound, levels=levels,
+        warnings=warnings,
     )

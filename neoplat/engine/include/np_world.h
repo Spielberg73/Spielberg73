@@ -41,6 +41,7 @@ typedef struct {
     uint16_t state, state_timer;
     uint16_t time_left;      /* en frames */
     uint16_t prev_input;
+    uint16_t sfx;            /* eventos de sonido de este frame (NP_SFX_*) */
     uint8_t lives, keys, entity_count;
 } NpWorld;
 

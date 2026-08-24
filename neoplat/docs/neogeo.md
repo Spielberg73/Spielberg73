@@ -120,6 +120,39 @@ leyendo el contador de línea. Si prefieres usar la interrupción de ngdevkit,
 sustituye `np_wait_vblank()` en `np_video.c` por `ng_wait_vblank()`; el resto
 del motor no cambia.
 
+## El sonido: el Z80 y el YM2610
+
+El chip de sonido no cuelga del 68000, sino de un Z80 con su propia ROM (la
+M1). El juego manda ordenes de un byte por el puerto `$320000`; eso dispara una
+NMI en el Z80, que lee el comando por su puerto 0.
+
+`ngplat` genera ese driver a partir del `game.yaml` (`tools/ngplat/m1.py`), lo
+ensambla con su propio ensamblador de Z80 (`tools/ngplat/z80.py`) y deja el
+fuente comentado en `build/src/sonido.z80` por si quieres mirarlo.
+
+Formato del byte de orden:
+
+```
+bit 6      alternancia (permite repetir el mismo sonido dos veces seguidas)
+bits 0-5   $01..$2F efecto, $30..$3E musica, $3F parar la musica
+```
+
+El driver usa los tres canales de onda cuadrada (SSG) del YM2610:
+
+```
+canal A (registros $00/$01, volumen $08)   primera pista de la musica
+canal B (registros $02/$03, volumen $09)   segunda pista
+canal C (registros $04/$05, volumen $0A)   efectos, y ruido para los golpes
+```
+
+El periodo de una nota es `4.000.000 / (16 * frecuencia)` y el compas lo marca
+el temporizador B del YM2610, programado a unos 60 Hz para que la musica avance
+al ritmo del juego.
+
+Las pruebas ejecutan este driver en un emulador de Z80 (`tests/z80sim.py`) y
+comprueban que escribe los periodos correctos, pero **no se ha probado en
+hardware**. Las muestras digitales (ROM V1) todavia no se usan.
+
 ## La ROM que se genera
 
 ```
@@ -127,8 +160,8 @@ build/rom/202-p1.p1   programa (68000), lo genera make
 build/rom/202-c1.c1   gráficos, planos 0 y 1
 build/rom/202-c2.c2   gráficos, planos 2 y 3
 build/rom/202-s1.s1   plano fix (la fuente del marcador)
-build/rom/202-m1.m1   sonido Z80 (de momento vacío)
-build/rom/202-v1.v1   muestras de sonido (de momento vacío)
+build/rom/202-m1.m1   driver de sonido del Z80, con tu musica y tus efectos
+build/rom/202-v1.v1   muestras digitales (aun sin usar)
 ```
 
 El identificador `202` es el del romset `puzzledp`, que es el que usa el

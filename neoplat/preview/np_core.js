@@ -25,6 +25,9 @@
   var AI_PATROL = 0, AI_FLYER = 1, AI_CHASER = 2, AI_JUMPER = 3;
   var ANIM_IDLE = 0, ANIM_RUN = 1, ANIM_JUMP = 2, ANIM_FALL = 3, ANIM_HURT = 4;
   var STATE = { TITLE: 0, PLAY: 1, DYING: 2, LEVEL_END: 3, GAME_OVER: 4, FINISHED: 5 };
+  /* Eventos de sonido; mismos bits que NP_SFX_* en np_types.h. */
+  var SFX = { START: 1, JUMP: 2, DJUMP: 4, COIN: 8, STOMP: 16, HURT: 32,
+              DIE: 64, GOAL: 128, LIFE: 256 };
 
   function I2F(v) { return v * FIX_ONE; }
   function F2I(v) { return v >> FIX_SHIFT; }
@@ -51,6 +54,7 @@
     this.levelIndex = 0;
     this.state = STATE.TITLE; this.stateTimer = 0;
     this.timeLeft = 0; this.prevInput = 0;
+    this.sfx = 0;                 /* eventos de sonido de este frame */
     this.lives = data.lives; this.keys = 0; this.entityCount = 0;
     /* Igual que np_world_init en C: en el titulo ya se ve el principio del
        nivel, con el jugador colocado en su salida. */
@@ -222,6 +226,7 @@
   };
 
   World.prototype.playerDie = function () {
+    this.sfx |= SFX.DIE;
     this.state = STATE.DYING;
     this.stateTimer = DYING_TIME;
     this.player.vy = -this.data.player.jump;
@@ -235,6 +240,7 @@
     if (p.invuln || this.state !== STATE.PLAY) return;
     if (damage >= p.health) { p.health = 0; this.playerDie(); return; }
     p.health -= damage;
+    this.sfx |= SFX.HURT;
     p.invuln = d.invuln;
     p.vy = -idiv(d.bounce, 2);
     p.vx = p.facing ? -d.speed : d.speed;
@@ -262,6 +268,7 @@
     } else if (p.coyote) p.coyote--;
 
     if (p.buffer && (p.coyote || p.jumpsLeft)) {
+      this.sfx |= p.coyote ? SFX.JUMP : SFX.DJUMP;
       if (!p.coyote) p.jumpsLeft--;
       p.vy = -d.jump;
       p.buffer = 0; p.coyote = 0; p.onGround = 0;
@@ -352,6 +359,7 @@
   World.prototype.collect = function (e) {
     var d = this.data.items[e.def];
     this.score += d.score;
+    this.sfx |= (d.effect === 1) ? SFX.LIFE : SFX.COIN;
     if (d.effect === 1) { if (this.lives < 99) this.lives += d.amount; }
     else if (d.effect === 2) {
       this.player.health = Math.min(this.player.health + d.amount, this.data.player.health);
@@ -373,6 +381,7 @@
       var fromAbove = p.vy > 0 &&
         (p.y + I2F(pa.box_h) - p.vy) <= e.y + I2F(idiv(ea.box_h, 2));
       if (this.data.player.stomp && d.stompable && fromAbove) {
+        this.sfx |= SFX.STOMP;
         if (e.health > 1) { e.health--; e.hurt = 20; }
         else { e.active = 0; this.score += d.score; }
         p.vy = -this.data.player.bounce;
@@ -425,6 +434,7 @@
       return;
     }
     if (this.boxTouches(p.x, p.y, pa.box_w, pa.box_h, TILE_GOAL)) {
+      this.sfx |= SFX.GOAL;
       this.state = STATE.LEVEL_END;
       this.stateTimer = LEVEL_END_TIME;
       this.score += 100 + idiv(this.timeLeft, 60) * 10;
@@ -443,10 +453,12 @@
   World.prototype.step = function (input) {
     var startPressed = (input & IN.START) && !(this.prevInput & IN.START);
     this.frame++;
+    this.sfx = 0;                 /* los eventos duran un solo frame */
 
     switch (this.state) {
       case STATE.TITLE:
         if (startPressed) {
+          this.sfx |= SFX.START;
           this.score = 0;
           this.lives = this.data.lives;
           this.loadLevel(0);
@@ -488,7 +500,7 @@
   };
 
   var api = {
-    World: World, IN: IN, STATE: STATE, FIX_ONE: FIX_ONE, TILE: TILE,
+    World: World, IN: IN, STATE: STATE, SFX: SFX, FIX_ONE: FIX_ONE, TILE: TILE,
     SCREEN_W: SCREEN_W, SCREEN_H: SCREEN_H, F2I: F2I, I2F: I2F,
     actorFrame: actorFrame,
     create: function (data) { var w = new World(data); w.level = data.levels[0]; return w; }

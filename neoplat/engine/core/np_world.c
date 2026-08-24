@@ -292,6 +292,7 @@ void np_world_load_level(NpWorld *w, uint16_t index)
 
 static void np_player_die(NpWorld *w)
 {
+    w->sfx |= NP_SFX_DIE;
     w->state = NP_STATE_DYING;
     w->state_timer = NP_DYING_TIME;
     w->player.vy = -np_player_def.jump;
@@ -310,6 +311,7 @@ static void np_player_hurt(NpWorld *w, uint8_t damage)
         return;
     }
     p->health = (uint8_t)(p->health - damage);
+    w->sfx |= NP_SFX_HURT;
     p->invuln = np_player_def.invuln;
     p->vy = -np_player_def.bounce / 2;
     p->vx = p->facing ? -np_player_def.speed : np_player_def.speed;
@@ -345,6 +347,7 @@ static void np_player_update(NpWorld *w, uint16_t input)
     }
 
     if (p->buffer && (p->coyote || p->jumps_left)) {
+        w->sfx |= p->coyote ? NP_SFX_JUMP : NP_SFX_DJUMP;
         if (!p->coyote) p->jumps_left--;
         p->vy = -d->jump;
         p->buffer = 0;
@@ -471,6 +474,7 @@ static void np_collect(NpWorld *w, NpEntity *e)
 {
     const NpItemDef *d = &np_items[e->def];
     w->score += d->score;
+    w->sfx |= (d->effect == NP_ITEM_LIFE) ? NP_SFX_LIFE : NP_SFX_COIN;
     switch (d->effect) {
     case NP_ITEM_LIFE:
         if (w->lives < 99) w->lives = (uint8_t)(w->lives + d->amount);
@@ -513,6 +517,7 @@ static void np_touch_entities(NpWorld *w)
             int from_above = p->vy > 0 &&
                 (p->y + NP_I2F(pa->box_h) - p->vy) <= e->y + NP_I2F(ea->box_h / 2);
             if (np_player_def.stomp && d->stompable && from_above) {
+                w->sfx |= NP_SFX_STOMP;
                 if (e->health > 1) {
                     e->health--;
                     e->hurt = 20;
@@ -588,6 +593,7 @@ static void np_play_step(NpWorld *w, uint16_t input)
         return;
     }
     if (np_box_touches(w->level, p->x, p->y, pa->box_w, pa->box_h, NP_TILE_GOAL)) {
+        w->sfx |= NP_SFX_GOAL;
         w->state = NP_STATE_LEVEL_END;
         w->state_timer = NP_LEVEL_END_TIME;
         w->score += 100 + (w->time_left / 60) * 10;
@@ -607,10 +613,12 @@ void np_world_step(NpWorld *w, uint16_t input)
 {
     int start_pressed = (input & NP_IN_START) && !(w->prev_input & NP_IN_START);
     w->frame++;
+    w->sfx = 0;                 /* los eventos duran un solo frame */
 
     switch (w->state) {
     case NP_STATE_TITLE:
         if (start_pressed) {
+            w->sfx |= NP_SFX_START;
             w->score = 0;
             w->lives = np_start_lives;
             np_world_load_level(w, 0);

@@ -108,9 +108,32 @@ def build_data(build: Build) -> Dict[str, object]:
             "start": list(level.start),
             "background": "#%02x%02x%02x" % gfx.ng_color_to_rgb(level.background),
             "layers": list(level.layers),
+            "music": level.music,
         })
 
     font = {char: list(rows) for char, rows in gfx.FONT_3X5.items()}
+
+    sonido = {
+        "efectos": {
+            nombre: [[paso.periodo, paso.duracion, paso.volumen, paso.ruido]
+                     for paso in efecto.pasos]
+            for nombre, efecto in project.sound.efectos.items()
+        },
+        "musica": [
+            {
+                "nombre": nombre,
+                "velocidad": tema.velocidad,
+                "bucle": 1 if tema.bucle else 0,
+                "pistas": [[[paso.periodo, paso.duracion, paso.volumen]
+                            for paso in pista] for pista in tema.pistas],
+            }
+            for nombre, tema in project.sound.musica.items()
+        ],
+        # bit del evento -> nombre del efecto que suena
+        "eventos": {str(bit): nombre
+                    for nombre, bit in project.sound.evento_bits().items()},
+        "reloj": 4000000,
+    }
 
     return {
         "title": project.title,
@@ -126,6 +149,7 @@ def build_data(build: Build) -> Dict[str, object]:
         "tiles": {"kind": kinds, "gfx": [t.index for t in build.tiles]},
         "levels": levels,
         "layers": layers,
+        "sonido": sonido,
         "sin": build.sin_table,
         "sheets": sheets,
         "font": font,

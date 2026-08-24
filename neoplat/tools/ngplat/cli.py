@@ -81,6 +81,9 @@ def cmd_comprobar(args: argparse.Namespace) -> int:
           % (stats["tiles_sprite"], (stats["bytes_c1"] + stats["bytes_c2"]) // 1024))
     print("  tiles de fix    %d" % stats["tiles_fix"])
     print("  paletas         %d de 256" % stats["paletas"])
+    print("  capas de fondo  %d" % stats["capas"])
+    print("  efectos         %d" % stats["efectos"])
+    print("  musicas         %d" % stats["musicas"])
     print("  mapas           %d bytes" % stats["bytes_mapas"])
     return 0
 
@@ -122,9 +125,11 @@ def cmd_compilar(args: argparse.Namespace) -> int:
     _ok("proyecto en C generado en '%s'" % out_dir)
     _info("codigo:   src/ (motor + gamedata.c con tu juego)")
     for nombre, tamano in sorted(roms.items()):
-        _info("grafico:  rom/%s (%d KB)" % (nombre, tamano // 1024))
-    _info("%d tiles de sprite, %d paletas, %d niveles"
-          % (stats["tiles_sprite"], stats["paletas"], stats["niveles"]))
+        etiqueta = "sonido: " if "-m1." in nombre else "grafico:"
+        _info("%s  rom/%s (%d KB)" % (etiqueta, nombre, tamano // 1024))
+    _info("%d tiles de sprite, %d paletas, %d niveles, %d efectos, %d musicas"
+          % (stats["tiles_sprite"], stats["paletas"], stats["niveles"],
+             stats["efectos"], stats["musicas"]))
 
     if args.make:
         return _ejecutar_make(out_dir)

@@ -180,6 +180,31 @@ fondos:
     velocidad: 0.5
     y: 144
 
+# Sonido. El chip de la Neo Geo (YM2610) tiene tres canales de onda cuadrada:
+# dos los usa la musica y uno los efectos. Las notas se escriben en espanol
+# (do re mi fa sol la si) o en ingles (c d e f g a b), con '#' o 'b' para las
+# alteraciones, el numero de octava detras y '-' para los silencios.
+sonido:
+  efectos:
+    empezar: {{notas: "do5 sol5", velocidad: 4}}
+    salto:   {{tipo: barrido, desde: 320, hasta: 900, duracion: 6}}
+    moneda:  {{notas: "mi6 sol6", velocidad: 3}}
+    pisar:   {{tipo: barrido, desde: 800, hasta: 200, duracion: 6}}
+    golpe:   {{tipo: ruido, duracion: 10}}
+    muerte:  {{notas: "sol4 mi4 do4 sol3", velocidad: 6}}
+    meta:    {{notas: "do5 mi5 sol5 do6", velocidad: 6}}
+  musica:
+    bosque:
+      velocidad: 8          # frames que dura cada nota (mas alto = mas lento)
+      pistas:
+        - "do4 mi4 sol4 mi4 | fa4 la4 do5 la4 | sol4 si4 re5 si4 | do5 - sol4 -"
+        - "do3 -  do3 -     | fa3 -  fa3 -    | sol3 - sol3 -     | do3 - -    -"
+    cueva:
+      velocidad: 10
+      pistas:
+        - "la3 do4 mi4 do4 | sol3 si3 re4 si3 | fa3 la3 do4 la3 | mi3 - - -"
+        - "la2 -   mi3 -   | sol2 -   re3 -   | fa2 -   do3 -   | mi2 - - -"
+
 # Simbolos del mapa que colocan enemigos y objetos.
 spawns:
   s: seta
@@ -190,14 +215,16 @@ niveles:
 {niveles}"""
 
 
-def _nivel_yaml(nombre: str, filas: List[str], fondo: str, capas: str = "") -> str:
+def _nivel_yaml(nombre: str, filas: List[str], fondo: str, capas: str = "",
+                musica: str = "") -> str:
     cuerpo = "\n".join("      " + fila for fila in filas)
     linea_capas = "    fondos: [%s]\n" % capas if capas else ""
+    linea_musica = "    musica: %s\n" % musica if musica else ""
     return (
         "  - nombre: \"%s\"\n"
         "    fondo: \"%s\"\n"
-        "%s"
-        "    mapa: |\n%s\n" % (nombre, fondo, linea_capas, cuerpo)
+        "%s%s"
+        "    mapa: |\n%s\n" % (nombre, fondo, linea_capas, linea_musica, cuerpo)
     )
 
 
@@ -217,9 +244,9 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "") -> L
         creados.append(relativo)
 
     niveles = (
-        _nivel_yaml("BOSQUE", _nivel_1(), "#101830")
+        _nivel_yaml("BOSQUE", _nivel_1(), "#101830", musica="bosque")
         # el segundo nivel usa solo la capa lejana: se puede elegir por nivel
-        + _nivel_yaml("CUEVA", _nivel_2(), "#180c20", capas="cielo")
+        + _nivel_yaml("CUEVA", _nivel_2(), "#180c20", capas="cielo", musica="cueva")
     )
     contenido = GAME_YAML.format(titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles)
     with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8") as fh:

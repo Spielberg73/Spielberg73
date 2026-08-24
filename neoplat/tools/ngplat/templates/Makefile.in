@@ -12,7 +12,8 @@ GNGEO    ?= ngdevkit-gngeo
 CFLAGS   := -std=c99 -Os -fomit-frame-pointer -Wall -Wextra -Isrc
 LDFLAGS  :=
 
-SRC      := src/main.c src/np_video.c src/np_hud.c src/np_world.c src/gamedata.c
+SRC      := src/main.c src/np_video.c src/np_hud.c src/np_sound.c src/np_world.c \
+            src/gamedata.c
 OBJ      := $(SRC:.c=.o)
 
 PROM     := rom/$(ROMID)-p1.p1
@@ -22,7 +23,7 @@ SROM     := rom/$(ROMID)-s1.s1
 MROM     := rom/$(ROMID)-m1.m1
 VROM     := rom/$(ROMID)-v1.v1
 
-all: $(PROM) $(MROM) $(VROM)
+all: $(PROM) $(VROM)
 	@echo "ROM lista en rom/ (ROM id $(ROMID))"
 
 %.o: %.c
@@ -35,11 +36,8 @@ $(PROM): game.elf
 	@mkdir -p rom
 	$(OBJCOPY) -O binary $< $@
 
-# Sonido: de momento ROMs vacias (silencio). El Z80 solo ve ceros = NOPs.
-$(MROM):
-	@mkdir -p rom
-	dd if=/dev/zero of=$@ bs=1024 count=128 2>/dev/null
-
+# La ROM M1 (driver de sonido del Z80, con tu musica y tus efectos) la genera
+# 'ngplat compilar'. La V1 son muestras digitales: aun no se usan.
 $(VROM):
 	@mkdir -p rom
 	dd if=/dev/zero of=$@ bs=1024 count=128 2>/dev/null
