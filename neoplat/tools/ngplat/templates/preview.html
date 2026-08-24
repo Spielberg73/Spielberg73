@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>@TITLE@ - preview NeoPlat</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: #0b0d12; color: #d8dee9;
+    font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: flex; flex-direction: column; align-items: center; gap: 14px;
+    padding: 20px 12px 32px;
+  }
+  h1 { font-size: 17px; margin: 0; letter-spacing: .08em; text-transform: uppercase; }
+  .sub { margin: -8px 0 0; color: #7d8799; font-size: 12px; }
+  .frame {
+    border: 1px solid #232838; border-radius: 10px; padding: 10px;
+    background: #11141d; box-shadow: 0 18px 50px rgba(0,0,0,.45);
+  }
+  canvas {
+    display: block; image-rendering: pixelated; background: #000;
+    border-radius: 4px; touch-action: none;
+  }
+  .bar { display: flex; flex-wrap: wrap; gap: 10px 18px; justify-content: center;
+         color: #8b95a8; font-size: 12px; max-width: 760px; text-align: center; }
+  kbd { background: #1d2231; border: 1px solid #2b3245; border-bottom-width: 2px;
+        border-radius: 4px; padding: 1px 6px; font: 11px ui-monospace, monospace; color: #cfd6e4; }
+  .pad { display: none; gap: 10px; margin-top: 6px; }
+  .pad button {
+    width: 62px; height: 56px; border-radius: 12px; border: 1px solid #2b3245;
+    background: #1a1f2c; color: #cfd6e4; font-size: 18px; touch-action: none;
+    user-select: none; -webkit-user-select: none;
+  }
+  .pad button:active { background: #2a3145; }
+  @media (pointer: coarse) { .pad { display: flex; } }
+</style>
+</head>
+<body>
+<h1>@TITLE@</h1>
+<p class="sub">preview NeoPlat &middot; 320&times;224 &middot; misma simulacion que la ROM &middot; @AUTHOR@</p>
+<div class="frame"><canvas id="pantalla" width="320" height="224"></canvas></div>
+<div class="bar">
+  <span><kbd>&larr;</kbd><kbd>&rarr;</kbd> moverse</span>
+  <span><kbd>Z</kbd> / <kbd>espacio</kbd> saltar</span>
+  <span><kbd>&darr;</kbd> bajar de plataforma</span>
+  <span><kbd>Enter</kbd> empezar</span>
+  <span><kbd>R</kbd> reiniciar</span>
+  <span><kbd>+</kbd> / <kbd>-</kbd> zoom</span>
+</div>
+<div class="pad">
+  <button data-key="left">&larr;</button>
+  <button data-key="right">&rarr;</button>
+  <button data-key="down">&darr;</button>
+  <button data-key="jump">A</button>
+  <button data-key="start">ST</button>
+</div>
+
+<script>
+@CORE@
+</script>
+<script>
+(function () {
+  "use strict";
+  var DATA = @DATA@;
+  var canvas = document.getElementById("pantalla");
+  var ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+
+  var world = NPCore.create(DATA);
+  var images = {};
+  var input = 0;
+  var scale = 3;
+
+  var KEYS = {
+    ArrowLeft: NPCore.IN.LEFT, KeyA: NPCore.IN.LEFT,
+    ArrowRight: NPCore.IN.RIGHT, KeyD: NPCore.IN.RIGHT,
+    ArrowUp: NPCore.IN.UP, KeyW: NPCore.IN.UP,
+    ArrowDown: NPCore.IN.DOWN, KeyS: NPCore.IN.DOWN,
+    KeyZ: NPCore.IN.JUMP, Space: NPCore.IN.JUMP, KeyK: NPCore.IN.JUMP,
+    KeyX: NPCore.IN.ACTION, KeyL: NPCore.IN.ACTION,
+    Enter: NPCore.IN.START
+  };
+  var PAD = {
+    left: NPCore.IN.LEFT, right: NPCore.IN.RIGHT, down: NPCore.IN.DOWN,
+    jump: NPCore.IN.JUMP, start: NPCore.IN.START
+  };
+
+  document.addEventListener("keydown", function (ev) {
+    if (ev.code === "KeyR") { world = NPCore.create(DATA); return; }
+    if (ev.code === "Equal" || ev.code === "NumpadAdd") { setScale(scale + 1); return; }
+    if (ev.code === "Minus" || ev.code === "NumpadSubtract") { setScale(scale - 1); return; }
+    var bit = KEYS[ev.code];
+    if (bit) { input |= bit; ev.preventDefault(); }
+  });
+  document.addEventListener("keyup", function (ev) {
+    var bit = KEYS[ev.code];
+    if (bit) { input &= ~bit; ev.preventDefault(); }
+  });
+  Array.prototype.forEach.call(document.querySelectorAll(".pad button"), function (btn) {
+    var bit = PAD[btn.dataset.key];
+    var press = function (ev) { ev.preventDefault(); input |= bit; };
+    var release = function (ev) { ev.preventDefault(); input &= ~bit; };
+    btn.addEventListener("touchstart", press, { passive: false });
+    btn.addEventListener("touchend", release, { passive: false });
+    btn.addEventListener("mousedown", press);
+    btn.addEventListener("mouseup", release);
+    btn.addEventListener("mouseleave", release);
+  });
+
+  function setScale(value) {
+    scale = Math.max(1, Math.min(6, value));
+    canvas.style.width = (NPCore.SCREEN_W * scale) + "px";
+    canvas.style.height = (NPCore.SCREEN_H * scale) + "px";
+  }
+  setScale(Math.max(1, Math.min(4, Math.floor((window.innerWidth - 60) / NPCore.SCREEN_W))));
+
+  function loadImages(done) {
+    var names = Object.keys(DATA.sheets), pending = names.length;
+    if (!pending) return done();
+    names.forEach(function (name) {
+      var img = new Image();
+      img.onload = img.onerror = function () { if (--pending === 0) done(); };
+      img.src = DATA.sheets[name].url;
+      images[name] = img;
+    });
+  }
+
+  function drawFrame(sheetName, frame, x, y, flip) {
+    var sheet = DATA.sheets[sheetName];
+    var img = images[sheetName];
+    if (!img) return;
+    var col = frame % sheet.per_row;
+    var row = (frame / sheet.per_row) | 0;
+    var sx = col * sheet.frame_w, sy = row * sheet.frame_h;
+    if (flip) {
+      ctx.save();
+      ctx.translate(x + sheet.frame_w, y);
+      ctx.scale(-1, 1);
+      ctx.drawImage(img, sx, sy, sheet.frame_w, sheet.frame_h, 0, 0, sheet.frame_w, sheet.frame_h);
+      ctx.restore();
+    } else {
+      ctx.drawImage(img, sx, sy, sheet.frame_w, sheet.frame_h, x, y, sheet.frame_w, sheet.frame_h);
+    }
+  }
+
+  function drawBackground() {
+    var level = world.level;
+    var camX = world.camX, camY = world.camY;
+    var col0 = camX >> 4, row0 = camY >> 4;
+    var offX = camX & 15, offY = camY & 15;
+    for (var c = 0; c <= 20; c++) {
+      for (var r = 0; r <= 14; r++) {
+        var tx = col0 + c, ty = row0 + r;
+        if (tx < 0 || tx >= level.width || ty < 0 || ty >= level.height) continue;
+        var tile = DATA.tiles.gfx[level.cells[ty * level.width + tx]];
+        drawFrame("__tiles__", tile, c * 16 - offX, r * 16 - offY, false);
+      }
+    }
+  }
+
+  function drawActor(def, x, y, frame, flip) {
+    drawFrame(def.sheet, frame, x, y, flip);
+  }
+
+  function drawEntities() {
+    for (var i = 0; i < world.entityCount; i++) {
+      var e = world.entities[i];
+      if (!e.active) continue;
+      if (e.hurt && (world.frame & 1)) continue;
+      var def = world.entityDef(e).actor;
+      var sx = NPCore.F2I(e.x) - def.box_x - world.camX;
+      var sy = NPCore.F2I(e.y) - def.box_y - world.camY;
+      if (sx <= -def.frame_w || sx >= NPCore.SCREEN_W) continue;
+      if (sy <= -def.frame_h || sy >= NPCore.SCREEN_H) continue;
+      drawActor(def, sx, sy, NPCore.actorFrame(def, e.anim, e.animFrame), !e.facing);
+    }
+  }
+
+  function drawPlayer() {
+    if (!world.playerVisible()) return;
+    var def = DATA.player.actor;
+    var p = world.player;
+    drawActor(def, NPCore.F2I(p.x) - def.box_x - world.camX,
+              NPCore.F2I(p.y) - def.box_y - world.camY,
+              NPCore.actorFrame(def, p.anim, p.animFrame), !p.facing);
+  }
+
+  /* Mismo texto y misma fuente 3x5 que el plano fix de la consola. */
+  function text(col, row, str, color) {
+    ctx.fillStyle = color || "#ffffff";
+    for (var i = 0; i < str.length; i++) {
+      var glyph = DATA.font[str[i].toUpperCase()] || DATA.font[str[i]];
+      if (!glyph) continue;
+      var x = (col + i) * 8 + 2, y = row * 8 + 1;
+      for (var gy = 0; gy < 5; gy++)
+        for (var gx = 0; gx < 3; gx++)
+          if ((glyph[gy] >> (2 - gx)) & 1) ctx.fillRect(x + gx, y + gy, 1, 1);
+    }
+  }
+
+  function pad(value, digits) {
+    var s = String(value);
+    while (s.length < digits) s = "0" + s;
+    return s;
+  }
+
+  function drawHud() {
+    if (!DATA.hud) return;
+    text(2, 1, "SCORE");
+    text(8, 1, pad(world.score, 6));
+    text(30, 1, "LIVES");
+    text(36, 1, String(world.lives));
+    if (DATA.time_limit) {
+      text(18, 1, "TIME");
+      text(23, 1, pad((world.timeLeft / 60) | 0, 3));
+    }
+    if (world.state === NPCore.STATE.TITLE) {
+      text(12, 12, DATA.title);
+      text(12, 14, "PRESS START");
+      if (DATA.author) text(12, 16, DATA.author);
+    } else if (world.state === NPCore.STATE.GAME_OVER) {
+      text(15, 13, "GAME OVER");
+    } else if (world.state === NPCore.STATE.FINISHED) {
+      text(15, 13, "YOU WIN!");
+    } else if (world.state === NPCore.STATE.LEVEL_END) {
+      text(14, 13, "LEVEL CLEAR");
+    }
+  }
+
+  function render() {
+    ctx.fillStyle = world.level.background || "#000000";
+    ctx.fillRect(0, 0, NPCore.SCREEN_W, NPCore.SCREEN_H);
+    drawBackground();
+    drawEntities();
+    drawPlayer();
+    drawHud();
+  }
+
+  var last = 0, acc = 0;
+  function loop(now) {
+    requestAnimationFrame(loop);
+    if (!last) last = now;
+    acc += now - last;
+    last = now;
+    if (acc > 250) acc = 250;          /* pestana en segundo plano: no acumular */
+    var steps = 0;
+    while (acc >= 1000 / 60 && steps < 4) {
+      world.step(input);
+      acc -= 1000 / 60;
+      steps++;
+    }
+    render();
+  }
+
+  loadImages(function () { requestAnimationFrame(loop); });
+})();
+</script>
+</body>
+</html>

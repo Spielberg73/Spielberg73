@@ -1,0 +1,743 @@
+"""Lectura y validacion de `game.yaml`.
+
+Acepta las claves en espanol o en ingles (`jugador`/`player`, `salto`/`jump`...)
+y devuelve una estructura ya normalizada y comprobada. Cualquier fallo del
+usuario sale como `ProjectError` con un mensaje util, nunca como traza.
+"""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+from .errors import ProjectError
+
+# ---------------------------------------------------------------- utilidades
+
+def load_yaml(path: str) -> Any:
+    """Usa PyYAML si esta instalado; si no, el analizador incluido."""
+    try:
+        import yaml  # type: ignore
+    except ImportError:
+        from . import miniyaml
+
+        try:
+            return miniyaml.load_file(path)
+        except miniyaml.YamlError as exc:
+            raise ProjectError(str(exc), where=os.path.basename(path))
+    with open(path, "r", encoding="utf-8") as fh:
+        try:
+            return yaml.safe_load(fh)
+        except Exception as exc:  # pragma: no cover - depende de PyYAML
+            raise ProjectError(str(exc), where=os.path.basename(path))
+
+
+class Node:
+    """Mapa del YAML con acceso tolerante a alias y errores explicativos."""
+
+    def __init__(self, data: Any, where: str):
+        if data is None:
+            data = {}
+        if not isinstance(data, dict):
+            raise ProjectError(
+                "se esperaba una lista de opciones (clave: valor)", where=where
+            )
+        self.data = data
+        self.where = where
+        self.used: set = set()
+
+    def raw(self, *names: str) -> Any:
+        for name in names:
+            if name in self.data:
+                self.used.add(name)
+                return self.data[name]
+        return None
+
+    def has(self, *names: str) -> bool:
+        return any(name in self.data for name in names)
+
+    def child(self, *names: str) -> "Node":
+        value = self.raw(*names)
+        return Node(value, "%s.%s" % (self.where, names[0]))
+
+    def str_(self, names: Sequence[str], default: Optional[str] = None,
+             required: bool = False) -> Optional[str]:
+        value = self.raw(*names)
+        if value is None:
+            if required:
+                raise ProjectError(
+                    "falta la opcion obligatoria '%s'" % names[0], where=self.where
+                )
+            return default
+        return str(value)
+
+    def num(self, names: Sequence[str], default: float = 0.0,
+            minimum: Optional[float] = None, maximum: Optional[float] = None) -> float:
+        value = self.raw(*names)
+        if value is None:
+            return float(default)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ProjectError(
+                "'%s' debe ser un numero, no %r" % (names[0], value), where=self.where
+            )
+        value = float(value)
+        if minimum is not None and value < minimum:
+            raise ProjectError(
+                "'%s' = %g es demasiado bajo (minimo %g)" % (names[0], value, minimum),
+                where=self.where,
+            )
+        if maximum is not None and value > maximum:
+            raise ProjectError(
+                "'%s' = %g es demasiado alto (maximo %g)" % (names[0], value, maximum),
+                where=self.where,
+            )
+        return value
+
+    def int_(self, names: Sequence[str], default: int = 0,
+             minimum: Optional[int] = None, maximum: Optional[int] = None) -> int:
+        return int(round(self.num(names, default, minimum, maximum)))
+
+    def bool_(self, names: Sequence[str], default: bool = False) -> bool:
+        value = self.raw(*names)
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        text = str(value).strip().lower()
+        if text in ("si", "sí", "true", "yes", "1"):
+            return True
+        if text in ("no", "false", "0"):
+            return False
+        raise ProjectError(
+            "'%s' debe ser si/no, no %r" % (names[0], value), where=self.where
+        )
+
+    def pair(self, names: Sequence[str], default: Optional[Tuple[int, int]] = None
+             ) -> Optional[Tuple[int, int]]:
+        value = self.raw(*names)
+        if value is None:
+            return default
+        if isinstance(value, (int, float)):
+            return (int(value), int(value))
+        if isinstance(value, (list, tuple)) and len(value) == 2:
+            return (int(value[0]), int(value[1]))
+        raise ProjectError(
+            "'%s' debe ser [ancho, alto] o un numero, no %r" % (names[0], value),
+            where=self.where,
+        )
+
+    def choice(self, names: Sequence[str], options: Dict[str, str], default: str) -> str:
+        value = self.raw(*names)
+        if value is None:
+            return default
+        text = str(value).strip().lower()
+        if text not in options:
+            raise ProjectError(
+                "'%s' no reconoce el valor '%s'" % (names[0], value),
+                hint="valores validos: %s" % ", ".join(sorted(set(options))),
+                where=self.where,
+            )
+        return options[text]
+
+    def check_unknown(self, allowed: Sequence[str]) -> List[str]:
+        allowed_set = set(allowed)
+        return [key for key in self.data if key not in allowed_set]
+
+
+def parse_color(text: Any, where: str) -> Tuple[int, int, int]:
+    """Acepta '#rrggbb', '#rgb' o [r, g, b]."""
+    if isinstance(text, (list, tuple)) and len(text) == 3:
+        return tuple(max(0, min(255, int(c))) for c in text)  # type: ignore
+    value = str(text).strip().lstrip("#")
+    if len(value) == 3:
+        value = "".join(ch * 2 for ch in value)
+    if len(value) != 6:
+        raise ProjectError(
+            "color invalido '%s'" % text,
+            hint="usa '#1a2b3c', '#abc' o [r, g, b]",
+            where=where,
+        )
+    try:
+        return (int(value[0:2], 16), int(value[2:4], 16), int(value[4:6], 16))
+    except ValueError:
+        raise ProjectError("color invalido '%s'" % text, where=where)
+
+
+# ------------------------------------------------------------------ modelos
+
+TILE_KINDS = {
+    "vacio": "empty", "vacío": "empty", "empty": "empty", "aire": "empty",
+    "solido": "solid", "sólido": "solid", "solid": "solid", "bloque": "solid",
+    "plataforma": "platform", "platform": "platform", "oneway": "platform",
+    "peligro": "hazard", "hazard": "hazard", "pinchos": "hazard", "spikes": "hazard",
+    "meta": "goal", "goal": "goal", "salida": "goal", "exit": "goal",
+    "decorado": "decor", "decor": "decor", "fondo": "decor",
+}
+
+TILE_KIND_ID = {"empty": 0, "solid": 1, "platform": 2, "hazard": 3, "goal": 4, "decor": 5}
+
+BEHAVIORS = {
+    "patrulla": "patrol", "patrol": "patrol", "andar": "patrol", "walker": "patrol",
+    "volador": "flyer", "flyer": "flyer", "volar": "flyer", "mosca": "flyer",
+    "perseguidor": "chaser", "chaser": "chaser", "perseguir": "chaser",
+    "saltarin": "jumper", "saltarín": "jumper", "jumper": "jumper", "saltar": "jumper",
+    "fijo": "static", "static": "static", "quieto": "static", "torreta": "static",
+}
+
+BEHAVIOR_ID = {"patrol": 0, "flyer": 1, "chaser": 2, "jumper": 3, "static": 4}
+
+ITEM_EFFECTS = {
+    "puntos": "points", "points": "points", "score": "points", "moneda": "points",
+    "vida": "life", "life": "life", "1up": "life",
+    "salud": "health", "health": "health", "corazon": "health", "corazón": "health",
+    "llave": "key", "key": "key",
+}
+
+ITEM_EFFECT_ID = {"points": 0, "life": 1, "health": 2, "key": 3}
+
+
+@dataclass
+class Animation:
+    name: str
+    frames: List[int]
+    speed: int          # frames de juego por fotograma
+    loop: bool = True
+
+
+@dataclass
+class Actor:
+    """Base comun de jugador, enemigos y objetos: como se dibuja y su caja."""
+    name: str
+    sprite: str                      # ruta relativa al proyecto
+    frame_w: int
+    frame_h: int
+    box_w: int
+    box_h: int
+    box_x: int                       # desplazamiento de la caja dentro del frame
+    box_y: int
+    animations: Dict[str, Animation] = field(default_factory=dict)
+
+
+@dataclass
+class Player(Actor):
+    speed: float = 1.5
+    accel: float = 0.28
+    friction: float = 0.35
+    air_accel: float = 0.16
+    jump: float = 4.3
+    jump_cut: float = 1.6
+    gravity: float = 0.28
+    max_fall: float = 6.0
+    double_jump: bool = False
+    coyote: int = 6
+    jump_buffer: int = 6
+    stomp: bool = True
+    bounce: float = 3.6
+    health: int = 1
+    invuln: int = 90
+
+
+@dataclass
+class Enemy(Actor):
+    behavior: str = "patrol"
+    speed: float = 0.5
+    gravity: float = 0.28
+    health: int = 1
+    damage: int = 1
+    score: int = 100
+    stompable: bool = True
+    edge_turn: bool = True
+    range: float = 96.0
+    amplitude: float = 24.0
+    period: int = 120
+    jump: float = 3.5
+    interval: int = 90
+
+
+@dataclass
+class Item(Actor):
+    effect: str = "points"
+    score: int = 10
+    amount: int = 1
+
+
+@dataclass
+class TileDef:
+    char: str
+    index: int          # numero de tile dentro del tileset
+    kind: str
+
+
+@dataclass
+class Level:
+    name: str
+    rows: List[str]
+    spawns: Dict[str, str]
+    background: Tuple[int, int, int]
+    start: Tuple[int, int] = (0, 0)
+
+
+@dataclass
+class Tileset:
+    image: str
+    size: int = 16
+
+
+@dataclass
+class Project:
+    root: str
+    title: str
+    author: str
+    lives: int
+    time_limit: int
+    hud: bool
+    player: Player
+    tileset: Tileset
+    tiles: Dict[str, TileDef]
+    enemies: Dict[str, Enemy]
+    items: Dict[str, Item]
+    levels: List[Level]
+    warnings: List[str] = field(default_factory=list)
+
+    def spawn_names(self) -> List[str]:
+        return list(self.enemies) + list(self.items)
+
+
+# ------------------------------------------------------------------- lectura
+
+ANIM_ALIASES = {
+    "quieto": "idle", "parado": "idle", "idle": "idle",
+    "correr": "run", "andar": "run", "caminar": "run", "run": "run", "walk": "run",
+    "saltar": "jump", "salto": "jump", "jump": "jump",
+    "caer": "fall", "caida": "fall", "caída": "fall", "fall": "fall",
+    "morir": "hurt", "dano": "hurt", "daño": "hurt", "hurt": "hurt",
+    "girar": "turn", "turn": "turn",
+}
+
+STANDARD_ANIMS = ["idle", "run", "jump", "fall", "hurt"]
+
+
+def _read_animations(node: Node, where: str) -> Dict[str, Animation]:
+    anims: Dict[str, Animation] = {}
+    for key, value in (node.data or {}).items():
+        canon = ANIM_ALIASES.get(str(key).strip().lower(), str(key).strip().lower())
+        sub_where = "%s.%s" % (where, key)
+        if isinstance(value, (list, tuple)):
+            frames = [int(f) for f in value]
+            speed, loop = 6, True
+        else:
+            sub = Node(value, sub_where)
+            raw_frames = sub.raw("frames", "fotogramas", "cuadros")
+            if raw_frames is None:
+                raise ProjectError(
+                    "la animacion '%s' no indica 'frames'" % key, where=sub_where
+                )
+            if isinstance(raw_frames, (int, float)):
+                raw_frames = [raw_frames]
+            frames = [int(f) for f in raw_frames]
+            speed = sub.int_(["speed", "velocidad", "duracion", "duración"], 6, minimum=1)
+            loop = sub.bool_(["loop", "bucle", "repetir"], True)
+        if not frames:
+            raise ProjectError(
+                "la animacion '%s' no tiene ningun fotograma" % key, where=sub_where
+            )
+        if any(f < 0 for f in frames):
+            raise ProjectError(
+                "la animacion '%s' usa fotogramas negativos" % key, where=sub_where
+            )
+        anims[canon] = Animation(canon, frames, speed, loop)
+    return anims
+
+
+def _actor_geometry(node: Node, where: str, default_frame: Tuple[int, int]
+                    ) -> Tuple[int, int, int, int, int, int]:
+    frame = node.pair(["frame", "fotograma", "tamano_frame"], default_frame)
+    fw, fh = frame  # type: ignore
+    if fw <= 0 or fh <= 0:
+        raise ProjectError("'frame' debe ser positivo", where=where)
+    if fw % 16 or fh % 16:
+        raise ProjectError(
+            "el fotograma mide %dx%d y la Neo Geo dibuja sprites en bloques de 16x16"
+            % (fw, fh),
+            hint="usa medidas multiplos de 16 (16x16, 16x32, 32x32...)",
+            where=where,
+        )
+    box = node.pair(["hitbox", "caja", "colision", "colisión", "tamano", "tamaño", "size"],
+                    None)
+    if box is None:
+        bw, bh = fw, fh
+    else:
+        bw, bh = box
+    if bw <= 0 or bh <= 0:
+        raise ProjectError("la caja de colision debe ser positiva", where=where)
+    if bw > fw or bh > fh:
+        raise ProjectError(
+            "la caja de colision (%dx%d) no cabe en el fotograma (%dx%d)"
+            % (bw, bh, fw, fh),
+            where=where,
+        )
+    offset = node.pair(["hitbox_offset", "offset_caja", "desplazamiento"], None)
+    if offset is None:
+        bx, by = (fw - bw) // 2, fh - bh   # centrada y apoyada en el suelo
+    else:
+        bx, by = offset
+    return fw, fh, bw, bh, bx, by
+
+
+def _read_player(node: Node, root: str) -> Player:
+    where = "jugador"
+    sprite = node.str_(["sprite", "imagen", "image"], required=True)
+    _require_file(root, sprite, where)
+    fw, fh, bw, bh, bx, by = _actor_geometry(node, where, (16, 16))
+    anims = _read_animations(node.child("animations", "animaciones", "anims"), where)
+    player = Player(
+        name="player", sprite=sprite, frame_w=fw, frame_h=fh,
+        box_w=bw, box_h=bh, box_x=bx, box_y=by, animations=anims,
+        speed=node.num(["speed", "velocidad"], 1.5, 0.05, 8.0),
+        accel=node.num(["accel", "aceleracion", "aceleración"], 0.28, 0.01, 8.0),
+        friction=node.num(["friction", "friccion", "fricción"], 0.35, 0.0, 8.0),
+        air_accel=node.num(["air_accel", "control_aire", "aceleracion_aire"], 0.16, 0.0, 8.0),
+        jump=node.num(["jump", "salto"], 4.3, 0.5, 12.0),
+        jump_cut=node.num(["jump_cut", "corte_salto"], 1.6, 0.0, 12.0),
+        gravity=node.num(["gravity", "gravedad"], 0.28, 0.01, 4.0),
+        max_fall=node.num(["max_fall", "max_caida", "caida_maxima"], 6.0, 0.5, 16.0),
+        double_jump=node.bool_(["double_jump", "doble_salto"], False),
+        coyote=node.int_(["coyote", "coyote_time", "margen_salto"], 6, 0, 30),
+        jump_buffer=node.int_(["jump_buffer", "buffer_salto"], 6, 0, 30),
+        stomp=node.bool_(["stomp", "pisar", "pisar_enemigos"], True),
+        bounce=node.num(["bounce", "rebote"], 3.6, 0.0, 12.0),
+        health=node.int_(["health", "salud", "vida"], 1, 1, 9),
+        invuln=node.int_(["invuln", "invulnerable", "invulnerabilidad"], 90, 0, 600),
+    )
+    _warn_unknown(node, where, [
+        "sprite", "imagen", "image", "frame", "fotograma", "tamano_frame",
+        "hitbox", "caja", "colision", "colisión", "tamano", "tamaño", "size",
+        "hitbox_offset", "offset_caja", "desplazamiento",
+        "animations", "animaciones", "anims",
+        "speed", "velocidad", "accel", "aceleracion", "aceleración",
+        "friction", "friccion", "fricción", "air_accel", "control_aire",
+        "aceleracion_aire", "jump", "salto", "jump_cut", "corte_salto",
+        "gravity", "gravedad", "max_fall", "max_caida", "caida_maxima",
+        "double_jump", "doble_salto", "coyote", "coyote_time", "margen_salto",
+        "jump_buffer", "buffer_salto", "stomp", "pisar", "pisar_enemigos",
+        "bounce", "rebote", "health", "salud", "vida", "invuln", "invulnerable",
+        "invulnerabilidad",
+    ])
+    return player
+
+
+def _read_enemy(name: str, data: Any, root: str) -> Enemy:
+    where = "enemigos.%s" % name
+    node = Node(data, where)
+    sprite = node.str_(["sprite", "imagen", "image"], required=True)
+    _require_file(root, sprite, where)
+    fw, fh, bw, bh, bx, by = _actor_geometry(node, where, (16, 16))
+    behavior = node.choice(["behavior", "comportamiento", "ia"], BEHAVIORS, "patrol")
+    anims = _read_animations(node.child("animations", "animaciones", "anims"), where)
+    default_gravity = 0.0 if behavior in ("flyer", "static") else 0.28
+    return Enemy(
+        name=name, sprite=sprite, frame_w=fw, frame_h=fh,
+        box_w=bw, box_h=bh, box_x=bx, box_y=by, animations=anims,
+        behavior=behavior,
+        speed=node.num(["speed", "velocidad"], 0.5, 0.0, 8.0),
+        gravity=node.num(["gravity", "gravedad"], default_gravity, 0.0, 4.0),
+        health=node.int_(["health", "salud", "vida"], 1, 1, 99),
+        damage=node.int_(["damage", "dano", "daño"], 1, 0, 9),
+        score=node.int_(["score", "puntos"], 100, 0, 99999),
+        stompable=node.bool_(["stompable", "pisable"], True),
+        edge_turn=node.bool_(["edge_turn", "girar_en_borde", "girar"], True),
+        range=node.num(["range", "rango", "vista"], 96.0, 0.0, 512.0),
+        amplitude=node.num(["amplitude", "amplitud"], 24.0, 0.0, 200.0),
+        period=node.int_(["period", "periodo", "período"], 120, 8, 1200),
+        jump=node.num(["jump", "salto"], 3.5, 0.0, 12.0),
+        interval=node.int_(["interval", "intervalo"], 90, 8, 1200),
+    )
+
+
+def _read_item(name: str, data: Any, root: str) -> Item:
+    where = "objetos.%s" % name
+    node = Node(data, where)
+    sprite = node.str_(["sprite", "imagen", "image"], required=True)
+    _require_file(root, sprite, where)
+    fw, fh, bw, bh, bx, by = _actor_geometry(node, where, (16, 16))
+    anims = _read_animations(node.child("animations", "animaciones", "anims"), where)
+    return Item(
+        name=name, sprite=sprite, frame_w=fw, frame_h=fh,
+        box_w=bw, box_h=bh, box_x=bx, box_y=by, animations=anims,
+        effect=node.choice(["effect", "efecto", "tipo"], ITEM_EFFECTS, "points"),
+        score=node.int_(["score", "puntos"], 10, 0, 99999),
+        amount=node.int_(["amount", "cantidad"], 1, 1, 9),
+    )
+
+
+DEFAULT_LEGEND = {
+    ".": TileDef(".", 0, "empty"),
+    " ": TileDef(" ", 0, "empty"),
+    "#": TileDef("#", 1, "solid"),
+    "=": TileDef("=", 2, "platform"),
+    "^": TileDef("^", 3, "hazard"),
+    "G": TileDef("G", 4, "goal"),
+}
+
+
+def _read_tiles(node: Node, root: str) -> Tuple[Tileset, Dict[str, TileDef]]:
+    where = "tiles"
+    image = node.str_(["image", "imagen", "sprite"], required=True)
+    _require_file(root, image, where)
+    size = node.int_(["size", "tamano", "tamaño"], 16)
+    if size != 16:
+        raise ProjectError(
+            "los tiles miden %d px y el motor usa bloques de 16x16" % size,
+            hint="deja 'tamano: 16' o quita la opcion",
+            where=where,
+        )
+    legend_node = node.child("legend", "leyenda", "mapa_tiles")
+    tiles: Dict[str, TileDef] = {}
+    if not legend_node.data:
+        tiles = dict(DEFAULT_LEGEND)
+    else:
+        for key, value in legend_node.data.items():
+            char = str(key)
+            if len(char) != 1:
+                raise ProjectError(
+                    "la leyenda usa '%s' y cada simbolo del mapa es un solo caracter" % char,
+                    where=where,
+                )
+            sub_where = "tiles.leyenda['%s']" % char
+            if isinstance(value, (int, float)):
+                index = int(value)
+                kind = "solid" if index > 0 else "empty"
+            elif isinstance(value, (list, tuple)) and len(value) == 2:
+                index = int(value[0])
+                kind = TILE_KINDS.get(str(value[1]).strip().lower())
+                if kind is None:
+                    raise ProjectError(
+                        "tipo de tile desconocido '%s'" % value[1],
+                        hint="tipos: %s" % ", ".join(sorted(TILE_KIND_ID)),
+                        where=sub_where,
+                    )
+            else:
+                sub = Node(value, sub_where)
+                index = sub.int_(["tile", "indice", "índice", "id"], 0, minimum=0)
+                kind = sub.choice(["type", "tipo", "clase"], TILE_KINDS, "solid")
+            if index < 0:
+                raise ProjectError("el numero de tile no puede ser negativo", where=sub_where)
+            tiles[char] = TileDef(char, index, kind)
+        tiles.setdefault(".", TileDef(".", 0, "empty"))
+        tiles.setdefault(" ", TileDef(" ", 0, "empty"))
+    return Tileset(image=image, size=size), tiles
+
+
+def _read_levels(raw_levels: Any, tiles: Dict[str, TileDef], spawn_names: List[str],
+                 global_spawns: Dict[str, str], default_bg: Tuple[int, int, int],
+                 warnings: List[str]) -> List[Level]:
+    if not raw_levels:
+        raise ProjectError(
+            "el juego no tiene niveles",
+            hint="anade una seccion 'niveles:' con al menos un mapa",
+            where="niveles",
+        )
+    if isinstance(raw_levels, dict):
+        raw_levels = [dict(value or {}, nombre=key) for key, value in raw_levels.items()]
+    if not isinstance(raw_levels, list):
+        raise ProjectError("'niveles' debe ser una lista", where="niveles")
+
+    levels: List[Level] = []
+    for i, raw in enumerate(raw_levels):
+        where = "niveles[%d]" % (i + 1)
+        node = Node(raw, where)
+        name = node.str_(["name", "nombre"], "NIVEL %d" % (i + 1))
+        text = node.raw("map", "mapa", "tilemap")
+        if text is None:
+            raise ProjectError(
+                "el nivel no tiene mapa",
+                hint="anade 'mapa: |' seguido de las filas del nivel",
+                where=where,
+            )
+        rows = [line.rstrip("\n") for line in str(text).split("\n")]
+        while rows and not rows[-1].strip():
+            rows.pop()
+        while rows and not rows[0].strip():
+            rows.pop(0)
+        if not rows:
+            raise ProjectError("el mapa esta vacio", where=where)
+        width = max(len(r) for r in rows)
+        rows = [r.ljust(width) for r in rows]
+        spawns = dict(global_spawns)
+        spawns.update({str(k): str(v) for k, v in
+                       (node.child("spawns", "entidades", "objetos").data or {}).items()})
+        bg = node.raw("background", "fondo", "color_fondo")
+        background = parse_color(bg, where) if bg is not None else default_bg
+        level = Level(name=name, rows=rows, spawns=spawns, background=background)
+        _validate_level(level, tiles, spawn_names, where, warnings)
+        levels.append(level)
+    return levels
+
+
+PLAYER_CHAR = "P"
+
+
+def _validate_level(level: Level, tiles: Dict[str, TileDef], spawn_names: List[str],
+                    where: str, warnings: List[str]) -> None:
+    height = len(level.rows)
+    width = len(level.rows[0])
+    if width < 20 or height < 14:
+        raise ProjectError(
+            "el nivel mide %dx%d tiles y la pantalla ya ocupa 20x14" % (width, height),
+            hint="haz el mapa mas grande (20 columnas x 14 filas como minimo)",
+            where=where,
+        )
+    if width > 512 or height > 256:
+        raise ProjectError(
+            "el nivel mide %dx%d tiles, demasiado para la ROM" % (width, height),
+            hint="maximo 512x256 tiles",
+            where=where,
+        )
+    starts: List[Tuple[int, int]] = []
+    unknown: Dict[str, Tuple[int, int]] = {}
+    for y, row in enumerate(level.rows):
+        for x, ch in enumerate(row):
+            if ch == PLAYER_CHAR:
+                starts.append((x, y))
+                continue
+            if ch in level.spawns:
+                if level.spawns[ch] not in spawn_names:
+                    raise ProjectError(
+                        "el simbolo '%s' apunta a '%s', que no esta definido"
+                        % (ch, level.spawns[ch]),
+                        hint="definelo en 'enemigos:' u 'objetos:'",
+                        where=where,
+                    )
+                continue
+            if ch not in tiles and ch not in unknown:
+                unknown[ch] = (x + 1, y + 1)
+    if unknown:
+        ch, (col, line) = sorted(unknown.items())[0]
+        raise ProjectError(
+            "el mapa usa el simbolo '%s' (fila %d, columna %d) y no esta en la leyenda"
+            % (ch, line, col),
+            hint="anadelo en 'tiles: leyenda:' o en 'spawns:' del nivel",
+            where=where,
+        )
+    if not starts:
+        raise ProjectError(
+            "el nivel no tiene punto de salida del jugador",
+            hint="pon una 'P' en el mapa donde empieza el jugador",
+            where=where,
+        )
+    if len(starts) > 1:
+        raise ProjectError(
+            "el nivel tiene %d salidas 'P' y solo puede haber una" % len(starts),
+            where=where,
+        )
+    level.start = starts[0]
+    has_goal = any(
+        tiles[ch].kind == "goal" for row in level.rows for ch in row if ch in tiles
+    )
+    if not has_goal:
+        warnings.append(
+            "%s ('%s') no tiene tile de meta: el nivel no se puede terminar"
+            % (where, level.name)
+        )
+
+
+def _require_file(root: str, relative: str, where: str) -> str:
+    path = os.path.join(root, relative)
+    if not os.path.isfile(path):
+        raise ProjectError(
+            "no encuentro el archivo '%s'" % relative,
+            hint="ruta buscada: %s" % path,
+            where=where,
+        )
+    return path
+
+
+def _warn_unknown(node: Node, where: str, allowed: Sequence[str]) -> None:
+    extra = node.check_unknown(allowed)
+    if extra:
+        raise ProjectError(
+            "opcion desconocida '%s'" % extra[0],
+            hint="revisa la ortografia; opciones validas en docs/formato.md",
+            where=where,
+        )
+
+
+def load_project(path: str) -> Project:
+    """Carga `game.yaml` (o la carpeta que lo contiene) ya validado."""
+    if os.path.isdir(path):
+        for candidate in ("game.yaml", "juego.yaml", "game.yml", "juego.yml"):
+            full = os.path.join(path, candidate)
+            if os.path.isfile(full):
+                path = full
+                break
+        else:
+            raise ProjectError(
+                "no hay ningun game.yaml en '%s'" % path,
+                hint="crea un proyecto nuevo con: ngplat nuevo mijuego",
+            )
+    if not os.path.isfile(path):
+        raise ProjectError("no encuentro '%s'" % path)
+
+    root = os.path.dirname(os.path.abspath(path)) or "."
+    data = load_yaml(path)
+    if not isinstance(data, dict):
+        raise ProjectError(
+            "el archivo no describe un juego",
+            hint="debe empezar por 'juego:' con el titulo",
+            where=os.path.basename(path),
+        )
+    top = Node(data, os.path.basename(path))
+    warnings: List[str] = []
+
+    game = top.child("game", "juego")
+    title = (game.str_(["title", "titulo", "título"], "NEOPLAT") or "NEOPLAT")
+    author = (game.str_(["author", "autor"], "") or "")
+    lives = game.int_(["lives", "vidas"], 3, 1, 9)
+    time_limit = game.int_(["time", "tiempo", "tiempo_limite"], 0, 0, 999)
+    hud = game.bool_(["hud", "marcador"], True)
+    bg = game.raw("background", "fondo", "color_fondo")
+    default_bg = parse_color(bg, "juego") if bg is not None else (16, 24, 48)
+
+    player = _read_player(top.child("player", "jugador"), root)
+    tileset, tiles = _read_tiles(top.child("tiles", "tileset", "bloques"), root)
+
+    enemies: Dict[str, Enemy] = {}
+    for name, data_enemy in (top.child("enemies", "enemigos").data or {}).items():
+        enemies[str(name)] = _read_enemy(str(name), data_enemy, root)
+    items: Dict[str, Item] = {}
+    for name, data_item in (top.child("items", "objetos").data or {}).items():
+        items[str(name)] = _read_item(str(name), data_item, root)
+
+    duplicated = set(enemies) & set(items)
+    if duplicated:
+        raise ProjectError(
+            "'%s' esta definido como enemigo y como objeto" % sorted(duplicated)[0],
+            hint="usa nombres distintos",
+        )
+
+    global_spawns = {str(k): str(v) for k, v in
+                     (top.child("spawns", "simbolos", "símbolos").data or {}).items()}
+    levels = _read_levels(
+        top.raw("levels", "niveles"), tiles, list(enemies) + list(items),
+        global_spawns, default_bg, warnings,
+    )
+
+    known_top = {
+        "game", "juego", "player", "jugador", "tiles", "tileset", "bloques",
+        "enemies", "enemigos", "items", "objetos", "levels", "niveles",
+        "spawns", "simbolos", "símbolos",
+    }
+    extra_top = [key for key in data if key not in known_top]
+    if extra_top:
+        raise ProjectError(
+            "seccion desconocida '%s'" % extra_top[0],
+            hint="secciones validas: juego, jugador, tiles, enemigos, objetos, spawns, niveles",
+            where=os.path.basename(path),
+        )
+
+    return Project(
+        root=root, title=title.upper()[:24], author=author[:24], lives=lives,
+        time_limit=time_limit, hud=hud, player=player, tileset=tileset, tiles=tiles,
+        enemies=enemies, items=items, levels=levels, warnings=warnings,
+    )

@@ -1,0 +1,54 @@
+# Makefile generado por ngplat para "@TITLE@".
+# Se reescribe en cada `ngplat build`: pon tus cambios en game.yaml.
+#
+# Necesita ngdevkit (https://github.com/dciabrin/ngdevkit) en el PATH:
+#   m68k-neogeo-elf-gcc, m68k-neogeo-elf-objcopy y, para probar, ngdevkit-gngeo.
+
+ROMID    := @ROMID@
+CC       := m68k-neogeo-elf-gcc
+OBJCOPY  := m68k-neogeo-elf-objcopy
+GNGEO    ?= ngdevkit-gngeo
+
+CFLAGS   := -std=c99 -Os -fomit-frame-pointer -Wall -Wextra -Isrc
+LDFLAGS  :=
+
+SRC      := src/main.c src/np_video.c src/np_hud.c src/np_world.c src/gamedata.c
+OBJ      := $(SRC:.c=.o)
+
+PROM     := rom/$(ROMID)-p1.p1
+CROM1    := rom/$(ROMID)-c1.c1
+CROM2    := rom/$(ROMID)-c2.c2
+SROM     := rom/$(ROMID)-s1.s1
+MROM     := rom/$(ROMID)-m1.m1
+VROM     := rom/$(ROMID)-v1.v1
+
+all: $(PROM) $(MROM) $(VROM)
+	@echo "ROM lista en rom/ (ROM id $(ROMID))"
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+game.elf: $(OBJ)
+	$(CC) $(CFLAGS) -o $@ $(OBJ) $(LDFLAGS)
+
+$(PROM): game.elf
+	@mkdir -p rom
+	$(OBJCOPY) -O binary $< $@
+
+# Sonido: de momento ROMs vacias (silencio). El Z80 solo ve ceros = NOPs.
+$(MROM):
+	@mkdir -p rom
+	dd if=/dev/zero of=$@ bs=1024 count=128 2>/dev/null
+
+$(VROM):
+	@mkdir -p rom
+	dd if=/dev/zero of=$@ bs=1024 count=128 2>/dev/null
+
+# `make run` arranca el emulador de ngdevkit con la ROM recien construida.
+run: all
+	$(GNGEO) -i rom --autoframeskip=0 puzzledp
+
+clean:
+	rm -f $(OBJ) game.elf $(PROM)
+
+.PHONY: all run clean

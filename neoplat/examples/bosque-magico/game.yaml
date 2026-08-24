@@ -1,0 +1,116 @@
+# Proyecto NeoPlat: un juego de plataformas que compila para Neo Geo.
+#
+#   ngplat probar     -> abre el preview jugable en el navegador
+#   ngplat compilar   -> genera el proyecto en C y las ROMs graficas
+#
+# Toda la configuracion esta aqui. Los graficos son PNG normales de hasta
+# 15 colores (mas el transparente).
+
+juego:
+  titulo: "BOSQUE MAGICO"
+  autor: "NEOPLAT"
+  vidas: 3
+  tiempo: 0            # segundos por nivel (0 = sin limite)
+  fondo: "#101830"
+
+jugador:
+  sprite: graficos/heroe.png
+  frame: [16, 16]      # tamano de cada fotograma de la hoja
+  caja: [10, 15]       # caja de colision (mas estrecha que el dibujo)
+  velocidad: 1.6       # pixeles por frame
+  aceleracion: 0.30
+  friccion: 0.35
+  salto: 4.3
+  gravedad: 0.28
+  doble_salto: no
+  pisar_enemigos: si
+  animaciones:
+    quieto: {frames: [0], velocidad: 30}
+    correr: {frames: [1, 2, 3, 2], velocidad: 6}
+    saltar: {frames: [4]}
+    caer:   {frames: [5]}
+
+tiles:
+  imagen: graficos/tiles.png
+  leyenda:
+    '.': {tile: 0, tipo: vacio}
+    '#': {tile: 1, tipo: solido}
+    ',': {tile: 5, tipo: solido}
+    '=': {tile: 2, tipo: plataforma}
+    '^': {tile: 3, tipo: peligro}
+    'G': {tile: 4, tipo: meta}
+
+enemigos:
+  seta:
+    sprite: graficos/enemigo.png
+    caja: [14, 12]
+    comportamiento: patrulla
+    velocidad: 0.4
+    puntos: 100
+    animaciones:
+      quieto: {frames: [0, 1], velocidad: 14}
+      correr: {frames: [0, 1], velocidad: 10}
+  mosca:
+    sprite: graficos/enemigo.png
+    caja: [14, 12]
+    comportamiento: volador
+    velocidad: 0.6
+    amplitud: 28
+    periodo: 150
+    puntos: 200
+    animaciones:
+      quieto: {frames: [0, 1], velocidad: 6}
+
+objetos:
+  moneda:
+    sprite: graficos/moneda.png
+    caja: [10, 10]
+    puntos: 10
+    animaciones:
+      quieto: {frames: [0, 1, 2, 3], velocidad: 7}
+
+# Simbolos del mapa que colocan enemigos y objetos.
+spawns:
+  s: seta
+  m: mosca
+  c: moneda
+
+niveles:
+  - nombre: "BOSQUE"
+    fondo: "#101830"
+    mapa: |
+      ................................................
+      ................................................
+      ...........................ccc..................
+      ..........................=====.................
+      ................................................
+      ..........ccc.....................ccc...........
+      .........=====...................=====..........
+      ................................................
+      ....c.........................c.................
+      ...====......s.......c.......====...............
+      ................................................
+      ......................c...............c.c.c.....
+      ...................========.....................
+      ..............^^..............s.................
+      P........s....##......................#####G####
+      ##########################..####################
+  - nombre: "CUEVA"
+    fondo: "#180c20"
+    mapa: |
+      ........................................................
+      .....................c.c.c..............................
+      ....................=======.............................
+      ........................................................
+      ..........c...............................ccc...........
+      .........===.....m...................========...........
+      ........................................................
+      ...............=====......c.c.c.........................
+      ..........................=======.......m...............
+      ....c...................................................
+      ...====.......s...........s..........c..................
+      ..........................######....====................
+      ........................................................
+      ........^^^.......m...........^^^.......................
+      P.......###..................###.......s.....G..........
+      #########################..#######################......
