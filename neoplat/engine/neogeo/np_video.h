@@ -2,8 +2,8 @@
  *
  * La Neo Geo no tiene un plano de fondo con scroll: el fondo se dibuja con
  * columnas de sprites de 16 pixeles de ancho (el truco clasico de la consola).
- * Aqui se reservan 21 columnas para el escenario y el resto de sprites para el
- * jugador, los enemigos y los objetos.
+ * Aqui se reservan columnas para el escenario, columnas para cada capa de
+ * parallax y el resto de sprites para el jugador, los enemigos y los objetos.
  *
  * Direcciones de registros segun la documentacion de hardware de Neo Geo
  * (ver docs/neogeo.md).
@@ -12,6 +12,7 @@
 #define NP_VIDEO_H
 
 #include "np_world.h"
+#include "gamedata.h"
 
 /* --- registros del hardware ------------------------------------------- */
 #define NP_REG_P1CNT     ((volatile uint8_t *)0x300000)
@@ -31,13 +32,39 @@
 #define NP_SCB3 0x8200   /* posicion Y, encadenado y altura */
 #define NP_SCB4 0x8400   /* posicion X */
 
-/* --- reparto de sprites ------------------------------------------------ */
-#define NP_BG_FIRST_SPRITE 1
+/* --- reparto de sprites ------------------------------------------------
+ *
+ * El numero de sprite decide quien tapa a quien. NP_SPRITE_FRONT_FIRST a 1
+ * significa "el sprite 1 se dibuja delante de los siguientes", que es lo que
+ * documenta la escena de Neo Geo.
+ *
+ * ESTO ES LO PRIMERO QUE HAY QUE MIRAR si al probar la ROM el fondo tapa al
+ * jugador o las capas de parallax salen delante: cambia este 1 por un 0 y se
+ * invierte todo el reparto, sin tocar nada mas.
+ */
+#ifndef NP_SPRITE_FRONT_FIRST
+#define NP_SPRITE_FRONT_FIRST 1
+#endif
+
 #define NP_BG_COLUMNS 21           /* 320/16 + 1 para el scroll */
 #define NP_BG_ROWS 15              /* 224/16 + 1 */
-#define NP_ACTOR_FIRST_SPRITE (NP_BG_FIRST_SPRITE + NP_BG_COLUMNS)
+#define NP_LAYER_COLUMNS 21
 #define NP_ACTOR_SPRITES 96
-#define NP_TOTAL_SPRITES (NP_ACTOR_FIRST_SPRITE + NP_ACTOR_SPRITES)
+#define NP_LAYER_SPRITES (NP_LAYER_COUNT * NP_LAYER_COLUMNS)
+
+#if NP_SPRITE_FRONT_FIRST
+#define NP_ACTOR_FIRST_SPRITE 1
+#define NP_BG_FIRST_SPRITE (NP_ACTOR_FIRST_SPRITE + NP_ACTOR_SPRITES)
+/* la capa 0 es la mas lejana: se va al final, detras de todo */
+#define NP_LAYER_FIRST_SPRITE(i) \
+    (NP_BG_FIRST_SPRITE + NP_BG_COLUMNS + (NP_LAYER_COUNT - 1 - (i)) * NP_LAYER_COLUMNS)
+#else
+#define NP_LAYER_FIRST_SPRITE(i) (1 + (i) * NP_LAYER_COLUMNS)
+#define NP_BG_FIRST_SPRITE (1 + NP_LAYER_SPRITES)
+#define NP_ACTOR_FIRST_SPRITE (NP_BG_FIRST_SPRITE + NP_BG_COLUMNS)
+#endif
+
+#define NP_TOTAL_SPRITES (1 + NP_ACTOR_SPRITES + NP_BG_COLUMNS + NP_LAYER_SPRITES)
 
 void np_video_init(void);
 void np_video_frame(const NpWorld *w);

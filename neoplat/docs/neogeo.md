@@ -20,13 +20,24 @@ hacen los juegos comerciales y lo que hace NeoPlat.
 
 ## Cómo dibuja NeoPlat
 
-`engine/neogeo/np_video.c` reparte los sprites así:
+`engine/neogeo/np_video.c` reparte los sprites así (con dos capas de parallax):
 
 ```
-sprite  0        libre
-sprite  1..21    21 columnas de fondo (16 px de ancho x 15 tiles de alto)
-sprite 22..117   jugador, enemigos y objetos
+sprite   1..96    jugador, enemigos y objetos      (delante)
+sprite  97..117   escenario: 21 columnas de 15 tiles
+sprite 118..138   capa de parallax cercana
+sprite 139..159   capa de parallax lejana          (detrás)
 ```
+
+El número de sprite decide quién tapa a quién. El reparto de arriba supone que
+**el sprite 1 se dibuja delante**, que es lo que documenta la escena Neo Geo.
+Si al probar la ROM el fondo tapa al jugador, cambia `NP_SPRITE_FRONT_FIRST` a
+0 en `np_video.h`: se invierte todo el reparto de una vez y no hay que tocar
+nada más.
+
+Cada capa de parallax es otro juego de 21 columnas cuyo tilemap se lee de la
+imagen de la capa, desplazado una fracción de la cámara. Los tilemaps solo se
+reescriben cuando la capa cruza a otro tile.
 
 Cada columna de fondo es un sprite con su propio tilemap. Cuando la cámara se
 mueve dentro del mismo tile solo se actualizan las posiciones (21 escrituras);

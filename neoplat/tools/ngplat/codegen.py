@@ -7,7 +7,10 @@ import shutil
 from typing import Dict, List, Sequence
 
 from . import gfx
-from .build import Build, actor_def_values, enemy_values, item_values, player_values, tile_tables
+from .build import (
+    Build, actor_def_values, enemy_values, item_values, layer_values, player_values,
+    tile_tables,
+)
 from .fixed import FIXED_ONE
 from .paths import ENGINE_DIR, TEMPLATES_DIR
 
@@ -73,6 +76,9 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     header.append("#define NP_SPRITE_TILES %d" % build.rom.sprite_tiles)
     header.append("#define NP_MAX_LEVEL_TILES_W %d" % max(l.width for l in build.levels))
     header.append("#define NP_HUD_ENABLED %d" % (1 if project.hud else 0))
+    header.append("#define NP_LAYER_COUNT %d" % len(build.layers))
+    header.append("#define NP_MAX_LEVEL_LAYERS %d"
+                  % max([len(l.layers) for l in build.levels] + [0]))
     header.append("")
     header.append("extern const uint16_t np_palettes[NP_PALETTE_COUNT][16];")
     header.append("extern const uint8_t np_font_index[128];")
@@ -179,6 +185,28 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("const uint16_t np_item_count = %d;" % len(build.items))
     src.append("")
 
+    # --- capas de fondo (parallax)
+    for i, layer in enumerate(build.layers):
+        values = layer_values(layer)
+        src.append("/* capa de fondo %d: %s (%dx%d tiles) */"
+                   % (i, layer.name, layer.cols, layer.rows))
+        src.append("static const uint16_t np_layer%d_tiles[] = {" % i)
+        src.append(_array(values["tiles"], per_line=16))
+        src.append("};")
+    src.append("const NpLayer np_layers[] = {")
+    if not build.layers:
+        src.append("    { 0, 256, 0, 0, 1, 1, 0, 1 }")
+    for i, layer in enumerate(build.layers):
+        values = layer_values(layer)
+        src.append(
+            "    { np_layer%d_tiles, %d, %d, %d, %d, %d, %d, %d },"
+            % (i, values["speed_x"], values["speed_y"], values["offset_y"],
+               values["cols"], values["rows"], values["palette"], values["repeat"])
+        )
+    src.append("};")
+    src.append("const uint16_t np_layer_count = %d;" % len(build.layers))
+    src.append("")
+
     # --- niveles
     for i, level in enumerate(build.levels):
         src.append("/* nivel %d: %s (%dx%d tiles) */" % (i, level.name, level.width, level.height))
@@ -190,13 +218,18 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
             for x, y, kind, index in level.spawns:
                 src.append("    { %d, %d, %d, %d }," % (x, y, kind, index))
             src.append("};")
+        if level.layers:
+            src.append("static const uint8_t np_level%d_layers[] = { %s };"
+                       % (i, ", ".join(str(n) for n in level.layers)))
     src.append("const NpLevel np_levels[] = {")
     for i, level in enumerate(build.levels):
         spawns = "np_level%d_spawns" % i if level.spawns else "0"
+        capas = "np_level%d_layers" % i if level.layers else "0"
         src.append(
-            "    { %s, %d, %d, np_level%d_cells, %s, %d, %d, %d, 0x%04x },"
+            "    { %s, %d, %d, np_level%d_cells, %s, %d, %d, %d, 0x%04x, %s, %d },"
             % (_c_string(level.name), level.width, level.height, i, spawns,
-               len(level.spawns), level.start[0], level.start[1], level.background)
+               len(level.spawns), level.start[0], level.start[1], level.background,
+               capas, len(level.layers))
         )
     src.append("};")
     src.append("const uint16_t np_level_count = %d;" % len(build.levels))

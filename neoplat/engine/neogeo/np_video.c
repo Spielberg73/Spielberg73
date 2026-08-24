@@ -1,7 +1,6 @@
 /* np_video.c - dibujado del juego en la Neo Geo. */
 
 #include "np_video.h"
-#include "gamedata.h"
 
 void np_vram_seek(uint16_t address, int16_t modulo)
 {
@@ -93,6 +92,74 @@ static void np_bg_column(const NpWorld *w, uint16_t column, int32_t tile_x, int3
     }
 }
 
+/* Dibuja una capa de parallax. La capa se repite horizontalmente y se mueve a
+ * una fraccion de la camara: eso es todo el efecto. */
+static void np_draw_layer(const NpWorld *w, uint8_t layer_index, uint8_t slot)
+{
+#if NP_LAYER_COUNT > 0
+    static int32_t last_col[NP_LAYER_COUNT];
+    static uint8_t last_layer[NP_LAYER_COUNT];
+    static uint8_t primera_vez = 1;
+    const NpLayer *layer = &np_layers[layer_index];
+    int32_t scroll_x = ((int32_t)w->cam_x * layer->speed_x) >> 8;
+    int32_t scroll_y = ((int32_t)w->cam_y * layer->speed_y) >> 8;
+    int32_t col0 = scroll_x >> NP_TILE_SHIFT;
+    int16_t off_x = (int16_t)(scroll_x & 15);
+    int16_t y = (int16_t)(layer->offset_y - scroll_y);
+    uint16_t base = (uint16_t)NP_LAYER_FIRST_SPRITE(slot);
+    uint8_t redibujar, i, r;
+
+    if (primera_vez) {
+        for (i = 0; i < NP_LAYER_COUNT; i++) { last_col[i] = -9999; last_layer[i] = 0xFF; }
+        primera_vez = 0;
+    }
+    redibujar = (col0 != last_col[slot]) || (layer_index != last_layer[slot]);
+    last_col[slot] = col0;
+    last_layer[slot] = layer_index;
+
+    for (i = 0; i < NP_LAYER_COLUMNS; i++) {
+        int32_t col = col0 + i;
+        uint16_t sprite = (uint16_t)(base + i);
+        if (layer->repeat) {
+            col %= layer->cols;
+            if (col < 0) col += layer->cols;
+        } else if (col < 0 || col >= layer->cols) {
+            np_sprite_hide(sprite);
+            continue;
+        }
+        if (redibujar) {
+            np_vram_seek((uint16_t)(NP_SCB1 + sprite * 64), 1);
+            for (r = 0; r < layer->rows; r++) {
+                np_vram_write(layer->tiles[r * layer->cols + col]);
+                np_vram_write((uint16_t)(layer->palette << 8));
+            }
+        }
+        np_sprite_pos(sprite, (int16_t)(i * 16 - off_x), y, layer->rows);
+    }
+#else
+    (void)w; (void)layer_index; (void)slot;
+#endif
+}
+
+static void np_draw_layers(const NpWorld *w)
+{
+#if NP_LAYER_COUNT > 0
+    uint8_t slot;
+    for (slot = 0; slot < NP_LAYER_COUNT; slot++) {
+        if (slot < w->level->layer_count) {
+            np_draw_layer(w, w->level->layers[slot], slot);
+        } else {
+            uint16_t base = (uint16_t)NP_LAYER_FIRST_SPRITE(slot);
+            uint8_t i;
+            for (i = 0; i < NP_LAYER_COLUMNS; i++)
+                np_sprite_hide((uint16_t)(base + i));
+        }
+    }
+#else
+    (void)w;
+#endif
+}
+
 static void np_draw_background(const NpWorld *w)
 {
     static int32_t last_col = -9999, last_row = -9999;
@@ -125,7 +192,7 @@ static uint16_t np_draw_actor(const NpActorDef *def, uint16_t sprite,
     for (c = 0; c < def->cols; c++) {
         uint8_t source = flip ? (uint8_t)(def->cols - 1 - c) : c;
         int32_t x = screen_x + c * 16;
-        if (sprite >= NP_TOTAL_SPRITES) break;
+        if (sprite >= NP_ACTOR_FIRST_SPRITE + NP_ACTOR_SPRITES) break;
         if (x <= -16 || x >= NP_SCREEN_W) {      /* fuera de pantalla: se apaga */
             np_sprite_hide(sprite);
             sprite++;
@@ -149,6 +216,7 @@ void np_video_frame(const NpWorld *w)
     uint8_t i;
 
     *NP_BACKDROP = w->level->background;
+    np_draw_layers(w);
     np_draw_background(w);
 
     for (i = 0; i < w->entity_count; i++) {
@@ -165,7 +233,7 @@ void np_video_frame(const NpWorld *w)
         sprite = np_draw_actor(def, sprite, sx, sy,
                                np_actor_frame(def, e->anim, e->anim_frame),
                                (uint8_t)!e->facing);
-        if (sprite >= NP_TOTAL_SPRITES) break;
+        if (sprite >= NP_ACTOR_FIRST_SPRITE + NP_ACTOR_SPRITES) break;
     }
 
     if (np_player_visible(w)) {
@@ -177,7 +245,7 @@ void np_video_frame(const NpWorld *w)
                                (uint8_t)!w->player.facing);
     }
 
-    while (sprite < NP_TOTAL_SPRITES) {
+    while (sprite < NP_ACTOR_FIRST_SPRITE + NP_ACTOR_SPRITES) {
         np_sprite_hide(sprite);
         sprite++;
     }

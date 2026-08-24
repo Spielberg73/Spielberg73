@@ -14,9 +14,10 @@ from typing import Dict, List, Tuple
 
 from . import gfx
 from .errors import ProjectError
+from .png import read_png
 from .fixed import to_fixed
 from .project import (
-    Actor, Animation, BEHAVIOR_ID, ITEM_EFFECT_ID, Project, TILE_KIND_ID, TileDef,
+    Actor, Animation, BEHAVIOR_ID, ITEM_EFFECT_ID, Layer, Project, TILE_KIND_ID, TileDef,
 )
 
 ANIM_SLOTS = ["idle", "run", "jump", "fall", "hurt"]
@@ -32,6 +33,18 @@ class ActorBuild:
 
 
 @dataclass
+class LayerBuild:
+    """Capa de parallax ya troceada en tiles."""
+    name: str
+    layer: Layer
+    cols: int
+    rows: int
+    tiles: List[int]          # cols*rows numeros de tile en la ROM C
+    palette_index: int
+    frames: int               # tiles distintos que ha ocupado en la ROM
+
+
+@dataclass
 class LevelBuild:
     name: str
     width: int
@@ -41,6 +54,7 @@ class LevelBuild:
     start: Tuple[int, int]
     background: int                            # color Neo Geo
     background_rgb: Tuple[int, int, int]
+    layers: List[int] = field(default_factory=list)   # indices en Build.layers
 
 
 @dataclass
@@ -53,6 +67,7 @@ class Build:
     player: ActorBuild
     enemies: List[ActorBuild]
     items: List[ActorBuild]
+    layers: List[LayerBuild]
     levels: List[LevelBuild]
     font: Dict[str, int] = field(default_factory=dict)
     hud_palette: int = 0
@@ -63,6 +78,7 @@ class Build:
 
     def stats(self) -> Dict[str, int]:
         return {
+            "capas": len(self.layers),
             "tiles_sprite": self.rom.sprite_tiles,
             "tiles_fix": self.rom.fix_tiles,
             "paletas": len(self.rom.palettes),
@@ -115,6 +131,41 @@ def _load_actor(actor: Actor, where: str, rom: gfx.RomData, root: str) -> ActorB
     return ActorBuild(name=actor.name, actor=actor, sheet=sheet, anims=anims)
 
 
+def _load_layer(layer: Layer, rom: gfx.RomData, root: str) -> LayerBuild:
+    """Trocea la imagen de una capa en tiles de 16x16, reutilizando repetidos."""
+    where = "fondos.%s" % layer.name
+    image = read_png(os.path.join(root, layer.image))
+    if image.width % gfx.TILE_PX or image.height % gfx.TILE_PX:
+        raise ProjectError(
+            "'%s' mide %dx%d y las capas de fondo se dividen en tiles de 16x16"
+            % (layer.image, image.width, image.height),
+            hint="usa medidas multiplos de 16",
+            where=where,
+        )
+    palette, lookup = gfx.build_palette(image, layer.name, where)
+    palette_index = rom.add_palette(palette)
+    indices = gfx.quantize(image, lookup)
+    cols = image.width // gfx.TILE_PX
+    rows = image.height // gfx.TILE_PX
+    if rows > 15:
+        raise ProjectError(
+            "'%s' tiene %d tiles de alto y la pantalla son 14" % (layer.image, rows),
+            hint="recorta la imagen a 224 pixeles de alto como mucho",
+            where=where,
+        )
+    tiles: List[int] = []
+    antes = rom.sprite_tiles
+    for row in range(rows):
+        for col in range(cols):
+            tile: List[int] = []
+            for y in range(gfx.TILE_PX):
+                base = (row * gfx.TILE_PX + y) * image.width + col * gfx.TILE_PX
+                tile.extend(indices[base:base + gfx.TILE_PX])
+            tiles.append(rom.add_sprite_tile_shared(tile))
+    return LayerBuild(name=layer.name, layer=layer, cols=cols, rows=rows, tiles=tiles,
+                      palette_index=palette_index, frames=rom.sprite_tiles - antes)
+
+
 def _sin_table() -> List[int]:
     return [to_fixed(math.sin(2 * math.pi * i / SIN_STEPS)) for i in range(SIN_STEPS)]
 
@@ -138,6 +189,11 @@ def build_project(project: Project) -> Build:
                 hint="los tiles se numeran desde 0, de izquierda a derecha",
                 where="tiles.leyenda",
             )
+
+    layers: List[LayerBuild] = [
+        _load_layer(layer, rom, project.root) for layer in project.layers.values()
+    ]
+    layer_index = {layer.name: i for i, layer in enumerate(layers)}
 
     player = _load_actor(project.player, "jugador", rom, project.root)
     enemies = [
@@ -190,6 +246,7 @@ def build_project(project: Project) -> Build:
             start=(max(0, sx), max(0, sy)),
             background=gfx.ng_color(level.background),
             background_rgb=level.background,
+            layers=[layer_index[n] for n in level.layers],
         ))
 
     font = gfx.build_font(rom)
@@ -197,7 +254,7 @@ def build_project(project: Project) -> Build:
 
     return Build(
         project=project, rom=rom, tiles=tiles, tile_index=tile_index, tileset=tileset,
-        player=player, enemies=enemies, items=items, levels=levels,
+        player=player, enemies=enemies, items=items, layers=layers, levels=levels,
         font=font, hud_palette=hud_palette, sin_table=_sin_table(),
     )
 
@@ -263,3 +320,18 @@ def tile_tables(build: Build) -> Tuple[List[int], List[int]]:
     kinds = [TILE_KIND_ID[t.kind] for t in build.tiles]
     graphics = [build.tileset.first_tile + t.index for t in build.tiles]
     return kinds, graphics
+
+
+def layer_values(build: LayerBuild) -> Dict[str, object]:
+    """Los campos de NpLayer listos para escribir (C o JSON)."""
+    return {
+        "cols": build.cols,
+        "rows": build.rows,
+        # velocidades en 8.8: 256 = se mueve igual que el escenario
+        "speed_x": int(round(build.layer.speed_x * 256)),
+        "speed_y": int(round(build.layer.speed_y * 256)),
+        "offset_y": build.layer.offset_y,
+        "repeat": 1 if build.layer.repeat else 0,
+        "palette": build.palette_index,
+        "tiles": list(build.tiles),
+    }

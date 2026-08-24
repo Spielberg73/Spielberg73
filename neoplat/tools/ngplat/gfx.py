@@ -258,6 +258,19 @@ class RomData:
     c2: bytearray = field(default_factory=bytearray)
     s1: bytearray = field(default_factory=bytearray)
     palettes: List[Palette] = field(default_factory=list)
+    _cache: Dict[Tuple[int, ...], int] = field(default_factory=dict)
+
+    def add_sprite_tile_shared(self, pixels: Sequence[int]) -> int:
+        """Como add_sprite_tile, pero reutiliza los tiles repetidos.
+
+        En los fondos de parallax (cielos, degradados) la mayoria de los tiles
+        son iguales, asi que esto ahorra bastante ROM."""
+        key = tuple(pixels)
+        if key in self._cache:
+            return self._cache[key]
+        index = self.add_sprite_tile(pixels)
+        self._cache[key] = index
+        return index
 
     def add_sprite_tile(self, pixels: Sequence[int]) -> int:
         index = len(self.c1) // SPRITE_TILE_BYTES

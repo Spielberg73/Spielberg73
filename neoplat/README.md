@@ -72,6 +72,10 @@ enemigos:
 objetos:
   moneda: {sprite: graficos/moneda.png, puntos: 10}
 
+fondos:                          # capas de parallax, de lejos a cerca
+  - {nombre: cielo, imagen: graficos/cielo.png, velocidad: 0.2, y: 0}
+  - {nombre: arboles, imagen: graficos/arboles.png, velocidad: 0.5, y: 144}
+
 spawns: {s: seta, c: moneda}
 
 niveles:
@@ -170,6 +174,10 @@ Verificado aquí:
 - El proyecto en C generado compila con `gcc -Wall -Wextra -Werror`.
 - Motor en C y preview en JavaScript dan resultados idénticos frame a frame.
 - Las mecánicas de plataformas funcionan (24 pruebas de jugabilidad).
+- Los niveles de ejemplo se pueden terminar: un bot los juega enteros en cada
+  prueba, así que nunca se cuela un nivel imposible.
+- El preview se abre en Chromium durante las pruebas y se comprueba que dibuja
+  lo que debe (capturas de pantalla revisadas a mano).
 
 **Todavía sin verificar en hardware ni emulador**: el kit convierte los
 gráficos al formato de la Neo Geo y programa el chip de vídeo según la
@@ -184,7 +192,6 @@ probable es que haya que ajustar el orden de bytes descrito en `docs/neogeo.md`
 Lo que aún no hace:
 
 - **Sonido**: las ROMs M1/V1 se generan vacías (silencio).
-- **Scroll con parallax** y capas de fondo múltiples.
 - **Jefes o eventos guionizados**: hay cinco comportamientos de enemigo fijos.
 - **Dos jugadores**.
 - **Zoom de sprites** (la Neo Geo lo permite; el motor no lo usa).

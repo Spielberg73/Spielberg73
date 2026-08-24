@@ -270,11 +270,23 @@ class TileDef:
 
 
 @dataclass
+class Layer:
+    """Capa de fondo con scroll propio (parallax). Solo es decorado."""
+    name: str
+    image: str
+    speed_x: float = 0.5      # 0 = quieta, 1 = va con el escenario
+    speed_y: float = 0.0
+    offset_y: int = 0         # donde empieza la capa en la pantalla
+    repeat: bool = True
+
+
+@dataclass
 class Level:
     name: str
     rows: List[str]
     spawns: Dict[str, str]
     background: Tuple[int, int, int]
+    layers: List[str] = field(default_factory=list)   # nombres de capas de fondo
     start: Tuple[int, int] = (0, 0)
 
 
@@ -297,6 +309,7 @@ class Project:
     tiles: Dict[str, TileDef]
     enemies: Dict[str, Enemy]
     items: Dict[str, Item]
+    layers: Dict[str, Layer]
     levels: List[Level]
     warnings: List[str] = field(default_factory=list)
 
@@ -529,9 +542,42 @@ def _read_tiles(node: Node, root: str) -> Tuple[Tileset, Dict[str, TileDef]]:
     return Tileset(image=image, size=size), tiles
 
 
+def _read_layers(raw: Any, root: str, where: str = "fondos") -> Dict[str, Layer]:
+    """Lee las capas de parallax, de la mas lejana a la mas cercana."""
+    if raw is None:
+        return {}
+    if isinstance(raw, dict):
+        raw = [dict(value or {}, nombre=key) for key, value in raw.items()]
+    if not isinstance(raw, list):
+        raise ProjectError("'fondos' debe ser una lista de capas", where=where)
+    layers: Dict[str, Layer] = {}
+    for i, item in enumerate(raw):
+        sub_where = "%s[%d]" % (where, i + 1)
+        node = Node(item, sub_where)
+        image = node.str_(["image", "imagen", "sprite"], required=True)
+        _require_file(root, image, sub_where)
+        name = node.str_(["name", "nombre"], "capa%d" % (i + 1)) or "capa%d" % (i + 1)
+        if name in layers:
+            raise ProjectError("hay dos capas de fondo llamadas '%s'" % name, where=sub_where)
+        layers[name] = Layer(
+            name=name, image=image,
+            speed_x=node.num(["speed", "velocidad", "velocidad_x"], 0.5, 0.0, 4.0),
+            speed_y=node.num(["speed_y", "velocidad_y"], 0.0, 0.0, 4.0),
+            offset_y=node.int_(["y", "offset_y", "altura"], 0, -256, 256),
+            repeat=node.bool_(["repeat", "repetir"], True),
+        )
+        _warn_unknown(node, sub_where, [
+            "image", "imagen", "sprite", "name", "nombre",
+            "speed", "velocidad", "velocidad_x", "speed_y", "velocidad_y",
+            "y", "offset_y", "altura", "repeat", "repetir",
+        ])
+    return layers
+
+
 def _read_levels(raw_levels: Any, tiles: Dict[str, TileDef], spawn_names: List[str],
                  global_spawns: Dict[str, str], default_bg: Tuple[int, int, int],
-                 warnings: List[str]) -> List[Level]:
+                 warnings: List[str], necesitan_suelo: Optional[Dict[str, bool]] = None,
+                 layer_names: Optional[List[str]] = None) -> List[Level]:
     if not raw_levels:
         raise ProjectError(
             "el juego no tiene niveles",
@@ -569,8 +615,24 @@ def _read_levels(raw_levels: Any, tiles: Dict[str, TileDef], spawn_names: List[s
                        (node.child("spawns", "entidades", "objetos").data or {}).items()})
         bg = node.raw("background", "fondo", "color_fondo")
         background = parse_color(bg, where) if bg is not None else default_bg
-        level = Level(name=name, rows=rows, spawns=spawns, background=background)
-        _validate_level(level, tiles, spawn_names, where, warnings)
+        capas = node.raw("layers", "fondos", "capas")
+        if capas is None:
+            usadas = list(layer_names or [])
+        else:
+            if isinstance(capas, str):
+                capas = [capas]
+            usadas = [str(c) for c in capas]
+            for nombre_capa in usadas:
+                if nombre_capa not in (layer_names or []):
+                    raise ProjectError(
+                        "el nivel usa la capa de fondo '%s', que no esta definida"
+                        % nombre_capa,
+                        hint="definela en la seccion 'fondos:'",
+                        where=where,
+                    )
+        level = Level(name=name, rows=rows, spawns=spawns, background=background,
+                      layers=usadas)
+        _validate_level(level, tiles, spawn_names, where, warnings, necesitan_suelo or {})
         levels.append(level)
     return levels
 
@@ -579,7 +641,8 @@ PLAYER_CHAR = "P"
 
 
 def _validate_level(level: Level, tiles: Dict[str, TileDef], spawn_names: List[str],
-                    where: str, warnings: List[str]) -> None:
+                    where: str, warnings: List[str],
+                    necesitan_suelo: Optional[Dict[str, bool]] = None) -> None:
     height = len(level.rows)
     width = len(level.rows[0])
     if width < 20 or height < 14:
@@ -594,21 +657,33 @@ def _validate_level(level: Level, tiles: Dict[str, TileDef], spawn_names: List[s
             hint="maximo 512x256 tiles",
             where=where,
         )
+    necesitan_suelo = necesitan_suelo or {}
     starts: List[Tuple[int, int]] = []
     unknown: Dict[str, Tuple[int, int]] = {}
+    sin_suelo: List[Tuple[str, int, int]] = []
+
+    def hay_suelo(x: int, y: int) -> bool:
+        if y + 1 >= height:
+            return False
+        debajo = level.rows[y + 1][x]
+        return debajo in tiles and tiles[debajo].kind in ("solid", "platform")
+
     for y, row in enumerate(level.rows):
         for x, ch in enumerate(row):
             if ch == PLAYER_CHAR:
                 starts.append((x, y))
                 continue
             if ch in level.spawns:
-                if level.spawns[ch] not in spawn_names:
+                nombre = level.spawns[ch]
+                if nombre not in spawn_names:
                     raise ProjectError(
                         "el simbolo '%s' apunta a '%s', que no esta definido"
-                        % (ch, level.spawns[ch]),
+                        % (ch, nombre),
                         hint="definelo en 'enemigos:' u 'objetos:'",
                         where=where,
                     )
+                if necesitan_suelo.get(nombre) and not hay_suelo(x, y):
+                    sin_suelo.append((nombre, x + 1, y + 1))
                 continue
             if ch not in tiles and ch not in unknown:
                 unknown[ch] = (x + 1, y + 1)
@@ -639,6 +714,12 @@ def _validate_level(level: Level, tiles: Dict[str, TileDef], spawn_names: List[s
         warnings.append(
             "%s ('%s') no tiene tile de meta: el nivel no se puede terminar"
             % (where, level.name)
+        )
+    for nombre, col, fila in sin_suelo[:3]:
+        warnings.append(
+            "%s ('%s'): el enemigo '%s' de la fila %d, columna %d no tiene suelo "
+            "debajo y se caera nada mas empezar"
+            % (where, level.name, nombre, fila, col)
         )
 
 
@@ -718,26 +799,33 @@ def load_project(path: str) -> Project:
 
     global_spawns = {str(k): str(v) for k, v in
                      (top.child("spawns", "simbolos", "símbolos").data or {}).items()}
+    # Los enemigos con gravedad necesitan suelo debajo; los voladores no.
+    necesitan_suelo = {
+        name: enemy.gravity > 0 and enemy.behavior != "flyer"
+        for name, enemy in enemies.items()
+    }
+    layers = _read_layers(top.raw("backgrounds", "fondos", "capas"), root)
     levels = _read_levels(
         top.raw("levels", "niveles"), tiles, list(enemies) + list(items),
-        global_spawns, default_bg, warnings,
+        global_spawns, default_bg, warnings, necesitan_suelo, list(layers),
     )
 
     known_top = {
         "game", "juego", "player", "jugador", "tiles", "tileset", "bloques",
         "enemies", "enemigos", "items", "objetos", "levels", "niveles",
-        "spawns", "simbolos", "símbolos",
+        "spawns", "simbolos", "símbolos", "backgrounds", "fondos", "capas",
     }
     extra_top = [key for key in data if key not in known_top]
     if extra_top:
         raise ProjectError(
             "seccion desconocida '%s'" % extra_top[0],
-            hint="secciones validas: juego, jugador, tiles, enemigos, objetos, spawns, niveles",
+            hint="secciones validas: juego, jugador, tiles, enemigos, objetos, "
+                 "fondos, spawns, niveles",
             where=os.path.basename(path),
         )
 
     return Project(
         root=root, title=title.upper()[:24], author=author[:24], lives=lives,
         time_limit=time_limit, hud=hud, player=player, tileset=tileset, tiles=tiles,
-        enemies=enemies, items=items, levels=levels, warnings=warnings,
+        enemies=enemies, items=items, layers=layers, levels=levels, warnings=warnings,
     )

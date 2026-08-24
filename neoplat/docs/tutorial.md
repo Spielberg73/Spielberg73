@@ -98,6 +98,27 @@ spawns:
   f: fantasma        # ahora puedes poner 'f' en los mapas
 ```
 
+## 6b. Cambia el fondo
+
+El proyecto viene con dos capas de parallax (`graficos/cielo.png` y
+`graficos/arboles.png`). Son PNG normales que se repiten en horizontal:
+
+```yaml
+fondos:
+  - nombre: cielo
+    imagen: graficos/cielo.png
+    velocidad: 0.2      # cuanto mas bajo, mas lejos parece
+    y: 0
+  - nombre: arboles
+    imagen: graficos/arboles.png
+    velocidad: 0.5
+    y: 144
+```
+
+Pinta encima de esos PNG (15 colores por capa) o añade otra capa. Si un nivel
+concreto quiere otras capas, se lo dices en el propio nivel con
+`fondos: [cielo]`.
+
 ## 7. Añade un nivel
 
 Copia el bloque de un nivel y cambia el mapa. Se juegan en orden:

@@ -16,6 +16,8 @@
   var ENTITY_FALL = 8 * FIX_ONE;
   var DYING_TIME = 60, LEVEL_END_TIME = 90, GAME_OVER_TIME = 240;
   var CULL_MARGIN = 64;
+  /* Margen de perdon de los pinchos (ver NP_HAZARD_INSET_* en np_world.c). */
+  var HAZARD_INSET_X = 2, HAZARD_INSET_Y = 4;
   var MAX_ENTITIES = 64;
 
   var IN = { LEFT: 1, RIGHT: 2, UP: 4, DOWN: 8, JUMP: 16, ACTION: 32, START: 64 };
@@ -50,6 +52,11 @@
     this.state = STATE.TITLE; this.stateTimer = 0;
     this.timeLeft = 0; this.prevInput = 0;
     this.lives = data.lives; this.keys = 0; this.entityCount = 0;
+    /* Igual que np_world_init en C: en el titulo ya se ve el principio del
+       nivel, con el jugador colocado en su salida. */
+    this.player.x = I2F(this.level.start[0]);
+    this.player.y = I2F(this.level.start[1]);
+    this.cameraUpdate();
   }
 
   World.prototype.tileKindAt = function (tx, ty) {
@@ -361,8 +368,10 @@
       if (!overlap(p.x, p.y, pa.box_w, pa.box_h, e.x, e.y, ea.box_w, ea.box_h)) continue;
       if (e.kind === 1) { this.collect(e); continue; }
       var d = this.data.enemies[e.def];
+      /* Misma ventana de pisado que np_world.c: cayendo y con los pies por
+         encima de la mitad del enemigo antes de moverse. */
       var fromAbove = p.vy > 0 &&
-        (p.y + I2F(pa.box_h) - p.vy) <= e.y + I2F(idiv(ea.box_h, 3));
+        (p.y + I2F(pa.box_h) - p.vy) <= e.y + I2F(idiv(ea.box_h, 2));
       if (this.data.player.stomp && d.stompable && fromAbove) {
         if (e.health > 1) { e.health--; e.hurt = 20; }
         else { e.active = 0; this.score += d.score; }
@@ -409,7 +418,9 @@
     this.touchEntities();
     if (this.state !== STATE.PLAY) return;
 
-    if (this.boxTouches(p.x, p.y, pa.box_w, pa.box_h, TILE_HAZARD)) {
+    if (this.boxTouches(p.x + I2F(HAZARD_INSET_X), p.y + I2F(HAZARD_INSET_Y),
+                        pa.box_w - HAZARD_INSET_X * 2, pa.box_h - HAZARD_INSET_Y,
+                        TILE_HAZARD)) {
       this.playerHurt(99);
       return;
     }

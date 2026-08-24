@@ -51,6 +51,18 @@ typedef struct {
     uint8_t def;             /* indice en np_enemies / np_items */
 } NpSpawn;
 
+/* Capa de fondo con scroll propio (parallax). Es solo decorado: no participa
+ * en la simulacion, asi que no afecta a la paridad con el preview. */
+typedef struct {
+    const uint16_t *tiles;   /* cols * rows numeros de tile de la ROM C */
+    uint16_t speed_x;        /* 8.8: 256 = se mueve igual que el escenario */
+    uint16_t speed_y;
+    int16_t offset_y;        /* donde empieza la capa en la pantalla */
+    uint8_t cols, rows;
+    uint8_t palette;
+    uint8_t repeat;          /* 1 = se repite horizontalmente */
+} NpLayer;
+
 typedef struct {
     const char *name;
     uint16_t width, height;          /* en tiles */
@@ -59,6 +71,8 @@ typedef struct {
     uint16_t spawn_count;
     uint16_t start_x, start_y;       /* salida del jugador, en pixeles */
     uint16_t background;             /* color de fondo ya en formato Neo Geo */
+    const uint8_t *layers;           /* indices en np_layers, de lejos a cerca */
+    uint8_t layer_count;
 } NpLevel;
 
 /* Tablas que genera el compilador (definidas en gamedata.c). */
@@ -66,11 +80,13 @@ extern const NpPlayerDef np_player_def;
 extern const NpEnemyDef np_enemies[];
 extern const NpItemDef np_items[];
 extern const NpLevel np_levels[];
+extern const NpLayer np_layers[];
 extern const uint8_t np_tile_kind[];     /* tipo de cada tile del proyecto */
 extern const uint16_t np_tile_gfx[];     /* tile grafico dentro de la ROM C */
 extern const np_fix np_sin_table[64];    /* seno en 24.8, un ciclo completo */
 
 extern const uint16_t np_level_count;
+extern const uint16_t np_layer_count;
 extern const uint16_t np_enemy_count;
 extern const uint16_t np_item_count;
 extern const uint16_t np_tile_count;

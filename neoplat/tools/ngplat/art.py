@@ -240,12 +240,69 @@ def tileset() -> Image:
     return hoja.image
 
 
+def _monte(c: "Lienzo", cx: int, base: int, alto: int, color: RGBA, cima: RGBA) -> None:
+    """Dibuja una montana triangular con la cima mas clara."""
+    for fila in range(alto):
+        ancho = (fila + 1) * 2
+        y = base - alto + fila
+        c.rect(cx - ancho // 2, y, ancho, 1, color if fila > 2 else cima)
+
+
+def cielo() -> Image:
+    """Capa lejana: degradado, nubes y montanas. Se repite en horizontal."""
+    ancho, alto = 256, 96
+    c = Lienzo(ancho, alto)
+    bandas = [
+        (0, 24, (16, 24, 48, 255)),
+        (24, 44, (28, 40, 80, 255)),
+        (44, 60, (44, 60, 112, 255)),
+        (60, 74, (64, 84, 144, 255)),
+        (74, alto, (88, 112, 168, 255)),
+    ]
+    for desde, hasta, color in bandas:
+        c.rect(0, desde, ancho, hasta - desde, color)
+
+    nube = (176, 192, 224, 255)
+    for cx in (40, 150, 220):
+        c.rect(cx, 18, 22, 4, nube)
+        c.rect(cx + 4, 14, 14, 4, nube)
+        c.rect(cx - 4, 22, 30, 3, nube)
+
+    monte, cima = (48, 64, 96, 255), (120, 136, 176, 255)
+    for cx, altura in ((32, 30), (96, 40), (168, 26), (232, 36)):
+        _monte(c, cx, alto, altura, monte, cima)
+    # el borde derecho enlaza con el izquierdo al repetirse
+    _monte(c, 0, alto, 22, monte, cima)
+    _monte(c, ancho, alto, 22, monte, cima)
+    c.rect(0, alto - 3, ancho, 3, (40, 52, 80, 255))
+    return c.image
+
+
+def arboles() -> Image:
+    """Capa intermedia: linea de arboles con la parte de arriba transparente."""
+    ancho, alto = 256, 64
+    c = Lienzo(ancho, alto)
+    copa, sombra, tronco = (40, 96, 56, 255), (28, 72, 44, 255), (72, 48, 32, 255)
+    c.rect(0, alto - 6, ancho, 6, sombra)          # suelo de la arboleda
+    for i in range(0, ancho, 32):
+        altura = 26 if (i // 32) % 2 == 0 else 34
+        base = alto - 6
+        c.rect(i + 10, base - 2, 4, 8, tronco)     # tronco
+        for fila in range(altura):
+            ensancha = (fila * 12) // altura
+            y = base - altura + fila
+            c.rect(i + 10 - ensancha, y, 4 + ensancha * 2, 1, copa if fila % 4 else sombra)
+    return c.image
+
+
 def todos() -> Dict[str, Image]:
     return {
         "graficos/heroe.png": heroe(),
         "graficos/enemigo.png": enemigo(),
         "graficos/moneda.png": moneda(),
         "graficos/tiles.png": tileset(),
+        "graficos/cielo.png": cielo(),
+        "graficos/arboles.png": arboles(),
     }
 
 

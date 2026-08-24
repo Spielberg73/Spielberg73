@@ -16,6 +16,11 @@
 #define NP_GAME_OVER_TIME 240
 #define NP_CULL_MARGIN 64            /* pixeles fuera de pantalla que siguen vivos */
 
+/* Los pinchos matan con una caja algo mas pequena que la del jugador: rozar el
+ * borde del tile no deberia matar, igual que en los juegos clasicos. */
+#define NP_HAZARD_INSET_X 2
+#define NP_HAZARD_INSET_Y 4
+
 /* -------------------------------------------------------------- utilidades */
 
 static np_fix np_approach(np_fix value, np_fix target, np_fix delta)
@@ -203,6 +208,8 @@ static void np_anim_tick(const NpActorDef *def, uint8_t anim,
 
 /* ------------------------------------------------------------- ciclo de vida */
 
+static void np_camera_update(NpWorld *w);
+
 void np_world_init(NpWorld *w)
 {
     uint16_t i;
@@ -211,6 +218,11 @@ void np_world_init(NpWorld *w)
     w->lives = np_start_lives;
     w->level_index = 0;
     w->level = &np_levels[0];
+    /* Colocamos al jugador en su salida ya en la pantalla de titulo: asi el
+     * fondo del titulo es el principio del nivel y no una esquina vacia. */
+    w->player.x = NP_I2F(w->level->start_x);
+    w->player.y = NP_I2F(w->level->start_y);
+    np_camera_update(w);
 }
 
 static void np_spawn_entities(NpWorld *w)
@@ -495,8 +507,11 @@ static void np_touch_entities(NpWorld *w)
         }
         {
             const NpEnemyDef *d = &np_enemies[e->def];
+            /* Se pisa al enemigo si vienes cayendo y, antes de moverte en este
+             * frame, tenias los pies por encima de su mitad. Con un tercio la
+             * ventana era tan estrecha que era casi imposible acertar. */
             int from_above = p->vy > 0 &&
-                (p->y + NP_I2F(pa->box_h) - p->vy) <= e->y + NP_I2F(ea->box_h / 3);
+                (p->y + NP_I2F(pa->box_h) - p->vy) <= e->y + NP_I2F(ea->box_h / 2);
             if (np_player_def.stomp && d->stompable && from_above) {
                 if (e->health > 1) {
                     e->health--;
@@ -563,7 +578,12 @@ static void np_play_step(NpWorld *w, uint16_t input)
 
     if (w->state != NP_STATE_PLAY) return;
 
-    if (np_box_touches(w->level, p->x, p->y, pa->box_w, pa->box_h, NP_TILE_HAZARD)) {
+    if (np_box_touches(w->level,
+                       p->x + NP_I2F(NP_HAZARD_INSET_X),
+                       p->y + NP_I2F(NP_HAZARD_INSET_Y),
+                       pa->box_w - NP_HAZARD_INSET_X * 2,
+                       pa->box_h - NP_HAZARD_INSET_Y,
+                       NP_TILE_HAZARD)) {
         np_player_hurt(w, 99);
         return;
     }

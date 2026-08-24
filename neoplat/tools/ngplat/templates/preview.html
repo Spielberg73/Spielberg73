@@ -71,6 +71,9 @@
   var world = NPCore.create(DATA);
   var images = {};
   var input = 0;
+  /* Pulsaciones muy cortas (menos de un frame) se perderian, porque el juego
+     lee el mando 60 veces por segundo. Las guardamos hasta el siguiente paso. */
+  var latched = 0;
   var scale = 3;
 
   var KEYS = {
@@ -92,7 +95,7 @@
     if (ev.code === "Equal" || ev.code === "NumpadAdd") { setScale(scale + 1); return; }
     if (ev.code === "Minus" || ev.code === "NumpadSubtract") { setScale(scale - 1); return; }
     var bit = KEYS[ev.code];
-    if (bit) { input |= bit; ev.preventDefault(); }
+    if (bit) { input |= bit; latched |= bit; ev.preventDefault(); }
   });
   document.addEventListener("keyup", function (ev) {
     var bit = KEYS[ev.code];
@@ -100,7 +103,7 @@
   });
   Array.prototype.forEach.call(document.querySelectorAll(".pad button"), function (btn) {
     var bit = PAD[btn.dataset.key];
-    var press = function (ev) { ev.preventDefault(); input |= bit; };
+    var press = function (ev) { ev.preventDefault(); input |= bit; latched |= bit; };
     var release = function (ev) { ev.preventDefault(); input &= ~bit; };
     btn.addEventListener("touchstart", press, { passive: false });
     btn.addEventListener("touchend", release, { passive: false });
@@ -142,6 +145,25 @@
       ctx.restore();
     } else {
       ctx.drawImage(img, sx, sy, sheet.frame_w, sheet.frame_h, x, y, sheet.frame_w, sheet.frame_h);
+    }
+  }
+
+  /* Capas de parallax: mismo calculo que np_video.c en la consola. */
+  function drawLayers() {
+    var capas = world.level.layers || [];
+    for (var n = 0; n < capas.length; n++) {
+      var L = DATA.layers[capas[n]];
+      var scrollX = (world.camX * L.speed_x) >> 8;
+      var scrollY = (world.camY * L.speed_y) >> 8;
+      var col0 = scrollX >> 4, offX = scrollX & 15;
+      var y = L.offset_y - scrollY;
+      for (var i = 0; i <= 20; i++) {
+        var col = col0 + i;
+        if (L.repeat) col = ((col % L.cols) + L.cols) % L.cols;
+        else if (col < 0 || col >= L.cols) continue;
+        for (var r = 0; r < L.rows; r++)
+          drawFrame(L.sheet, r * L.cols + col, i * 16 - offX, y + r * 16, false);
+      }
     }
   }
 
@@ -232,6 +254,7 @@
   function render() {
     ctx.fillStyle = world.level.background || "#000000";
     ctx.fillRect(0, 0, NPCore.SCREEN_W, NPCore.SCREEN_H);
+    drawLayers();
     drawBackground();
     drawEntities();
     drawPlayer();
@@ -247,12 +270,23 @@
     if (acc > 250) acc = 250;          /* pestana en segundo plano: no acumular */
     var steps = 0;
     while (acc >= 1000 / 60 && steps < 4) {
-      world.step(input);
+      world.step(input | latched);
+      latched = 0;
       acc -= 1000 / 60;
       steps++;
     }
     render();
   }
+
+  /* Enganche para herramientas y pruebas automaticas (capturas, bots...). */
+  window.NeoPlat = {
+    data: DATA,
+    get world() { return world; },
+    get input() { return input; },
+    reiniciar: function () { world = NPCore.create(DATA); },
+    pulsar: function (bits) { latched |= bits; },
+    soltar: function (bits) { input &= ~bits; }
+  };
 
   loadImages(function () { requestAnimationFrame(loop); });
 })();

@@ -19,47 +19,79 @@ def _fila(patron: str, ancho: int) -> str:
     return patron.ljust(ancho, ".")
 
 
+def _poner(ancho: int, simbolos: dict, relleno: str = ".") -> str:
+    """Construye una fila colocando cada simbolo en su columna.
+
+    Es mas facil de leer (y de no descuadrar) que contar puntos a mano.
+    """
+    fila = [relleno] * ancho
+    for columna, simbolo in simbolos.items():
+        for i, ch in enumerate(simbolo):
+            if columna + i < ancho:
+                fila[columna + i] = ch
+    return "".join(fila)
+
+
+def _suelo(ancho: int, huecos: List[tuple]) -> str:
+    """Fila de suelo con huecos [(columna, ancho), ...]."""
+    fila = ["#"] * ancho
+    for columna, largo in huecos:
+        for i in range(largo):
+            if columna + i < ancho:
+                fila[columna + i] = "."
+    return "".join(fila)
+
+
+# Reglas de diseño que siguen los niveles de ejemplo (y que comprueba el bot de
+# tests/nivel_jugable.js):
+#   - el salto sube 2 tiles y cruza 3, asi que ningun hueco pasa de 2 tiles
+#   - despues de un enemigo hay al menos 8 tiles libres: al pisarlo sales
+#     rebotado hacia delante y no puedes caer sobre pinchos
+#   - los pinchos van de uno en uno y con suelo llano antes y despues
+
 def _nivel_1() -> List[str]:
+    """Nivel de entrada: saltar, coger monedas, pisar un enemigo, esquivar pinchos."""
     a = ANCHO_1
     return [
         _fila("", a),
         _fila("", a),
-        _fila("...........................ccc", a),
-        _fila("..........................=====", a),
         _fila("", a),
-        _fila("..........ccc.....................ccc", a),
-        _fila(".........=====...................=====", a),
         _fila("", a),
-        _fila("....c.........................c", a),
-        _fila("...====......s.......c.......====", a),
+        _poner(a, {30: "ccc"}),
+        _poner(a, {29: "====="}),
         _fila("", a),
-        _fila("......................c...............c.c.c", a),
-        _fila("...................========.........", a),
-        _fila("..............^^..............s.......", a),
-        _fila("P........s....##......................#####G####", a),
-        _fila("##########################..#####################"[:a], a),
+        _poner(a, {15: "ccc"}),
+        _poner(a, {14: "====="}),
+        _fila("", a),
+        _poner(a, {5: "ccc", 38: "ccc"}),
+        _poner(a, {4: "=====", 37: "====="}),
+        _fila("", a),
+        _poner(a, {10: "c", 22: "c", 33: "c"}),
+        _poner(a, {0: "P", 8: "s", 18: "^", 28: "s", 40: "c", 44: "G"}),
+        _suelo(a, [(34, 2)]),
     ]
 
 
 def _nivel_2() -> List[str]:
+    """Segundo nivel: voladores, saltos encadenados y un hueco mas largo."""
     a = ANCHO_2
     return [
         _fila("", a),
-        _fila(".....................c.c.c", a),
-        _fila("....................=======", a),
         _fila("", a),
-        _fila("..........c...............................ccc", a),
-        _fila(".........===.....m...................========", a),
         _fila("", a),
-        _fila("...............=====......c.c.c", a),
-        _fila("..........................=======.......m", a),
-        _fila("....c................................", a),
-        _fila("...====.......s...........s..........c......", a),
-        _fila("..........................######....====", a),
+        _poner(a, {11: "ccc"}),
+        _poner(a, {10: "====="}),
         _fila("", a),
-        _fila("........^^^.......m...........^^^.......", a),
-        _fila("P.......###..................###.......s.....G", a),
-        _fila("#########################..#######################"[:a], a),
+        _poner(a, {24: "ccc", 40: "ccc"}),
+        _poner(a, {23: "=====", 39: "====="}),
+        _fila("", a),
+        _poner(a, {19: "m", 37: "m"}),
+        _poner(a, {4: "ccc", 48: "ccc"}),
+        _poner(a, {3: "=====", 47: "====="}),
+        _fila("", a),
+        _poner(a, {6: "c", 17: "c", 27: "c", 38: "c", 45: "c"}),
+        _poner(a, {0: "P", 8: "s", 18: "^", 30: "s", 42: "^", 53: "G"}),
+        _suelo(a, [(24, 2), (47, 2)]),
     ]
 
 
@@ -87,6 +119,7 @@ jugador:
   friccion: 0.35
   salto: 4.3
   gravedad: 0.28
+  vida: 2              # golpes que aguanta antes de perder una vida
   doble_salto: no
   pisar_enemigos: si
   animaciones:
@@ -108,7 +141,7 @@ tiles:
 enemigos:
   seta:
     sprite: graficos/enemigo.png
-    caja: [14, 12]
+    caja: [12, 11]
     comportamiento: patrulla
     velocidad: 0.4
     puntos: 100
@@ -117,7 +150,7 @@ enemigos:
       correr: {{frames: [0, 1], velocidad: 10}}
   mosca:
     sprite: graficos/enemigo.png
-    caja: [14, 12]
+    caja: [12, 11]
     comportamiento: volador
     velocidad: 0.6
     amplitud: 28
@@ -134,6 +167,19 @@ objetos:
     animaciones:
       quieto: {{frames: [0, 1, 2, 3], velocidad: 7}}
 
+# Capas de fondo con scroll propio (parallax). Van de la mas lejana a la mas
+# cercana. 'velocidad' es la fraccion del scroll del escenario: 0 = quieta,
+# 1 = se mueve igual que el suelo. 'y' es donde empieza en la pantalla.
+fondos:
+  - nombre: cielo
+    imagen: graficos/cielo.png
+    velocidad: 0.2
+    y: 0
+  - nombre: arboles
+    imagen: graficos/arboles.png
+    velocidad: 0.5
+    y: 144
+
 # Simbolos del mapa que colocan enemigos y objetos.
 spawns:
   s: seta
@@ -144,12 +190,14 @@ niveles:
 {niveles}"""
 
 
-def _nivel_yaml(nombre: str, filas: List[str], fondo: str) -> str:
+def _nivel_yaml(nombre: str, filas: List[str], fondo: str, capas: str = "") -> str:
     cuerpo = "\n".join("      " + fila for fila in filas)
+    linea_capas = "    fondos: [%s]\n" % capas if capas else ""
     return (
         "  - nombre: \"%s\"\n"
         "    fondo: \"%s\"\n"
-        "    mapa: |\n%s\n" % (nombre, fondo, cuerpo)
+        "%s"
+        "    mapa: |\n%s\n" % (nombre, fondo, linea_capas, cuerpo)
     )
 
 
@@ -170,7 +218,8 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "") -> L
 
     niveles = (
         _nivel_yaml("BOSQUE", _nivel_1(), "#101830")
-        + _nivel_yaml("CUEVA", _nivel_2(), "#180c20")
+        # el segundo nivel usa solo la capa lejana: se puede elegir por nivel
+        + _nivel_yaml("CUEVA", _nivel_2(), "#180c20", capas="cielo")
     )
     contenido = GAME_YAML.format(titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles)
     with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8") as fh:

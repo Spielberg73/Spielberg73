@@ -32,6 +32,8 @@ class TestEmpaquetado(unittest.TestCase):
         total = len(self.build.tileset.tiles)
         for actor in self.build.actor_builds():
             total += len(actor.sheet.tiles)
+        for capa in self.build.layers:      # las capas comparten tiles repetidos
+            total += capa.frames
         self.assertEqual(self.build.rom.sprite_tiles, total)
         self.assertEqual(len(self.build.rom.c1), total * gfx.SPRITE_TILE_BYTES)
         self.assertEqual(len(self.build.rom.c2), total * gfx.SPRITE_TILE_BYTES)
@@ -163,3 +165,56 @@ class TestGeneracion(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCapasDeFondo(unittest.TestCase):
+    """Parallax: empaquetado de las capas y su uso por nivel."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="neoplat-capas-")
+        self.proyecto = os.path.join(self.tmp, "juego")
+        from ngplat.scaffold import crear_proyecto
+        crear_proyecto(self.proyecto, "CAPAS", "TEST")
+        self.build = cargar_demo(self.proyecto)
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_el_ejemplo_trae_capas(self):
+        self.assertEqual(len(self.build.layers), 2)
+        nombres = [c.name for c in self.build.layers]
+        self.assertEqual(nombres, ["cielo", "arboles"])
+
+    def test_tiles_de_capa_dentro_de_la_rom(self):
+        for capa in self.build.layers:
+            self.assertEqual(len(capa.tiles), capa.cols * capa.rows)
+            for tile in capa.tiles:
+                self.assertLess(tile, self.build.rom.sprite_tiles)
+
+    def test_se_reutilizan_los_tiles_repetidos(self):
+        """Un cielo con degradado repite muchisimo tile: no debe duplicarlos."""
+        cielo = self.build.layers[0]
+        self.assertLess(cielo.frames, len(cielo.tiles),
+                        "los tiles repetidos deberian compartirse")
+
+    def test_cada_nivel_elige_sus_capas(self):
+        self.assertEqual(self.build.levels[0].layers, [0, 1])
+        self.assertEqual(self.build.levels[1].layers, [0])
+
+    def test_el_c_generado_incluye_las_capas(self):
+        texto = generate_gamedata(self.build)["src/gamedata.c"]
+        self.assertIn("const NpLayer np_layers[]", texto)
+        self.assertIn("np_layer_count = 2;", texto)
+        self.assertIn("np_level0_layers", texto)
+
+    def test_capa_desconocida_da_error(self):
+        ruta = os.path.join(self.proyecto, "game.yaml")
+        with open(ruta, encoding="utf-8") as fh:
+            texto = fh.read()
+        texto = texto.replace("fondos: [cielo]", "fondos: [niebla]")
+        with open(ruta, "w", encoding="utf-8") as fh:
+            fh.write(texto)
+        from ngplat.errors import ProjectError
+        with self.assertRaises(ProjectError) as ctx:
+            load_project(ruta)
+        self.assertIn("niebla", ctx.exception.message)

@@ -135,6 +135,38 @@ objetos:
       quieto: {frames: [0, 1, 2, 3], velocidad: 7}
 ```
 
+## `fondos` (parallax)
+
+Capas de fondo con scroll propio. Se escriben de la **mas lejana a la mas
+cercana** y son solo decorado: no chocan con nada.
+
+```yaml
+fondos:
+  - nombre: cielo
+    imagen: graficos/cielo.png   # ancho y alto multiplos de 16
+    velocidad: 0.2               # fraccion del scroll: 0 = quieta, 1 = como el suelo
+    y: 0                         # donde empieza en la pantalla, en pixeles
+    repetir: si                  # se repite en horizontal (por defecto si)
+    velocidad_y: 0               # opcional, scroll vertical
+```
+
+Cada capa lleva su propia paleta de 15 colores, y los tiles repetidos (un cielo
+en degradado repite muchisimo) se guardan una sola vez en la ROM.
+
+Por defecto todos los niveles usan todas las capas. Un nivel puede elegir las
+suyas:
+
+```yaml
+niveles:
+  - nombre: "CUEVA"
+    fondos: [cielo]      # solo la capa lejana
+    mapa: |
+      ...
+```
+
+Limites: la capa no puede pasar de 14 tiles de alto (224 px) y cada capa gasta
+21 sprites de los 381 de la consola, asi que con dos o tres capas vas sobrado.
+
 ## `spawns`
 
 Relaciona símbolos del mapa con enemigos y objetos:
@@ -183,4 +215,5 @@ Los niveles se juegan en orden; al terminar el último sale `YOU WIN!`.
 | Tamaño del nivel | 512 × 256 tiles | error al compilar |
 | Paletas | 256 en total | error al compilar |
 | Sprites en pantalla | 96 para actores | los que sobran no se dibujan |
+| Capas de fondo | 21 sprites cada una | con 2 o 3 vas sobrado |
 | Símbolos de tile | 255 | error al compilar |

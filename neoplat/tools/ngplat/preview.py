@@ -79,6 +79,24 @@ def build_data(build: Build) -> Dict[str, object]:
         entry["name"] = item.name
         items.append(entry)
 
+    layers = []
+    for i, layer in enumerate(build.layers):
+        nombre = "layer%d" % i
+        sheets[nombre] = _sheet_entry(
+            os.path.join(project.root, layer.layer.image), 16, 16
+        )
+        sheets[nombre]["per_row"] = layer.cols
+        layers.append({
+            "name": layer.name,
+            "sheet": nombre,
+            "cols": layer.cols,
+            "rows": layer.rows,
+            "speed_x": int(round(layer.layer.speed_x * 256)),
+            "speed_y": int(round(layer.layer.speed_y * 256)),
+            "offset_y": layer.layer.offset_y,
+            "repeat": 1 if layer.layer.repeat else 0,
+        })
+
     levels = []
     for level in build.levels:
         levels.append({
@@ -89,6 +107,7 @@ def build_data(build: Build) -> Dict[str, object]:
             "spawns": [list(s) for s in level.spawns],
             "start": list(level.start),
             "background": "#%02x%02x%02x" % gfx.ng_color_to_rgb(level.background),
+            "layers": list(level.layers),
         })
 
     font = {char: list(rows) for char, rows in gfx.FONT_3X5.items()}
@@ -106,6 +125,7 @@ def build_data(build: Build) -> Dict[str, object]:
         # convierte al numero absoluto de la ROM C).
         "tiles": {"kind": kinds, "gfx": [t.index for t in build.tiles]},
         "levels": levels,
+        "layers": layers,
         "sin": build.sin_table,
         "sheets": sheets,
         "font": font,
