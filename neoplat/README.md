@@ -55,7 +55,11 @@ edites; <kbd>Enter</kbd> y lo estás jugando otra vez.
 - **Todo el juego, no solo el mapa**: propiedades de cada nivel (nombre, fondo,
   música, capas), gestión de niveles (nuevo, duplicar, borrar, reordenar),
   ajustes del juego y **física del jugador con deslizadores**, que se aplican al
-  momento; y los enemigos y objetos existentes.
+  momento.
+- **Enemigos y objetos nuevos** sin tocar el archivo: nombre, símbolo,
+  comportamiento y caja, reaprovechando un dibujo del proyecto o **dibujándolo
+  en el propio editor** (lienzo de 15 colores, varios fotogramas, relleno,
+  espejo y deshacer). El PNG se descarga listo para dejarlo en `graficos/`.
 - **Revisión en vivo**: te avisa de que falta la salida o la meta, de enemigos
   colgados en el aire o de un hueco más ancho de lo que cruza tu salto. Y un
   botón que **lanza un bot a terminarse el nivel** para comprobar que es posible.
@@ -171,9 +175,10 @@ neoplat/
 │   ├── np_core.js          la misma simulación, en JavaScript
 │   ├── np_editor.js        el editor (dibujo, propiedades, validación)
 │   ├── np_yaml.js          reescribe el game.yaml sin tocar lo demás
+│   ├── np_pixel.js         el lienzo para dibujar enemigos y objetos
 │   └── np_bot.js           el bot que comprueba si un nivel se puede terminar
 ├── examples/bosque-magico/ juego de ejemplo listo para compilar
-└── tests/                  106 pruebas + 24 de jugabilidad + 33 del editor +
+└── tests/                  108 pruebas + 24 de jugabilidad + 48 del editor +
                             bot que se pasa los niveles
 ```
 

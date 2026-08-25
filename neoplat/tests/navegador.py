@@ -169,6 +169,64 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
         print("bot:", mensaje)
         exigir("bot" in mensaje, "el bot no responde")
 
+        # crear un enemigo nuevo, dibujandolo
+        pagina.click("#pestanas button[data-panel=actores]")
+        pagina.wait_for_timeout(200)
+        pagina.click("#ed-nuevo-enemigo")
+        pagina.wait_for_timeout(300)
+        lienzo = pagina.evaluate("""() => ({
+            visible: document.getElementById('pixeles').classList.contains('visible'),
+            colores: document.querySelectorAll('#pixel-colores button').length,
+            frames: document.querySelectorAll('#pixel-frames canvas').length })""")
+        exigir(lienzo["visible"] and lienzo["colores"] == 16,
+               "el editor de dibujos no aparece: %s" % lienzo)
+
+        pagina.locator("#pixel-canvas").scroll_into_view_if_needed()
+        cajaPixel = pagina.locator("#pixel-canvas").bounding_box()
+        pasoPixel = cajaPixel["width"] / 16.0
+        pagina.evaluate("() => { window.NeoPlat.pixel().color = 8; }")
+        pagina.mouse.move(cajaPixel["x"] + pasoPixel * 3.5, cajaPixel["y"] + pasoPixel * 3.5)
+        pagina.mouse.down()
+        for i in range(3, 12):
+            pagina.mouse.move(cajaPixel["x"] + pasoPixel * (i + 0.5),
+                              cajaPixel["y"] + pasoPixel * 3.5)
+        pagina.mouse.up()
+        pagina.wait_for_timeout(200)
+        pintado = pagina.evaluate(
+            "() => { let n = 0; for (const v of window.NeoPlat.pixel().pixeles) if (v === 8) n++;"
+            " return n; }")
+        exigir(pintado >= 8, "dibujar con el raton no pinta (%s)" % pintado)
+
+        pagina.fill("#creador-campos input[type=text]", "cangrejo")
+        pagina.click("#creador-crear")
+        pagina.wait_for_timeout(500)
+        creado = pagina.evaluate("""() => { const e = window.NeoPlat.editor;
+            const ultimo = e.modelo.enemigos[e.modelo.enemigos.length - 1];
+            return { nombre: ultimo.nombre, simbolo: ultimo.simbolo,
+                     dibujo: (ultimo.imagen || '').slice(0, 15),
+                     enPaleta: Array.from(document.querySelectorAll('#ed-paleta button'))
+                        .some(b => b.title.indexOf('cangrejo') >= 0) }; }""")
+        print("enemigo nuevo:", json.dumps(creado))
+        exigir(creado["nombre"] == "cangrejo", "no se ha creado el enemigo")
+        exigir(creado["dibujo"].startswith("data:image"), "no se ha guardado el dibujo")
+        exigir(creado["enPaleta"], "el enemigo nuevo no sale en la paleta")
+
+        # se pinta en el mapa y aparece al jugar
+        pagina.click("#pestanas button[data-panel=mapa]")
+        pagina.evaluate("""() => { const e = window.NeoPlat.editor;
+            e.herramienta = 'lapiz'; e.empezarCambio(); e.pintar(20, 12, false);
+            e.terminarCambio(); }""")
+        pagina.wait_for_timeout(200)
+        pagina.click("#ed-jugar")
+        pagina.wait_for_timeout(500)
+        enJuego = pagina.evaluate("""() => { const w = window.NeoPlat.world;
+            const d = window.NeoPlat.data;
+            return w.entities.some(e => e.active && e.kind === 0 &&
+                                        e.def === d.enemies.length - 1); }""")
+        exigir(enJuego, "el enemigo nuevo no aparece en el juego")
+        pagina.click("#modo")
+        pagina.wait_for_timeout(300)
+
         # exportar
         pagina.click("#pestanas button[data-panel=yaml]")
         pagina.wait_for_timeout(300)
@@ -176,6 +234,12 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
         exigir("jugador:" in yaml_texto and "mapa: |" in yaml_texto,
                "el yaml exportado no parece completo")
         exigir("salto: 6" in yaml_texto, "el yaml no recoge la fisica editada")
+        exigir("cangrejo:" in yaml_texto, "el yaml no lleva el enemigo nuevo")
+        pendientes = pagina.evaluate("() => window.NeoPlat.editor.imagenesPendientes()")
+        exigir(len(pendientes) == 1 and pendientes[0]["ruta"] == "graficos/cangrejo.png",
+               "no queda pendiente el PNG del enemigo nuevo: %s" % pendientes)
+        exigir("descargar graficos/cangrejo.png" in pagina.inner_text("#pendientes"),
+               "no ofrece descargar el dibujo nuevo")
         pagina.screenshot(path=os.path.join(capturas, "editor.png"))
 
         # guardado automatico

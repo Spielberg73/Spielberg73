@@ -308,6 +308,7 @@ def write_rom_data(build: Build, out_dir: str, rom_id: str) -> Dict[str, int]:
         fh.write(m1_rom)
     written[nombre_m1] = len(m1_rom)
     # el fuente del driver se deja al lado, para poder mirarlo o retocarlo
+    os.makedirs(os.path.join(out_dir, "src"), exist_ok=True)
     with open(os.path.join(out_dir, "src", "sonido.z80"), "w", encoding="utf-8") as fh:
         fh.write(info["fuente"])
     return written

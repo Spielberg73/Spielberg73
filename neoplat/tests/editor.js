@@ -14,6 +14,7 @@ var path = require("path");
 var NPEditor = require(path.join(__dirname, "..", "preview", "np_editor.js"));
 var NPYaml = require(path.join(__dirname, "..", "preview", "np_yaml.js"));
 var NPCore = require(path.join(__dirname, "..", "preview", "np_core.js"));
+var NPPixel = require(path.join(__dirname, "..", "preview", "np_pixel.js"));
 
 var DATA = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
 
@@ -258,6 +259,186 @@ prueba("editar un enemigo cambia su comportamiento", function () {
   assert.strictEqual(e.modelo.enemigos[0].velocidad, 1.5);
 });
 
+/* ------------------------------------------- enemigos y objetos nuevos */
+
+prueba("sugiere un simbolo que no este usado", function () {
+  var e = nuevoEditor();
+  var libre = e.simboloLibre();
+  assert.ok(libre, "no propone ningun simbolo");
+  assert.strictEqual(e.data.tiles.index[libre], undefined, "el simbolo es un tile");
+  assert.ok(!(e.data.levels[0].spawn_chars || {})[libre], "el simbolo ya esta usado");
+});
+
+prueba("crear un enemigo reaprovechando un dibujo del proyecto", function () {
+  var e = nuevoEditor();
+  var hojas = e.hojasDisponibles();
+  assert.ok(hojas.length, "no encuentra dibujos del proyecto");
+  var antes = e.modelo.enemigos.length;
+  var creado = e.nuevoActor({
+    tipo: "enemigo", nombre: "fantasma", hoja: hojas[0].hoja,
+    caja: [12, 11], props: { comportamiento: "perseguidor", velocidad: 0.9, puntos: 300 }
+  });
+  assert.ok(creado, "no lo ha creado: " + e.mensaje);
+  assert.strictEqual(e.modelo.enemigos.length, antes + 1);
+  var nuevo = e.modelo.enemigos[antes];
+  assert.strictEqual(nuevo.nombre, "fantasma");
+  assert.strictEqual(nuevo.comportamiento, "perseguidor");
+  // usa el PNG que ya existe, no uno inventado
+  assert.strictEqual(nuevo.sprite, hojas[0].ruta);
+  // y se puede pintar en todos los niveles
+  e.data.levels.forEach(function (nivel, i) {
+    assert.ok(nivel.spawn_chars[creado.simbolo], "falta el simbolo en el nivel " + (i + 1));
+  });
+});
+
+prueba("crear un objeto nuevo", function () {
+  var e = nuevoEditor();
+  var hojas = e.hojasDisponibles();
+  var creado = e.nuevoActor({
+    tipo: "objeto", nombre: "gema", hoja: hojas[0].hoja,
+    caja: [10, 10], props: { puntos: 50, efecto: "vida" }
+  });
+  assert.ok(creado, e.mensaje);
+  var nuevo = e.modelo.objetos[e.modelo.objetos.length - 1];
+  assert.strictEqual(nuevo.efecto, "vida");
+  assert.strictEqual(nuevo.puntos, 50);
+});
+
+prueba("no deja nombres repetidos ni simbolos ocupados", function () {
+  var e = nuevoEditor();
+  var hoja = e.hojasDisponibles()[0].hoja;
+  assert.strictEqual(e.nuevoActor({ tipo: "enemigo", nombre: e.modelo.enemigos[0].nombre,
+                                    hoja: hoja }), null, "acepta un nombre repetido");
+  assert.ok(/ya hay/.test(e.mensaje), e.mensaje);
+  assert.strictEqual(e.nuevoActor({ tipo: "enemigo", nombre: "otro", hoja: hoja,
+                                    simbolo: "#" }), null, "acepta un simbolo de tile");
+  assert.ok(/simbolo/.test(e.mensaje), e.mensaje);
+  assert.strictEqual(e.nuevoActor({ tipo: "enemigo", nombre: "con espacios", hoja: hoja }),
+                     null, "acepta un nombre con espacios");
+});
+
+prueba("el enemigo nuevo aparece en la paleta del mapa", function () {
+  var e = nuevoEditor();
+  var creado = e.nuevoActor({ tipo: "enemigo", nombre: "fantasma",
+                              hoja: e.hojasDisponibles()[0].hoja });
+  var entradas = e.paleta().filter(function (p) { return p.char === creado.simbolo; });
+  assert.strictEqual(entradas.length, 1, "no sale en la paleta");
+  assert.strictEqual(entradas[0].etiqueta, "fantasma");
+});
+
+prueba("el enemigo nuevo se puede pintar y llega al motor", function () {
+  var e = nuevoEditor();
+  var creado = e.nuevoActor({ tipo: "enemigo", nombre: "fantasma",
+                              hoja: e.hojasDisponibles()[0].hoja });
+  e.simbolo = creado.simbolo;
+  e.empezarCambio();
+  e.pintar(20, 12, false);
+  e.terminarCambio();
+  e.aplicarAlMotor();
+  assert.strictEqual(filas(e)[12][20], creado.simbolo);
+  var spawns = e.data.levels[0].spawns.filter(function (s) {
+    return s[2] === 0 && s[3] === e.data.enemies.length - 1;
+  });
+  assert.strictEqual(spawns.length, 1, "el enemigo nuevo no llega a los spawns del motor");
+});
+
+prueba("borrar un enemigo lo quita tambien de los mapas", function () {
+  var e = nuevoEditor();
+  var simbolo = e.modelo.enemigos[0].simbolo;
+  var apariciones = e.modelo.filas[0].join("").split(simbolo).length - 1;
+  assert.ok(apariciones > 0, "el enemigo no estaba en el mapa");
+  e.borrarActor("enemigo", 0);
+  assert.strictEqual(e.modelo.filas[0].join("").split(simbolo).length - 1, 0,
+                     "sigue habiendo simbolos huerfanos en el mapa");
+});
+
+prueba("el yaml lleva el enemigo nuevo y su simbolo", function () {
+  var e = nuevoEditor();
+  var creado = e.nuevoActor({
+    tipo: "enemigo", nombre: "fantasma", hoja: e.hojasDisponibles()[0].hoja,
+    caja: [12, 11], props: { comportamiento: "perseguidor", velocidad: 0.9,
+                             puntos: 300, rango: 120 }
+  });
+  var yaml = e.exportarYaml();
+  assert.ok(/^\s*fantasma:/m.test(yaml), "falta el bloque del enemigo");
+  assert.ok(/comportamiento: perseguidor/.test(yaml), "falta el comportamiento");
+  assert.ok(/rango: 120/.test(yaml), "falta el rango del perseguidor");
+  assert.ok(new RegExp("^\\s*" + creado.simbolo + ": fantasma", "m").test(yaml),
+            "falta el simbolo en spawns");
+});
+
+prueba("el yaml quita los enemigos borrados", function () {
+  var e = nuevoEditor();
+  var nombre = e.modelo.enemigos[0].nombre;
+  var simbolo = e.modelo.enemigos[0].simbolo;
+  e.borrarActor("enemigo", 0);
+  var yaml = e.exportarYaml();
+  assert.ok(!new RegExp("^\\s*" + nombre + ":", "m").test(yaml),
+            "el enemigo borrado sigue en el yaml");
+  assert.ok(!new RegExp("^\\s*" + simbolo + ": " + nombre, "m").test(yaml),
+            "el simbolo borrado sigue en spawns");
+});
+
+prueba("los dibujos nuevos quedan pendientes de guardar", function () {
+  var e = nuevoEditor();
+  assert.deepStrictEqual(e.imagenesPendientes(), []);
+  e.nuevoActor({ tipo: "enemigo", nombre: "dibujado", imagen: "data:image/png;base64,AAA",
+                 frame: [16, 16], frames: 2, caja: [12, 12] });
+  var pendientes = e.imagenesPendientes();
+  assert.strictEqual(pendientes.length, 1);
+  assert.strictEqual(pendientes[0].ruta, "graficos/dibujado.png");
+});
+
+/* --------------------------------------------------- editor de dibujos */
+
+prueba("el lienzo de pixeles pinta, rellena y deshace", function () {
+  var l = NPPixel.crear({ ancho: 16, alto: 16, frames: 2 });
+  assert.ok(l.vacio());
+  l.empezarCambio();
+  l.pintar(0, 3, 4, 5);
+  assert.strictEqual(l.coger(0, 3, 4), 5);
+  assert.ok(!l.vacio());
+  l.empezarCambio();
+  l.relleno(0, 0, 0, 2);
+  assert.strictEqual(l.coger(0, 0, 0), 2);
+  assert.strictEqual(l.coger(0, 3, 4), 5, "el relleno ha pisado el pixel pintado");
+  l.deshacer();
+  assert.strictEqual(l.coger(0, 0, 0), 0, "deshacer no funciona");
+});
+
+prueba("el lienzo respeta el limite de 15 colores", function () {
+  var l = NPPixel.crear({ ancho: 16, alto: 16, frames: 1 });
+  assert.strictEqual(l.paleta.length, 15);
+  for (var i = 1; i <= 15; i++) l.pintar(0, i, 0, i);
+  assert.strictEqual(l.coloresUsados(), 15);
+});
+
+prueba("los fotogramas se copian y se reflejan", function () {
+  var l = NPPixel.crear({ ancho: 16, alto: 16, frames: 2 });
+  l.pintar(0, 2, 2, 7);
+  l.copiarFrame(0, 1);
+  assert.strictEqual(l.coger(1, 2, 2), 7);
+  l.espejo(1);
+  assert.strictEqual(l.coger(1, 13, 2), 7, "el espejo no ha movido el pixel");
+  assert.strictEqual(l.coger(1, 2, 2), 0);
+});
+
+prueba("cambiar el numero de fotogramas conserva el dibujo", function () {
+  var l = NPPixel.crear({ ancho: 16, alto: 16, frames: 2 });
+  l.bicho();
+  var antes = l.pixeles.slice(0, 256);
+  l.ponerFrames(4);
+  assert.strictEqual(l.frames, 4);
+  assert.deepStrictEqual(Array.from(l.pixeles.slice(0, 256)), Array.from(antes));
+});
+
+prueba("el dibujo de ejemplo no sale vacio", function () {
+  var l = NPPixel.crear({ ancho: 16, alto: 16, frames: 2 });
+  l.bicho();
+  assert.ok(!l.vacio());
+  assert.ok(l.coloresUsados() >= 2);
+});
+
 /* -------------------------------------------------------- validacion */
 
 prueba("avisa de lo que falta", function () {
@@ -460,6 +641,15 @@ if (process.argv[3]) {
   salida.ponerPropiedad("juego", "vidas", 4);
   salida.nuevoNivel();
   salida.ponerPropiedad("nivel", "nombre", "NIVEL DE PRUEBA");
+  salida.nuevoActor({
+    tipo: "enemigo", nombre: "fantasma", hoja: salida.hojasDisponibles()[0].hoja,
+    caja: [12, 11], props: { comportamiento: "perseguidor", velocidad: 0.9,
+                             puntos: 300, rango: 120 }
+  });
+  salida.nuevoActor({
+    tipo: "objeto", nombre: "gema", hoja: salida.hojasDisponibles()[1].hoja,
+    caja: [10, 10], props: { puntos: 50, efecto: "vida" }
+  });
   fs.writeFileSync(process.argv[3], salida.exportarYaml());
 }
 

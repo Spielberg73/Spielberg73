@@ -134,6 +134,45 @@
     return true;
   };
 
+  /* ------------------------------------------ anadir cosas nuevas */
+
+  /**
+   * Anade lineas al final de una seccion (por ejemplo, un enemigo nuevo
+   * dentro de 'enemigos:'). Si la seccion no existe, la crea justo antes de
+   * `antesDe` (normalmente 'niveles:', que va al final del archivo).
+   */
+  Yaml.prototype.anadirEnSeccion = function (alias, lineas, antesDe) {
+    var rango = this.seccion(alias, 0, this.lineas.length, 0);
+    if (rango) {
+      var destino = rango.fin;
+      while (destino > rango.inicio && esHueco(this.lineas[destino - 1])) destino--;
+      this.lineas.splice.apply(this.lineas, [destino, 0].concat(lineas));
+      return true;
+    }
+    var referencia = antesDe ? this.seccion(antesDe, 0, this.lineas.length, 0) : null;
+    var posicion = referencia ? referencia.clave : this.lineas.length;
+    var bloque = [alias[0] + ":"].concat(lineas, [""]);
+    this.lineas.splice.apply(this.lineas, [posicion, 0].concat(bloque));
+    return true;
+  };
+
+  /** ¿Existe ya esta clave dentro de una seccion de primer nivel? */
+  Yaml.prototype.tieneClaveEn = function (alias, nombre) {
+    var rango = this.seccion(alias, 0, this.lineas.length, 0);
+    if (!rango) return false;
+    return !!this.clave(rango, [nombre]);
+  };
+
+  /** Borra una subseccion entera (un enemigo, un objeto...). */
+  Yaml.prototype.borrarSubseccion = function (alias, nombre) {
+    var rango = this.seccion(alias, 0, this.lineas.length, 0);
+    if (!rango) return false;
+    var sub = this.seccion([nombre], rango.inicio, rango.fin);
+    if (!sub) return false;
+    this.lineas.splice(sub.clave, sub.fin - sub.clave);
+    return true;
+  };
+
   /* -------------------------------------------------------- los niveles */
 
   /** Rangos de cada nivel dentro de 'niveles:'. */

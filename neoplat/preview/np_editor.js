@@ -44,6 +44,19 @@
 
     /* ------------------------------------------------------------ modelo */
 
+    /** Simbolo con el que se coloca un actor en el mapa (busca en los niveles). */
+    function simboloDe(tipo, indice) {
+      for (var n = 0; n < DATA.levels.length; n++) {
+        var chars = DATA.levels[n].spawn_chars || {};
+        var llaves = Object.keys(chars);
+        for (var k = 0; k < llaves.length; k++) {
+          var s = chars[llaves[k]];
+          if (s.kind === tipo && s.def === indice) return llaves[k];
+        }
+      }
+      return "";
+    }
+
     function modeloInicial() {
       var jugador = DATA.player;
       return {
@@ -77,9 +90,13 @@
           vida: jugador.health,
           invulnerable: jugador.invuln
         },
-        enemigos: DATA.enemies.map(function (e) {
+        enemigos: DATA.enemies.map(function (e, i) {
           return {
             nombre: e.name,
+            simbolo: simboloDe(0, i),
+            sprite: e.actor.sprite || "",
+            frame: [e.actor.frame_w, e.actor.frame_h],
+            caja: [e.actor.box_w, e.actor.box_h],
             comportamiento: COMPORTAMIENTOS[e.behavior] || "patrulla",
             velocidad: fijoAUsuario(e.speed),
             gravedad: fijoAUsuario(e.gravity),
@@ -91,9 +108,14 @@
             pisable: !!e.stompable, girar_en_borde: !!e.edge_turn
           };
         }),
-        objetos: DATA.items.map(function (o) {
+        objetos: DATA.items.map(function (o, i) {
           return {
-            nombre: o.name, puntos: o.score,
+            nombre: o.name,
+            simbolo: simboloDe(1, i),
+            sprite: o.actor.sprite || "",
+            frame: [o.actor.frame_w, o.actor.frame_h],
+            caja: [o.actor.box_w, o.actor.box_h],
+            puntos: o.score,
             efecto: EFECTOS[o.effect] || "puntos", cantidad: o.amount
           };
         })
@@ -122,6 +144,7 @@
       guardadoPendiente: null
     };
     editor.original = clonar(editor.modelo);
+    editor.data = DATA;          // los datos que come el motor (util para pruebas)
 
     /* Al borrar un nivel el indice puede quedar fuera de rango durante un
        instante (el redibujado va por su cuenta), asi que se ajusta siempre. */
@@ -441,6 +464,252 @@
       return true;
     };
 
+    /* ------------------------------------------- enemigos y objetos nuevos */
+
+    var SIMBOLOS_CANDIDATOS = "abdefghijklnopqrtuvwxyzABCDEFHIJKLMNOQRSTUVWXYZ0123456789";
+
+    /** Devuelve un simbolo del mapa que no este usado por nada. */
+    editor.simboloLibre = function () {
+      var usados = {};
+      DATA.tiles.chars.forEach(function (ch) { usados[ch] = 1; });
+      usados["P"] = 1;
+      DATA.levels.forEach(function (nivel) {
+        Object.keys(nivel.spawn_chars || {}).forEach(function (ch) { usados[ch] = 1; });
+      });
+      for (var i = 0; i < SIMBOLOS_CANDIDATOS.length; i++) {
+        var ch = SIMBOLOS_CANDIDATOS[i];
+        if (!usados[ch]) return ch;
+      }
+      return "";
+    };
+
+    /** Archivo PNG del que sale una hoja ya cargada. */
+    function rutaDeHoja(hoja) {
+      var todos = DATA.enemies.concat(DATA.items).concat([DATA.player]);
+      for (var i = 0; i < todos.length; i++) {
+        if (todos[i] && todos[i].actor && todos[i].actor.sheet === hoja) {
+          return todos[i].actor.sprite || "";
+        }
+      }
+      return "";
+    }
+    editor.rutaDeHoja = rutaDeHoja;
+
+    /** Hojas de dibujo que ya existen en el proyecto, para reaprovecharlas. */
+    editor.hojasDisponibles = function () {
+      var lista = [];
+      var vistas = {};
+      DATA.enemies.concat(DATA.items).concat([DATA.player]).forEach(function (a) {
+        if (!a || !a.actor) return;
+        var llave = a.actor.sprite || a.actor.sheet;   // un archivo, una entrada
+        if (vistas[llave]) return;
+        vistas[llave] = 1;
+        lista.push({
+          hoja: a.actor.sheet, ruta: a.actor.sprite || "",
+          frame: [a.actor.frame_w, a.actor.frame_h], frames: a.actor.frames,
+          etiqueta: (a.actor.sprite || a.actor.sheet).split("/").pop()
+        });
+      });
+      return lista;
+    };
+
+    editor.nombreLibre = function (base) {
+      var usados = {};
+      editor.modelo.enemigos.concat(editor.modelo.objetos).forEach(function (a) {
+        usados[a.nombre] = 1;
+      });
+      if (!usados[base]) return base;
+      for (var i = 2; i < 99; i++) if (!usados[base + i]) return base + i;
+      return base + Date.now();
+    };
+
+    /** Lista de dibujos que hay que guardar como PNG junto al game.yaml. */
+    editor.imagenesPendientes = function () {
+      var lista = [];
+      editor.modelo.enemigos.concat(editor.modelo.objetos).forEach(function (a) {
+        if (a.imagen && a.sprite) lista.push({ ruta: a.sprite, datos: a.imagen });
+      });
+      return lista;
+    };
+
+    /**
+     * Crea un enemigo o un objeto nuevo.
+     * @param opciones {tipo:'enemigo'|'objeto', nombre, simbolo, frame:[w,h],
+     *                  caja:[w,h], imagen (data URL) o hoja (nombre de una hoja
+     *                  ya cargada), sprite (ruta del PNG), props}
+     */
+    editor.nuevoActor = function (opciones) {
+      var tipo = opciones.tipo === "objeto" ? "objeto" : "enemigo";
+      var nombre = String(opciones.nombre || "").trim();
+      if (!/^[a-z][a-z0-9_]*$/i.test(nombre)) {
+        editor.mensaje = "el nombre solo puede llevar letras, numeros y _ (y empezar por letra)";
+        alCambiar();
+        return null;
+      }
+      var repetido = editor.modelo.enemigos.concat(editor.modelo.objetos)
+        .some(function (a) { return a.nombre === nombre; });
+      if (repetido) {
+        editor.mensaje = "ya hay un enemigo u objeto llamado '" + nombre + "'";
+        alCambiar();
+        return null;
+      }
+      var simbolo = opciones.simbolo || editor.simboloLibre();
+      if (!simbolo || simbolo.length !== 1) {
+        editor.mensaje = "hace falta un simbolo de un solo caracter";
+        alCambiar();
+        return null;
+      }
+      var ocupado = DATA.tiles.index[simbolo] !== undefined || simbolo === "P" ||
+        DATA.levels.some(function (n) { return (n.spawn_chars || {})[simbolo]; });
+      if (ocupado) {
+        editor.mensaje = "el simbolo '" + simbolo + "' ya esta usado";
+        alCambiar();
+        return null;
+      }
+
+      var frame = opciones.frame || [16, 16];
+      var caja = opciones.caja || [Math.max(4, frame[0] - 4), Math.max(4, frame[1] - 4)];
+      var frames = Math.max(1, opciones.frames || 1);
+      var hoja = opciones.hoja;
+      var sprite = opciones.sprite || ("graficos/" + nombre + ".png");
+
+      if (!hoja) {                       // dibujo nuevo: se registra una hoja
+        hoja = "actor_" + nombre;
+        DATA.sheets[hoja] = {
+          url: opciones.imagen || "",
+          frame_w: frame[0], frame_h: frame[1],
+          per_row: frames
+        };
+      } else {
+        // se reaprovecha un dibujo que ya esta en el proyecto: hay que usar su
+        // mismo archivo PNG, porque el que se generaria no existiria
+        var origen = DATA.sheets[hoja];
+        frame = [origen.frame_w, origen.frame_h];
+        frames = opciones.frames || origen.per_row;
+        sprite = opciones.sprite || rutaDeHoja(hoja) || sprite;
+      }
+
+      var listaFrames = [];
+      for (var i = 0; i < frames; i++) listaFrames.push(i);
+      function anim() {
+        return { frames: listaFrames.slice(), count: frames, speed: 8, loop: 1 };
+      }
+      var actor = {
+        first_tile: 0, palette: 0,
+        cols: Math.ceil(frame[0] / 16), rows: Math.ceil(frame[1] / 16),
+        box_x: Math.floor((frame[0] - caja[0]) / 2), box_y: frame[1] - caja[1],
+        box_w: caja[0], box_h: caja[1],
+        frames: frames, frame_w: frame[0], frame_h: frame[1],
+        sheet: hoja, sprite: sprite,
+        anims: [anim(), anim(), anim(), anim(), anim()]
+      };
+
+      var props = opciones.props || {};
+      var indice;
+      editor.empezarCambio();
+      if (tipo === "enemigo") {
+        indice = DATA.enemies.length;
+        DATA.enemies.push({
+          actor: actor, name: nombre,
+          behavior: Math.max(0, COMPORTAMIENTOS.indexOf(props.comportamiento || "patrulla")),
+          speed: usuarioAFijo(props.velocidad === undefined ? 0.5 : props.velocidad),
+          gravity: usuarioAFijo(props.gravedad === undefined ? 0.28 : props.gravedad),
+          jump: usuarioAFijo(props.salto === undefined ? 3.5 : props.salto),
+          range: usuarioAFijo(props.rango === undefined ? 96 : props.rango),
+          amplitude: usuarioAFijo(props.amplitud === undefined ? 24 : props.amplitud),
+          period: props.periodo || 120, interval: props.intervalo || 90,
+          score: props.puntos === undefined ? 100 : props.puntos,
+          health: props.vida || 1, damage: props.dano === undefined ? 1 : props.dano,
+          stompable: props.pisable === false ? 0 : 1,
+          edge_turn: props.girar_en_borde === false ? 0 : 1
+        });
+        DATA.nombres.enemigos.push(nombre);
+        editor.modelo.enemigos.push({
+          nombre: nombre, simbolo: simbolo, sprite: sprite,
+          frame: frame, caja: caja, frames: frames,
+          imagen: opciones.imagen || null, nuevo: true,
+          comportamiento: props.comportamiento || "patrulla",
+          velocidad: props.velocidad === undefined ? 0.5 : props.velocidad,
+          gravedad: props.gravedad === undefined ? 0.28 : props.gravedad,
+          salto: props.salto === undefined ? 3.5 : props.salto,
+          rango: props.rango === undefined ? 96 : props.rango,
+          amplitud: props.amplitud === undefined ? 24 : props.amplitud,
+          periodo: props.periodo || 120, intervalo: props.intervalo || 90,
+          puntos: props.puntos === undefined ? 100 : props.puntos,
+          vida: props.vida || 1, dano: props.dano === undefined ? 1 : props.dano,
+          pisable: props.pisable !== false, girar_en_borde: props.girar_en_borde !== false
+        });
+      } else {
+        indice = DATA.items.length;
+        DATA.items.push({
+          actor: actor, name: nombre,
+          score: props.puntos === undefined ? 10 : props.puntos,
+          effect: Math.max(0, EFECTOS.indexOf(props.efecto || "puntos")),
+          amount: props.cantidad || 1
+        });
+        DATA.nombres.objetos.push(nombre);
+        editor.modelo.objetos.push({
+          nombre: nombre, simbolo: simbolo, sprite: sprite,
+          frame: frame, caja: caja, frames: frames,
+          imagen: opciones.imagen || null, nuevo: true,
+          puntos: props.puntos === undefined ? 10 : props.puntos,
+          efecto: props.efecto || "puntos", cantidad: props.cantidad || 1
+        });
+      }
+      DATA.levels.forEach(function (nivel) {
+        nivel.spawn_chars = nivel.spawn_chars || {};
+        nivel.spawn_chars[simbolo] = { kind: tipo === "enemigo" ? 0 : 1, def: indice };
+      });
+      terminarCambio();
+      editor.simbolo = simbolo;
+      editor.mensaje = "creado '" + nombre + "': pintalo con el simbolo '" + simbolo + "'";
+      if (opciones.imagen && opciones.alNuevaHoja) opciones.alNuevaHoja(hoja, opciones.imagen);
+      alCambiar();
+      return { tipo: tipo, indice: indice, simbolo: simbolo, hoja: hoja };
+    };
+
+    editor.borrados = [];
+
+    /** Quita un enemigo u objeto (y sus apariciones en los mapas). */
+    editor.borrarActor = function (tipo, indice) {
+      var lista = tipo === "objeto" ? editor.modelo.objetos : editor.modelo.enemigos;
+      var actor = lista[indice];
+      if (!actor) return false;
+      if (lista.length + (tipo === "objeto" ? editor.modelo.enemigos.length
+                                            : editor.modelo.objetos.length) <= 0) return false;
+      editor.empezarCambio();
+      // se borran del mapa todas sus apariciones
+      if (actor.simbolo) {
+        editor.modelo.filas.forEach(function (filasNivel, n) {
+          editor.modelo.filas[n] = filasNivel.map(function (fila) {
+            return fila.split(actor.simbolo).join(".");
+          });
+        });
+        DATA.levels.forEach(function (nivel) {
+          if (nivel.spawn_chars) delete nivel.spawn_chars[actor.simbolo];
+        });
+      }
+      if (!actor.nuevo) editor.borrados.push({ tipo: tipo, nombre: actor.nombre,
+                                               simbolo: actor.simbolo });
+      lista.splice(indice, 1);
+      var datos = tipo === "objeto" ? DATA.items : DATA.enemies;
+      var nombres = tipo === "objeto" ? DATA.nombres.objetos : DATA.nombres.enemigos;
+      datos.splice(indice, 1);
+      nombres.splice(indice, 1);
+      // los indices de los spawns se recolocan
+      DATA.levels.forEach(function (nivel) {
+        Object.keys(nivel.spawn_chars || {}).forEach(function (ch) {
+          var s = nivel.spawn_chars[ch];
+          if (s.kind === (tipo === "objeto" ? 1 : 0) && s.def > indice) s.def--;
+        });
+      });
+      terminarCambio();
+      aplicarAlMotor();
+      editor.mensaje = "borrado '" + actor.nombre + "'";
+      alCambiar();
+      return true;
+    };
+
     /* ----------------------------------------------------- camara y zoom */
 
     function altoVista() { return (canvas.height - MINI_ALTO) / editor.zoom; }
@@ -732,9 +1001,11 @@
       escribir(y.seccion(["jugador", "player"], 0, undefined, 0), campos.jugador || {},
                modelo.jugador, base.jugador);
 
+      // los actores que ya estaban: solo lo que se haya cambiado
       var seccionEnemigos = y.seccion(["enemigos", "enemies"], 0, undefined, 0);
       if (seccionEnemigos) {
         modelo.enemigos.forEach(function (m, i) {
+          if (m.nuevo) return;
           var rango = y.seccion([m.nombre], seccionEnemigos.inicio, seccionEnemigos.fin);
           escribir(rango, campos.enemigo || {}, m, base.enemigos[i]);
         });
@@ -742,10 +1013,44 @@
       var seccionObjetos = y.seccion(["objetos", "items"], 0, undefined, 0);
       if (seccionObjetos) {
         modelo.objetos.forEach(function (m, i) {
+          if (m.nuevo) return;
           var rango = y.seccion([m.nombre], seccionObjetos.inicio, seccionObjetos.fin);
           escribir(rango, campos.objeto || {}, m, base.objetos[i]);
         });
       }
+
+      // los que se han borrado
+      editor.borrados.forEach(function (borrado) {
+        var alias = borrado.tipo === "objeto" ? ["objetos", "items"] : ["enemigos", "enemies"];
+        y.borrarSubseccion(alias, borrado.nombre);
+        var spawns = y.seccion(["spawns", "simbolos", "símbolos"], 0, undefined, 0);
+        if (spawns && borrado.simbolo) y.quitarClave(spawns, [borrado.simbolo]);
+      });
+
+      // los enemigos y objetos nuevos, con su simbolo
+      function sangriaDe(alias) {
+        var rango = y.seccion(alias, 0, undefined, 0);
+        return rango ? y.sangriaHijos(rango) : 2;
+      }
+      modelo.enemigos.forEach(function (m) {
+        if (!m.nuevo) return;
+        y.anadirEnSeccion(["enemigos", "enemies"],
+                          bloqueActor(m, "enemigo", sangriaDe(["enemigos", "enemies"])),
+                          ["niveles", "levels"]);
+      });
+      modelo.objetos.forEach(function (m) {
+        if (!m.nuevo) return;
+        y.anadirEnSeccion(["objetos", "items"],
+                          bloqueActor(m, "objeto", sangriaDe(["objetos", "items"])),
+                          ["niveles", "levels"]);
+      });
+      modelo.enemigos.concat(modelo.objetos).forEach(function (m) {
+        if (!m.nuevo || !m.simbolo) return;
+        var sangria = sangriaDe(["spawns", "simbolos", "símbolos"]);
+        y.anadirEnSeccion(["spawns", "simbolos", "símbolos"],
+                          [Array(sangria + 1).join(" ") + m.simbolo + ": " + m.nombre],
+                          ["niveles", "levels"]);
+      });
 
       // niveles: primero los que ya existian, luego se anaden o quitan
       var existentes = y.niveles().length;
@@ -773,6 +1078,46 @@
       });
       return y.texto();
     };
+
+    /** Bloque YAML de un enemigo u objeto nuevo. */
+    function bloqueActor(actor, tipo, sangria) {
+      var s1 = Array((sangria || 2) + 1).join(" ");
+      var s2 = Array((sangria || 2) * 2 + 1).join(" ");
+      var s3 = Array((sangria || 2) * 3 + 1).join(" ");
+      var lineas = [s1 + actor.nombre + ":"];
+      lineas.push(s2 + "sprite: " + actor.sprite);
+      lineas.push(s2 + "frame: [" + actor.frame[0] + ", " + actor.frame[1] + "]");
+      lineas.push(s2 + "caja: [" + actor.caja[0] + ", " + actor.caja[1] + "]");
+      if (tipo === "enemigo") {
+        lineas.push(s2 + "comportamiento: " + actor.comportamiento);
+        lineas.push(s2 + "velocidad: " + NPYaml.numero(actor.velocidad, 2));
+        lineas.push(s2 + "vida: " + Math.round(actor.vida));
+        lineas.push(s2 + "dano: " + Math.round(actor.dano));
+        lineas.push(s2 + "puntos: " + Math.round(actor.puntos));
+        if (!actor.pisable) lineas.push(s2 + "pisable: no");
+        if (!actor.girar_en_borde) lineas.push(s2 + "girar_en_borde: no");
+        if (actor.comportamiento === "perseguidor") {
+          lineas.push(s2 + "rango: " + Math.round(actor.rango));
+        }
+        if (actor.comportamiento === "volador") {
+          lineas.push(s2 + "amplitud: " + Math.round(actor.amplitud));
+          lineas.push(s2 + "periodo: " + Math.round(actor.periodo));
+        }
+        if (actor.comportamiento === "saltarin") {
+          lineas.push(s2 + "salto: " + NPYaml.numero(actor.salto, 2));
+          lineas.push(s2 + "intervalo: " + Math.round(actor.intervalo));
+        }
+      } else {
+        lineas.push(s2 + "puntos: " + Math.round(actor.puntos));
+        lineas.push(s2 + "efecto: " + actor.efecto);
+        if (actor.cantidad > 1) lineas.push(s2 + "cantidad: " + Math.round(actor.cantidad));
+      }
+      var frames = [];
+      for (var i = 0; i < (actor.frames || 1); i++) frames.push(i);
+      lineas.push(s2 + "animaciones:");
+      lineas.push(s3 + "quieto: {frames: [" + frames.join(", ") + "], velocidad: 8}");
+      return lineas;
+    }
 
     function textoNivelNuevo(y, indice) {
       var props = editor.modelo.niveles[indice];

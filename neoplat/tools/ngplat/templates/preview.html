@@ -100,6 +100,30 @@
     border: 1px solid #2b3245; border-radius: 6px; padding: 8px;
     font: 11px/1.45 ui-monospace, monospace; resize: vertical;
   }
+  .creador { display: none; flex-direction: column; gap: 10px;
+             border: 1px solid #2b3245; border-radius: 8px; padding: 10px; }
+  .creador.visible { display: flex; }
+  .pixeles { display: none; flex-direction: column; gap: 8px; }
+  .pixeles.visible { display: flex; }
+  .pixeles .lienzo { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
+  #pixel-canvas { image-rendering: pixelated; background:
+    repeating-conic-gradient(#20242f 0% 25%, #171b24 0% 50%) 50% / 16px 16px;
+    border: 1px solid #2b3245; border-radius: 4px; touch-action: none; cursor: crosshair; }
+  .colores { display: grid; grid-template-columns: repeat(5, 26px); gap: 4px; }
+  .colores button { width: 26px; height: 26px; border-radius: 4px; border: 1px solid #2b3245;
+                    cursor: pointer; padding: 0; }
+  .colores button.elegido { outline: 2px solid #f2b705; outline-offset: 1px; }
+  .colores .transparente {
+    background: repeating-conic-gradient(#3a3f4d 0% 25%, #22262f 0% 50%) 50% / 8px 8px;
+  }
+  .tira { display: flex; gap: 6px; align-items: center; }
+  .tira canvas { image-rendering: pixelated; border: 1px solid #2b3245; border-radius: 4px;
+                 cursor: pointer; background: #11141d; }
+  .tira canvas.elegido { border-color: #f2b705; }
+  .pendientes { display: flex; flex-direction: column; gap: 4px; }
+  .pendientes button { text-align: left; background: #161a25; border: 1px solid #2b3245;
+    border-left: 3px solid #58d0e8; border-radius: 6px; color: #cfd6e4; font: inherit;
+    font-size: 12px; padding: 5px 8px; cursor: pointer; }
   .recuperar {
     display: none; align-items: center; gap: 10px; width: 100%; max-width: 860px;
     background: #221d10; border: 1px solid #4a3c14; border-radius: 8px;
@@ -212,6 +236,37 @@
   </div>
 
   <div class="panel" id="panel-actores">
+    <div class="barra">
+      <button type="button" id="ed-nuevo-enemigo">+ enemigo nuevo</button>
+      <button type="button" id="ed-nuevo-objeto">+ objeto nuevo</button>
+      <span class="nota">los dibujas aqui mismo o reaprovechas uno del proyecto</span>
+    </div>
+    <div class="creador" id="creador">
+      <div class="campos" id="creador-campos"></div>
+      <div class="pixeles" id="pixeles">
+        <div class="barra" id="pixel-herramientas"></div>
+        <div class="lienzo">
+          <canvas id="pixel-canvas" width="192" height="192"></canvas>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <div class="colores" id="pixel-colores"></div>
+            <label class="campo"><span>color</span>
+              <input type="color" id="pixel-color-elegido"></label>
+            <div class="tira" id="pixel-frames"></div>
+            <div class="barra">
+              <button type="button" id="pixel-copiar">copiar frame</button>
+              <button type="button" id="pixel-espejo">espejo</button>
+              <button type="button" id="pixel-limpiar">limpiar</button>
+            </div>
+            <div class="nota" id="pixel-nota"></div>
+          </div>
+        </div>
+      </div>
+      <div class="barra">
+        <button type="button" id="creador-crear">crear</button>
+        <button type="button" id="creador-cancelar">cancelar</button>
+        <span class="nota" id="creador-aviso"></span>
+      </div>
+    </div>
     <div id="campos-actores"></div>
   </div>
 
@@ -231,6 +286,7 @@
       <span class="etiqueta" id="ed-copiado"></span>
     </div>
     <textarea id="ed-texto" spellcheck="false" readonly></textarea>
+    <div class="pendientes" id="pendientes"></div>
   </div>
 </div>
 
@@ -250,6 +306,9 @@
 </script>
 <script>
 @BOT@
+</script>
+<script>
+@PIXEL@
 </script>
 <script>
 @EDITOR@
@@ -935,6 +994,422 @@
     campoBool(fis, "pisar enemigos", "jugador", "pisar_enemigos", null, p.pisar_enemigos);
   }
 
+  /* --- crear enemigos y objetos, con su dibujo ------------------------ */
+
+  var lienzoPixel = null;          // dibujo en curso (np_pixel.js)
+  var framePixel = 0;
+  var creando = null;              // {tipo: 'enemigo'|'objeto'}
+  var camposCreador = {};
+  var PIXEL_ZOOM = 12;
+
+  var HERRAMIENTAS_PIXEL = [
+    { id: "lapiz", nombre: "lapiz" },
+    { id: "borrador", nombre: "borrador" },
+    { id: "relleno", nombre: "relleno" },
+    { id: "cuentagotas", nombre: "cuentagotas" }
+  ];
+
+  function abrirCreador(tipo) {
+    creando = { tipo: tipo };
+    document.getElementById("creador").classList.add("visible");
+    document.getElementById("creador-aviso").textContent = "";
+    construirCamposCreador();
+    prepararLienzo();
+  }
+
+  function cerrarCreador() {
+    creando = null;
+    lienzoPixel = null;
+    document.getElementById("creador").classList.remove("visible");
+  }
+
+  function construirCamposCreador() {
+    var cont = document.getElementById("creador-campos");
+    cont.innerHTML = "";
+    camposCreador = {};
+
+    function entrada(texto, tipo, valor, ancho) {
+      var fila = crearElemento(cont, "label", "campo");
+      crearElemento(fila, "span").textContent = texto;
+      var nodo = crearElemento(fila, "input");
+      nodo.type = tipo;
+      nodo.value = valor;
+      if (ancho) nodo.style.width = ancho;
+      return nodo;
+    }
+
+    function lista(texto, opciones, valor) {
+      var fila = crearElemento(cont, "label", "campo");
+      crearElemento(fila, "span").textContent = texto;
+      var select = crearElemento(fila, "select");
+      opciones.forEach(function (op) {
+        var nodo = crearElemento(select, "option");
+        nodo.value = op.valor;
+        nodo.textContent = op.texto;
+      });
+      if (valor !== undefined) select.value = valor;
+      return select;
+    }
+
+    var esEnemigo = creando.tipo === "enemigo";
+    camposCreador.nombre = entrada("nombre", "text",
+      editor.nombreLibre(esEnemigo ? "enemigo" : "objeto"), "130px");
+    camposCreador.simbolo = entrada("simbolo", "text", editor.simboloLibre(), "44px");
+    camposCreador.simbolo.maxLength = 1;
+
+    var opcionesDibujo = [{ valor: "", texto: "dibujarlo aqui" }];
+    editor.hojasDisponibles().forEach(function (h) {
+      opcionesDibujo.push({ valor: h.hoja,
+                            texto: h.etiqueta + " (" + h.frame.join("x") + ")" });
+    });
+    camposCreador.dibujo = lista("dibujo", opcionesDibujo, "");
+    camposCreador.dibujo.addEventListener("change", prepararLienzo);
+
+    camposCreador.tamano = lista("tamaño", [
+      { valor: "16x16", texto: "16 x 16" },
+      { valor: "16x32", texto: "16 x 32 (alto)" },
+      { valor: "32x16", texto: "32 x 16 (ancho)" },
+      { valor: "32x32", texto: "32 x 32 (grande)" }
+    ], "16x16");
+    camposCreador.tamano.addEventListener("change", prepararLienzo);
+
+    camposCreador.frames = entrada("fotogramas", "number", 2, "60px");
+    camposCreador.frames.min = 1;
+    camposCreador.frames.max = 8;
+    camposCreador.frames.addEventListener("change", prepararLienzo);
+
+    camposCreador.cajaAncho = entrada("caja ancho", "number", 12, "60px");
+    camposCreador.cajaAlto = entrada("caja alto", "number", 12, "60px");
+
+    if (esEnemigo) {
+      var comportamientos = ((DATA.claves.opciones || {}).comportamiento ||
+        ["patrulla", "volador", "perseguidor", "saltarin", "fijo"]).map(function (c) {
+          return { valor: c, texto: c };
+        });
+      camposCreador.comportamiento = lista("comportamiento", comportamientos, "patrulla");
+      camposCreador.velocidad = entrada("velocidad", "number", 0.5, "70px");
+      camposCreador.velocidad.step = 0.05;
+      camposCreador.vida = entrada("vida", "number", 1, "60px");
+      camposCreador.puntos = entrada("puntos", "number", 100, "70px");
+    } else {
+      var efectos = ((DATA.claves.opciones || {}).efecto ||
+        ["puntos", "vida", "salud", "llave"]).map(function (c) {
+          return { valor: c, texto: c };
+        });
+      camposCreador.efecto = lista("efecto", efectos, "puntos");
+      camposCreador.puntos = entrada("puntos", "number", 10, "70px");
+      camposCreador.cajaAncho.value = 10;
+      camposCreador.cajaAlto.value = 10;
+    }
+  }
+
+  function medidasCreador() {
+    var partes = camposCreador.tamano.value.split("x");
+    return [parseInt(partes[0], 10), parseInt(partes[1], 10)];
+  }
+
+  function prepararLienzo() {
+    var zona = document.getElementById("pixeles");
+    var dibujarAqui = camposCreador.dibujo.value === "";
+    zona.classList.toggle("visible", dibujarAqui);
+    if (!dibujarAqui) {
+      lienzoPixel = null;
+      var hoja = editor.hojasDisponibles().filter(function (h) {
+        return h.hoja === camposCreador.dibujo.value;
+      })[0];
+      if (hoja) {
+        camposCreador.tamano.value = hoja.frame[0] + "x" + hoja.frame[1];
+        camposCreador.frames.value = hoja.frames;
+      }
+      return;
+    }
+    var medidas = medidasCreador();
+    var frames = Math.max(1, Math.min(8, parseInt(camposCreador.frames.value, 10) || 1));
+    lienzoPixel = NPPixel.crear({ ancho: medidas[0], alto: medidas[1], frames: frames });
+    lienzoPixel.bicho();
+    framePixel = 0;
+    construirHerramientasPixel();
+    construirColores();
+    refrescarPixel();
+  }
+
+  function construirHerramientasPixel() {
+    var cont = document.getElementById("pixel-herramientas");
+    cont.innerHTML = "";
+    crearElemento(cont, "span", "etiqueta").textContent = "dibujo";
+    HERRAMIENTAS_PIXEL.forEach(function (h) {
+      var boton = crearElemento(cont, "button");
+      boton.type = "button";
+      boton.textContent = h.nombre;
+      if (lienzoPixel && lienzoPixel.herramienta === h.id) boton.className = "elegido";
+      boton.addEventListener("click", function () {
+        lienzoPixel.herramienta = h.id;
+        construirHerramientasPixel();
+      });
+    });
+    var deshacer = crearElemento(cont, "button");
+    deshacer.type = "button";
+    deshacer.textContent = "deshacer";
+    deshacer.addEventListener("click", function () {
+      lienzoPixel.deshacer();
+      refrescarPixel();
+    });
+  }
+
+  function construirColores() {
+    var cont = document.getElementById("pixel-colores");
+    cont.innerHTML = "";
+    var transparente = crearElemento(cont, "button", "transparente");
+    transparente.type = "button";
+    transparente.title = "transparente";
+    if (lienzoPixel.color === 0) transparente.className = "transparente elegido";
+    transparente.addEventListener("click", function () {
+      lienzoPixel.color = 0;
+      construirColores();
+    });
+    lienzoPixel.paleta.forEach(function (color, i) {
+      var boton = crearElemento(cont, "button");
+      boton.type = "button";
+      boton.style.background = color;
+      boton.title = color;
+      if (lienzoPixel.color === i + 1) boton.className = "elegido";
+      boton.addEventListener("click", function () {
+        lienzoPixel.color = i + 1;
+        document.getElementById("pixel-color-elegido").value = color;
+        construirColores();
+      });
+    });
+    var selector = document.getElementById("pixel-color-elegido");
+    selector.value = lienzoPixel.paleta[Math.max(0, lienzoPixel.color - 1)] || "#ffffff";
+    selector.onchange = function () {
+      if (lienzoPixel.color === 0) return;
+      lienzoPixel.paleta[lienzoPixel.color - 1] = selector.value;
+      construirColores();
+      refrescarPixel();
+    };
+  }
+
+  function refrescarPixel() {
+    if (!lienzoPixel) return;
+    var canvas = document.getElementById("pixel-canvas");
+    canvas.width = lienzoPixel.ancho * PIXEL_ZOOM;
+    canvas.height = lienzoPixel.alto * PIXEL_ZOOM;
+    var pctx = canvas.getContext("2d");
+    pctx.imageSmoothingEnabled = false;
+    pctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (var y = 0; y < lienzoPixel.alto; y++) {
+      for (var x = 0; x < lienzoPixel.ancho; x++) {
+        var color = lienzoPixel.coger(framePixel, x, y);
+        if (!color) continue;
+        pctx.fillStyle = lienzoPixel.paleta[color - 1];
+        pctx.fillRect(x * PIXEL_ZOOM, y * PIXEL_ZOOM, PIXEL_ZOOM, PIXEL_ZOOM);
+      }
+    }
+    pctx.strokeStyle = "rgba(255,255,255,0.08)";
+    pctx.lineWidth = 1;
+    pctx.beginPath();
+    for (var gx = 0; gx <= lienzoPixel.ancho; gx++) {
+      pctx.moveTo(gx * PIXEL_ZOOM + 0.5, 0);
+      pctx.lineTo(gx * PIXEL_ZOOM + 0.5, canvas.height);
+    }
+    for (var gy = 0; gy <= lienzoPixel.alto; gy++) {
+      pctx.moveTo(0, gy * PIXEL_ZOOM + 0.5);
+      pctx.lineTo(canvas.width, gy * PIXEL_ZOOM + 0.5);
+    }
+    pctx.stroke();
+    construirTiraFrames();
+    document.getElementById("pixel-nota").textContent =
+      lienzoPixel.coloresUsados() + " de 15 colores  ·  fotograma " +
+      (framePixel + 1) + " de " + lienzoPixel.frames;
+  }
+
+  function construirTiraFrames() {
+    var cont = document.getElementById("pixel-frames");
+    cont.innerHTML = "";
+    for (var f = 0; f < lienzoPixel.frames; f++) {
+      (function (indice) {
+        var mini = crearElemento(cont, "canvas", indice === framePixel ? "elegido" : "");
+        mini.width = lienzoPixel.ancho;
+        mini.height = lienzoPixel.alto;
+        mini.style.width = (lienzoPixel.ancho * 2) + "px";
+        mini.style.height = (lienzoPixel.alto * 2) + "px";
+        var mctx = mini.getContext("2d");
+        for (var y = 0; y < lienzoPixel.alto; y++) {
+          for (var x = 0; x < lienzoPixel.ancho; x++) {
+            var color = lienzoPixel.coger(indice, x, y);
+            if (!color) continue;
+            mctx.fillStyle = lienzoPixel.paleta[color - 1];
+            mctx.fillRect(x, y, 1, 1);
+          }
+        }
+        mini.addEventListener("click", function () {
+          framePixel = indice;
+          refrescarPixel();
+        });
+      })(f);
+    }
+  }
+
+  function pixelDesdeEvento(ev) {
+    var canvas = document.getElementById("pixel-canvas");
+    var caja = canvas.getBoundingClientRect();
+    return {
+      x: Math.floor((ev.clientX - caja.left) / caja.width * lienzoPixel.ancho),
+      y: Math.floor((ev.clientY - caja.top) / caja.height * lienzoPixel.alto)
+    };
+  }
+
+  var pintandoPixel = false;
+  (function () {
+    var canvas = document.getElementById("pixel-canvas");
+    function aplicar(ev, primero) {
+      if (!lienzoPixel) return;
+      var p = pixelDesdeEvento(ev);
+      var color = ev.button === 2 ? 0 : lienzoPixel.color;
+      if (lienzoPixel.herramienta === "borrador") color = 0;
+      if (lienzoPixel.herramienta === "cuentagotas") {
+        lienzoPixel.color = lienzoPixel.coger(framePixel, p.x, p.y);
+        construirColores();
+        return;
+      }
+      if (lienzoPixel.herramienta === "relleno") {
+        if (primero) { lienzoPixel.empezarCambio(); lienzoPixel.relleno(framePixel, p.x, p.y, color); }
+        refrescarPixel();
+        return;
+      }
+      if (primero) lienzoPixel.empezarCambio();
+      lienzoPixel.pintar(framePixel, p.x, p.y, color);
+      refrescarPixel();
+    }
+    canvas.addEventListener("pointerdown", function (ev) {
+      pintandoPixel = true;
+      canvas.setPointerCapture(ev.pointerId);
+      aplicar(ev, true);
+      ev.preventDefault();
+    });
+    canvas.addEventListener("pointermove", function (ev) {
+      if (pintandoPixel) aplicar(ev, false);
+    });
+    canvas.addEventListener("pointerup", function () { pintandoPixel = false; });
+    canvas.addEventListener("contextmenu", function (ev) { ev.preventDefault(); });
+    document.getElementById("pixel-copiar").addEventListener("click", function () {
+      if (!lienzoPixel || lienzoPixel.frames < 2) return;
+      lienzoPixel.empezarCambio();
+      lienzoPixel.copiarFrame(framePixel, (framePixel + 1) % lienzoPixel.frames);
+      framePixel = (framePixel + 1) % lienzoPixel.frames;
+      refrescarPixel();
+    });
+    document.getElementById("pixel-espejo").addEventListener("click", function () {
+      if (!lienzoPixel) return;
+      lienzoPixel.empezarCambio();
+      lienzoPixel.espejo(framePixel);
+      refrescarPixel();
+    });
+    document.getElementById("pixel-limpiar").addEventListener("click", function () {
+      if (!lienzoPixel) return;
+      lienzoPixel.empezarCambio();
+      lienzoPixel.limpiarFrame(framePixel);
+      refrescarPixel();
+    });
+  })();
+
+  function crearActorDesdeFormulario() {
+    var aviso = document.getElementById("creador-aviso");
+    var medidas = medidasCreador();
+    var frames = Math.max(1, Math.min(8, parseInt(camposCreador.frames.value, 10) || 1));
+    var props = {};
+    if (creando.tipo === "enemigo") {
+      props.comportamiento = camposCreador.comportamiento.value;
+      props.velocidad = Number(camposCreador.velocidad.value);
+      props.vida = Number(camposCreador.vida.value);
+      props.puntos = Number(camposCreador.puntos.value);
+    } else {
+      props.efecto = camposCreador.efecto.value;
+      props.puntos = Number(camposCreador.puntos.value);
+    }
+    var opciones = {
+      tipo: creando.tipo,
+      nombre: camposCreador.nombre.value.trim(),
+      simbolo: camposCreador.simbolo.value.trim(),
+      frame: medidas,
+      frames: frames,
+      caja: [Number(camposCreador.cajaAncho.value), Number(camposCreador.cajaAlto.value)],
+      props: props,
+      alNuevaHoja: function (hoja, url) { cargarHoja(hoja, url); }
+    };
+    if (camposCreador.dibujo.value) {
+      opciones.hoja = camposCreador.dibujo.value;
+    } else {
+      if (!lienzoPixel || lienzoPixel.vacio()) {
+        aviso.textContent = "el dibujo esta vacio";
+        return;
+      }
+      if (lienzoPixel.coloresUsados() > 15) {
+        aviso.textContent = "demasiados colores para la Neo Geo";
+        return;
+      }
+      opciones.imagen = lienzoPixel.aDataURL(document);
+      opciones.sprite = "graficos/" + opciones.nombre + ".png";
+    }
+    var creado = editor.nuevoActor(opciones);
+    if (!creado) {
+      aviso.textContent = editor.mensaje;
+      return;
+    }
+    cerrarCreador();
+    construirPaneles();
+    refrescarEditor();
+  }
+
+  /** Mete un dibujo nuevo en las hojas que usa el preview para pintar. */
+  function cargarHoja(hoja, url) {
+    var imagen = new Image();
+    imagen.onload = function () {
+      images[hoja] = imagen;
+      construirPaleta();
+      refrescarPendientes();
+    };
+    imagen.src = url;
+    images[hoja] = imagen;
+  }
+
+  function refrescarPendientes() {
+    var cont = document.getElementById("pendientes");
+    if (!cont) return;
+    cont.innerHTML = "";
+    var pendientes = editor.imagenesPendientes();
+    if (!pendientes.length) return;
+    crearElemento(cont, "div", "nota").textContent =
+      "dibujos nuevos que hay que guardar junto al game.yaml:";
+    pendientes.forEach(function (imagen) {
+      var boton = crearElemento(cont, "button");
+      boton.type = "button";
+      boton.textContent = "descargar " + imagen.ruta;
+      boton.addEventListener("click", function () { descargarImagen(imagen); });
+    });
+  }
+
+  function descargarImagen(imagen) {
+    var nombre = imagen.ruta.split("/").pop();
+    var aviso = document.getElementById("ed-copiado");
+    if (window.claude && typeof window.claude.use === "function") {
+      window.claude.use("downloads").then(function (descargas) {
+        if (!descargas) { aviso.textContent = "aqui no se puede descargar"; return; }
+        fetch(imagen.datos).then(function (r) { return r.blob(); }).then(function (blob) {
+          return descargas.save({ filename: nombre, data: blob });
+        }).then(function () {
+          aviso.textContent = "guardado " + nombre + " (ponlo en graficos/)";
+        }, function () { aviso.textContent = "no se pudo descargar"; });
+      });
+      return;
+    }
+    var enlace = document.createElement("a");
+    enlace.href = imagen.datos;
+    enlace.download = nombre;
+    enlace.click();
+    aviso.textContent = "descargado " + nombre;
+  }
+
   function construirActores() {
     var cont = document.getElementById("campos-actores");
     cont.innerHTML = "";
@@ -944,7 +1419,25 @@
     var efectos = (DATA.claves && DATA.claves.opciones && DATA.claves.opciones.efecto) ||
                   ["puntos", "vida", "salud", "llave"];
     editor.modelo.enemigos.forEach(function (e, i) {
-      crearElemento(cont, "div", "grupo-titulo").textContent = "enemigo: " + e.nombre;
+      var titulo = crearElemento(cont, "div", "grupo-titulo");
+      titulo.textContent = "enemigo: " + e.nombre +
+        (e.simbolo ? "  (simbolo '" + e.simbolo + "')" : "");
+      var quitar = crearElemento(titulo, "button");
+      quitar.type = "button";
+      quitar.textContent = "borrar";
+      quitar.style.marginLeft = "10px";
+      quitar.style.font = "inherit";
+      quitar.style.fontSize = "11px";
+      quitar.style.background = "#1d2231";
+      quitar.style.color = "#cfd6e4";
+      quitar.style.border = "1px solid #2b3245";
+      quitar.style.borderRadius = "5px";
+      quitar.style.cursor = "pointer";
+      quitar.addEventListener("click", function () {
+        editor.borrarActor("enemigo", i);
+        construirPaneles();
+        refrescarEditor();
+      });
       var campos = crearElemento(cont, "div", "campos");
       campoLista(campos, "comportamiento", "enemigo", "comportamiento", i,
                  e.comportamiento, comportamientos);
@@ -961,7 +1454,24 @@
       campoBool(campos, "gira en bordes", "enemigo", "girar_en_borde", i, e.girar_en_borde);
     });
     editor.modelo.objetos.forEach(function (o, i) {
-      crearElemento(cont, "div", "grupo-titulo").textContent = "objeto: " + o.nombre;
+      var tituloObjeto = crearElemento(cont, "div", "grupo-titulo");
+      tituloObjeto.textContent = "objeto: " + o.nombre +
+        (o.simbolo ? "  (simbolo '" + o.simbolo + "')" : "");
+      var quitarObjeto = crearElemento(tituloObjeto, "button");
+      quitarObjeto.type = "button";
+      quitarObjeto.textContent = "borrar";
+      quitarObjeto.style.marginLeft = "10px";
+      quitarObjeto.style.fontSize = "11px";
+      quitarObjeto.style.background = "#1d2231";
+      quitarObjeto.style.color = "#cfd6e4";
+      quitarObjeto.style.border = "1px solid #2b3245";
+      quitarObjeto.style.borderRadius = "5px";
+      quitarObjeto.style.cursor = "pointer";
+      quitarObjeto.addEventListener("click", function () {
+        editor.borrarActor("objeto", i);
+        construirPaneles();
+        refrescarEditor();
+      });
       var campos = crearElemento(cont, "div", "campos");
       campoLista(campos, "efecto", "objeto", "efecto", i, o.efecto, efectos);
       campoNumero(campos, "puntos", "objeto", "puntos", i, o.puntos);
@@ -1116,7 +1626,10 @@
       Array.prototype.forEach.call(document.querySelectorAll(".panel"), function (panel) {
         panel.classList.toggle("visible", panel.id === "panel-" + boton.dataset.panel);
       });
-      if (boton.dataset.panel === "yaml") elTexto.value = editor.exportarYaml();
+      if (boton.dataset.panel === "yaml") {
+        elTexto.value = editor.exportarYaml();
+        refrescarPendientes();
+      }
       if (boton.dataset.panel === "revisar") { editor.revisar(); refrescarProblemas(); }
     });
   });
@@ -1165,6 +1678,10 @@
   conClic("ed-borrar-sel", function () { editor.borrarSeleccion(); });
   conClic("ed-jugar", function () { editor.aplicar(); });
   conClic("ed-bot", function () { editor.comprobarJugable(NPCore); });
+  conClic("ed-nuevo-enemigo", function () { abrirCreador("enemigo"); });
+  conClic("ed-nuevo-objeto", function () { abrirCreador("objeto"); });
+  conClic("creador-crear", crearActorDesdeFormulario);
+  conClic("creador-cancelar", cerrarCreador);
   conClic("ed-olvidar", function () {
     editor.descartarGuardado();
     document.getElementById("ed-copiado").textContent = "guardado borrado";
@@ -1271,6 +1788,7 @@
     get input() { return input; },
     audio: audio,
     editor: editor,
+    pixel: function () { return lienzoPixel; },
     modoEditor: modoEditor,
     modoJuego: modoJuego,
     reiniciar: function () { world = NPCore.create(DATA); },

@@ -70,10 +70,37 @@ Eso es lo que hay que mirar antes de dibujar un hueco.
 Cada enemigo definido en el `game.yaml` con su comportamiento (patrulla,
 volador, perseguidor, saltarín, fijo), velocidad, vida, daño, puntos, si se
 puede pisar, si gira en los bordes y los ajustes propios de cada
-comportamiento. Los objetos, con su efecto, puntos y cantidad.
+comportamiento. Los objetos, con su efecto, puntos y cantidad. Y el botón
+**borrar**, que además limpia el mapa de sus apariciones.
 
-> Crear enemigos nuevos (con su dibujo y su símbolo) sigue siendo cosa del
-> `game.yaml`: el editor cambia los que ya existen.
+### Crear uno nuevo
+
+**«+ enemigo nuevo»** o **«+ objeto nuevo»** abre un formulario con todo lo que
+hace falta:
+
+- **nombre** y **símbolo** del mapa (te propone uno libre; no deja repetidos ni
+  pisar un tile)
+- **dibujo**: reaprovecha uno de los PNG que ya tiene el proyecto, o **dibújalo
+  ahí mismo**
+- **tamaño** del fotograma (16×16, 16×32, 32×16, 32×32), **cuántos fotogramas** y
+  la **caja de colisión**
+- comportamiento, velocidad, vida y puntos (o efecto y puntos, si es un objeto)
+
+Al crearlo aparece en la paleta del mapa y lo puedes pintar y probar al momento.
+
+### El editor de dibujos
+
+Si eliges «dibujarlo aquí» sale un lienzo de píxeles con las reglas de la
+consola: **15 colores más el transparente**. Trae lápiz, borrador, relleno y
+cuentagotas, deshacer, varios fotogramas (con «copiar frame» para animar a
+partir del anterior), «espejo» y un color libre para cambiar cualquier casilla
+de la paleta. Empieza con un bicho de ejemplo para no partir del vacío, y te
+dice cuántos colores llevas gastados.
+
+El dibujo se convierte en un PNG normal. Como el navegador no puede escribir en
+tu carpeta, en la pestaña **game.yaml** aparece la lista de **dibujos pendientes
+de guardar** con un botón por cada uno: descárgalos y déjalos en `graficos/`
+junto al `game.yaml`. El archivo ya apunta a ellos.
 
 ## Revisar
 
@@ -112,6 +139,8 @@ estabas haciendo. El botón «olvidar cambios guardados» lo borra.
 - Al exportar, cada opción se escribe con el nombre que ya tenía en tu archivo
   (en castellano o en inglés) y solo si la has cambiado. Hay una prueba que
   comprueba, opción por opción, que todos esos nombres los entiende el lector.
-- Las pruebas del kit hacen el viaje entero: editan mapas, física y niveles en
-  el editor, exportan el `game.yaml`, lo vuelven a compilar y comprueban que no
-  se ha perdido ni un comentario.
+- Las pruebas del kit hacen el viaje entero: editan mapas, física, niveles y
+  crean enemigos y objetos en el editor, exportan el `game.yaml`, lo vuelven a
+  compilar y comprueban que no se ha perdido ni un comentario. La prueba de
+  navegador llega a dibujar un enemigo con el ratón, colocarlo, jugarlo y
+  comprobar que su PNG queda listo para guardar.

@@ -67,6 +67,7 @@ def build_data(build: Build) -> Dict[str, object]:
             actor_build.actor.frame_w, actor_build.actor.frame_h,
         )
         values["sheet"] = sheet_name
+        values["sprite"] = actor_build.actor.sprite      # ruta del PNG original
         return values
 
     sheets["__tiles__"] = _sheet_entry(
@@ -197,7 +198,7 @@ def render_html(build: Build) -> str:
     with open(os.path.join(PREVIEW_DIR, "np_core.js"), "r", encoding="utf-8") as fh:
         core = fh.read()
     piezas = {}
-    for nombre in ("np_editor.js", "np_yaml.js", "np_bot.js"):
+    for nombre in ("np_editor.js", "np_yaml.js", "np_bot.js", "np_pixel.js"):
         with open(os.path.join(PREVIEW_DIR, nombre), "r", encoding="utf-8") as fh:
             piezas[nombre] = fh.read()
     with open(os.path.join(TEMPLATES_DIR, "preview.html"), "r", encoding="utf-8") as fh:
@@ -207,6 +208,7 @@ def render_html(build: Build) -> str:
     html = html.replace("@EDITOR@", piezas["np_editor.js"])
     html = html.replace("@YAML@", piezas["np_yaml.js"])
     html = html.replace("@BOT@", piezas["np_bot.js"])
+    html = html.replace("@PIXEL@", piezas["np_pixel.js"])
     html = html.replace("@DATA@", data)
     html = html.replace("@TITLE@", build.project.title)
     html = html.replace("@AUTHOR@", build.project.author or "")

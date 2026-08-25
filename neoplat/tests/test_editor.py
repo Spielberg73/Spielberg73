@@ -80,8 +80,8 @@ class TestEditor(unittest.TestCase):
 
     def test_los_cambios_llegan_al_yaml(self):
         editado = load_project(self.proyecto_editado)
-        # el guion de tests/editor.js pinta, mueve la salida, cambia la fisica
-        # y anade un nivel
+        # el guion de tests/editor.js pinta, mueve la salida, cambia la fisica,
+        # anade un nivel y crea un enemigo y un objeto
         self.assertEqual(editado.levels[0].rows[6][2:4], "==")
         self.assertEqual(editado.levels[0].start, (5, 9))
         self.assertEqual(editado.player.jump, 5.5)
@@ -89,13 +89,43 @@ class TestEditor(unittest.TestCase):
         self.assertEqual(len(editado.levels), len(self.original.levels) + 1)
         self.assertEqual(editado.levels[-1].name, "NIVEL DE PRUEBA")
 
+    def test_los_actores_nuevos_llegan_al_yaml(self):
+        editado = load_project(self.proyecto_editado)
+        self.assertIn("fantasma", editado.enemies)
+        fantasma = editado.enemies["fantasma"]
+        self.assertEqual(fantasma.behavior, "chaser")
+        self.assertEqual(fantasma.score, 300)
+        self.assertEqual(fantasma.range, 120)
+        self.assertEqual((fantasma.box_w, fantasma.box_h), (12, 11))
+        # al reaprovechar un dibujo del proyecto, apunta a ese PNG
+        self.assertTrue(os.path.isfile(os.path.join(self.proyecto_editado, fantasma.sprite)))
+
+        self.assertIn("gema", editado.items)
+        self.assertEqual(editado.items["gema"].effect, "health" if False else "life")
+        self.assertEqual(editado.items["gema"].score, 50)
+
+    def test_los_simbolos_nuevos_se_pueden_usar_en_los_mapas(self):
+        editado = load_project(self.proyecto_editado)
+        simbolos = {v: k for k, v in editado.levels[0].spawns.items()}
+        self.assertIn("fantasma", simbolos)
+        self.assertIn("gema", simbolos)
+        # y son simbolos libres: no chocan con ningun tile
+        self.assertNotIn(simbolos["fantasma"], editado.tiles)
+        self.assertNotIn(simbolos["gema"], editado.tiles)
+
     def test_no_se_pierde_nada_de_lo_que_no_se_toca(self):
         editado = load_project(self.proyecto_editado)
         self.assertEqual(editado.title, self.original.title)
         self.assertEqual(editado.player.speed, self.original.player.speed)
         self.assertEqual(editado.player.gravity, self.original.player.gravity)
-        self.assertEqual(list(editado.enemies), list(self.original.enemies))
-        self.assertEqual(editado.enemies["seta"].speed, self.original.enemies["seta"].speed)
+        # los que ya estaban siguen igual (ahora ademas hay enemigos nuevos)
+        for nombre, enemigo in self.original.enemies.items():
+            self.assertIn(nombre, editado.enemies)
+            self.assertEqual(editado.enemies[nombre].speed, enemigo.speed)
+            self.assertEqual(editado.enemies[nombre].behavior, enemigo.behavior)
+        for nombre, objeto in self.original.items.items():
+            self.assertIn(nombre, editado.items)
+            self.assertEqual(editado.items[nombre].score, objeto.score)
         self.assertEqual(list(editado.layers), list(self.original.layers))
         self.assertEqual(list(editado.sound.efectos), list(self.original.sound.efectos))
         self.assertEqual(list(editado.sound.musica), list(self.original.sound.musica))

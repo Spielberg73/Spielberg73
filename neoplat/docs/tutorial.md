@@ -97,7 +97,17 @@ jugador:
 
 Cambia un valor, `../ngplat probar` y lo notas al instante.
 
-## 6. Añade un enemigo nuevo
+## 6. Añade un enemigo nuevo (desde el editor)
+
+Lo más rápido: en el preview pulsa <kbd>E</kbd>, pestaña **enemigos y objetos**,
+botón **«+ enemigo nuevo»**. Le pones nombre, eliges comportamiento y lo dibujas
+ahí mismo (o reaprovechas un dibujo del proyecto). Al crearlo aparece en la
+paleta y ya lo puedes pintar en el mapa.
+
+Si lo has dibujado, en la pestaña **game.yaml** te sale un botón para descargar
+su PNG: guárdalo en `graficos/` y listo.
+
+## 6b. …o a mano en el archivo
 
 ```yaml
 enemigos:
