@@ -66,9 +66,12 @@ void np_hud_draw(const NpWorld *w)
     }
 
     if (w->state != last_state) {
-        np_hud_blank(10, 13, 20);
-        np_hud_blank(10, 14, 20);
-        np_hud_blank(10, 15, 20);
+        /* Se borran todas las filas donde puede caer un mensaje (12 a 16), no
+           solo las de en medio: si no, el titulo de la fila 12 y el autor de
+           la 16 se quedaban pegados encima del juego al pulsar start. */
+        uint8_t row;
+        for (row = 12; row <= 16; row++)
+            np_hud_blank(10, row, 20);
         last_state = w->state;
     }
 

@@ -194,22 +194,79 @@ brew tap dciabrin/ngdevkit && brew install ngdevkit ngdevkit-gngeo
 
 Después, `ngplat compilar --make` construye la ROM directamente.
 
-## Lo que aún no se ha podido comprobar
+## Probar la ROM sin la BIOS: el banco de pruebas
 
-Las otras dos máquinas se arrancan en un emulador dentro de las pruebas
-(`make test-emulador`). La Neo Geo no: emularla necesita la BIOS de la consola,
-que es propietaria y no se puede distribuir. Lo que sí se comprueba es el
-código máquina: que no lleve instrucciones que el 68000 no tiene ni accesos a
-direcciones impares, que es lo que colgaba a las otras dos.
+Las otras dos máquinas se arrancan en un emulador de verdad dentro de las
+pruebas. La Neo Geo no se puede: cualquier emulador necesita la BIOS de SNK,
+que es propietaria y no se distribuye.
+
+Así que el kit trae medio emulador propio, en `tests/maquina_neogeo.py`:
+
+- el **68000 de verdad** lo ejecuta Musashi (el mismo núcleo que MAME) a través
+  de `machine68k`, que viene con `amitools`;
+- el **LSPC** (el chip de vídeo) está escrito a mano en Python: se queda con lo
+  que el juego escribe por `$3C0000`-`$3C0004` y luego reconstruye la imagen con
+  los tiles de las ROMs C1/C2 y S1 y las paletas de `$400000`.
+
+El juego que se ejecuta es exactamente el que genera `ngplat compilar`. Lo
+único que se añade es `tests/neogeo/arranque.c`, que hace lo que haría la BIOS
+(poner la pila, copiar `.data`, borrar `.bss`) y entra en `main()`.
+
+```bash
+pip3 install amitools           # trae machine68k
+apt-get install gcc-m68k-linux-gnu
+make test-emulador-neogeo       # deja las capturas en capturas/
+```
+
+La prueba enciende la consola, mira la pantalla de título, pulsa START, juega
+un rato hacia la derecha y comprueba que la imagen cambia, que el marcador se
+dibuja y que ningún frame se pasa del presupuesto de la máquina.
+
+**No es un emulador de Neo Geo.** No hay Z80, ni YM2610, ni zoom de sprites, ni
+BIOS. Y hay dos cosas que da por supuestas, las mismas que da el motor, así que
+no puede desmentirlas (solo un MVS o MAME con BIOS pueden):
+
+- que el sprite 0 va delante y los siguientes quedan detrás;
+- que la fila 0 del plano fix cae en la línea 0 de la pantalla.
 
 ## Rendimiento
 
-Un frame son unos 200.000 ciclos de 68000. El reparto aproximado del motor:
+Un frame son 200.000 ciclos de 68000 (12 MHz entre 60 frames). Medido con el
+banco de pruebas sobre el ejemplo `bosque-magico`, corriendo y saltando:
 
-- simulación (jugador + 64 entidades): unos 20.000 ciclos
-- reescritura del fondo al cruzar un tile: unos 15.000 ciclos
-- sprites de actores: unos 300 ciclos por sprite
+| | ciclos por frame |
+|---|---|
+| frame normal | 148.000 |
+| frame en el que la cámara cruza un tile | 184.000 |
+| presupuesto de la consola | 200.000 |
 
-Es decir, sobra tiempo. Los sitios donde tener cuidado si amplías el motor:
-multiplicaciones de 32 bits (lentas en 68000), divisiones (aún más) y escrituras
-a VRAM fuera del vblank.
+Para llegar ahí hubo que arreglar tres cosas, y todas se vieron con el banco:
+
+**El fondo se redibujaba entero.** La Neo Geo no tiene plano con scroll: el
+escenario son 21 columnas de sprites. Al cruzar un tile se rellenaban las 21
+(630 escrituras en la VRAM) y la consola bajaba a **29 fps**. Ahora el reparto
+es circular —la columna N del mapa cae siempre en el sprite N mod 21—, así que
+veinte columnas ya están donde tienen que estar y solo se rellena la que entra
+por el borde: 30 escrituras. Las capas de parallax van igual. En total, un 79%
+menos de escrituras en la VRAM.
+
+**Cada tile del fondo costaba una multiplicación de 32 bits.**
+`np_tile_gfx_at()` calcula `fila * ancho + columna`, y el 68000 no sabe
+multiplicar dos enteros largos: el compilador se va a una rutina en software.
+`np_tile_gfx_column()` (en `np_world.c`) multiplica una vez por columna y baja
+sumando el ancho del mapa.
+
+**Colocar un sprite costaba seis escrituras.** SCB3 y SCB4 están a `0x200` de
+distancia, así que poniendo ese `0x200` como incremento el propio chip salta de
+la posición vertical a la horizontal y basta con dar la dirección una vez: tres
+escrituras. Es la función que más se llama de todo el motor.
+
+Los sitios donde tener cuidado si amplías el motor son los mismos:
+multiplicaciones de 32 bits (lentas en 68000), divisiones (aún más) y
+escrituras a VRAM de más.
+
+## Lo que aún no se ha podido comprobar
+
+El banco de pruebas cubre el vídeo y el mando. Siguen sin probarse en hardware
+el sonido (el driver del Z80 solo se ejecuta en `tests/z80sim.py`), el zoom de
+sprites (que el motor no usa) y las muestras digitales de la ROM V1.

@@ -346,10 +346,14 @@ class TestCompilacionReal(unittest.TestCase):
         if getattr(cls, "tmp", ""):
             shutil.rmtree(cls.tmp, ignore_errors=True)
 
-    def _construir(self, nombre):
+    def _generar(self, nombre):
         build = cargar_demo(self.proyecto, nombre)
         out = os.path.join(self.tmp, nombre)
         generar_para_sistema(build, out, sistemas.obtener(nombre), "202")
+        return out
+
+    def _construir(self, nombre):
+        out = self._generar(nombre)
         hecho = subprocess.run(["make", "-C", out], capture_output=True, text=True)
         self.assertEqual(hecho.returncode, 0, hecho.stdout + hecho.stderr)
         return out
@@ -523,6 +527,21 @@ class TestCompilacionReal(unittest.TestCase):
         self.assertEqual(
             emulador_amiga.comprobar(os.path.join(out, "disco/Prueba.adf"), capturas), 0,
             "el disquete no arranca o no se juega en el emulador")
+
+    def test_la_neogeo_dibuja_el_juego(self):
+        """La Neo Geo no se puede arrancar en un emulador normal sin la BIOS de
+        SNK, asi que el kit trae su propio banco: el 68000 de verdad y el chip
+        de video escrito a mano (tests/maquina_neogeo.py)."""
+        import emulador_neogeo
+        try:
+            import machine68k  # noqa: F401
+        except ImportError:
+            self.skipTest("falta machine68k (pip3 install amitools)")
+        # el Makefile de Neo Geo pide ngdevkit; el banco enlaza su propia ROM
+        out = self._generar("neogeo")
+        capturas = os.path.join(self.tmp, "capturas-neogeo")
+        self.assertEqual(emulador_neogeo.comprobar(out, capturas), 0,
+                         "la ROM de Neo Geo no dibuja o no se juega")
 
     def test_las_direcciones_relocalizadas_caen_en_su_hunk(self):
         """La tabla de relocalizacion es lo que hace que el juego se pueda cargar

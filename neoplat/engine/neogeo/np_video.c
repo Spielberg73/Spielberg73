@@ -41,11 +41,14 @@ uint16_t np_input_read(void)
     return out;
 }
 
+/* La posicion de un sprite son dos palabras que estan a 0x200 de distancia
+ * (SCB3 = 0x8200, SCB4 = 0x8400). Poniendo ese 0x200 como modulo, el propio
+ * chip salta de una a otra y basta con dar la direccion una vez: tres
+ * escrituras en vez de seis, y esta es la funcion que mas se llama de todas. */
 static void np_sprite_pos(uint16_t sprite, int16_t x, int16_t y, uint8_t height)
 {
-    np_vram_seek((uint16_t)(NP_SCB3 + sprite), 0);
+    np_vram_seek((uint16_t)(NP_SCB3 + sprite), 0x200);
     np_vram_write((uint16_t)((((496 - y) & 0x1FF) << 7) | (height & 0x3F)));
-    np_vram_seek((uint16_t)(NP_SCB4 + sprite), 0);
     np_vram_write((uint16_t)((x & 0x1FF) << 7));
 }
 
@@ -83,21 +86,29 @@ void np_video_init(void)
 static void np_bg_column(const NpWorld *w, uint16_t column, int32_t tile_x, int32_t tile_y)
 {
     uint16_t sprite = (uint16_t)(NP_BG_FIRST_SPRITE + column);
+    uint16_t tiles[NP_BG_ROWS];
+    uint16_t atributos = (uint16_t)(np_tileset_palette << 8);
     uint16_t row;
+    np_tile_gfx_column(w->level, tile_x, tile_y, NP_BG_ROWS, tiles);
     np_vram_seek((uint16_t)(NP_SCB1 + sprite * 64), 1);
     for (row = 0; row < NP_BG_ROWS; row++) {
-        uint16_t tile = np_tile_gfx_at(w->level, tile_x, tile_y + row);
-        np_vram_write(tile);                                   /* numero de tile */
-        np_vram_write((uint16_t)(np_tileset_palette << 8));     /* paleta y atributos */
+        np_vram_write(tiles[row]);              /* numero de tile */
+        np_vram_write(atributos);               /* paleta y atributos */
     }
 }
 
 /* Dibuja una capa de parallax. La capa se repite horizontalmente y se mueve a
- * una fraccion de la camara: eso es todo el efecto. */
+ * una fraccion de la camara: eso es todo el efecto.
+ *
+ * Igual que el fondo, las columnas van en un anillo: la columna N de la capa
+ * cae siempre en el sprite N mod 21, asi que al avanzar la camara solo se
+ * rellena el tilemap de la que entra por el borde. */
+#define NP_SIN_CARGAR ((int32_t)-0x7FFFFFFF)
+
 static void np_draw_layer(const NpWorld *w, uint8_t layer_index, uint8_t slot)
 {
 #if NP_LAYER_COUNT > 0
-    static int32_t last_col[NP_LAYER_COUNT];
+    static int32_t cargada[NP_LAYER_COUNT][NP_LAYER_COLUMNS];
     static uint8_t last_layer[NP_LAYER_COUNT];
     static uint8_t primera_vez = 1;
     const NpLayer *layer = &np_layers[layer_index];
@@ -107,34 +118,51 @@ static void np_draw_layer(const NpWorld *w, uint8_t layer_index, uint8_t slot)
     int16_t off_x = (int16_t)(scroll_x & 15);
     int16_t y = (int16_t)(layer->offset_y - scroll_y);
     uint16_t base = (uint16_t)NP_LAYER_FIRST_SPRITE(slot);
-    uint8_t redibujar, i, r;
+    uint16_t ranura;
+    int32_t mapa = col0, col = col0, resto;
+    uint8_t todas, i, r;
 
     if (primera_vez) {
-        for (i = 0; i < NP_LAYER_COUNT; i++) { last_col[i] = -9999; last_layer[i] = 0xFF; }
+        for (i = 0; i < NP_LAYER_COUNT; i++) {
+            last_layer[i] = 0xFF;
+            for (r = 0; r < NP_LAYER_COLUMNS; r++) cargada[i][r] = NP_SIN_CARGAR;
+        }
         primera_vez = 0;
     }
-    redibujar = (col0 != last_col[slot]) || (layer_index != last_layer[slot]);
-    last_col[slot] = col0;
+    todas = (layer_index != last_layer[slot]);   /* otra capa: no vale nada */
     last_layer[slot] = layer_index;
 
+    /* Una sola division por capa y frame: dentro del bucle basta con sumar. */
+    resto = col0 % NP_LAYER_COLUMNS;
+    ranura = (uint16_t)(resto < 0 ? resto + NP_LAYER_COLUMNS : resto);
+    if (layer->repeat) {
+        col %= layer->cols;
+        if (col < 0) col += layer->cols;
+    }
+
     for (i = 0; i < NP_LAYER_COLUMNS; i++) {
-        int32_t col = col0 + i;
-        uint16_t sprite = (uint16_t)(base + i);
-        if (layer->repeat) {
-            col %= layer->cols;
-            if (col < 0) col += layer->cols;
-        } else if (col < 0 || col >= layer->cols) {
+        uint16_t sprite = (uint16_t)(base + ranura);
+        if (!layer->repeat && (mapa < 0 || mapa >= layer->cols)) {
+            cargada[slot][ranura] = NP_SIN_CARGAR;
             np_sprite_hide(sprite);
-            continue;
-        }
-        if (redibujar) {
-            np_vram_seek((uint16_t)(NP_SCB1 + sprite * 64), 1);
-            for (r = 0; r < layer->rows; r++) {
-                np_vram_write(layer->tiles[r * layer->cols + col]);
-                np_vram_write((uint16_t)(layer->palette << 8));
+        } else {
+            if (todas || cargada[slot][ranura] != col) {
+                np_vram_seek((uint16_t)(NP_SCB1 + sprite * 64), 1);
+                for (r = 0; r < layer->rows; r++) {
+                    np_vram_write(layer->tiles[r * layer->cols + col]);
+                    np_vram_write((uint16_t)(layer->palette << 8));
+                }
+                cargada[slot][ranura] = col;
             }
+            np_sprite_pos(sprite, (int16_t)(i * 16 - off_x), y, layer->rows);
         }
-        np_sprite_pos(sprite, (int16_t)(i * 16 - off_x), y, layer->rows);
+        mapa++;
+        if (layer->repeat) {
+            if (++col >= layer->cols) col = 0;
+        } else {
+            col = mapa;
+        }
+        if (++ranura == NP_LAYER_COLUMNS) ranura = 0;
     }
 #else
     (void)w; (void)layer_index; (void)slot;
@@ -160,26 +188,45 @@ static void np_draw_layers(const NpWorld *w)
 #endif
 }
 
+/* El reparto de columnas es circular: la columna N del mapa cae siempre en el
+ * sprite N mod 21. Asi, cuando la camara avanza un tile, veinte de las
+ * veintiuna columnas ya estan donde tienen que estar y solo hay que rellenar
+ * el tilemap de la que acaba de entrar por el borde: 30 escrituras en la VRAM
+ * en vez de 630. Antes de esto la consola bajaba a 29 fps cada 16 pixeles de
+ * scroll (medido con tests/maquina_neogeo.py). */
 static void np_draw_background(const NpWorld *w)
 {
-    static int32_t last_col = -9999, last_row = -9999;
+    static int32_t cargada[NP_BG_COLUMNS];
+    static int32_t last_row = -9999;
     static const NpLevel *last_level = 0;
+    static uint8_t primera_vez = 1;
     int32_t col = w->cam_x >> NP_TILE_SHIFT;
     int32_t row = w->cam_y >> NP_TILE_SHIFT;
     int16_t off_x = (int16_t)(w->cam_x & 15);
     int16_t off_y = (int16_t)(w->cam_y & 15);
+    /* Si cambia la fila (o el nivel) no vale nada de lo que hay: al moverse en
+     * vertical cambian los quince tiles de todas las columnas. */
+    uint8_t todas = primera_vez || row != last_row || w->level != last_level;
+    /* La camara nunca sale del nivel, pero un resto negativo aqui se saldria
+     * del array: mas vale gastar una comparacion al frame. */
+    int32_t resto = col % NP_BG_COLUMNS;
+    uint16_t ranura = (uint16_t)(resto < 0 ? resto + NP_BG_COLUMNS : resto);
     uint16_t i;
 
-    if (col != last_col || row != last_row || w->level != last_level) {
-        for (i = 0; i < NP_BG_COLUMNS; i++)
-            np_bg_column(w, i, col + i, row);
-        last_col = col;
-        last_row = row;
-        last_level = w->level;
-    }
-    for (i = 0; i < NP_BG_COLUMNS; i++)
-        np_sprite_pos((uint16_t)(NP_BG_FIRST_SPRITE + i),
+    primera_vez = 0;
+    last_row = row;
+    last_level = w->level;
+
+    for (i = 0; i < NP_BG_COLUMNS; i++) {
+        int32_t mapa = col + i;
+        if (todas || cargada[ranura] != mapa) {
+            np_bg_column(w, ranura, mapa, row);
+            cargada[ranura] = mapa;
+        }
+        np_sprite_pos((uint16_t)(NP_BG_FIRST_SPRITE + ranura),
                       (int16_t)(i * 16 - off_x), (int16_t)(-off_y), NP_BG_ROWS);
+        if (++ranura == NP_BG_COLUMNS) ranura = 0;
+    }
 }
 
 /* Dibuja un actor (jugador, enemigo u objeto) usando `cols` sprites. */

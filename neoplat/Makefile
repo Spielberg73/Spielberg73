@@ -22,7 +22,8 @@ test-navegador: ejemplo
 # cores de libretro; si no estan, cada prueba se salta sola:
 #   Mega Drive:  apt-get install libretro-genesisplusgx
 #   Amiga:       puae_libretro.so del buildbot de libretro, en /usr/local/lib/libretro
-test-emulador: test-emulador-md test-emulador-amiga
+# La Neo Geo va con el banco de pruebas del propio kit (pip3 install amitools).
+test-emulador: test-emulador-md test-emulador-amiga test-emulador-neogeo
 
 test-emulador-md:
 	./ngplat compilar $(EJEMPLO) --sistema megadrive --make
@@ -33,6 +34,12 @@ test-emulador-amiga:
 	./ngplat compilar $(EJEMPLO) --sistema amiga --make
 	$(PYTHON) tests/emulador_amiga.py \
 		$(EJEMPLO)/build/amiga/disco/BosqueMagico.adf capturas
+
+# La Neo Geo no necesita core de libretro: el banco de pruebas del kit trae el
+# 68000 (machine68k, de amitools) y el chip de video escrito en Python.
+test-emulador-neogeo:
+	./ngplat compilar $(EJEMPLO) --sistema neogeo
+	$(PYTHON) tests/emulador_neogeo.py $(EJEMPLO)/build/neogeo capturas
 
 ejemplo:
 	./ngplat comprobar $(EJEMPLO)
@@ -50,4 +57,4 @@ limpiar:
 	rm -rf $(EJEMPLO)/build $(EJEMPLO)/preview.html capturas
 	find . -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
 
-.PHONY: test test-rapido test-navegador test-emulador test-emulador-md test-emulador-amiga ejemplo ejemplo-todos limpiar
+.PHONY: test test-rapido test-navegador test-emulador test-emulador-md test-emulador-amiga test-emulador-neogeo ejemplo ejemplo-todos limpiar

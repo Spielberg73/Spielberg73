@@ -52,6 +52,8 @@ void np_world_step(NpWorld *w, uint16_t input);
 /* Consultas que usa la capa grafica. */
 uint8_t np_tile_kind_at(const NpLevel *level, int32_t tx, int32_t ty);
 uint16_t np_tile_gfx_at(const NpLevel *level, int32_t tx, int32_t ty);
+void np_tile_gfx_column(const NpLevel *level, int32_t tx, int32_t ty,
+                        uint16_t count, uint16_t *out);
 const NpActorDef *np_entity_def(const NpEntity *e);
 uint8_t np_actor_frame(const NpActorDef *def, uint8_t anim, uint8_t anim_frame);
 int np_player_visible(const NpWorld *w);

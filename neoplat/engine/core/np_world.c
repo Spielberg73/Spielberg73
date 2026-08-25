@@ -50,6 +50,37 @@ uint16_t np_tile_gfx_at(const NpLevel *level, int32_t tx, int32_t ty)
     return np_tile_gfx[level->cells[ty * level->width + tx]];
 }
 
+/* Los graficos de una columna entera de tiles, de arriba a abajo.
+ *
+ * Es lo que necesita el fondo de las tres maquinas. Pedirlos uno a uno con
+ * np_tile_gfx_at() sale caro en un 68000: cada llamada multiplica dos enteros
+ * de 32 bits y el 68000 no tiene esa instruccion, asi que el compilador se va
+ * a una rutina en software. Aqui se multiplica una vez y el resto de la
+ * columna se baja sumando el ancho del mapa. Fuera del nivel devuelve 0, igual
+ * que np_tile_gfx_at(). */
+void np_tile_gfx_column(const NpLevel *level, int32_t tx, int32_t ty,
+                        uint16_t count, uint16_t *out)
+{
+    const uint8_t *cell;
+    uint16_t i = 0;
+
+    if (tx < 0 || tx >= (int32_t)level->width) {
+        for (; i < count; i++) out[i] = 0;
+        return;
+    }
+    for (; i < count && ty < 0; i++, ty++)
+        out[i] = 0;
+    if (i < count && ty < (int32_t)level->height) {
+        cell = level->cells + (int32_t)ty * level->width + tx;
+        for (; i < count && ty < (int32_t)level->height; i++, ty++) {
+            out[i] = np_tile_gfx[*cell];
+            cell += level->width;
+        }
+    }
+    for (; i < count; i++)
+        out[i] = 0;
+}
+
 static int np_blocks(uint8_t kind) { return kind == NP_TILE_SOLID; }
 
 static int np_boxes_overlap(np_fix ax, np_fix ay, int aw, int ah,

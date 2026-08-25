@@ -240,7 +240,7 @@ neoplat/
 │   ├── np_pixel.js         el lienzo para dibujar enemigos y objetos
 │   └── np_bot.js           el bot que comprueba si un nivel se puede terminar
 ├── examples/bosque-magico/ juego de ejemplo listo para compilar
-└── tests/                  143 pruebas + 24 de jugabilidad + 49 del editor +
+└── tests/                  145 pruebas + 24 de jugabilidad + 49 del editor +
                             bot que se pasa los niveles + emuladores y navegador
 ```
 
@@ -285,8 +285,11 @@ node tests/comportamiento.js   # 24 pruebas de jugabilidad
 make ejemplo-todos             # compila el ejemplo para las tres máquinas
 ```
 
-Las dos pruebas con emulador y navegador son opcionales: si no tienes
-`libretro-genesisplusgx` o Playwright instalados, se saltan solas.
+Las pruebas con emulador y navegador son opcionales: si no tienes
+`libretro-genesisplusgx`, `amitools` o Playwright instalados, se saltan solas.
+La Neo Geo no se puede meter en un emulador normal sin la BIOS de SNK, así que
+el kit trae su propio banco de pruebas: el 68000 de verdad (Musashi, el núcleo
+de MAME) y el chip de vídeo escrito a mano en `tests/maquina_neogeo.py`.
 
 Lo que comprueban: el lector de PNG contra Pillow, el lector de YAML contra
 PyYAML, ida y vuelta de los tres formatos de gráficos (tiles de Neo Geo, tiles
@@ -313,6 +316,16 @@ Verificado aquí:
 - **El cartucho de Mega Drive se construye entero**: 128 KB con la cabecera
   `SEGA MEGA DRIVE`, el nombre del juego, el rango de la ROM y la suma de
   control, que las pruebas vuelven a calcular y comparan.
+- **La ROM de Neo Geo dibuja el juego**: las pruebas la ejecutan en el banco del
+  propio kit —el 68000 de verdad más el chip de vídeo reconstruido en Python—,
+  reconstruyen la imagen desde la VRAM, las ROMs de gráficos y las paletas, y
+  comprueban que sale el título, que START empieza la partida y que el escenario
+  se mueve al correr. Encontró un fallo del marcador que ninguna otra prueba veía
+  (el texto del título se quedaba escrito encima del juego).
+- **El juego va a 60 de los 60 fps de la Neo Geo** (29 en los frames malos antes
+  de optimizar): el banco cuenta los ciclos de 68000 de cada frame y la prueba
+  falla si alguno se pasa de los 200.000 que da la consola. Cómo se hizo, en
+  [docs/neogeo.md](docs/neogeo.md).
 - **El binario no lleva nada que el 68000 no entienda**: las pruebas revisan el
   código máquina de las **tres** máquinas (la Neo Geo también, compilando sus
   fuentes sin enlazar) y fallan si aparece una instrucción de 68020 o un acceso
@@ -356,13 +369,15 @@ Verificado aquí:
   se comprueba que recibe las órdenes del 68000 y escribe en el chip los
   periodos y volúmenes de las notas escritas en el `game.yaml`.
 
-**Sin probar en hardware real**: la ROM de Mega Drive y el disquete de Amiga se
-han visto funcionando en emuladores, pero no en máquinas de verdad. La ROM de
-Neo Geo está construida según la documentación del fabricante (ver
-[docs/neogeo.md](docs/neogeo.md)) y su formato está comprobado de ida y vuelta,
-pero **no la he visto arrancar**: aquí no hay ngdevkit. Si al probarla ves los
-gráficos revueltos, lo más probable es que haya que ajustar el orden de bytes
-descrito en ese documento: está aislado en dos funciones de `gfx.py`.
+**Sin probar en hardware real**: las tres se han visto funcionando en
+emuladores, pero no en máquinas de verdad. Y en la Neo Geo el emulador es el del
+propio kit, que da por buenas dos cosas porque las da por buenas también el
+motor: que el sprite 0 va delante de los demás y que la fila 0 del plano fix cae
+en la línea 0 de la pantalla. Si al probarla en un MVS ves el fondo tapando al
+jugador, se invierte con `NP_SPRITE_FRONT_FIRST` en `np_video.h`; si ves el
+marcador desplazado en vertical, es lo segundo. Tampoco están probados el sonido
+(el driver del Z80 solo corre en el emulador de Z80 de las pruebas) ni las
+muestras digitales.
 
 Lo que aún no hace:
 
