@@ -48,8 +48,13 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
         pagina = navegador.new_page(viewport={"width": 1280, "height": 1100})
         errores = []
         pagina.on("pageerror", lambda e: errores.append(str(e)))
-        pagina.on("console",
-                  lambda m: errores.append("console: " + m.text) if m.type == "error" else None)
+        def _console(mensaje):
+            # los fallos de red (por ejemplo, las fuentes de Google sin conexion)
+            # no son errores del preview
+            if mensaje.type == "error" and "Failed to load resource" not in mensaje.text:
+                errores.append("console: " + mensaje.text)
+
+        pagina.on("console", _console)
         pagina.goto("file://" + os.path.abspath(preview))
         pagina.wait_for_timeout(700)
 
@@ -86,10 +91,12 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
         exigir(interfaz["herramientas"] >= 6, "faltan herramientas")
         exigir(interfaz["paleta"] >= 5, "la paleta sale vacia")
 
-        caja = pagina.locator("#pantalla").bounding_box()
-        escala = caja["width"] / 480.0
-
         def punto(tx, ty):
+            """Centro de una casilla en pantalla. Se vuelve a medir el lienzo
+            cada vez: abrir paneles puede mover la pagina."""
+            pagina.locator("#pantalla").scroll_into_view_if_needed()
+            caja = pagina.locator("#pantalla").bounding_box()
+            escala = caja["width"] / 480.0
             est = pagina.evaluate("""() => { const e = window.NeoPlat.editor;
                 return { cx: e.camX, cy: e.camY, z: e.zoom }; }""")
             return (caja["x"] + (tx * 16 + 8 - est["cx"]) * est["z"] * escala,
