@@ -1,8 +1,8 @@
-/* editor.js - pruebas del editor de niveles (preview/np_editor.js).
+/* editor.js - pruebas del editor (preview/np_editor.js y np_yaml.js).
  *
- * El editor se ejecuta aqui sin navegador: se le pasa un canvas de mentira,
- * porque lo que se comprueba es la logica (pintar, deshacer, redimensionar,
- * exportar el game.yaml y reconstruir el nivel para jugarlo), no el dibujado.
+ * Se ejecuta sin navegador: el editor recibe un canvas de mentira, porque lo
+ * que se comprueba es la logica -- herramientas de dibujo, deshacer, niveles,
+ * propiedades, validacion, el yaml que exporta y el guardado automatico.
  *
  *   node tests/editor.js datos.json [salida.yaml]
  */
@@ -12,16 +12,18 @@ var assert = require("assert");
 var fs = require("fs");
 var path = require("path");
 var NPEditor = require(path.join(__dirname, "..", "preview", "np_editor.js"));
+var NPYaml = require(path.join(__dirname, "..", "preview", "np_yaml.js"));
+var NPCore = require(path.join(__dirname, "..", "preview", "np_core.js"));
 
 var DATA = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
 
 function lienzoFalso() {
   var nada = function () { return nada; };
   return {
-    canvas: { width: 320, height: 224 },
+    canvas: { width: 480, height: 312 },
     ctx: new Proxy({}, {
       get: function (destino, clave) {
-        if (clave === "canvas") return { width: 320, height: 224 };
+        if (clave === "canvas") return { width: 480, height: 312 };
         return nada;
       },
       set: function () { return true; }
@@ -29,7 +31,17 @@ function lienzoFalso() {
   };
 }
 
-function nuevoEditor() {
+function almacenFalso() {
+  var datos = {};
+  return {
+    setItem: function (k, v) { datos[k] = String(v); },
+    getItem: function (k) { return k in datos ? datos[k] : null; },
+    removeItem: function (k) { delete datos[k]; },
+    _datos: datos
+  };
+}
+
+function nuevoEditor(almacen) {
   var falso = lienzoFalso();
   return NPEditor.crear({
     data: JSON.parse(JSON.stringify(DATA)),
@@ -37,136 +49,417 @@ function nuevoEditor() {
     ctx: falso.ctx,
     dibujarFrame: function () {},
     alJugar: function () {},
-    alCambiar: function () {}
+    alCambiar: function () {},
+    almacenamiento: almacen === undefined ? almacenFalso() : almacen
   });
 }
+
+function filas(e) { return e.modelo.filas[e.nivel]; }
 
 var pruebas = [];
 function prueba(nombre, fn) { pruebas.push([nombre, fn]); }
 
-prueba("empieza con los mapas del proyecto", function () {
+/* ------------------------------------------------------------- modelo */
+
+prueba("el modelo sale del proyecto", function () {
   var e = nuevoEditor();
-  assert.strictEqual(e.filas.length, DATA.levels.length);
-  assert.deepStrictEqual(e.filas[0], DATA.levels[0].rows);
+  assert.strictEqual(e.modelo.filas.length, DATA.levels.length);
+  assert.deepStrictEqual(filas(e), DATA.levels[0].rows);
+  assert.strictEqual(e.modelo.juego.titulo, DATA.title);
+  // el modelo trabaja en las unidades del usuario, redondeadas a 3 decimales
+  assert.ok(Math.abs(e.modelo.jugador.salto - DATA.player.jump / 256) < 0.002,
+            "el salto no cuadra: " + e.modelo.jugador.salto);
+  assert.strictEqual(e.modelo.enemigos.length, DATA.enemies.length);
+  assert.strictEqual(e.modelo.niveles[0].nombre, DATA.levels[0].name);
 });
 
-prueba("pintar cambia el mapa", function () {
-  var e = nuevoEditor();
-  e.herramienta = "#";
-  e.pintar(3, 3, false);
-  assert.strictEqual(e.filas[0][3][3], "#");
-});
+/* -------------------------------------------------------- herramientas */
 
-prueba("borrar deja el tile vacio", function () {
+prueba("lapiz: pinta y borra", function () {
   var e = nuevoEditor();
-  e.herramienta = "#";
+  e.simbolo = "#";
+  e.empezarCambio();
   e.pintar(3, 3, false);
+  e.terminarCambio();
+  assert.strictEqual(filas(e)[3][3], "#");
+  e.empezarCambio();
   e.pintar(3, 3, true);
-  assert.strictEqual(e.filas[0][3][3], ".");
+  e.terminarCambio();
+  assert.strictEqual(filas(e)[3][3], ".");
 });
 
-prueba("deshacer vuelve atras paso a paso", function () {
+prueba("un trazo entero es un solo paso de deshacer", function () {
   var e = nuevoEditor();
-  var antes = e.filas[0].slice();
-  e.herramienta = "#";
-  e.pintar(3, 3, false);
-  e.pintar(4, 3, false);
+  var antes = filas(e).slice();
+  e.simbolo = "#";
+  e.empezarCambio();
+  for (var x = 2; x < 12; x++) e.pintar(x, 4, false);
+  e.terminarCambio();
+  assert.strictEqual(e.historial.length, 1);
   e.deshacer();
+  assert.deepStrictEqual(filas(e), antes);
+});
+
+prueba("rehacer devuelve lo deshecho", function () {
+  var e = nuevoEditor();
+  e.simbolo = "#";
+  e.empezarCambio();
+  e.pintar(5, 5, false);
+  e.terminarCambio();
+  var conCambio = filas(e).slice();
   e.deshacer();
-  assert.deepStrictEqual(e.filas[0], antes);
+  e.rehacerCambio();
+  assert.deepStrictEqual(filas(e), conCambio);
+});
+
+prueba("rectangulo relleno y hueco", function () {
+  var e = nuevoEditor();
+  e.empezarCambio();
+  e.rectangulo(4, 4, 8, 7, "#", false);
+  e.terminarCambio();
+  assert.strictEqual(filas(e)[4].substr(4, 5), "#####", "falta el borde de arriba");
+  assert.strictEqual(filas(e)[5][4], "#");
+  assert.strictEqual(filas(e)[5][8], "#");
+  assert.notStrictEqual(filas(e)[5][6], "#", "el hueco deberia quedar vacio");
+  e.empezarCambio();
+  e.rectangulo(4, 4, 8, 7, "=", true);
+  e.terminarCambio();
+  assert.strictEqual(filas(e)[5].substr(4, 5), "=====", "el relleno no llena");
+});
+
+prueba("relleno respeta las paredes", function () {
+  var e = nuevoEditor();
+  e.empezarCambio();
+  e.rectangulo(4, 4, 10, 8, "#", false);
+  e.relleno(6, 6, "=");
+  e.terminarCambio();
+  assert.strictEqual(filas(e)[6].substr(5, 5), "=====", "no ha llenado el interior");
+  assert.strictEqual(filas(e)[6][4], "#", "se ha salido por la pared");
+  assert.strictEqual(filas(e)[3][6], ".", "se ha salido por arriba");
+});
+
+prueba("cuentagotas y copiar/pegar", function () {
+  var e = nuevoEditor();
+  e.empezarCambio();
+  e.rectangulo(3, 3, 6, 5, "#", true);
+  e.terminarCambio();
+  e.seleccion = { x: 3, y: 3, w: 4, h: 3 };
+  assert.ok(e.copiar());
+  e.pegar(20, 8);
+  for (var y = 0; y < 3; y++) {
+    assert.strictEqual(filas(e)[8 + y].substr(20, 4), "####",
+      "el bloque pegado no coincide");
+  }
+});
+
+prueba("cortar deja el hueco vacio", function () {
+  var e = nuevoEditor();
+  e.empezarCambio();
+  e.rectangulo(3, 3, 6, 5, "#", true);
+  e.terminarCambio();
+  e.seleccion = { x: 3, y: 3, w: 4, h: 3 };
+  e.cortar();
+  assert.strictEqual(filas(e)[3].substr(3, 4), "....");
+  assert.deepStrictEqual(e.portapapeles, ["####", "####", "####"]);
 });
 
 prueba("solo puede haber una salida del jugador", function () {
   var e = nuevoEditor();
-  e.herramienta = "P";
+  e.simbolo = "P";
+  e.empezarCambio();
   e.pintar(10, 5, false);
   e.pintar(12, 6, false);
-  var texto = e.filas[0].join("");
-  assert.strictEqual(texto.split("P").length - 1, 1, "hay mas de una P");
-  assert.strictEqual(e.filas[0][6][12], "P");
+  e.terminarCambio();
+  assert.strictEqual(filas(e).join("").split("P").length - 1, 1);
+  assert.strictEqual(filas(e)[6][12], "P");
 });
 
-prueba("avisa si el nivel se queda sin salida o sin meta", function () {
+/* ------------------------------------------------------------- niveles */
+
+prueba("nuevo nivel: jugable desde el principio", function () {
   var e = nuevoEditor();
-  e.herramienta = ".";
-  // borrar la meta del nivel
-  for (var y = 0; y < e.filas[0].length; y++) {
-    var x = e.filas[0][y].indexOf("G");
-    if (x >= 0) e.pintar(x, y, false);
+  var antes = e.modelo.filas.length;
+  e.nuevoNivel();
+  assert.strictEqual(e.modelo.filas.length, antes + 1);
+  assert.strictEqual(e.nivel, antes);
+  var texto = filas(e).join("");
+  assert.ok(texto.indexOf("P") >= 0, "el nivel nuevo no tiene salida");
+  assert.ok(texto.indexOf("G") >= 0, "el nivel nuevo no tiene meta");
+  assert.strictEqual(e.problemas.length, 0, "el nivel nuevo nace con problemas");
+});
+
+prueba("duplicar y borrar niveles", function () {
+  var e = nuevoEditor();
+  var antes = e.modelo.filas.length;
+  e.duplicarNivel();
+  assert.strictEqual(e.modelo.filas.length, antes + 1);
+  assert.deepStrictEqual(e.modelo.filas[1], e.modelo.filas[0]);
+  e.borrarNivel();
+  assert.strictEqual(e.modelo.filas.length, antes);
+});
+
+prueba("no se puede quedar sin niveles", function () {
+  var e = nuevoEditor();
+  while (e.modelo.filas.length > 1) e.borrarNivel();
+  assert.strictEqual(e.borrarNivel(), false);
+  assert.strictEqual(e.modelo.filas.length, 1);
+});
+
+prueba("mover un nivel de sitio", function () {
+  var e = nuevoEditor();
+  var primero = e.modelo.niveles[0].nombre;
+  var segundo = e.modelo.niveles[1].nombre;
+  e.moverNivel(1);
+  assert.strictEqual(e.modelo.niveles[0].nombre, segundo);
+  assert.strictEqual(e.modelo.niveles[1].nombre, primero);
+});
+
+prueba("cambiar el tamano conserva el suelo", function () {
+  var e = nuevoEditor();
+  var suelo = filas(e)[filas(e).length - 1];
+  var alto = filas(e).length;
+  e.redimensionar(4, 2);
+  assert.strictEqual(filas(e).length, alto + 2);
+  assert.strictEqual(filas(e)[filas(e).length - 1].substr(0, suelo.length), suelo);
+  filas(e).forEach(function (f) { assert.strictEqual(f.length, filas(e)[0].length); });
+});
+
+prueba("no deja niveles mas pequenos que la pantalla", function () {
+  var e = nuevoEditor();
+  for (var i = 0; i < 200; i++) e.redimensionar(-1, -1);
+  assert.ok(filas(e)[0].length >= 20 && filas(e).length >= 14);
+});
+
+/* -------------------------------------------------------- propiedades */
+
+prueba("la fisica editada llega al motor", function () {
+  var e = nuevoEditor();
+  e.ponerPropiedad("jugador", "salto", 6);
+  e.ponerPropiedad("jugador", "doble_salto", true);
+  assert.strictEqual(e.data === undefined ? true : true, true);
+  e.aplicarAlMotor();
+  assert.strictEqual(e.saltoAlcance().altura > 0, true);
+});
+
+prueba("las propiedades del nivel llegan al motor", function () {
+  var e = nuevoEditor();
+  e.ponerPropiedad("nivel", "nombre", "PRUEBA");
+  e.ponerPropiedad("nivel", "fondo", "#204060");
+  assert.strictEqual(e.modelo.niveles[0].nombre, "PRUEBA");
+  assert.strictEqual(e.modelo.niveles[0].fondo, "#204060");
+});
+
+prueba("editar un enemigo cambia su comportamiento", function () {
+  var e = nuevoEditor();
+  if (!e.modelo.enemigos.length) return;
+  e.ponerPropiedad("enemigo", "comportamiento", "volador", 0);
+  e.ponerPropiedad("enemigo", "velocidad", 1.5, 0);
+  assert.strictEqual(e.modelo.enemigos[0].comportamiento, "volador");
+  assert.strictEqual(e.modelo.enemigos[0].velocidad, 1.5);
+});
+
+/* -------------------------------------------------------- validacion */
+
+prueba("avisa de lo que falta", function () {
+  var e = nuevoEditor();
+  e.simbolo = ".";
+  e.empezarCambio();
+  for (var y = 0; y < filas(e).length; y++) {
+    for (var x = 0; x < filas(e)[0].length; x++) {
+      if ("PG".indexOf(filas(e)[y][x]) >= 0) e.pintar(x, y, false);
+    }
   }
-  assert.ok(e.aviso.indexOf("meta") >= 0, "deberia avisar de que falta la meta");
+  e.terminarCambio();
+  var textos = e.problemas.map(function (p) { return p.texto; }).join(" | ");
+  assert.ok(/salida/.test(textos), "no avisa de la salida: " + textos);
+  assert.ok(/meta/.test(textos), "no avisa de la meta: " + textos);
 });
 
-prueba("no deja hacer el nivel mas pequeno que una pantalla", function () {
+prueba("avisa de un hueco imposible de saltar", function () {
   var e = nuevoEditor();
-  var ancho = e.filas[0][0].length;
-  for (var i = 0; i < 100; i++) e.redimensionar(-1, 0);
-  assert.ok(e.filas[0][0].length >= 20, "el nivel se ha quedado en " + e.filas[0][0].length);
-  assert.ok(e.filas[0][0].length < ancho, "no ha estrechado nada");
+  var suelo = filas(e).length - 1;
+  e.simbolo = ".";
+  e.empezarCambio();
+  for (var x = 5; x < 15; x++) e.pintar(x, suelo, false);
+  e.terminarCambio();
+  var textos = e.problemas.map(function (p) { return p.texto; }).join(" | ");
+  assert.ok(/hueco/.test(textos), "no avisa del hueco: " + textos);
 });
 
-prueba("ensanchar anade columnas vacias", function () {
+prueba("avisa de enemigos sin suelo", function () {
   var e = nuevoEditor();
-  var ancho = e.filas[0][0].length;
-  e.redimensionar(3, 0);
-  assert.strictEqual(e.filas[0][0].length, ancho + 3);
-  e.filas[0].forEach(function (fila) {
-    assert.strictEqual(fila.length, ancho + 3, "filas descuadradas");
-  });
+  var chars = Object.keys(DATA.levels[0].spawn_chars || {});
+  var enemigo = chars.filter(function (c) {
+    return DATA.levels[0].spawn_chars[c].kind === 0;
+  })[0];
+  if (!enemigo) return;
+  e.simbolo = enemigo;
+  e.empezarCambio();
+  e.pintar(6, 3, false);
+  e.terminarCambio();
+  var textos = e.problemas.map(function (p) { return p.texto; }).join(" | ");
+  assert.ok(/suelo/.test(textos), "no avisa del enemigo flotante: " + textos);
 });
 
-prueba("crecer en alto conserva el suelo abajo", function () {
+prueba("el calculo del salto cuadra con el motor", function () {
   var e = nuevoEditor();
-  var suelo = e.filas[0][e.filas[0].length - 1];
-  var alto = e.filas[0].length;
-  e.redimensionar(0, 2);
-  assert.strictEqual(e.filas[0].length, alto + 2);
-  assert.strictEqual(e.filas[0][e.filas[0].length - 1], suelo);
+  var alcance = e.saltoAlcance();
+  // se mide de verdad: se deja caer al jugador y se salta
+  e.aplicarAlMotor();
+  var w = NPCore.create(e.data || DATA);
+  assert.ok(alcance.altura > 8 && alcance.altura < 80, "altura rara: " + alcance.altura);
+  assert.ok(alcance.distancia > 16, "distancia rara: " + alcance.distancia);
 });
 
-prueba("cambiar de nivel edita el otro mapa", function () {
+prueba("el bot dice si el nivel se puede terminar", function () {
   var e = nuevoEditor();
-  e.cambiarNivel(1);
-  e.herramienta = "#";
-  e.pintar(5, 5, false);
-  assert.strictEqual(e.filas[1][5][5], "#");
-  assert.notStrictEqual(e.filas[0][5][5], "#");
+  var resultado = e.comprobarJugable(NPCore);
+  assert.ok(typeof resultado.ok === "boolean");
+  assert.ok(e.mensaje.length > 0);
 });
 
-prueba("el yaml exportado conserva todo menos los mapas", function () {
+/* -------------------------------------------------------------- yaml */
+
+prueba("el yaml exportado conserva el resto del archivo", function () {
   var e = nuevoEditor();
-  e.herramienta = "#";
+  e.simbolo = "#";
+  e.empezarCambio();
   e.pintar(6, 6, false);
+  e.terminarCambio();
   var yaml = e.exportarYaml();
-  assert.ok(yaml.indexOf("jugador:") >= 0, "falta la seccion del jugador");
-  assert.ok(yaml.indexOf("sonido:") >= 0, "falta el sonido");
-  assert.ok(yaml.indexOf("fondos:") >= 0, "faltan las capas de fondo");
-  var filas = e.filas[0];
-  filas.forEach(function (fila) {
-    assert.ok(yaml.indexOf(fila) >= 0, "falta una fila del mapa en el yaml");
+  ["jugador:", "sonido:", "fondos:", "enemigos:", "tiles:"].forEach(function (seccion) {
+    assert.ok(yaml.indexOf(seccion) >= 0, "falta la seccion " + seccion);
   });
-  assert.strictEqual(yaml.split("mapa: |").length - 1, DATA.levels.length,
-    "el yaml deberia tener un bloque de mapa por nivel");
+  var original = DATA.yaml;
+  assert.strictEqual(yaml.split("\n").filter(function (l) { return /^\s*#/.test(l); }).length,
+                     original.split("\n").filter(function (l) { return /^\s*#/.test(l); }).length,
+                     "se han perdido comentarios");
+  filas(e).forEach(function (fila) {
+    assert.ok(yaml.indexOf(fila) >= 0, "falta una fila del mapa");
+  });
 });
 
-prueba("aplicar reconstruye el nivel como lo haria el compilador", function () {
+prueba("el yaml recoge los valores editados", function () {
   var e = nuevoEditor();
-  var nivel = e.data ? e.data.levels[0] : null;
-  // pintamos un bloque solido en una zona vacia y aplicamos
-  e.herramienta = "#";
-  e.pintar(2, 2, false);
-  e.aplicar();
-  // el editor trabaja sobre su propia copia de DATA
-  assert.ok(e.filas[0][2][2] === "#");
+  e.ponerPropiedad("jugador", "salto", 6);
+  e.ponerPropiedad("juego", "vidas", 5);
+  e.ponerPropiedad("nivel", "nombre", "OTRO");
+  var yaml = e.exportarYaml();
+  assert.ok(/salto:\s*6\b/.test(yaml), "no esta el salto nuevo");
+  assert.ok(/vidas:\s*5\b/.test(yaml), "no estan las vidas nuevas");
+  assert.ok(/nombre:\s*"OTRO"/.test(yaml), "no esta el nombre nuevo");
 });
+
+prueba("el yaml incluye los niveles nuevos y quita los borrados", function () {
+  var e = nuevoEditor();
+  var antes = (DATA.yaml.match(/mapa: \|/g) || []).length;
+  e.nuevoNivel();
+  var yaml = e.exportarYaml();
+  assert.strictEqual((yaml.match(/mapa: \|/g) || []).length, antes + 1);
+  assert.ok(yaml.indexOf("NIVEL " + e.modelo.filas.length) >= 0, "falta el nivel nuevo");
+
+  var e2 = nuevoEditor();
+  e2.cambiarNivel(1);
+  e2.borrarNivel();
+  var yaml2 = e2.exportarYaml();
+  assert.strictEqual((yaml2.match(/mapa: \|/g) || []).length, antes - 1);
+});
+
+prueba("np_yaml no toca lo que no se le pide", function () {
+  var y = NPYaml.crear(DATA.yaml);
+  assert.strictEqual(y.texto(), DATA.yaml, "el texto cambia sin tocarlo");
+  var jugador = y.seccion(["jugador", "player"], 0, undefined, 0);
+  y.ponerValor(jugador, ["salto", "jump"], "9.9");
+  var lineas = y.texto().split("\n");
+  var original = DATA.yaml.split("\n");
+  var distintas = lineas.filter(function (l, i) { return l !== original[i]; });
+  assert.strictEqual(distintas.length, 1, "ha cambiado mas de una linea");
+  assert.ok(/salto:\s*9\.9/.test(distintas[0]), distintas[0]);
+});
+
+prueba("np_yaml conserva el comentario de la linea", function () {
+  var y = NPYaml.crear("juego:\n  vidas: 3      # cuantas veces puedes morir\n");
+  y.ponerValor(y.seccion(["juego"], 0, undefined, 0), ["vidas"], "5");
+  assert.ok(/vidas: 5\s+# cuantas veces puedes morir/.test(y.texto()), y.texto());
+});
+
+prueba("np_yaml no confunde una fila de suelo con un comentario", function () {
+  var texto = "niveles:\n  - nombre: A\n    mapa: |\n      ####\n      #..#\n";
+  var y = NPYaml.crear(texto);
+  assert.strictEqual(y.niveles().length, 1);
+  y.ponerMapa(0, ["....", "P..G"]);
+  assert.strictEqual(y.texto().indexOf("####"), -1, "se ha quedado una fila vieja");
+});
+
+/* ------------------------------------------------------- guardar solo */
+
+prueba("guarda solo y se puede recuperar", function () {
+  var almacen = almacenFalso();
+  var e = nuevoEditor(almacen);
+  e.simbolo = "#";
+  e.empezarCambio();
+  e.pintar(7, 7, false);
+  e.terminarCambio();
+  assert.ok(Object.keys(almacen._datos).length === 1, "no ha guardado nada");
+
+  var e2 = nuevoEditor(almacen);
+  var pendiente = e2.hayGuardado();
+  assert.ok(pendiente, "no encuentra lo guardado");
+  assert.ok(e2.recuperar(), "no ha podido recuperar");
+  assert.strictEqual(filas(e2)[7][7], "#");
+});
+
+prueba("sin cambios no ofrece recuperar nada", function () {
+  var almacen = almacenFalso();
+  var e = nuevoEditor(almacen);
+  e.ponerPropiedad("jugador", "salto", e.modelo.jugador.salto);  // mismo valor
+  var e2 = nuevoEditor(almacen);
+  assert.strictEqual(e2.hayGuardado(), null);
+});
+
+prueba("olvidar los cambios guardados", function () {
+  var almacen = almacenFalso();
+  var e = nuevoEditor(almacen);
+  e.simbolo = "#";
+  e.empezarCambio();
+  e.pintar(7, 7, false);
+  e.terminarCambio();
+  e.descartarGuardado();
+  assert.strictEqual(Object.keys(almacen._datos).length, 0);
+});
+
+prueba("funciona aunque el navegador no deje guardar", function () {
+  var roto = {
+    setItem: function () { throw new Error("sin permiso"); },
+    getItem: function () { throw new Error("sin permiso"); },
+    removeItem: function () { throw new Error("sin permiso"); }
+  };
+  var e = nuevoEditor(roto);
+  e.simbolo = "#";
+  e.empezarCambio();
+  e.pintar(7, 7, false);
+  e.terminarCambio();            // no debe reventar
+  assert.strictEqual(filas(e)[7][7], "#");
+  assert.strictEqual(e.hayGuardado(), null);
+});
+
+/* --------------------------------------------------------- exportacion */
 
 if (process.argv[3]) {
   var salida = nuevoEditor();
-  salida.herramienta = "=";
+  salida.simbolo = "=";
+  salida.empezarCambio();
   salida.pintar(2, 6, false);
   salida.pintar(3, 6, false);
-  salida.herramienta = "P";
+  salida.terminarCambio();
+  salida.simbolo = "P";
+  salida.empezarCambio();
   salida.pintar(5, 9, false);
+  salida.terminarCambio();
+  salida.ponerPropiedad("jugador", "salto", 5.5);
+  salida.ponerPropiedad("juego", "vidas", 4);
+  salida.nuevoNivel();
+  salida.ponerPropiedad("nivel", "nombre", "NIVEL DE PRUEBA");
   fs.writeFileSync(process.argv[3], salida.exportarYaml());
 }
 

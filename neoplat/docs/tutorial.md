@@ -22,13 +22,16 @@ consola**: la simulación es la misma.
 ## 3. Cambia el mapa (con el ratón)
 
 En el preview, pulsa <kbd>E</kbd>. Aparece el editor: eliges qué pintar en la
-paleta de abajo (suelo, plataformas, pinchos, enemigos, monedas, la salida) y
-pintas sobre el nivel. <kbd>Enter</kbd> lo prueba al momento y <kbd>E</kbd> te
-devuelve al editor.
+paleta (suelo, plataformas, pinchos, enemigos, monedas, la salida) y pintas
+sobre el nivel. Con <kbd>2</kbd> haces rectángulos, con <kbd>3</kbd> rellenas
+zonas y con <kbd>Ctrl</kbd>+<kbd>Z</kbd> deshaces. <kbd>Enter</kbd> lo prueba al
+momento y <kbd>E</kbd> te devuelve al editor.
 
-Cuando te guste, pulsa **«game.yaml»** y copia o descarga el archivo: es tu
-`game.yaml` entero, con los mapas nuevos. Detalles en
-[editor.md](editor.md).
+En la pestaña **revisar** tienes un botón que lanza un bot a jugarse el nivel:
+si el bot llega a la meta, tú también.
+
+Cuando te guste, pestaña **game.yaml** y copia o descarga el archivo. Todo el
+editor está explicado en [editor.md](editor.md).
 
 ## 3b. …o cambia el mapa a mano
 

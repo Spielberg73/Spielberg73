@@ -1,67 +1,117 @@
-# El editor de niveles
+# El editor
 
-El preview que abre `ngplat probar` trae un editor dentro. No hay que instalar
-nada: es la misma página, con un botón.
+El preview que abre `ngplat probar` **es** el editor. No hay que instalar nada
+ni cambiar de programa: pulsas <kbd>E</kbd> y el juego se pausa para que lo
+edites; <kbd>Enter</kbd> y lo estás jugando otra vez.
 
 ```bash
-ngplat probar          # abre el juego
+ngplat probar          # abre el juego; pulsa E para editar
 ```
 
-Pulsa **<kbd>E</kbd>** o el botón **«editar el nivel»**. El juego se pausa y
-aparecen la paleta y la barra de herramientas.
+Todo lo que cambias sale al final en tu `game.yaml`, conservando comentarios,
+orden y formato: el editor solo toca las líneas que has modificado.
 
-## Lo básico
+---
 
-| Acción | Cómo |
-|---|---|
-| Pintar | clic (o dedo) sobre el mapa; arrastra para pintar varios |
-| Borrar | clic derecho, o elige el tile `vacío` |
-| Elegir qué pintas | los botones de la paleta (tiles, enemigos, objetos, salida) |
-| Mover la vista | herramienta ✋ y arrastra, o las flechas (<kbd>Shift</kbd> va más rápido) |
-| Ir a otra parte | clic en el minimapa de abajo |
-| Deshacer | <kbd>Ctrl</kbd>+<kbd>Z</kbd> o el botón «deshacer» |
-| Probar lo editado | <kbd>Enter</kbd> o «probar el nivel» |
-| Volver a editar | <kbd>E</kbd> |
+## Mapa
 
-La paleta se construye sola a partir de **tu** `game.yaml`: sale un botón por
-cada símbolo de la leyenda (con su dibujo real) y otro por cada enemigo u
-objeto que hayas definido en `spawns`.
+La pestaña **mapa** es donde se dibuja.
 
-## Reglas que vigila el editor
+| Herramienta | Tecla | Qué hace |
+|---|---|---|
+| lápiz | <kbd>1</kbd> | pinta casilla a casilla; arrastra para hacer trazos |
+| rectángulo | <kbd>2</kbd> | arrastra y suelta; el botón derecho borra |
+| relleno | <kbd>3</kbd> | llena toda la zona contigua, respetando las paredes |
+| selección | <kbd>4</kbd> | marca un rectángulo para copiar, cortar, pegar o borrar |
+| cuentagotas | <kbd>5</kbd> | coge el símbolo que hay bajo el cursor (o <kbd>Alt</kbd>+clic) |
+| mover | <kbd>6</kbd> | arrastra la vista |
 
-- **Solo puede haber una salida `P`**: al colocar una nueva, la anterior
-  desaparece.
-- Si el nivel se queda **sin salida o sin meta**, te lo dice debajo de la
-  paleta. No te lo impide (a lo mejor estás a medias), pero te avisa.
-- El nivel no puede ser más pequeño que una pantalla (20 × 14 tiles).
+Otros atajos: <kbd>Ctrl</kbd>+<kbd>Z</kbd> deshacer, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>
+rehacer, <kbd>Ctrl</kbd>+<kbd>C</kbd>/<kbd>X</kbd>/<kbd>V</kbd> copiar, cortar y
+pegar, <kbd>Supr</kbd> borrar la selección, <kbd>G</kbd> rejilla, <kbd>H</kbd>
+guías de pantalla, flechas para moverte (con <kbd>Shift</kbd> más rápido),
+<kbd>Esc</kbd> quitar la selección.
 
-## Cambiar el tamaño del nivel
+Un **trazo entero cuenta como un solo paso de deshacer**, no uno por casilla.
 
-Los botones **+ ancho / − ancho / + alto / − alto** añaden o quitan columnas por
-la derecha y filas por arriba, dejando la fila del suelo donde estaba.
+La **paleta** se construye desde tu propio `game.yaml`: sale un botón por cada
+símbolo de la leyenda (con su dibujo real) y otro por cada enemigo u objeto que
+hayas definido en `spawns`, más la salida del jugador.
 
-## Llevarte los cambios
+Debajo del lienzo hay un **minimapa**: enseña el nivel entero y el recuadro de
+lo que estás viendo; haz clic para ir a cualquier parte. Las **guías** marcan
+dónde cae cada pantalla de 320×224, que es lo que se ve de golpe en la consola.
 
-Pulsa **«game.yaml»**: aparece el archivo completo, ya con tus mapas.
+También puedes **alejar y acercar** (0,5× / 1:1 / 2×) y cambiar el tamaño del
+nivel con ± ancho y ± alto, que respetan la fila del suelo.
 
-- **«copiar al portapapeles»** y lo pegas en tu `game.yaml`.
-- **«descargar game.yaml»** te lo baja. Si estás viendo el preview publicado en
-  claude.ai, la descarga pasa por el visor y llega como `game.yaml.txt`: solo
-  hay que renombrarlo.
+## Nivel
 
-Lo que se exporta es **todo el `game.yaml`**, no solo los mapas: se conservan la
-física del jugador, los enemigos, las capas de fondo, el sonido y los
-comentarios. El editor solo sustituye los bloques `mapa: |`.
+Nombre, color de fondo, música y qué capas de parallax usa. Y la gestión de
+niveles: **nuevo** (nace con salida, meta y suelo, listo para jugar),
+**duplicar**, **borrar** y **subir/bajar** para cambiar el orden.
 
-> Lo que el editor **no** toca todavía: crear niveles nuevos, definir enemigos o
-> cambiar la física. Eso sigue siendo un rato de escribir en el `game.yaml`,
-> que para eso es un archivo de texto.
+## Juego y física
 
-## Por qué esto es fiable
+Título, autor, vidas y tiempo límite, y todos los ajustes del jugador con
+deslizadores: velocidad, salto, gravedad, aceleración, fricción, control en el
+aire, corte del salto, caída máxima, rebote, coyote, buffer de salto, vida,
+invulnerabilidad, doble salto y pisar enemigos.
 
-El editor trabaja siempre sobre el mapa en texto, igual que el archivo. Cuando
-pulsas «probar el nivel», reconstruye los datos del nivel **con las mismas
-cuentas que hace el compilador** (posición de la salida, cajas de los enemigos,
-índices de tile). Y las pruebas del kit hacen el viaje completo: editan un
-nivel, exportan el `game.yaml` y lo vuelven a compilar para comprobar que sigue
-siendo válido y que no se ha perdido nada por el camino.
+Cada cambio se aplica **al momento**: pulsa <kbd>Enter</kbd> y lo pruebas. Debajo
+te dice lo que consigue tu salto con esos números, por ejemplo:
+
+> con estos ajustes el salto sube 31 px (1 casilla) y cruza 48 px (3 casillas)
+
+Eso es lo que hay que mirar antes de dibujar un hueco.
+
+## Enemigos y objetos
+
+Cada enemigo definido en el `game.yaml` con su comportamiento (patrulla,
+volador, perseguidor, saltarín, fijo), velocidad, vida, daño, puntos, si se
+puede pisar, si gira en los bordes y los ajustes propios de cada
+comportamiento. Los objetos, con su efecto, puntos y cantidad.
+
+> Crear enemigos nuevos (con su dibujo y su símbolo) sigue siendo cosa del
+> `game.yaml`: el editor cambia los que ya existen.
+
+## Revisar
+
+Una lista en vivo de lo que está mal en el nivel, con clic para ir al sitio:
+
+- falta la salida `P` o hay más de una
+- no hay meta: el nivel no se puede terminar
+- un enemigo colocado en el aire, que se caerá al empezar
+- un hueco más ancho de lo que cruza el salto (con **tus** números)
+- más de 64 enemigos y objetos, o un nivel más pequeño que una pantalla
+
+Y el botón **«¿se puede terminar?»**: lanza un bot que juega el nivel de
+principio a fin igual que lo haría alguien la primera vez (andar y saltar
+cuando ve algo). Si no llega, te dice por qué y te lleva al punto donde se
+quedó. Es el mismo bot que usan las pruebas del kit.
+
+## game.yaml
+
+El archivo completo con tus cambios. **Copiar al portapapeles** o **descargar**.
+
+Si estás en el preview publicado en claude.ai, la descarga pasa por el visor y
+llega como `game.yaml.txt`: solo hay que renombrarlo.
+
+## No se pierde nada
+
+El editor **guarda solo** en el navegador cada vez que tocas algo. Si cierras
+sin exportar, la próxima vez que abras el preview te ofrece recuperar lo que
+estabas haciendo. El botón «olvidar cambios guardados» lo borra.
+
+## Por qué puedes fiarte
+
+- El editor trabaja sobre el mapa en texto, igual que el archivo.
+- Al pulsar «probar el nivel» reconstruye los datos **con las mismas cuentas que
+  el compilador** (posición de la salida, cajas de los enemigos, índices de
+  tile), así que lo que juegas es lo que se compila.
+- Al exportar, cada opción se escribe con el nombre que ya tenía en tu archivo
+  (en castellano o en inglés) y solo si la has cambiado. Hay una prueba que
+  comprueba, opción por opción, que todos esos nombres los entiende el lector.
+- Las pruebas del kit hacen el viaje entero: editan mapas, física y niveles en
+  el editor, exportan el `game.yaml`, lo vuelven a compilar y comprueban que no
+  se ha perdido ni un comentario.

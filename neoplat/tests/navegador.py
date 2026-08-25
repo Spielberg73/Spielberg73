@@ -1,8 +1,8 @@
-"""Prueba del preview en un navegador de verdad (opcional).
+"""Prueba del preview y del editor en un navegador de verdad (opcional).
 
-Abre el preview generado en Chromium, juega unos frames, comprueba que no hay
-errores de JavaScript, que el audio arranca y que el editor pinta y exporta.
-Guarda capturas para poder mirarlas.
+Abre el preview generado en Chromium y comprueba, con raton y teclado, que se
+juega, que suena y que el editor pinta, edita propiedades, valida, exporta y
+guarda. Deja capturas para poder mirarlas.
 
 Necesita Playwright y un Chromium; si no estan, se salta:
 
@@ -29,7 +29,7 @@ def _lanzar(pw):
     return pw.chromium.launch(args=["--no-sandbox"])
 
 
-def comprobar(preview: str, capturas: str = ".") -> int:
+def comprobar(preview: str, capturas: str = "capturas") -> int:
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
@@ -38,9 +38,14 @@ def comprobar(preview: str, capturas: str = ".") -> int:
 
     os.makedirs(capturas, exist_ok=True)
     fallos = []
+
+    def exigir(condicion, texto):
+        if not condicion:
+            fallos.append(texto)
+
     with sync_playwright() as pw:
         navegador = _lanzar(pw)
-        pagina = navegador.new_page(viewport={"width": 1200, "height": 1000})
+        pagina = navegador.new_page(viewport={"width": 1280, "height": 1100})
         errores = []
         pagina.on("pageerror", lambda e: errores.append(str(e)))
         pagina.on("console",
@@ -48,63 +53,140 @@ def comprobar(preview: str, capturas: str = ".") -> int:
         pagina.goto("file://" + os.path.abspath(preview))
         pagina.wait_for_timeout(700)
 
-        # --- jugar
+        # ---------------------------------------------------------- jugar
         pagina.locator("#pantalla").click()
         pagina.keyboard.press("Enter")
         pagina.keyboard.down("ArrowRight")
         pagina.wait_for_timeout(1500)
         pagina.keyboard.up("ArrowRight")
         estado = pagina.evaluate("""() => { const w = window.NeoPlat.world;
-            return { estado: w.state, x: w.player.x >> 8, camX: w.camX,
-                     musica: w.level.music }; }""")
+            return { estado: w.state, x: w.player.x >> 8, musica: w.level.music }; }""")
         print("jugando:", json.dumps(estado))
-        if estado["estado"] not in (1, 2, 3):
-            fallos.append("el juego no llega a estado de partida")
-        if estado["x"] <= 10:
-            fallos.append("el jugador no avanza")
+        exigir(estado["estado"] in (1, 2, 3), "el juego no llega a estado de partida")
+        exigir(estado["x"] > 10, "el jugador no avanza")
         pagina.locator("#pantalla").screenshot(path=os.path.join(capturas, "juego.png"))
 
-        # --- audio
         audio = pagina.evaluate("""() => { const a = window.NeoPlat.audio;
             return { contexto: !!a.ctx, canales: a.canales.length, pistas: a.pistas.length }; }""")
         print("audio:", json.dumps(audio))
-        if not audio["contexto"] or audio["canales"] != 3:
-            fallos.append("el audio no ha arrancado")
+        exigir(audio["contexto"] and audio["canales"] == 3, "el audio no ha arrancado")
 
-        # --- editor
+        # --------------------------------------------------------- editor
         pagina.click("#modo")
-        pagina.wait_for_timeout(300)
+        pagina.wait_for_timeout(400)
+        interfaz = pagina.evaluate("""() => ({
+            activo: window.NeoPlat.editor.activo,
+            ancho: document.querySelector('#pantalla').width,
+            herramientas: document.querySelectorAll('#herramientas button').length,
+            paleta: document.querySelectorAll('#ed-paleta button').length,
+            pestanas: document.querySelectorAll('#pestanas button').length })""")
+        print("editor:", json.dumps(interfaz))
+        exigir(interfaz["activo"], "no entra en modo edicion")
+        exigir(interfaz["ancho"] == 480, "el lienzo no se agranda al editar")
+        exigir(interfaz["herramientas"] >= 6, "faltan herramientas")
+        exigir(interfaz["paleta"] >= 5, "la paleta sale vacia")
+
         caja = pagina.locator("#pantalla").bounding_box()
-        escala = caja["width"] / 320.0
-        pagina.evaluate("() => { window.NeoPlat.editor.herramienta = '#'; }")
-        pagina.mouse.move(caja["x"] + 60 * escala, caja["y"] + 60 * escala)
+        escala = caja["width"] / 480.0
+
+        def punto(tx, ty):
+            est = pagina.evaluate("""() => { const e = window.NeoPlat.editor;
+                return { cx: e.camX, cy: e.camY, z: e.zoom }; }""")
+            return (caja["x"] + (tx * 16 + 8 - est["cx"]) * est["z"] * escala,
+                    caja["y"] + (ty * 16 + 8 - est["cy"]) * est["z"] * escala)
+
+        # pintar arrastrando: un trazo = un paso de deshacer
+        pagina.evaluate("""() => { const e = window.NeoPlat.editor;
+            e.herramienta = 'lapiz'; e.simbolo = '#'; e.camX = 0; e.camY = 64; }""")
+        x0, y0 = punto(3, 8)
+        pagina.mouse.move(x0, y0)
         pagina.mouse.down()
-        for i in range(60, 160, 8):
-            pagina.mouse.move(caja["x"] + i * escala, caja["y"] + 60 * escala)
+        for i in range(3, 10):
+            xx, yy = punto(i, 8)
+            pagina.mouse.move(xx, yy)
         pagina.mouse.up()
+        pagina.wait_for_timeout(150)
+        trazo = pagina.evaluate("""() => { const e = window.NeoPlat.editor;
+            return { fila: e.modelo.filas[e.nivel][8], pasos: e.historial.length }; }""")
+        exigir(trazo["fila"][3:10] == "#######", "el trazo no pinta seguido")
+        exigir(trazo["pasos"] == 1, "un trazo deberia ser un solo paso de deshacer")
+
+        pagina.click("#ed-deshacer")
+        pagina.wait_for_timeout(120)
+        exigir("#" not in pagina.evaluate(
+            "() => window.NeoPlat.editor.modelo.filas[window.NeoPlat.editor.nivel][8]")[3:10],
+            "deshacer no funciona")
+        pagina.click("#ed-rehacer")
+        pagina.wait_for_timeout(120)
+        exigir(pagina.evaluate(
+            "() => window.NeoPlat.editor.modelo.filas[window.NeoPlat.editor.nivel][8]")[3:10]
+            == "#######", "rehacer no funciona")
+
+        # rectangulo
+        pagina.evaluate("() => { window.NeoPlat.editor.herramienta = 'rect'; }")
+        ax, ay = punto(12, 6)
+        bx, by = punto(16, 9)
+        pagina.mouse.move(ax, ay)
+        pagina.mouse.down()
+        pagina.mouse.move(bx, by)
+        pagina.mouse.up()
+        pagina.wait_for_timeout(150)
+        filas = pagina.evaluate("() => window.NeoPlat.editor.modelo.filas[window.NeoPlat.editor.nivel]")
+        exigir(filas[6][12:17] == "#####", "el rectangulo no se pinta")
+
+        # propiedades en vivo
+        pagina.click("#pestanas button[data-panel=juego]")
         pagina.wait_for_timeout(200)
-        pintado = pagina.evaluate("""() => { const e = window.NeoPlat.editor;
-            return { cambios: e.historial.length, botones: document.querySelectorAll('#ed-paleta button').length }; }""")
-        print("editor:", json.dumps(pintado))
-        if pintado["cambios"] < 3:
-            fallos.append("pintar arrastrando no cambia el mapa")
-        if pintado["botones"] < 5:
-            fallos.append("la paleta del editor sale vacia")
+        pagina.evaluate("() => window.NeoPlat.editor.ponerPropiedad('jugador','salto',6)")
+        pagina.wait_for_timeout(150)
+        fisica = pagina.evaluate("""() => ({ modelo: window.NeoPlat.editor.modelo.jugador.salto,
+            motor: window.NeoPlat.data.player.jump })""")
+        exigir(fisica["motor"] == 1536, "la fisica editada no llega al motor: %s" % fisica)
+
+        # niveles
+        pagina.click("#pestanas button[data-panel=nivel]")
+        pagina.wait_for_timeout(150)
+        pagina.click("#ed-nuevo")
+        pagina.wait_for_timeout(250)
+        niveles = pagina.evaluate("""() => ({ modelo: window.NeoPlat.editor.modelo.filas.length,
+            data: window.NeoPlat.data.levels.length })""")
+        exigir(niveles["modelo"] == niveles["data"], "los niveles no cuadran: %s" % niveles)
+
+        # revisar y bot
+        pagina.evaluate("() => window.NeoPlat.editor.cambiarNivel(0)")
+        pagina.click("#pestanas button[data-panel=revisar]")
+        pagina.wait_for_timeout(200)
+        pagina.click("#ed-bot")
+        pagina.wait_for_timeout(3000)
+        mensaje = pagina.evaluate("() => window.NeoPlat.editor.mensaje")
+        print("bot:", mensaje)
+        exigir("bot" in mensaje, "el bot no responde")
+
+        # exportar
+        pagina.click("#pestanas button[data-panel=yaml]")
+        pagina.wait_for_timeout(300)
+        yaml_texto = pagina.evaluate("() => document.getElementById('ed-texto').value")
+        exigir("jugador:" in yaml_texto and "mapa: |" in yaml_texto,
+               "el yaml exportado no parece completo")
+        exigir("salto: 6" in yaml_texto, "el yaml no recoge la fisica editada")
         pagina.screenshot(path=os.path.join(capturas, "editor.png"))
 
-        # --- exportar y volver a jugar
-        pagina.click("#ed-exportar")
-        pagina.wait_for_timeout(200)
-        yaml_texto = pagina.evaluate("() => document.getElementById('ed-texto').value")
-        if "jugador:" not in yaml_texto or "mapa: |" not in yaml_texto:
-            fallos.append("el yaml exportado no parece completo")
+        # guardado automatico
+        guardado = pagina.evaluate(
+            "() => { try { return Object.keys(localStorage).some(k => k.indexOf('neoplat:') === 0); }"
+            " catch (e) { return 'sin acceso'; } }")
+        exigir(guardado is True, "no guarda los cambios en el navegador: %s" % guardado)
+
+        # volver a jugar con lo editado
+        pagina.click("#pestanas button[data-panel=mapa]")
         pagina.click("#ed-jugar")
         pagina.wait_for_timeout(400)
-        vuelta = pagina.evaluate("""() => { const w = window.NeoPlat.world;
-            return { estado: w.state, celdas: w.level.cells.length }; }""")
-        print("tras editar:", json.dumps(vuelta))
-        if vuelta["estado"] != 1:
-            fallos.append("no vuelve al juego despues de editar")
+        vuelta = pagina.evaluate("""() => ({ estado: window.NeoPlat.world.state,
+            editando: window.NeoPlat.editor.activo,
+            ancho: document.querySelector('#pantalla').width })""")
+        exigir(vuelta["estado"] == 1 and not vuelta["editando"],
+               "no vuelve al juego tras editar")
+        exigir(vuelta["ancho"] == 320, "el lienzo no vuelve a 320 al jugar")
 
         if errores:
             fallos.append("errores de JavaScript: %s" % errores[:3])

@@ -31,35 +31,83 @@
   kbd { background: #1d2231; border: 1px solid #2b3245; border-bottom-width: 2px;
         border-radius: 4px; padding: 1px 6px; font: 11px ui-monospace, monospace; color: #cfd6e4; }
   /* --- editor --- */
-  .editor { display: none; flex-direction: column; gap: 10px; width: 100%; max-width: 760px; }
+  .editor { display: none; flex-direction: column; gap: 10px; width: 100%; max-width: 860px; }
   .editor.visible { display: flex; }
-  .barra { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .barra button, .barra select {
+  .estado {
+    display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center;
+    font-size: 12px; color: #8b95a8; min-height: 18px;
+  }
+  .estado b { color: #cfd6e4; font-weight: 500; }
+  .estado .mensaje { color: #e8b04b; }
+  .pestanas { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid #262638; }
+  .pestanas button {
+    background: none; border: none; border-bottom: 2px solid transparent;
+    color: #8b95a8; font: inherit; font-size: 12px; padding: 6px 10px; cursor: pointer;
+  }
+  .pestanas button.elegida { color: #f2d98a; border-bottom-color: #f2b705; }
+  .pestanas .contador {
+    background: #c4453c; color: #fff; border-radius: 8px; font-size: 10px;
+    padding: 0 5px; margin-left: 5px;
+  }
+  .panel { display: none; flex-direction: column; gap: 10px; }
+  .panel.visible { display: flex; }
+  .barra { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .barra .etiqueta { color: #7d8799; font-size: 11px; text-transform: uppercase;
+                     letter-spacing: .12em; }
+  .barra button, .barra select, .barra input[type=text], .barra input[type=color] {
     background: #1d2231; border: 1px solid #2b3245; border-radius: 6px;
     color: #cfd6e4; font: inherit; font-size: 12px; padding: 4px 9px; cursor: pointer;
   }
+  .barra input[type=text] { cursor: text; }
+  .barra input[type=color] { padding: 2px; width: 42px; height: 26px; }
   .barra button:hover { background: #272e42; }
-  .barra .grupo { display: flex; gap: 4px; align-items: center; }
-  .barra .etiqueta { color: #7d8799; font-size: 11px; text-transform: uppercase;
-                     letter-spacing: .12em; }
+  .barra button.elegido { border-color: #f2b705; color: #f2d98a; background: #221d10; }
+  .barra button:disabled { opacity: .4; cursor: default; }
   .paleta { display: flex; flex-wrap: wrap; gap: 6px; }
   .paleta button {
     display: flex; flex-direction: column; align-items: center; gap: 3px;
     background: #161a25; border: 1px solid #2b3245; border-radius: 6px;
-    padding: 4px 5px; cursor: pointer; color: #8b95a8; font-size: 10px;
-    min-width: 46px;
+    padding: 4px 5px; cursor: pointer; color: #8b95a8; font-size: 10px; min-width: 46px;
   }
   .paleta button.elegido { border-color: #f2b705; color: #f2d98a; background: #221d10; }
   .paleta canvas { image-rendering: pixelated; width: 32px; height: 32px; }
   .paleta .simbolo { font: 11px ui-monospace, monospace; color: #cfd6e4; }
-  .aviso { color: #e8b04b; font-size: 12px; min-height: 16px; }
-  .exportar { display: none; flex-direction: column; gap: 6px; }
-  .exportar.visible { display: flex; }
+  .campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px 16px; }
+  .campo { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #8b95a8; }
+  .campo > span { flex: 0 0 92px; }
+  .campo input[type=range] { flex: 1; min-width: 70px; accent-color: #f2b705; }
+  .campo input[type=number], .campo input[type=text], .campo select {
+    width: 74px; background: #131722; border: 1px solid #2b3245; border-radius: 5px;
+    color: #cfd6e4; font: inherit; font-size: 12px; padding: 3px 6px;
+  }
+  .campo input[type=text] { width: 130px; }
+  .campo select { width: 108px; }
+  .campo.ancho input[type=text] { width: 190px; }
+  .grupo-titulo { color: #cfd6e4; font-size: 12px; text-transform: uppercase;
+                  letter-spacing: .14em; margin-top: 4px; }
+  .nota { color: #7d8799; font-size: 12px; }
+  .problemas { display: flex; flex-direction: column; gap: 4px; }
+  .problemas button {
+    text-align: left; background: #161a25; border: 1px solid #2b3245;
+    border-left: 3px solid #e8b04b; border-radius: 6px; color: #cfd6e4;
+    font: inherit; font-size: 12px; padding: 5px 8px; cursor: pointer;
+  }
+  .problemas button.grave { border-left-color: #c4453c; }
+  .problemas .todo-bien { color: #6fbf73; font-size: 12px; }
+  .exportar { display: flex; flex-direction: column; gap: 6px; }
   .exportar textarea {
-    width: 100%; height: 190px; background: #0f131c; color: #cfd6e4;
+    width: 100%; height: 210px; background: #0f131c; color: #cfd6e4;
     border: 1px solid #2b3245; border-radius: 6px; padding: 8px;
     font: 11px/1.45 ui-monospace, monospace; resize: vertical;
   }
+  .recuperar {
+    display: none; align-items: center; gap: 10px; width: 100%; max-width: 860px;
+    background: #221d10; border: 1px solid #4a3c14; border-radius: 8px;
+    padding: 8px 12px; font-size: 12px; color: #f2d98a;
+  }
+  .recuperar.visible { display: flex; }
+  .solo-editor { display: none; }
+  body.editando .solo-editor { display: inline; }
   .pad { display: none; gap: 10px; margin-top: 6px; }
   .pad button {
     width: 62px; height: 56px; border-radius: 12px; border: 1px solid #2b3245;
@@ -81,32 +129,105 @@
   <span><kbd>Enter</kbd> empezar</span>
   <span><kbd>R</kbd> reiniciar</span>
   <span><kbd>E</kbd> editar</span>
+  <span class="solo-editor"><kbd>1</kbd>&hellip;<kbd>6</kbd> herramientas</span>
+  <span class="solo-editor"><kbd>Ctrl</kbd>+<kbd>Z</kbd> deshacer</span>
+  <span class="solo-editor"><kbd>G</kbd> rejilla</span>
   <span><kbd>+</kbd> / <kbd>-</kbd> zoom</span>
   <span><kbd>M</kbd> <button id="silencio" type="button">sonido: si</button></span>
   <span><kbd>E</kbd> <button id="modo" type="button">editar el nivel</button></span>
 </div>
+<div class="recuperar" id="recuperar">
+  <span id="recuperar-texto">Hay cambios sin exportar.</span>
+  <button type="button" id="recuperar-si">recuperarlos</button>
+  <button type="button" id="recuperar-no">descartarlos</button>
+</div>
+
 <div class="editor" id="editor">
-  <div class="barra">
-    <span class="etiqueta">nivel</span>
-    <select id="ed-nivel"></select>
-    <div class="grupo">
+  <div class="estado">
+    <span>nivel <b id="es-nivel">1</b></span>
+    <span>herramienta <b id="es-herramienta">lapiz</b></span>
+    <span>pintando <b id="es-simbolo">#</b></span>
+    <span>casilla <b id="es-pos">-</b></span>
+    <span>tamaño <b id="es-tam">-</b></span>
+    <span class="mensaje" id="es-mensaje"></span>
+  </div>
+
+  <div class="pestanas" id="pestanas">
+    <button type="button" data-panel="mapa" class="elegida">mapa</button>
+    <button type="button" data-panel="nivel">nivel</button>
+    <button type="button" data-panel="juego">juego y fisica</button>
+    <button type="button" data-panel="actores">enemigos y objetos</button>
+    <button type="button" data-panel="revisar">revisar<span class="contador" id="es-problemas" hidden>0</span></button>
+    <button type="button" data-panel="yaml">game.yaml</button>
+  </div>
+
+  <div class="panel visible" id="panel-mapa">
+    <div class="barra" id="herramientas"></div>
+    <div class="barra">
+      <span class="etiqueta">zoom</span>
+      <button type="button" data-zoom="0.5">alejar</button>
+      <button type="button" data-zoom="1">1:1</button>
+      <button type="button" data-zoom="2">acercar</button>
+      <button type="button" id="ed-rejilla">rejilla</button>
+      <button type="button" id="ed-guias">pantallas</button>
       <span class="etiqueta">tamaño</span>
       <button type="button" data-tam="-1,0">&minus; ancho</button>
       <button type="button" data-tam="1,0">+ ancho</button>
       <button type="button" data-tam="0,-1">&minus; alto</button>
       <button type="button" data-tam="0,1">+ alto</button>
     </div>
-    <button type="button" id="ed-deshacer">deshacer</button>
-    <button type="button" id="ed-rejilla">rejilla</button>
-    <button type="button" id="ed-exportar">game.yaml</button>
-    <button type="button" id="ed-jugar">probar el nivel</button>
+    <div class="barra">
+      <span class="etiqueta">seleccion</span>
+      <button type="button" id="ed-copiar-sel">copiar</button>
+      <button type="button" id="ed-cortar">cortar</button>
+      <button type="button" id="ed-pegar">pegar</button>
+      <button type="button" id="ed-borrar-sel">borrar</button>
+      <span class="etiqueta">historial</span>
+      <button type="button" id="ed-deshacer">deshacer</button>
+      <button type="button" id="ed-rehacer">rehacer</button>
+      <button type="button" id="ed-jugar">probar el nivel</button>
+    </div>
+    <div class="paleta" id="ed-paleta"></div>
   </div>
-  <div class="paleta" id="ed-paleta"></div>
-  <div class="aviso" id="ed-aviso"></div>
-  <div class="exportar" id="ed-panel">
+
+  <div class="panel" id="panel-nivel">
+    <div class="barra">
+      <span class="etiqueta">nivel</span>
+      <select id="ed-nivel"></select>
+      <button type="button" id="ed-nuevo">nuevo</button>
+      <button type="button" id="ed-duplicar">duplicar</button>
+      <button type="button" id="ed-borrar">borrar</button>
+      <button type="button" data-orden="-1">subir</button>
+      <button type="button" data-orden="1">bajar</button>
+    </div>
+    <div class="campos" id="campos-nivel"></div>
+    <div class="nota" id="nota-capas"></div>
+  </div>
+
+  <div class="panel" id="panel-juego">
+    <div class="campos" id="campos-juego"></div>
+    <div class="grupo-titulo">fisica del jugador</div>
+    <div class="campos" id="campos-jugador"></div>
+    <div class="nota" id="nota-salto"></div>
+  </div>
+
+  <div class="panel" id="panel-actores">
+    <div id="campos-actores"></div>
+  </div>
+
+  <div class="panel" id="panel-revisar">
+    <div class="barra">
+      <button type="button" id="ed-bot">¿se puede terminar?</button>
+      <span class="nota" id="nota-stats"></span>
+    </div>
+    <div class="problemas" id="lista-problemas"></div>
+  </div>
+
+  <div class="panel exportar" id="panel-yaml">
     <div class="barra">
       <button type="button" id="ed-copiar">copiar al portapapeles</button>
       <button type="button" id="ed-descargar">descargar game.yaml</button>
+      <button type="button" id="ed-olvidar">olvidar cambios guardados</button>
       <span class="etiqueta" id="ed-copiado"></span>
     </div>
     <textarea id="ed-texto" spellcheck="false" readonly></textarea>
@@ -123,6 +244,12 @@
 
 <script>
 @CORE@
+</script>
+<script>
+@YAML@
+</script>
+<script>
+@BOT@
 </script>
 <script>
 @EDITOR@
@@ -160,12 +287,44 @@
   document.addEventListener("keydown", function (ev) {
     audio.iniciar();
     if (ev.code === "KeyM") { silenciar(); return; }
-    if (ev.code === "KeyE") {
+    if (ev.code === "KeyE" &&
+        !(ev.target && /^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName))) {
       if (editor.activo) modoJuego(); else modoEditor();
       return;
     }
     if (editor.activo) {
-      if (ev.code === "KeyZ" && (ev.ctrlKey || ev.metaKey)) { editor.deshacer(); return; }
+      var escribiendo = ev.target && /^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName);
+      if (escribiendo) return;
+      var mando = ev.ctrlKey || ev.metaKey;
+      if (mando && ev.code === "KeyZ") {
+        if (ev.shiftKey) editor.rehacerCambio(); else editor.deshacer();
+        ev.preventDefault();
+        return;
+      }
+      if (mando && ev.code === "KeyY") { editor.rehacerCambio(); ev.preventDefault(); return; }
+      if (mando && ev.code === "KeyC") { editor.copiar(); refrescarEditor(); ev.preventDefault(); return; }
+      if (mando && ev.code === "KeyX") { editor.cortar(); ev.preventDefault(); return; }
+      if (mando && ev.code === "KeyV") {
+        var s = editor.seleccion;
+        editor.pegar(s ? s.x : editor.raton.x, s ? s.y : editor.raton.y);
+        ev.preventDefault();
+        return;
+      }
+      if (ev.code === "Delete" || ev.code === "Backspace") {
+        editor.borrarSeleccion();
+        ev.preventDefault();
+        return;
+      }
+      if (ev.code === "KeyG") { editor.rejilla = !editor.rejilla; return; }
+      if (ev.code === "KeyH") { editor.guias = !editor.guias; return; }
+      if (ev.code === "Escape") { editor.seleccion = null; refrescarEditor(); return; }
+      var atajo = HERRAMIENTAS.filter(function (h) { return ev.code === "Digit" + h.tecla; })[0];
+      if (atajo) {
+        editor.herramienta = atajo.id;
+        construirHerramientas();
+        refrescarEstado();
+        return;
+      }
       var paso = ev.shiftKey ? 64 : 16;
       if (ev.code === "ArrowLeft") { editor.mover(-paso, 0); ev.preventDefault(); return; }
       if (ev.code === "ArrowRight") { editor.mover(paso, 0); ev.preventDefault(); return; }
@@ -536,109 +695,483 @@
   });
 
   var elEditor = document.getElementById("editor");
+  var elModo = document.getElementById("modo");
   var elNivel = document.getElementById("ed-nivel");
   var elPaleta = document.getElementById("ed-paleta");
-  var elAviso = document.getElementById("ed-aviso");
-  var elPanel = document.getElementById("ed-panel");
   var elTexto = document.getElementById("ed-texto");
-  var elModo = document.getElementById("modo");
+  var controles = [];
 
-  DATA.levels.forEach(function (nivel, i) {
-    var opcion = document.createElement("option");
-    opcion.value = String(i);
-    opcion.textContent = (i + 1) + ". " + nivel.name;
-    elNivel.appendChild(opcion);
-  });
+  var HERRAMIENTAS = [
+    { id: "lapiz", nombre: "lapiz", tecla: "1" },
+    { id: "rect", nombre: "rectangulo", tecla: "2" },
+    { id: "relleno", nombre: "relleno", tecla: "3" },
+    { id: "seleccion", nombre: "seleccion", tecla: "4" },
+    { id: "cuentagotas", nombre: "cuentagotas", tecla: "5" },
+    { id: "mano", nombre: "mover", tecla: "6" }
+  ];
+
+  /* --- construccion de controles ------------------------------------- */
+
+  function crearElemento(padre, etiqueta, clase) {
+    var nodo = document.createElement(etiqueta);
+    if (clase) nodo.className = clase;
+    padre.appendChild(nodo);
+    return nodo;
+  }
+
+  function campoNumero(padre, texto, grupo, campo, indice, valor) {
+    var rangos = (DATA.claves && DATA.claves.rangos) || {};
+    var r = rangos[campo] || { min: 0, max: 100, paso: 1 };
+    var fila = crearElemento(padre, "label", "campo");
+    crearElemento(fila, "span").textContent = texto;
+    var deslizador = crearElemento(fila, "input");
+    deslizador.type = "range";
+    deslizador.min = r.min; deslizador.max = r.max; deslizador.step = r.paso;
+    var numero = crearElemento(fila, "input");
+    numero.type = "number";
+    numero.min = r.min; numero.max = r.max; numero.step = r.paso;
+    function poner(v) { deslizador.value = v; numero.value = v; }
+    poner(valor);
+    function cambiar(v) {
+      var n = Number(v);
+      if (!isFinite(n)) return;
+      n = Math.max(r.min, Math.min(r.max, n));
+      poner(n);
+      editor.ponerPropiedad(grupo, campo, n, indice);
+    }
+    deslizador.addEventListener("input", function () { cambiar(deslizador.value); });
+    numero.addEventListener("change", function () { cambiar(numero.value); });
+    controles.push({ grupo: grupo, campo: campo, indice: indice, poner: poner });
+  }
+
+  function campoBool(padre, texto, grupo, campo, indice, valor) {
+    var fila = crearElemento(padre, "label", "campo");
+    crearElemento(fila, "span").textContent = texto;
+    var caja = crearElemento(fila, "input");
+    caja.type = "checkbox";
+    caja.checked = !!valor;
+    caja.addEventListener("change", function () {
+      editor.ponerPropiedad(grupo, campo, caja.checked, indice);
+    });
+    controles.push({ grupo: grupo, campo: campo, indice: indice,
+                     poner: function (v) { caja.checked = !!v; } });
+  }
+
+  function campoTexto(padre, texto, grupo, campo, indice, valor, ancho) {
+    var fila = crearElemento(padre, "label", "campo" + (ancho ? " ancho" : ""));
+    crearElemento(fila, "span").textContent = texto;
+    var entrada = crearElemento(fila, "input");
+    entrada.type = "text";
+    entrada.value = valor || "";
+    entrada.addEventListener("change", function () {
+      editor.ponerPropiedad(grupo, campo, entrada.value, indice);
+    });
+    controles.push({ grupo: grupo, campo: campo, indice: indice,
+                     poner: function (v) { entrada.value = v || ""; } });
+  }
+
+  function campoColor(padre, texto, grupo, campo, indice, valor) {
+    var fila = crearElemento(padre, "label", "campo");
+    crearElemento(fila, "span").textContent = texto;
+    var entrada = crearElemento(fila, "input");
+    entrada.type = "color";
+    entrada.value = valor || "#101830";
+    entrada.addEventListener("change", function () {
+      editor.ponerPropiedad(grupo, campo, entrada.value, indice);
+    });
+    controles.push({ grupo: grupo, campo: campo, indice: indice,
+                     poner: function (v) { entrada.value = v || "#101830"; } });
+  }
+
+  function campoLista(padre, texto, grupo, campo, indice, valor, opciones) {
+    var fila = crearElemento(padre, "label", "campo");
+    crearElemento(fila, "span").textContent = texto;
+    var select = crearElemento(fila, "select");
+    opciones.forEach(function (op) {
+      var nodo = crearElemento(select, "option");
+      nodo.value = op.valor === undefined ? op : op.valor;
+      nodo.textContent = op.texto === undefined ? op : op.texto;
+    });
+    select.value = valor;
+    select.addEventListener("change", function () {
+      editor.ponerPropiedad(grupo, campo, select.value, indice);
+    });
+    controles.push({ grupo: grupo, campo: campo, indice: indice,
+                     poner: function (v) { select.value = v; } });
+  }
+
+  /* --- paneles -------------------------------------------------------- */
+
+  function construirHerramientas() {
+    var cont = document.getElementById("herramientas");
+    cont.innerHTML = "";
+    crearElemento(cont, "span", "etiqueta").textContent = "herramienta";
+    HERRAMIENTAS.forEach(function (h) {
+      var boton = crearElemento(cont, "button");
+      boton.type = "button";
+      boton.textContent = h.nombre + " (" + h.tecla + ")";
+      boton.dataset.herramienta = h.id;
+      if (editor.herramienta === h.id) boton.className = "elegido";
+      boton.addEventListener("click", function () {
+        editor.herramienta = h.id;
+        construirHerramientas();
+        refrescarEstado();
+      });
+    });
+  }
 
   function construirPaleta() {
     elPaleta.innerHTML = "";
     editor.paleta().forEach(function (entrada) {
-      var boton = document.createElement("button");
+      var boton = crearElemento(elPaleta, "button");
       boton.type = "button";
       boton.title = entrada.etiqueta + "  (" + entrada.char + ")";
-      if (entrada.hoja) {
-        var mini = document.createElement("canvas");
-        mini.width = 16;
-        mini.height = 16;
+      var hoja = DATA.sheets[entrada.hoja], imagen = images[entrada.hoja];
+      var mini = crearElemento(boton, "canvas");
+      mini.width = 16; mini.height = 16;
+      if (imagen && hoja) {
         var mctx = mini.getContext("2d");
         mctx.imageSmoothingEnabled = false;
-        var hoja = DATA.sheets[entrada.hoja], imagen = images[entrada.hoja];
-        if (imagen) {
-          var col = entrada.frame % hoja.per_row;
-          var fila = (entrada.frame / hoja.per_row) | 0;
-          mctx.drawImage(imagen, col * hoja.frame_w, fila * hoja.frame_h,
-                         hoja.frame_w, hoja.frame_h, 0, 0, 16,
-                         16 * hoja.frame_h / hoja.frame_w);
-        }
-        boton.appendChild(mini);
-      } else {
-        var icono = document.createElement("div");
-        icono.textContent = "✋";
-        icono.style.fontSize = "22px";
-        icono.style.lineHeight = "32px";
-        boton.appendChild(icono);
+        var col = entrada.frame % hoja.per_row;
+        var fila = (entrada.frame / hoja.per_row) | 0;
+        mctx.drawImage(imagen, col * hoja.frame_w, fila * hoja.frame_h,
+                       hoja.frame_w, hoja.frame_h, 0, 0, 16,
+                       16 * hoja.frame_h / hoja.frame_w);
       }
-      var simbolo = document.createElement("span");
-      simbolo.className = "simbolo";
-      simbolo.textContent = entrada.char === "mano" ? "mover" : entrada.char;
-      boton.appendChild(simbolo);
-      var etiqueta = document.createElement("span");
-      etiqueta.textContent = entrada.etiqueta;
-      boton.appendChild(etiqueta);
-      if (entrada.char === editor.herramienta) boton.className = "elegido";
+      crearElemento(boton, "span", "simbolo").textContent = entrada.char;
+      crearElemento(boton, "span").textContent = entrada.etiqueta;
+      if (entrada.char === editor.simbolo) boton.className = "elegido";
       boton.addEventListener("click", function () {
-        editor.herramienta = entrada.char;
+        editor.simbolo = entrada.char;
+        if (editor.herramienta === "cuentagotas" || editor.herramienta === "mano") {
+          editor.herramienta = "lapiz";
+          construirHerramientas();
+        }
         construirPaleta();
+        refrescarEstado();
       });
-      elPaleta.appendChild(boton);
     });
   }
 
+  function construirNivel() {
+    elNivel.innerHTML = "";
+    editor.modelo.niveles.forEach(function (nivel, i) {
+      var opcion = crearElemento(elNivel, "option");
+      opcion.value = String(i);
+      opcion.textContent = (i + 1) + ". " + nivel.nombre;
+    });
+    elNivel.value = String(editor.nivel);
+
+    var cont = document.getElementById("campos-nivel");
+    cont.innerHTML = "";
+    var props = editor.modelo.niveles[editor.nivel];
+    campoTexto(cont, "nombre", "nivel", "nombre", null, props.nombre, true);
+    campoColor(cont, "color de fondo", "nivel", "fondo", null, props.fondo);
+    var musicas = [{ valor: "", texto: "(sin musica)" }];
+    ((DATA.sonido && DATA.sonido.musica) || []).forEach(function (m) {
+      musicas.push({ valor: m.nombre, texto: m.nombre });
+    });
+    campoLista(cont, "musica", "nivel", "musica", null, props.musica, musicas);
+
+    var notaCapas = document.getElementById("nota-capas");
+    notaCapas.innerHTML = "";
+    if (DATA.layers.length) {
+      crearElemento(notaCapas, "span", "etiqueta").textContent = "capas de fondo:  ";
+      DATA.layers.forEach(function (capa) {
+        var etiqueta = crearElemento(notaCapas, "label", "campo");
+        etiqueta.style.display = "inline-flex";
+        var caja = crearElemento(etiqueta, "input");
+        caja.type = "checkbox";
+        caja.checked = props.capas.indexOf(capa.name) >= 0;
+        crearElemento(etiqueta, "span").textContent = capa.name;
+        etiqueta.querySelector("span").style.flex = "none";
+        caja.addEventListener("change", function () {
+          var lista = editor.modelo.niveles[editor.nivel].capas.slice();
+          var pos = lista.indexOf(capa.name);
+          if (caja.checked && pos < 0) lista.push(capa.name);
+          if (!caja.checked && pos >= 0) lista.splice(pos, 1);
+          // se mantiene el orden de lejos a cerca
+          lista.sort(function (a, b) {
+            return nombresCapas().indexOf(a) - nombresCapas().indexOf(b);
+          });
+          editor.ponerPropiedad("nivel", "capas", lista, null);
+        });
+      });
+    } else {
+      notaCapas.textContent = "este proyecto no tiene capas de fondo definidas";
+    }
+  }
+
+  function nombresCapas() {
+    return DATA.layers.map(function (c) { return c.name; });
+  }
+
+  function construirJuego() {
+    var cont = document.getElementById("campos-juego");
+    cont.innerHTML = "";
+    var j = editor.modelo.juego;
+    campoTexto(cont, "titulo", "juego", "titulo", null, j.titulo, true);
+    campoTexto(cont, "autor", "juego", "autor", null, j.autor, true);
+    campoNumero(cont, "vidas", "juego", "vidas", null, j.vidas);
+    campoNumero(cont, "tiempo (s)", "juego", "tiempo", null, j.tiempo);
+
+    var fis = document.getElementById("campos-jugador");
+    fis.innerHTML = "";
+    var p = editor.modelo.jugador;
+    campoNumero(fis, "velocidad", "jugador", "velocidad", null, p.velocidad);
+    campoNumero(fis, "salto", "jugador", "salto", null, p.salto);
+    campoNumero(fis, "gravedad", "jugador", "gravedad", null, p.gravedad);
+    campoNumero(fis, "aceleracion", "jugador", "aceleracion", null, p.aceleracion);
+    campoNumero(fis, "friccion", "jugador", "friccion", null, p.friccion);
+    campoNumero(fis, "control aire", "jugador", "control_aire", null, p.control_aire);
+    campoNumero(fis, "corte del salto", "jugador", "corte_salto", null, p.corte_salto);
+    campoNumero(fis, "caida maxima", "jugador", "max_caida", null, p.max_caida);
+    campoNumero(fis, "rebote", "jugador", "rebote", null, p.rebote);
+    campoNumero(fis, "coyote", "jugador", "coyote", null, p.coyote);
+    campoNumero(fis, "buffer salto", "jugador", "buffer_salto", null, p.buffer_salto);
+    campoNumero(fis, "vida", "jugador", "vida", null, p.vida);
+    campoNumero(fis, "invulnerable", "jugador", "invulnerable", null, p.invulnerable);
+    campoBool(fis, "doble salto", "jugador", "doble_salto", null, p.doble_salto);
+    campoBool(fis, "pisar enemigos", "jugador", "pisar_enemigos", null, p.pisar_enemigos);
+  }
+
+  function construirActores() {
+    var cont = document.getElementById("campos-actores");
+    cont.innerHTML = "";
+    var comportamientos = (DATA.claves && DATA.claves.opciones &&
+                           DATA.claves.opciones.comportamiento) ||
+                          ["patrulla", "volador", "perseguidor", "saltarin", "fijo"];
+    var efectos = (DATA.claves && DATA.claves.opciones && DATA.claves.opciones.efecto) ||
+                  ["puntos", "vida", "salud", "llave"];
+    editor.modelo.enemigos.forEach(function (e, i) {
+      crearElemento(cont, "div", "grupo-titulo").textContent = "enemigo: " + e.nombre;
+      var campos = crearElemento(cont, "div", "campos");
+      campoLista(campos, "comportamiento", "enemigo", "comportamiento", i,
+                 e.comportamiento, comportamientos);
+      campoNumero(campos, "velocidad", "enemigo", "velocidad", i, e.velocidad);
+      campoNumero(campos, "vida", "enemigo", "vida", i, e.vida);
+      campoNumero(campos, "dano", "enemigo", "dano", i, e.dano);
+      campoNumero(campos, "puntos", "enemigo", "puntos", i, e.puntos);
+      campoNumero(campos, "rango", "enemigo", "rango", i, e.rango);
+      campoNumero(campos, "amplitud", "enemigo", "amplitud", i, e.amplitud);
+      campoNumero(campos, "periodo", "enemigo", "periodo", i, e.periodo);
+      campoNumero(campos, "salto", "enemigo", "salto", i, e.salto);
+      campoNumero(campos, "intervalo", "enemigo", "intervalo", i, e.intervalo);
+      campoBool(campos, "se puede pisar", "enemigo", "pisable", i, e.pisable);
+      campoBool(campos, "gira en bordes", "enemigo", "girar_en_borde", i, e.girar_en_borde);
+    });
+    editor.modelo.objetos.forEach(function (o, i) {
+      crearElemento(cont, "div", "grupo-titulo").textContent = "objeto: " + o.nombre;
+      var campos = crearElemento(cont, "div", "campos");
+      campoLista(campos, "efecto", "objeto", "efecto", i, o.efecto, efectos);
+      campoNumero(campos, "puntos", "objeto", "puntos", i, o.puntos);
+      campoNumero(campos, "cantidad", "objeto", "cantidad", i, o.cantidad);
+    });
+    if (!editor.modelo.enemigos.length && !editor.modelo.objetos.length) {
+      crearElemento(cont, "div", "nota").textContent =
+        "este proyecto no tiene enemigos ni objetos definidos";
+    }
+  }
+
+  function construirPaneles() {
+    controles = [];
+    construirHerramientas();
+    construirPaleta();
+    construirNivel();
+    construirJuego();
+    construirActores();
+  }
+
+  /* --- refrescos ------------------------------------------------------ */
+
+  function refrescarValores() {
+    controles.forEach(function (c) {
+      var origen;
+      if (c.grupo === "nivel") origen = editor.modelo.niveles[editor.nivel];
+      else if (c.grupo === "juego") origen = editor.modelo.juego;
+      else if (c.grupo === "jugador") origen = editor.modelo.jugador;
+      else if (c.grupo === "enemigo") origen = editor.modelo.enemigos[c.indice];
+      else if (c.grupo === "objeto") origen = editor.modelo.objetos[c.indice];
+      if (origen && c.campo in origen) c.poner(origen[c.campo]);
+    });
+  }
+
+  function refrescarEstado() {
+    document.getElementById("es-nivel").textContent =
+      (editor.nivel + 1) + " " + editor.modelo.niveles[editor.nivel].nombre;
+    document.getElementById("es-herramienta").textContent = editor.herramienta;
+    document.getElementById("es-simbolo").textContent = editor.simbolo;
+    document.getElementById("es-pos").textContent =
+      editor.raton.x >= 0 ? (editor.raton.x + "," + editor.raton.y) : "-";
+    var f = editor.modelo.filas[editor.nivel];
+    document.getElementById("es-tam").textContent = f[0].length + " x " + f.length;
+    document.getElementById("es-mensaje").textContent = editor.mensaje || "";
+  }
+
+  function refrescarProblemas() {
+    var lista = document.getElementById("lista-problemas");
+    var contador = document.getElementById("es-problemas");
+    lista.innerHTML = "";
+    var problemas = editor.problemas;
+    contador.hidden = problemas.length === 0;
+    contador.textContent = String(problemas.length);
+    if (!problemas.length) {
+      crearElemento(lista, "div", "todo-bien").textContent =
+        "el nivel no tiene problemas conocidos";
+    }
+    problemas.forEach(function (problema) {
+      var boton = crearElemento(lista, "button", problema.grave ? "grave" : "");
+      boton.type = "button";
+      boton.textContent = problema.texto;
+      boton.addEventListener("click", function () {
+        if (problema.x !== undefined) editor.irA(problema.x, problema.y);
+      });
+    });
+    var alcance = editor.saltoAlcance();
+    var entidades = 0;
+    var chars = DATA.levels[editor.nivel].spawn_chars || {};
+    editor.modelo.filas[editor.nivel].forEach(function (fila) {
+      for (var i = 0; i < fila.length; i++) if (chars[fila[i]]) entidades++;
+    });
+    document.getElementById("nota-stats").textContent =
+      "el salto sube " + alcance.altura + " px y cruza " + alcance.distancia +
+      " px  ·  " + entidades + " enemigos y objetos en este nivel";
+    document.getElementById("nota-salto").textContent =
+      "con estos ajustes el salto sube " + alcance.altura + " px (" +
+      Math.floor(alcance.altura / 16) + " casillas) y cruza " + alcance.distancia +
+      " px (" + Math.floor(alcance.distancia / 16) + " casillas)";
+  }
+
+  var refrescoPendiente = false;
   function refrescarEditor() {
-    elAviso.textContent = editor.aviso;
-    if (elPanel.classList.contains("visible")) elTexto.value = editor.exportarYaml();
+    if (!elEditor) return;
+    refrescarEstado();
+    refrescarProblemas();
+    refrescarValores();
+    if (elNivel.value !== String(editor.nivel) ||
+        elNivel.options.length !== editor.modelo.niveles.length) {
+      construirNivel();
+    }
+    var panelYaml = document.getElementById("panel-yaml");
+    if (panelYaml.classList.contains("visible")) elTexto.value = editor.exportarYaml();
+    document.getElementById("ed-deshacer").disabled = editor.historial.length === 0;
+    document.getElementById("ed-rehacer").disabled = editor.rehacer.length === 0;
+    ["ed-copiar-sel", "ed-cortar", "ed-borrar-sel"].forEach(function (id) {
+      document.getElementById(id).disabled = !editor.seleccion;
+    });
+    document.getElementById("ed-pegar").disabled = !editor.portapapeles;
+  }
+
+  /* --- modos ---------------------------------------------------------- */
+
+  function tamanoCanvas(editando) {
+    canvas.width = editando ? 480 : NPCore.SCREEN_W;
+    canvas.height = editando ? 312 : NPCore.SCREEN_H;
+    // cambiar el tamano reinicia el estado del contexto, pero es el mismo objeto
+    ctx.imageSmoothingEnabled = false;
+    editor.limitarCamara();
+    aplicarTamanoCss(editando);
+  }
+
+  function aplicarTamanoCss(editando) {
+    if (editando) {
+      var cabe = Math.max(1, Math.min(2, (window.innerWidth - 60) / canvas.width));
+      canvas.style.width = Math.round(canvas.width * cabe) + "px";
+      canvas.style.height = Math.round(canvas.height * cabe) + "px";
+    } else {
+      canvas.style.width = (NPCore.SCREEN_W * scale) + "px";
+      canvas.style.height = (NPCore.SCREEN_H * scale) + "px";
+    }
   }
 
   function modoEditor() {
+    document.body.classList.add("editando");
+    tamanoCanvas(true);
     editor.entrar();
     elEditor.classList.add("visible");
     elModo.textContent = "volver a jugar";
-    elNivel.value = String(editor.nivel);
-    construirPaleta();
+    construirPaneles();
     refrescarEditor();
   }
 
   function modoJuego() {
+    document.body.classList.remove("editando");
     editor.salir();
+    tamanoCanvas(false);
     elEditor.classList.remove("visible");
-    elPanel.classList.remove("visible");
     elModo.textContent = "editar el nivel";
   }
 
   elModo.addEventListener("click", function () {
-    if (editor.activo) modoJuego();
-    else modoEditor();
+    if (editor.activo) modoJuego(); else modoEditor();
   });
+
+  /* --- pestanas ------------------------------------------------------- */
+
+  Array.prototype.forEach.call(document.querySelectorAll("#pestanas button"), function (boton) {
+    boton.addEventListener("click", function () {
+      Array.prototype.forEach.call(document.querySelectorAll("#pestanas button"), function (b) {
+        b.className = b === boton ? "elegida" : "";
+      });
+      Array.prototype.forEach.call(document.querySelectorAll(".panel"), function (panel) {
+        panel.classList.toggle("visible", panel.id === "panel-" + boton.dataset.panel);
+      });
+      if (boton.dataset.panel === "yaml") elTexto.value = editor.exportarYaml();
+      if (boton.dataset.panel === "revisar") { editor.revisar(); refrescarProblemas(); }
+    });
+  });
+
+  /* --- botones -------------------------------------------------------- */
+
+  function conClic(id, fn) {
+    var nodo = document.getElementById(id);
+    if (nodo) nodo.addEventListener("click", fn);
+  }
+
   elNivel.addEventListener("change", function () {
     editor.cambiarNivel(parseInt(elNivel.value, 10));
-    construirPaleta();
+    construirNivel();
   });
-  document.getElementById("ed-deshacer").addEventListener("click", function () {
-    editor.deshacer();
-    elNivel.value = String(editor.nivel);
+  conClic("ed-nuevo", function () { editor.nuevoNivel(); construirNivel(); });
+  conClic("ed-duplicar", function () { editor.duplicarNivel(); construirNivel(); });
+  conClic("ed-borrar", function () { editor.borrarNivel(); construirNivel(); });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-orden]"), function (boton) {
+    boton.addEventListener("click", function () {
+      editor.moverNivel(parseInt(boton.dataset.orden, 10));
+      construirNivel();
+    });
   });
-  document.getElementById("ed-rejilla").addEventListener("click", function () {
-    editor.rejilla = !editor.rejilla;
+  Array.prototype.forEach.call(document.querySelectorAll("[data-tam]"), function (boton) {
+    boton.addEventListener("click", function () {
+      var partes = boton.dataset.tam.split(",");
+      editor.redimensionar(parseInt(partes[0], 10), parseInt(partes[1], 10));
+    });
   });
-  document.getElementById("ed-jugar").addEventListener("click", function () {
-    editor.aplicar();
+  Array.prototype.forEach.call(document.querySelectorAll("[data-zoom]"), function (boton) {
+    boton.addEventListener("click", function () {
+      editor.ponerZoom(parseFloat(boton.dataset.zoom));
+    });
   });
-  document.getElementById("ed-exportar").addEventListener("click", function () {
-    elPanel.classList.toggle("visible");
-    if (elPanel.classList.contains("visible")) elTexto.value = editor.exportarYaml();
+  conClic("ed-rejilla", function () { editor.rejilla = !editor.rejilla; });
+  conClic("ed-guias", function () { editor.guias = !editor.guias; });
+  conClic("ed-deshacer", function () { editor.deshacer(); });
+  conClic("ed-rehacer", function () { editor.rehacerCambio(); });
+  conClic("ed-copiar-sel", function () { editor.copiar(); refrescarEditor(); });
+  conClic("ed-cortar", function () { editor.cortar(); });
+  conClic("ed-pegar", function () {
+    var s = editor.seleccion;
+    editor.pegar(s ? s.x : editor.raton.x, s ? s.y : editor.raton.y);
   });
-  document.getElementById("ed-copiar").addEventListener("click", function () {
+  conClic("ed-borrar-sel", function () { editor.borrarSeleccion(); });
+  conClic("ed-jugar", function () { editor.aplicar(); });
+  conClic("ed-bot", function () { editor.comprobarJugable(NPCore); });
+  conClic("ed-olvidar", function () {
+    editor.descartarGuardado();
+    document.getElementById("ed-copiado").textContent = "guardado borrado";
+  });
+  conClic("ed-copiar", function () {
     var aviso = document.getElementById("ed-copiado");
+    elTexto.value = editor.exportarYaml();
     elTexto.select();
     var hecho = false;
     try { hecho = document.execCommand("copy"); } catch (e) { hecho = false; }
@@ -650,11 +1183,9 @@
     }
     aviso.textContent = hecho ? "copiado" : "selecciona y copia a mano";
   });
-  document.getElementById("ed-descargar").addEventListener("click", function () {
+  conClic("ed-descargar", function () {
     var texto = editor.exportarYaml();
     var aviso = document.getElementById("ed-copiado");
-    /* Si la pagina esta publicada en claude.ai, las descargas pasan por el
-       visor y solo admiten ciertas extensiones; en local basta con un enlace. */
     if (window.claude && typeof window.claude.use === "function") {
       window.claude.use("downloads").then(function (descargas) {
         if (!descargas) { aviso.textContent = "aqui no se puede descargar: usa copiar"; return; }
@@ -675,12 +1206,28 @@
     setTimeout(function () { URL.revokeObjectURL(enlace.href); }, 2000);
     aviso.textContent = "descargado";
   });
-  Array.prototype.forEach.call(document.querySelectorAll("[data-tam]"), function (boton) {
-    boton.addEventListener("click", function () {
-      var partes = boton.dataset.tam.split(",");
-      editor.redimensionar(parseInt(partes[0], 10), parseInt(partes[1], 10));
+
+  /* --- recuperar lo que se estaba editando ---------------------------- */
+
+  var guardado = editor.hayGuardado();
+  if (guardado) {
+    var banner = document.getElementById("recuperar");
+    var fecha = new Date(guardado.cuando);
+    document.getElementById("recuperar-texto").textContent =
+      "Tienes cambios sin exportar del " + fecha.toLocaleString() + ".";
+    banner.classList.add("visible");
+    document.getElementById("recuperar-si").addEventListener("click", function () {
+      editor.recuperar();
+      banner.classList.remove("visible");
+      modoEditor();
     });
-  });
+    document.getElementById("recuperar-no").addEventListener("click", function () {
+      editor.descartarGuardado();
+      banner.classList.remove("visible");
+    });
+  }
+
+  /* --- raton sobre el lienzo ------------------------------------------ */
 
   function posicionEnCanvas(ev) {
     var caja = canvas.getBoundingClientRect();
@@ -693,7 +1240,7 @@
   canvas.addEventListener("pointerdown", function (ev) {
     if (!editor.activo) { audio.iniciar(); return; }
     var p = posicionEnCanvas(ev);
-    editor.pulsar(p.x, p.y, ev.button);
+    editor.pulsar(p.x, p.y, ev.button, ev.altKey);
     canvas.setPointerCapture(ev.pointerId);
     ev.preventDefault();
   });
@@ -701,14 +1248,23 @@
     if (!editor.activo) return;
     var p = posicionEnCanvas(ev);
     editor.mover_raton(p.x, p.y);
+    refrescarEstado();
   });
-  canvas.addEventListener("pointerup", function () { editor.soltar(); });
-  canvas.addEventListener("pointercancel", function () { editor.soltar(); });
+  canvas.addEventListener("pointerup", function () { if (editor.activo) editor.soltar(); });
+  canvas.addEventListener("pointercancel", function () { if (editor.activo) editor.soltar(); });
   canvas.addEventListener("contextmenu", function (ev) {
     if (editor.activo) ev.preventDefault();
   });
+  canvas.addEventListener("wheel", function (ev) {
+    if (!editor.activo) return;
+    ev.preventDefault();
+    if (ev.ctrlKey) editor.ponerZoom(editor.zoom * (ev.deltaY < 0 ? 2 : 0.5));
+    else editor.mover(ev.deltaX || ev.deltaY, ev.shiftKey ? 0 : 0);
+  }, { passive: false });
 
-  /* Enganche para herramientas y pruebas automaticas (capturas, bots...). */
+  window.addEventListener("resize", function () { aplicarTamanoCss(editor.activo); });
+
+  /* Enganche para herramientas y pruebas automaticas  /* Enganche para herramientas y pruebas automaticas (capturas, bots...). */
   window.NeoPlat = {
     data: DATA,
     get world() { return world; },

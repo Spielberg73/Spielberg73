@@ -44,14 +44,27 @@ Controles del preview: flechas para moverte, <kbd>Z</kbd> o <kbd>espacio</kbd>
 para saltar, <kbd>↓</kbd> para bajar de una plataforma, <kbd>Enter</kbd> para
 empezar, <kbd>R</kbd> para reiniciar, <kbd>M</kbd> para silenciar.
 
-## Editor de niveles incluido
+## Editor incluido
 
-El preview trae un editor: pulsa <kbd>E</kbd> y pintas el nivel con el ratón (o
-con el dedo). Colocas tiles, enemigos, objetos y la salida del jugador, cambias
-el tamaño del nivel, lo pruebas al momento con <kbd>Enter</kbd> y te llevas el
-**`game.yaml` completo** con un botón. Sin instalar nada y sin perder el resto
-del archivo: solo se sustituyen los mapas. Ver
-[docs/editor.md](docs/editor.md).
+El preview **es** el editor: pulsa <kbd>E</kbd> y el juego se pausa para que lo
+edites; <kbd>Enter</kbd> y lo estás jugando otra vez.
+
+- **Dibujo**: lápiz, rectángulo, relleno, selección con copiar/cortar/pegar y
+  cuentagotas. Deshacer y rehacer por trazos, zoom, minimapa y guías que marcan
+  cada pantalla de la consola.
+- **Todo el juego, no solo el mapa**: propiedades de cada nivel (nombre, fondo,
+  música, capas), gestión de niveles (nuevo, duplicar, borrar, reordenar),
+  ajustes del juego y **física del jugador con deslizadores**, que se aplican al
+  momento; y los enemigos y objetos existentes.
+- **Revisión en vivo**: te avisa de que falta la salida o la meta, de enemigos
+  colgados en el aire o de un hueco más ancho de lo que cruza tu salto. Y un
+  botón que **lanza un bot a terminarse el nivel** para comprobar que es posible.
+- **Exporta tu `game.yaml` entero**, conservando comentarios y formato: solo
+  cambia las líneas que has tocado.
+- **Guarda solo** en el navegador: si cierras sin exportar, te ofrece recuperar
+  lo que estabas haciendo.
+
+Todo en [docs/editor.md](docs/editor.md).
 
 ## Cómo es un juego
 
@@ -144,6 +157,7 @@ neoplat/
 │   ├── gfx.py              PNG → paletas y tiles de Neo Geo (C ROM / S ROM)
 │   ├── build.py            empaqueta gráficos, tiles y niveles
 │   ├── codegen.py          genera gamedata.c/h, ROMs y Makefile
+│   ├── claves.py           nombres que acepta cada opción (los usa el editor)
 │   ├── sonido.py           notas -> periodos del chip de sonido
 │   ├── m1.py / z80.py      driver de sonido del Z80 y su ensamblador
 │   ├── preview.py          genera el preview jugable
@@ -155,9 +169,11 @@ neoplat/
 │   └── host/np_trace.c     ejecuta la simulación en el ordenador (pruebas)
 ├── preview/
 │   ├── np_core.js          la misma simulación, en JavaScript
-│   └── np_editor.js        el editor de niveles del preview
+│   ├── np_editor.js        el editor (dibujo, propiedades, validación)
+│   ├── np_yaml.js          reescribe el game.yaml sin tocar lo demás
+│   └── np_bot.js           el bot que comprueba si un nivel se puede terminar
 ├── examples/bosque-magico/ juego de ejemplo listo para compilar
-└── tests/                  97 pruebas + 24 de jugabilidad + 12 del editor +
+└── tests/                  106 pruebas + 24 de jugabilidad + 33 del editor +
                             bot que se pasa los niveles
 ```
 
@@ -202,8 +218,11 @@ Verificado aquí:
   prueba, así que nunca se cuela un nivel imposible.
 - El preview se abre en Chromium durante las pruebas y se comprueba que dibuja
   lo que debe (capturas de pantalla revisadas a mano).
-- El editor hace el viaje completo en las pruebas: edita un nivel, exporta el
-  `game.yaml` y se vuelve a compilar, comprobando que no se pierde nada.
+- El editor hace el viaje completo en las pruebas: edita mapas, física y
+  niveles, exporta el `game.yaml`, se vuelve a compilar y se comprueba que no se
+  pierde ni un comentario.
+- Los nombres que el editor escribe en el `game.yaml` se comprueban uno a uno
+  contra el lector del kit.
 - El driver de sonido del Z80 se ejecuta en un emulador incluido en las pruebas:
   se comprueba que recibe las órdenes del 68000 y escribe en el chip los
   periodos y volúmenes de las notas escritas en el `game.yaml`.

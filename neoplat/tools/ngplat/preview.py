@@ -14,6 +14,7 @@ import os
 from typing import Dict, List
 
 from . import gfx
+from .claves import tabla_para_el_editor
 from .build import Build, actor_def_values, enemy_values, item_values, player_values, tile_tables
 from .paths import PREVIEW_DIR, TEMPLATES_DIR
 from .png import Image, encode_png, read_png
@@ -181,6 +182,7 @@ def build_data(build: Build) -> Dict[str, object]:
         "sonido": sonido,
         # el YAML original, para que el editor pueda devolverlo ya modificado
         "yaml": _leer_yaml(project.root),
+        "claves": tabla_para_el_editor(),
         "nombres": {
             "enemigos": [b.name for b in build.enemies],
             "objetos": [b.name for b in build.items],
@@ -194,13 +196,17 @@ def build_data(build: Build) -> Dict[str, object]:
 def render_html(build: Build) -> str:
     with open(os.path.join(PREVIEW_DIR, "np_core.js"), "r", encoding="utf-8") as fh:
         core = fh.read()
-    with open(os.path.join(PREVIEW_DIR, "np_editor.js"), "r", encoding="utf-8") as fh:
-        editor = fh.read()
+    piezas = {}
+    for nombre in ("np_editor.js", "np_yaml.js", "np_bot.js"):
+        with open(os.path.join(PREVIEW_DIR, nombre), "r", encoding="utf-8") as fh:
+            piezas[nombre] = fh.read()
     with open(os.path.join(TEMPLATES_DIR, "preview.html"), "r", encoding="utf-8") as fh:
         template = fh.read()
     data = json.dumps(build_data(build), separators=(",", ":"))
     html = template.replace("@CORE@", core)
-    html = html.replace("@EDITOR@", editor)
+    html = html.replace("@EDITOR@", piezas["np_editor.js"])
+    html = html.replace("@YAML@", piezas["np_yaml.js"])
+    html = html.replace("@BOT@", piezas["np_bot.js"])
     html = html.replace("@DATA@", data)
     html = html.replace("@TITLE@", build.project.title)
     html = html.replace("@AUTHOR@", build.project.author or "")
