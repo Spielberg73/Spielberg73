@@ -1,16 +1,35 @@
 # NeoPlat
 
 Kit para hacer juegos de plataformas 2D **sin programar** y compilarlos para
-**Neo Geo** (AES/MVS).
+tres máquinas de verdad: **Neo Geo** (AES/MVS), **Mega Drive** (Genesis) y
+**Amiga** (OCS/ECS).
 
 Describes el juego en un archivo `game.yaml`, dibujas los gráficos en PNG y el
-compilador genera el proyecto en C, las ROMs gráficas y un **preview jugable en
-el navegador** para probar los cambios en segundos.
+compilador genera el proyecto en C, los gráficos ya convertidos al formato de
+cada chip y un **preview jugable en el navegador** para probar los cambios en
+segundos.
 
 ```
-game.yaml + PNG  ──►  ngplat  ──┬──►  preview.html   (jugable + editor de niveles)
-                                └──►  build/         (C + ROMs para ngdevkit)
+                                ┌──►  preview.html          (jugable + editor)
+                                │
+game.yaml + PNG  ──►  ngplat  ──┼──►  build/neogeo/         ROMs C1/C2/S1/M1
+                                ├──►  build/megadrive/      cartucho .bin
+                                └──►  build/amiga/          ejecutable AmigaDOS
 ```
+
+El juego lo describes una vez. Lo que cambia de una máquina a otra es cómo se
+dibuja y cómo suena, no lo que pasa: la simulación (`engine/core/np_world.c`)
+es la misma en las tres, así que un salto mide exactamente lo mismo en la Neo
+Geo, en la Mega Drive y en el Amiga.
+
+| | Neo Geo | Mega Drive | Amiga |
+|---|---|---|---|
+| CPU | 68000 a 12 MHz | 68000 a 7,6 MHz | 68000 a 7 MHz |
+| Escenario | columnas de sprites | plano A del VDP | mapa de bits + blitter |
+| Colores | 4096 en pantalla | 4 paletas de 16 | una paleta de 32 |
+| Sonido | YM2610 (SSG) por Z80 | PSG SN76489 | Paula (4 canales) |
+| Parallax | sí | una capa | todavía no |
+| Sale | ROMs de cartucho | `.bin` con cabecera y suma | ejecutable con hunks |
 
 ## Instalación
 
@@ -22,12 +41,22 @@ cd neoplat
 ./ngplat --version
 ```
 
-No usa dependencias externas: trae su propio lector de PNG y su propio lector
-de YAML (si tienes PyYAML instalado, lo aprovecha).
+No usa dependencias externas: trae su propio lector de PNG, su propio lector de
+YAML, su propio ensamblador de Z80 y su propio conversor a ejecutable de
+AmigaDOS (si tienes PyYAML instalado, lo aprovecha).
 
-Para generar la ROM final necesitas además
-[ngdevkit](https://github.com/dciabrin/ngdevkit), que aporta el compilador de
-68000 (`m68k-neogeo-elf-gcc`) y el emulador `ngdevkit-gngeo`.
+Para **construir el binario final** hace falta un compilador de 68000, y cuál
+depende de la máquina:
+
+| Máquina | Qué necesitas |
+|---|---|
+| Neo Geo | [ngdevkit](https://github.com/dciabrin/ngdevkit) (`m68k-neogeo-elf-gcc`) |
+| Mega Drive | `m68k-elf-gcc`, o el paquete `gcc-m68k-linux-gnu` de Debian/Ubuntu |
+| Amiga | lo mismo que la Mega Drive (o `m68k-amigaos-gcc` si lo tienes) |
+
+Para Mega Drive y Amiga no hace falta nada más: el resto (cabecera del
+cartucho, suma de control, hunks y relocalización) lo hace el propio kit con
+Python.
 
 ## Empezar
 
@@ -35,9 +64,25 @@ Para generar la ROM final necesitas además
 ./ngplat nuevo mijuego      # crea un juego completo de ejemplo
 cd mijuego
 ../ngplat probar            # abre el preview jugable en el navegador
-../ngplat compilar          # genera build/ con el C y las ROMs gráficas
-cd build && make            # construye la ROM (necesita ngdevkit)
+../ngplat compilar          # genera build/neogeo/ con el C y las ROMs gráficas
+cd build/neogeo && make     # construye la ROM (necesita ngdevkit)
 make run                    # la arranca en el emulador
+```
+
+Para otra máquina, solo cambia una palabra:
+
+```bash
+../ngplat sistemas                       # lista las máquinas y sus límites
+../ngplat compilar --sistema megadrive   # -> build/megadrive/rom/juego.bin
+../ngplat compilar --sistema amiga       # -> build/amiga/disco/MiJuego
+```
+
+O lo dejas escrito en el `game.yaml` y te olvidas:
+
+```yaml
+juego:
+  titulo: "MI JUEGO"
+  sistema: megadrive     # neogeo (por defecto), megadrive o amiga
 ```
 
 Controles del preview: flechas para moverte, <kbd>Z</kbd> o <kbd>espacio</kbd>
@@ -146,8 +191,13 @@ tutorial paso a paso en [docs/tutorial.md](docs/tutorial.md).
 | `ngplat nuevo <carpeta>` | Crea un proyecto jugable con gráficos de ejemplo |
 | `ngplat comprobar [proyecto]` | Valida el `game.yaml` y dice cuánto ocupa el juego |
 | `ngplat probar [proyecto]` | Genera y abre el preview (con el editor de niveles) |
-| `ngplat compilar [proyecto]` | Genera `build/` con el C, las ROMs gráficas y el Makefile |
-| `ngplat compilar --make` | Además construye la ROM (necesita ngdevkit) |
+| `ngplat compilar [proyecto]` | Genera `build/<máquina>/` con el C, los gráficos y el Makefile |
+| `ngplat compilar --make` | Además construye la ROM o el ejecutable |
+| `ngplat sistemas` | Lista las máquinas de destino y lo que aguanta cada una |
+
+Cualquier orden acepta `--sistema neogeo|megadrive|amiga` para trabajar con una
+máquina sin tocar el `game.yaml`. El preview también: dibuja con los colores
+que se van a ver de verdad en esa máquina.
 
 Todas las órdenes tienen alias en inglés (`new`, `check`, `preview`, `build`).
 
@@ -156,13 +206,21 @@ Todas las órdenes tienen alias en inglés (`new`, `check`, `preview`, `build`).
 ```
 neoplat/
 ├── ngplat                  la orden (Python, sin dependencias)
-├── tools/ngplat/           compilador: YAML → C + ROMs + preview
+├── tools/ngplat/           compilador: YAML → C + gráficos + preview
 │   ├── project.py          lee y valida game.yaml (mensajes en castellano)
+│   ├── build.py            empaqueta gráficos, tiles y niveles (sin hardware)
+│   ├── codegen.py          genera gamedata.c/h y arma el proyecto
+│   ├── sistemas/           una máquina por archivo
+│   │   ├── base.py         qué tiene que saber hacer un sistema
+│   │   ├── neogeo.py       ROMs C1/C2/S1/M1 y Makefile de ngdevkit
+│   │   ├── megadrive.py    tiles del VDP, 4 paletas, PSG y cabecera del cartucho
+│   │   └── amiga.py        bitplanes, máscaras, Paula y ejecutable de AmigaDOS
 │   ├── gfx.py              PNG → paletas y tiles de Neo Geo (C ROM / S ROM)
-│   ├── build.py            empaqueta gráficos, tiles y niveles
-│   ├── codegen.py          genera gamedata.c/h, ROMs y Makefile
+│   ├── gfx_md.py           PNG → tiles de 8x8 del VDP y reparto de paletas
+│   ├── gfx_amiga.py        PNG → 5 bitplanes entrelazados y sus máscaras
+│   ├── hunk.py             ELF → ejecutable de AmigaDOS (hunks + relocalización)
 │   ├── claves.py           nombres que acepta cada opción (los usa el editor)
-│   ├── sonido.py           notas -> periodos del chip de sonido
+│   ├── sonido.py           notas -> periodos del SSG, del PSG o de Paula
 │   ├── m1.py / z80.py      driver de sonido del Z80 y su ensamblador
 │   ├── preview.py          genera el preview jugable
 │   ├── png.py / miniyaml.py  lectores propios (cero dependencias)
@@ -170,6 +228,8 @@ neoplat/
 ├── engine/
 │   ├── core/np_world.c     la simulación (física, colisiones, enemigos)
 │   ├── neogeo/             vídeo, HUD, sonido y mando de la consola
+│   ├── megadrive/          VDP, plano ventana, PSG, arranque y cabecera
+│   ├── amiga/              copper, blitter, Paula y arranque
 │   └── host/np_trace.c     ejecuta la simulación en el ordenador (pruebas)
 ├── preview/
 │   ├── np_core.js          la misma simulación, en JavaScript
@@ -178,49 +238,83 @@ neoplat/
 │   ├── np_pixel.js         el lienzo para dibujar enemigos y objetos
 │   └── np_bot.js           el bot que comprueba si un nivel se puede terminar
 ├── examples/bosque-magico/ juego de ejemplo listo para compilar
-└── tests/                  108 pruebas + 24 de jugabilidad + 48 del editor +
+└── tests/                  132 pruebas + 24 de jugabilidad + 49 del editor +
                             bot que se pasa los niveles
 ```
 
 **El motor es C, no C++**, a propósito: el compilador de ngdevkit no trae
-libstdc++, y en un 68000 a 12 MHz las llamadas virtuales y las plantillas solo
+libstdc++, y en un 68000 a 7 MHz las llamadas virtuales y las plantillas solo
 añaden coste. La lógica del juego la genera el compilador, así que no escribes
 C de todos modos.
 
-## La misma simulación en los dos sitios
+## Añadir otra máquina
 
-`engine/core/np_world.c` (Neo Geo) y `preview/np_core.js` (navegador) son la
-misma simulación escrita dos veces: enteros y coma fija 24.8, sin decimales.
+Las tres que hay ahora llevan un 68000, así que comparten el motor tal cual;
+un sistema nuevo solo tiene que implementar `tools/ngplat/sistemas/base.py`:
+
+- `preparar(build)`: convertir los dibujos y las paletas al formato del chip.
+- `comprobar(build)`: avisar de lo que no cabe (mensajes en castellano).
+- `generar(build)`: los archivos que faltan (gráficos, sonido, Makefile).
+- `archivos_motor`: qué parte del motor se copia (vídeo, HUD, sonido, arranque).
+
+Y en `engine/<máquina>/`, las cuatro piezas de siempre: dibujar un frame, el
+marcador, el sonido y leer el mando. Todo lo demás (niveles, física, enemigos,
+colisiones, editor, preview, pruebas) ya está hecho y no se toca.
+
+## La misma simulación en los cuatro sitios
+
+`engine/core/np_world.c` (las tres máquinas) y `preview/np_core.js` (navegador)
+son la misma simulación escrita dos veces: enteros y coma fija 24.8, sin
+decimales.
 `tests/test_paridad.py` ejecuta las dos con las mismas pulsaciones y compara
 frame a frame la posición, la velocidad, la cámara, la puntuación y un hash de
 todas las entidades. Si tocas una y te olvidas de la otra, la prueba falla.
 
 Por eso lo que juegas en el navegador es exactamente lo que va a pasar en la
-consola.
+consola, y da igual en cuál.
 
 ## Pruebas
 
 ```bash
 make test          # herramientas, validación, generación de C y paridad C/JS
 node tests/comportamiento.js   # 24 pruebas de jugabilidad
+make ejemplo-todos             # compila el ejemplo para las tres máquinas
 ```
 
 Lo que comprueban: el lector de PNG contra Pillow, el lector de YAML contra
-PyYAML, ida y vuelta de los formatos de tile de Neo Geo, los mensajes de error
-del `game.yaml`, que el C generado compile sin avisos (`-Wall -Wextra
--Werror`), la paridad C/JavaScript y las mecánicas (salto variable, coyote
-time, buffer de salto, plataformas de un sentido, pisar enemigos, daño,
-muerte, cambio de nivel, cámara).
+PyYAML, ida y vuelta de los tres formatos de gráficos (tiles de Neo Geo, tiles
+del VDP, bitplanes y máscaras del Amiga), los mensajes de error del
+`game.yaml`, que el C generado compile sin avisos (`-Wall -Wextra -Werror`) y
+también con un compilador de 68000 de verdad, que el cartucho de Mega Drive y
+el ejecutable de Amiga se construyan y tengan la forma que espera cada máquina,
+la paridad C/JavaScript y las mecánicas (salto variable, coyote time, buffer de
+salto, plataformas de un sentido, pisar enemigos, daño, muerte, cambio de
+nivel, cámara).
 
 ## Estado y limitaciones
 
 Verificado aquí:
 
-- El proyecto en C generado compila con `gcc -Wall -Wextra -Werror`.
+- El proyecto en C generado compila con `gcc -Wall -Wextra -Werror`, y también
+  **de verdad para 68000** con `m68k-linux-gnu-gcc`.
+- **El cartucho de Mega Drive se construye entero**: 128 KB con la cabecera
+  `SEGA MEGA DRIVE`, el nombre del juego, el rango de la ROM y la suma de
+  control, que las pruebas vuelven a calcular y comparan.
+- **El ejecutable de Amiga se construye entero**: dos hunks marcados como RAM
+  chip, la tabla de relocalización comprobada entrada por entrada (ninguna
+  dirección se sale de su hunk) y `_start` en el primer byte, como espera
+  AmigaDOS.
 - Motor en C y preview en JavaScript dan resultados idénticos frame a frame.
 - Las mecánicas de plataformas funcionan (24 pruebas de jugabilidad).
 - Los niveles de ejemplo se pueden terminar: un bot los juega enteros en cada
   prueba, así que nunca se cuela un nivel imposible.
+- El mismo juego compilado para las tres máquinas describe exactamente los
+  mismos niveles, enemigos y mapas: lo comprueban las pruebas.
+- Ida y vuelta de los tres formatos de gráficos (tiles de Neo Geo, tiles del
+  VDP, bitplanes y máscaras del Amiga): codificar y decodificar devuelve la
+  imagen original.
+- Las tres máquinas tocan la misma nota: 440 Hz salen a 440 Hz en el SSG, en el
+  PSG y en Paula (con el redondeo de cada chip).
 - El preview se abre en Chromium durante las pruebas y se comprueba que dibuja
   lo que debe (capturas de pantalla revisadas a mano).
 - El editor hace el viaje completo en las pruebas: edita mapas, física y
@@ -232,20 +326,24 @@ Verificado aquí:
   se comprueba que recibe las órdenes del 68000 y escribe en el chip los
   periodos y volúmenes de las notas escritas en el `game.yaml`.
 
-**Todavía sin verificar en hardware ni emulador**: el kit convierte los
-gráficos al formato de la Neo Geo y programa el chip de vídeo según la
-documentación de hardware (ver [docs/neogeo.md](docs/neogeo.md)), pero no he
-podido ejecutar la ROM: aquí no hay ngdevkit ni emulador instalados. La
-conversión de tiles está probada de ida y vuelta (codificar + decodificar da la
-imagen original), lo que garantiza que el formato es coherente, no que sea el
-que espera el chip. Si al arrancar la ROM ves los gráficos revueltos, lo más
-probable es que haya que ajustar el orden de bytes descrito en `docs/neogeo.md`
-(está aislado en dos funciones de `tools/ngplat/gfx.py`).
+**Todavía sin verificar en hardware ni emulador**: el binario se construye y
+tiene la forma que documenta cada fabricante (ver [docs/neogeo.md](docs/neogeo.md),
+[docs/megadrive.md](docs/megadrive.md) y [docs/amiga.md](docs/amiga.md)), pero
+aquí no hay ni consolas ni emuladores instalados, así que no lo he visto
+arrancar. Lo que las pruebas garantizan es que el formato es coherente y que
+las cuentas cuadran, no que el chip lo interprete como espero. Si al arrancar
+ves los gráficos revueltos, lo más probable es que haya que ajustar el orden de
+bytes descrito en esos documentos: está aislado en dos funciones por máquina
+(`gfx.py`, `gfx_md.py`, `gfx_amiga.py`).
 
 Lo que aún no hace:
 
-- **Muestras digitales** (ROM V1): la música y los efectos usan los canales de
-  onda cuadrada del chip; las voces y percusiones sampleadas aún no.
+- **Parallax en Amiga**: en la Neo Geo van todas las capas y en la Mega Drive
+  una; en el Amiga el fondo se ve del color de fondo del nivel. Haría falta
+  modo *dual playfield*, que deja el juego en 8 colores.
+- **Muestras digitales**: la música y los efectos usan ondas cuadradas en las
+  tres máquinas; las voces y percusiones sampleadas aún no (ni la ROM V1 de la
+  Neo Geo ni los samples de Paula ni el YM2612).
 - **Jefes o eventos guionizados**: hay cinco comportamientos de enemigo fijos.
 - **Dos jugadores**.
 - **Zoom de sprites** (la Neo Geo lo permite; el motor no lo usa).

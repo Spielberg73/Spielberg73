@@ -13,7 +13,7 @@ import json
 import os
 from typing import Dict, List
 
-from . import gfx
+from . import gfx, sistemas
 from .claves import tabla_para_el_editor
 from .build import Build, actor_def_values, enemy_values, item_values, player_values, tile_tables
 from .paths import PREVIEW_DIR, TEMPLATES_DIR
@@ -30,24 +30,33 @@ def _leer_yaml(root: str) -> str:
     return ""
 
 
-def _quantized_data_uri(path: str) -> str:
-    """Devuelve el PNG con los colores que se veran en la consola."""
+def _quantized_data_uri(path: str, sistema) -> str:
+    """Devuelve el PNG con los colores que se veran en la maquina de destino.
+
+    Cada una redondea distinto: la Neo Geo usa 5 bits por canal, el Amiga 4 y
+    la Mega Drive solo 3. El preview ensena el resultado de ese redondeo para
+    que no haya sorpresas al compilar.
+    """
     image = read_png(path)
     pixels = []
+    cache = {}
     for px in image.pixels:
         if px[3] < 128:
             pixels.append((0, 0, 0, 0))
         else:
-            r, g, b = gfx.ng_color_to_rgb(gfx.ng_color((px[0], px[1], px[2])))
+            clave = (px[0], px[1], px[2])
+            if clave not in cache:
+                cache[clave] = sistema.color_visible(clave)
+            r, g, b = cache[clave]
             pixels.append((r, g, b, 255))
     data = encode_png(Image(image.width, image.height, pixels))
     return "data:image/png;base64," + base64.b64encode(data).decode("ascii")
 
 
-def _sheet_entry(path: str, frame_w: int, frame_h: int) -> Dict[str, object]:
+def _sheet_entry(path: str, frame_w: int, frame_h: int, sistema) -> Dict[str, object]:
     image = read_png(path)
     return {
-        "url": _quantized_data_uri(path),
+        "url": _quantized_data_uri(path, sistema),
         "frame_w": frame_w,
         "frame_h": frame_h,
         "per_row": max(1, image.width // frame_w),
@@ -59,19 +68,20 @@ def build_data(build: Build) -> Dict[str, object]:
     project = build.project
     kinds, _ = tile_tables(build)
     sheets: Dict[str, object] = {}
+    sistema = build.sistema or sistemas.obtener(project.system)
 
     def actor_json(actor_build, sheet_name: str) -> Dict[str, object]:
         values = actor_def_values(actor_build)
         sheets[sheet_name] = _sheet_entry(
             os.path.join(project.root, actor_build.actor.sprite),
-            actor_build.actor.frame_w, actor_build.actor.frame_h,
+            actor_build.actor.frame_w, actor_build.actor.frame_h, sistema,
         )
         values["sheet"] = sheet_name
         values["sprite"] = actor_build.actor.sprite      # ruta del PNG original
         return values
 
     sheets["__tiles__"] = _sheet_entry(
-        os.path.join(project.root, project.tileset.image), 16, 16
+        os.path.join(project.root, project.tileset.image), 16, 16, sistema
     )
 
     player = dict(player_values(project))
@@ -95,7 +105,7 @@ def build_data(build: Build) -> Dict[str, object]:
     for i, layer in enumerate(build.layers):
         nombre = "layer%d" % i
         sheets[nombre] = _sheet_entry(
-            os.path.join(project.root, layer.layer.image), 16, 16
+            os.path.join(project.root, layer.layer.image), 16, 16, sistema
         )
         sheets[nombre]["per_row"] = layer.cols
         layers.append({
@@ -124,7 +134,7 @@ def build_data(build: Build) -> Dict[str, object]:
             "cells": level.cells,
             "spawns": [list(s) for s in level.spawns],
             "start": list(level.start),
-            "background": "#%02x%02x%02x" % gfx.ng_color_to_rgb(level.background),
+            "background": "#%02x%02x%02x" % sistema.color_visible(level.background_rgb),
             "layers": list(level.layers),
             "music": level.music,
         })
@@ -141,7 +151,7 @@ def build_data(build: Build) -> Dict[str, object]:
 
     sonido = {
         "efectos": {
-            nombre: [[paso.periodo, paso.duracion, paso.volumen, paso.ruido]
+            nombre: [[round(paso.frecuencia, 2), paso.duracion, paso.volumen, paso.ruido]
                      for paso in efecto.pasos]
             for nombre, efecto in project.sound.efectos.items()
         },
@@ -150,7 +160,7 @@ def build_data(build: Build) -> Dict[str, object]:
                 "nombre": nombre,
                 "velocidad": tema.velocidad,
                 "bucle": 1 if tema.bucle else 0,
-                "pistas": [[[paso.periodo, paso.duracion, paso.volumen]
+                "pistas": [[[round(paso.frecuencia, 2), paso.duracion, paso.volumen]
                             for paso in pista] for pista in tema.pistas],
             }
             for nombre, tema in project.sound.musica.items()
@@ -158,7 +168,6 @@ def build_data(build: Build) -> Dict[str, object]:
         # bit del evento -> nombre del efecto que suena
         "eventos": {str(bit): nombre
                     for nombre, bit in project.sound.evento_bits().items()},
-        "reloj": 4000000,
     }
 
     return {
@@ -188,6 +197,8 @@ def build_data(build: Build) -> Dict[str, object]:
             "enemigos": [b.name for b in build.enemies],
             "objetos": [b.name for b in build.items],
         },
+        "sistema": sistema.nombre,
+        "sistemas": [{"id": m.nombre, "nombre": m.titulo} for m in sistemas.disponibles()],
         "sin": build.sin_table,
         "sheets": sheets,
         "font": font,
@@ -210,7 +221,9 @@ def render_html(build: Build) -> str:
     html = html.replace("@BOT@", piezas["np_bot.js"])
     html = html.replace("@PIXEL@", piezas["np_pixel.js"])
     html = html.replace("@DATA@", data)
+    sistema = build.sistema or sistemas.obtener(build.project.system)
     html = html.replace("@TITLE@", build.project.title)
+    html = html.replace("@SISTEMA@", sistema.titulo)
     html = html.replace("@AUTHOR@", build.project.author or "")
     return html
 

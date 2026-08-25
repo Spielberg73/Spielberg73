@@ -367,6 +367,14 @@ prueba("el yaml lleva el enemigo nuevo y su simbolo", function () {
             "falta el simbolo en spawns");
 });
 
+prueba("el yaml recoge la maquina de destino", function () {
+  var e = nuevoEditor();
+  e.ponerPropiedad("juego", "sistema", "megadrive");
+  var yaml = e.exportarYaml();
+  assert.ok(/^\s*sistema: megadrive\s*$/m.test(yaml),
+            "no se ha escrito la maquina en el yaml");
+});
+
 prueba("el yaml quita los enemigos borrados", function () {
   var e = nuevoEditor();
   var nombre = e.modelo.enemigos[0].nombre;

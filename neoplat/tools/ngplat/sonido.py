@@ -1,16 +1,15 @@
-"""Sonido: de la notacion del `game.yaml` a tablas de notas.
+"""Sonido: de la notacion del `game.yaml` a notas con su frecuencia.
 
-El chip de sonido de la Neo Geo (YM2610) tiene, entre otras cosas, tres canales
-de onda cuadrada (SSG) heredados del AY-3-8910. NeoPlat usa esos tres:
+Las notas se guardan en **hercios**, que es lo unico que entienden por igual
+todas las maquinas; cada sistema las traduce despues a lo que pide su chip:
 
-    canal A -> melodia        canal B -> acompanamiento      canal C -> efectos
+    Neo Geo   YM2610 (SSG)   periodo = 4.000.000 / (16 * frecuencia)
+    Mega Drive SN76489 (PSG) periodo = 3.579.545 / (32 * frecuencia)
+    Amiga     Paula          periodo = 3.546.895 / (frecuencia * muestras)
 
-Aqui se convierten las notas escritas por el usuario ("do4 mi4 sol4") en los
-periodos que entiende el chip. El mismo dato alimenta la ROM y el preview del
-navegador, asi que suenan igual (dentro de lo que da un navegador).
-
-Periodo del canal SSG:  periodo = reloj / (16 * frecuencia)
-con el reloj del SSG de la Neo Geo a 4 MHz  ->  periodo = 250000 / frecuencia.
+Se usan tres canales de onda cuadrada: dos para la musica (melodia y
+acompanamiento) y uno para los efectos. El mismo dato alimenta las tres ROMs y
+el preview del navegador, asi que suenan igual (dentro de lo que da cada chip).
 """
 
 from __future__ import annotations
@@ -21,9 +20,20 @@ from typing import Dict, List, Optional, Tuple
 
 from .errors import ProjectError
 
-SSG_CLOCK = 4000000                  # Hz del SSG del YM2610 en Neo Geo
+SSG_CLOCK = 4000000                  # Hz del SSG del YM2610 (Neo Geo)
 SSG_MAX_PERIOD = 4095                # el periodo es de 12 bits
 SSG_MIN_PERIOD = 1
+
+PSG_CLOCK = 3579545                  # Hz del SN76489 (Mega Drive)
+PSG_MAX_PERIOD = 1023                # 10 bits
+PAULA_CLOCK = 3546895                # reloj de Paula en PAL (Amiga)
+PAULA_MIN_PERIOD = 124               # por debajo la DMA no da abasto
+PAULA_MAX_PERIOD = 65535
+
+# Margen de notas que se admite al escribir el juego. Cada sistema comprueba
+# despues si su chip puede darlas.
+FREQ_MIN = 30.0
+FREQ_MAX = 8000.0
 
 # Semitonos desde do, en espanol y en ingles.
 NOTAS = {
@@ -66,26 +76,58 @@ def frecuencia_de_nota(semitono: int, octava: int) -> float:
     return 440.0 * (2.0 ** (distancia / 12.0))
 
 
-def periodo_de_frecuencia(hz: float, where: str = "") -> int:
+def comprobar_frecuencia(hz: float, where: str = "") -> float:
+    """Se queda con la frecuencia si esta dentro de lo que sabe tocar el kit."""
     if hz <= 0:
-        return 0
-    periodo = int(round(SSG_CLOCK / (16.0 * hz)))
-    if periodo < SSG_MIN_PERIOD or periodo > SSG_MAX_PERIOD:
+        return 0.0
+    if hz < FREQ_MIN or hz > FREQ_MAX:
         raise ProjectError(
-            "la frecuencia %.1f Hz no la puede dar el chip de la Neo Geo" % hz,
-            hint="usa notas entre do1 y do8 (unos 30 Hz a 4000 Hz)",
+            "la nota de %.1f Hz se sale de lo que tocan estas maquinas" % hz,
+            hint="usa notas entre do1 y do8 (unos 30 Hz a 4200 Hz)",
             where=where or None,
         )
-    return periodo
+    return hz
+
+
+def periodo_ssg(hz: float) -> int:
+    """Neo Geo (YM2610, canales SSG)."""
+    if hz <= 0:
+        return 0
+    return max(SSG_MIN_PERIOD, min(SSG_MAX_PERIOD, int(round(SSG_CLOCK / (16.0 * hz)))))
+
+
+def periodo_psg(hz: float) -> int:
+    """Mega Drive (SN76489). El registro es de 10 bits."""
+    if hz <= 0:
+        return 0
+    return max(1, min(PSG_MAX_PERIOD, int(round(PSG_CLOCK / (32.0 * hz)))))
+
+
+def periodo_paula(hz: float, muestras: int = 32) -> int:
+    """Amiga (Paula). El periodo depende de cuantas muestras tiene la onda."""
+    if hz <= 0:
+        return 0
+    periodo = int(round(PAULA_CLOCK / (hz * muestras)))
+    return max(PAULA_MIN_PERIOD, min(PAULA_MAX_PERIOD, periodo))
+
+
+def periodo_de_frecuencia(hz: float, where: str = "") -> int:
+    """Compatibilidad: el periodo del SSG, que es lo que usaba antes el kit."""
+    return periodo_ssg(comprobar_frecuencia(hz, where))
 
 
 @dataclass
 class Paso:
-    """Un paso de una secuencia: periodo (0 = silencio) y cuanto dura."""
-    periodo: int
+    """Un paso de una secuencia: la nota (en Hz, 0 = silencio) y cuanto dura."""
+    frecuencia: float
     duracion: int
     volumen: int = 12
     ruido: int = 0            # 1 = usa el generador de ruido (percusion)
+
+    @property
+    def periodo(self) -> int:
+        """Periodo del SSG, por comodidad (Neo Geo)."""
+        return periodo_ssg(self.frecuencia)
 
 
 @dataclass
@@ -122,7 +164,7 @@ def parsear_notas(texto: str, velocidad: int, volumen: int, where: str) -> List[
     pasos: List[Paso] = []
     for token in str(texto).replace("|", " ").split():
         if token in ("-", "_", "."):
-            pasos.append(Paso(0, velocidad, volumen))
+            pasos.append(Paso(0.0, velocidad, volumen))
             continue
         match = NOTA_RE.match(token)
         if not match:
@@ -138,9 +180,8 @@ def parsear_notas(texto: str, velocidad: int, volumen: int, where: str) -> List[
         elif alteracion == "b":
             semitono -= 1
         octava_num = int(octava) if octava is not None else 4
-        hz = frecuencia_de_nota(semitono, octava_num)
-        pasos.append(Paso(periodo_de_frecuencia(hz, where), velocidad * int(largo or 1),
-                          volumen))
+        hz = comprobar_frecuencia(frecuencia_de_nota(semitono, octava_num), where)
+        pasos.append(Paso(hz, velocidad * int(largo or 1), volumen))
     if not pasos:
         raise ProjectError("la secuencia de notas esta vacia", where=where)
     return pasos
@@ -153,12 +194,14 @@ def barrido(desde: float, hasta: float, duracion: int, volumen: int, where: str
     pasos: List[Paso] = []
     for i in range(duracion):
         hz = desde + (hasta - desde) * i / float(duracion - 1)
-        pasos.append(Paso(periodo_de_frecuencia(hz, where), 1, volumen))
+        pasos.append(Paso(comprobar_frecuencia(hz, where), 1, volumen))
     return pasos
 
 
 def ruido(duracion: int, volumen: int, tono: int = 16) -> List[Paso]:
-    """Golpes y explosiones: el generador de ruido del SSG."""
+    """Golpes y explosiones: el generador de ruido del chip.
+
+    La frecuencia hace de "color" del ruido; cada sistema la usa como puede.
+    """
     duracion = max(1, min(60, duracion))
-    pasos = [Paso(tono, duracion, volumen, ruido=1)]
-    return pasos
+    return [Paso(SSG_CLOCK / (16.0 * max(1, tono)), duracion, volumen, ruido=1)]

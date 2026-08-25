@@ -10,7 +10,8 @@ import comun
 from comun import ProyectoTemporal, cargar_demo
 
 from ngplat import gfx
-from ngplat.codegen import copy_engine, generate_gamedata, generate_makefile, write_rom_data
+from ngplat import sistemas
+from ngplat.codegen import generar_para_sistema, generate_gamedata
 from ngplat.preview import build_data, render_html
 from ngplat.project import TILE_KIND_ID, load_project
 
@@ -96,15 +97,8 @@ class TestGeneracion(unittest.TestCase):
         self.build = cargar_demo(self.proyecto_dir)
         self.out = os.path.join(self.tmp, "build")
         os.makedirs(self.out)
-        for relativo, contenido in generate_gamedata(self.build).items():
-            ruta = os.path.join(self.out, relativo)
-            os.makedirs(os.path.dirname(ruta), exist_ok=True)
-            with open(ruta, "w", encoding="utf-8") as fh:
-                fh.write(contenido)
-        copy_engine(self.out)
-        self.roms = write_rom_data(self.build, self.out, "202")
-        with open(os.path.join(self.out, "Makefile"), "w", encoding="utf-8") as fh:
-            fh.write(generate_makefile(self.build, "202"))
+        self.roms, _ = generar_para_sistema(
+            self.build, self.out, sistemas.obtener("neogeo"), "202")
 
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -118,7 +112,7 @@ class TestGeneracion(unittest.TestCase):
     def test_la_rom_de_sonido_lleva_el_driver(self):
         nombre = [n for n in self.roms if n.endswith(".m1")]
         self.assertEqual(len(nombre), 1, "falta la ROM M1")
-        with open(os.path.join(self.out, "rom", nombre[0]), "rb") as fh:
+        with open(os.path.join(self.out, nombre[0]), "rb") as fh:
             datos = fh.read()
         self.assertEqual(datos[0], 0xF3, "el driver deberia empezar con 'di'")
         self.assertEqual(datos[0x66], 0xF5, "falta el manejador de la NMI")

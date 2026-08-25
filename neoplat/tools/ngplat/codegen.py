@@ -1,4 +1,10 @@
-"""Generacion del proyecto en C: gamedata.c/h, ROMs graficas y Makefile."""
+"""Generacion del proyecto en C.
+
+Lo que hay aqui es lo que **comparten todas las maquinas**: las tablas del
+juego (niveles, actores, fisica, sonido) tal y como las lee el motor. Lo que
+cambia de una consola a otra -- el formato de los graficos, las ROMs, el
+Makefile -- lo pone cada sistema de tools/ngplat/sistemas/.
+"""
 
 from __future__ import annotations
 
@@ -6,8 +12,6 @@ import os
 import shutil
 from typing import Dict, List, Sequence
 
-from . import gfx
-from . import m1 as m1_mod
 from .sonido import EVENTOS
 from .build import (
     Build, actor_def_values, enemy_values, item_values, layer_values, player_values,
@@ -68,14 +72,12 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     """Devuelve {ruta_relativa: contenido} con el codigo C del juego."""
     project = build.project
     kinds, graphics = tile_tables(build)
-    palettes = build.rom.palettes
+    palettes = build.paletas
 
     header = [HEADER_NOTE, "#ifndef GAMEDATA_H", "#define GAMEDATA_H", "",
               '#include "np_game.h"', ""]
     header.append("#define NP_PALETTE_COUNT %d" % len(palettes))
     header.append("#define NP_HUD_PALETTE %d" % build.hud_palette)
-    header.append("#define NP_FIX_TILES %d" % build.rom.fix_tiles)
-    header.append("#define NP_SPRITE_TILES %d" % build.rom.sprite_tiles)
     header.append("#define NP_MAX_LEVEL_TILES_W %d" % max(l.width for l in build.levels))
     header.append("#define NP_HUD_ENABLED %d" % (1 if project.hud else 0))
     header.append("#define NP_LAYER_COUNT %d" % len(build.layers))
@@ -87,6 +89,9 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     header.append("")
     header.append("extern const uint16_t np_palettes[NP_PALETTE_COUNT][16];")
     header.append("extern const uint8_t np_font_index[128];")
+    # cada sistema anade lo suyo (tablas de graficos, tamanos...)
+    for linea in build.info.get("cabecera", []):
+        header.append(linea)
     header.append("")
     header.append("#endif /* GAMEDATA_H */")
 
@@ -102,8 +107,8 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("/* Paletas: 16 colores por paleta, el 0 es transparente. */")
     src.append("const uint16_t np_palettes[NP_PALETTE_COUNT][16] = {")
     for pal in palettes:
-        words = ", ".join("0x%04x" % w for w in pal.words())
-        src.append("    { %s }, /* %s */" % (words, pal.name))
+        words = ", ".join("0x%04x" % w for w in pal)
+        src.append("    { %s }," % words)
     src.append("};")
     src.append("")
 
@@ -257,61 +262,19 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     }
 
 
-ENGINE_FILES = [
-    ("include/np_types.h", "src/np_types.h"),
-    ("include/np_game.h", "src/np_game.h"),
-    ("include/np_world.h", "src/np_world.h"),
-    ("core/np_world.c", "src/np_world.c"),
-    ("neogeo/np_video.h", "src/np_video.h"),
-    ("neogeo/np_video.c", "src/np_video.c"),
-    ("neogeo/np_hud.c", "src/np_hud.c"),
-    ("neogeo/np_sound.h", "src/np_sound.h"),
-    ("neogeo/np_sound.c", "src/np_sound.c"),
-    ("neogeo/main.c", "src/main.c"),
-]
-
-
-def copy_engine(out_dir: str) -> List[str]:
+def copy_engine(out_dir: str, sistema=None) -> List[str]:
     """Copia el motor dentro del proyecto generado (queda autocontenido)."""
+    if sistema is None:
+        from .sistemas import obtener
+        sistema = obtener("neogeo")
     copied: List[str] = []
-    for source, target in ENGINE_FILES:
+    for source, target in sistema.archivos_motor:
         src_path = os.path.join(ENGINE_DIR, source)
         dst_path = os.path.join(out_dir, target)
         os.makedirs(os.path.dirname(dst_path), exist_ok=True)
         shutil.copyfile(src_path, dst_path)
         copied.append(target)
     return copied
-
-
-def write_rom_data(build: Build, out_dir: str, rom_id: str) -> Dict[str, int]:
-    """Escribe las ROMs de datos: graficos (C1/C2), plano fix (S1) y sonido (M1)."""
-    rom_dir = os.path.join(out_dir, "rom")
-    os.makedirs(rom_dir, exist_ok=True)
-    written: Dict[str, int] = {}
-    for suffix, data in (("c1", build.rom.c1), ("c2", build.rom.c2), ("s1", build.rom.s1)):
-        # Las ROMs de la Neo Geo se rellenan hasta una potencia de dos.
-        padded = bytearray(data)
-        size = 1
-        while size < max(len(padded), 0x20000):
-            size <<= 1
-        padded.extend(b"\x00" * (size - len(padded)))
-        name = "%s-%s.%s" % (rom_id, suffix, suffix)
-        path = os.path.join(rom_dir, name)
-        with open(path, "wb") as fh:
-            fh.write(bytes(padded))
-        written[name] = len(padded)
-
-    # ROM M1: el driver de sonido para el Z80, con la musica y los efectos.
-    m1_rom, info = m1_mod.generar_m1(build.project.sound, build.music_order)
-    nombre_m1 = "%s-m1.m1" % rom_id
-    with open(os.path.join(rom_dir, nombre_m1), "wb") as fh:
-        fh.write(m1_rom)
-    written[nombre_m1] = len(m1_rom)
-    # el fuente del driver se deja al lado, para poder mirarlo o retocarlo
-    os.makedirs(os.path.join(out_dir, "src"), exist_ok=True)
-    with open(os.path.join(out_dir, "src", "sonido.z80"), "w", encoding="utf-8") as fh:
-        fh.write(info["fuente"])
-    return written
 
 
 def render_template(name: str, values: Dict[str, object]) -> str:
@@ -322,9 +285,26 @@ def render_template(name: str, values: Dict[str, object]) -> str:
     return text
 
 
-def generate_makefile(build: Build, rom_id: str) -> str:
-    return render_template("Makefile.in", {
-        "TITLE": build.project.title,
-        "ROMID": rom_id,
-        "FIXED_ONE": FIXED_ONE,
-    })
+def generar_para_sistema(build: Build, out_dir: str, sistema, rom_id: str) -> Dict[str, int]:
+    """Escribe todo el proyecto: tablas comunes, motor y lo propio del sistema."""
+    salida = sistema.generar(build, rom_id)
+
+    for relativo, contenido in generate_gamedata(build).items():
+        _escribir_texto(os.path.join(out_dir, relativo), contenido)
+    copy_engine(out_dir, sistema)
+    for relativo, contenido in salida.archivos.items():
+        _escribir_texto(os.path.join(out_dir, relativo), contenido)
+    binarios: Dict[str, int] = {}
+    for relativo, datos in salida.binarios.items():
+        ruta = os.path.join(out_dir, relativo)
+        os.makedirs(os.path.dirname(ruta), exist_ok=True)
+        with open(ruta, "wb") as fh:
+            fh.write(datos)
+        binarios[relativo] = len(datos)
+    return binarios, salida
+
+
+def _escribir_texto(ruta: str, contenido: str) -> None:
+    os.makedirs(os.path.dirname(ruta), exist_ok=True)
+    with open(ruta, "w", encoding="utf-8") as fh:
+        fh.write(contenido)

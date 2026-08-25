@@ -21,6 +21,7 @@ CAMPOS: Dict[str, Dict[str, List[str]]] = {
         "vidas": ["vidas", "lives"],
         "tiempo": ["tiempo", "time"],
         "hud": ["hud", "marcador"],
+        "sistema": ["sistema", "system"],
         "fondo": ["fondo", "background"],
     },
     "jugador": {

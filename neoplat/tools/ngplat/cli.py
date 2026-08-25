@@ -10,8 +10,9 @@ import sys
 from typing import List, Optional
 
 from . import __version__
+from . import sistemas
 from .build import build_project
-from .codegen import copy_engine, generate_gamedata, generate_makefile, write_rom_data
+from .codegen import generar_para_sistema
 from .errors import ProjectError
 from .preview import write_preview
 from .project import load_project
@@ -42,11 +43,17 @@ def _aviso(text: str) -> None:
     print(_color(" aviso", AMARILLO) + " " + text)
 
 
-def _cargar(ruta: str):
+def _cargar(ruta: str, sistema_nombre: str = ""):
+    """Carga el proyecto y lo prepara para la maquina de destino."""
     project = load_project(ruta)
     for warning in project.warnings:
         _aviso(warning)
-    return project
+    sistema = sistemas.obtener(sistema_nombre or project.system)
+    build = build_project(project)
+    sistema.preparar(build)
+    for aviso in sistema.comprobar(build):
+        _aviso(aviso)
+    return project, build, sistema
 
 
 # ------------------------------------------------------------------ ordenes
@@ -66,21 +73,35 @@ def cmd_nuevo(args: argparse.Namespace) -> int:
 
 
 def cmd_comprobar(args: argparse.Namespace) -> int:
-    project = _cargar(args.proyecto)
-    build = build_project(project)
+    project, build, sistema = _cargar(args.proyecto, args.sistema)
     stats = build.stats()
-    _ok("'%s' es valido" % project.title)
+    _ok("'%s' es valido para %s" % (project.title, sistema.titulo))
     print()
+    print("  sistema         %s (%s)" % (sistema.titulo, sistema.cpu))
+    print("  pantalla        %d x %d" % sistema.pantalla)
     print("  niveles         %d" % stats["niveles"])
     for level in build.levels:
         print("    %-20s %3d x %-3d tiles, %2d entidades"
               % (level.name, level.width, level.height, len(level.spawns)))
     print("  enemigos        %d" % stats["enemigos"])
     print("  objetos         %d" % stats["objetos"])
-    print("  tiles de sprite %d  (%d KB de ROM C)"
-          % (stats["tiles_sprite"], (stats["bytes_c1"] + stats["bytes_c2"]) // 1024))
-    print("  tiles de fix    %d" % stats["tiles_fix"])
-    print("  paletas         %d de 256" % stats["paletas"])
+    if "tiles_sprite" in stats:
+        print("  tiles de sprite %d  (%d KB de ROM C)"
+              % (stats["tiles_sprite"], (stats["bytes_c1"] + stats["bytes_c2"]) // 1024))
+        print("  tiles de fix    %d" % stats["tiles_fix"])
+    if "tiles_8x8" in stats:
+        print("  tiles de 8x8    %d  (%d KB en la ROM)"
+              % (stats["tiles_8x8"], stats["bytes_tiles"] // 1024))
+    if "dibujos_16x16" in stats:
+        print("  dibujos 16x16   %d  (%d KB de dibujos + %d KB de mascaras)"
+              % (stats["dibujos_16x16"], stats["bytes_dibujos"] // 1024,
+                 stats["bytes_mascaras"] // 1024))
+    if sistema.limites.paletas > 1:
+        print("  paletas         %d de %d" % (stats["paletas"], sistema.limites.paletas))
+    else:
+        # el Amiga no reparte paletas: tiene una sola de 32 colores
+        print("  colores         %d de %d"
+              % (stats.get("colores", 0), sistema.limites.colores_en_pantalla))
     print("  capas de fondo  %d" % stats["capas"])
     print("  efectos         %d" % stats["efectos"])
     print("  musicas         %d" % stats["musicas"])
@@ -89,8 +110,7 @@ def cmd_comprobar(args: argparse.Namespace) -> int:
 
 
 def cmd_probar(args: argparse.Namespace) -> int:
-    project = _cargar(args.proyecto)
-    build = build_project(project)
+    project, build, sistema = _cargar(args.proyecto, args.sistema)
     destino = args.salida or os.path.join(project.root, "preview.html")
     write_preview(build, destino)
     _ok("preview generado: %s" % destino)
@@ -106,62 +126,97 @@ def cmd_probar(args: argparse.Namespace) -> int:
 
 
 def cmd_compilar(args: argparse.Namespace) -> int:
-    project = _cargar(args.proyecto)
-    build = build_project(project)
-    out_dir = args.salida or os.path.join(project.root, "build")
+    project, build, sistema = _cargar(args.proyecto, args.sistema)
+    out_dir = args.salida or os.path.join(project.root, "build", sistema.nombre)
     os.makedirs(out_dir, exist_ok=True)
 
-    for relativo, contenido in generate_gamedata(build).items():
-        ruta = os.path.join(out_dir, relativo)
-        os.makedirs(os.path.dirname(ruta), exist_ok=True)
-        with open(ruta, "w", encoding="utf-8") as fh:
-            fh.write(contenido)
-    copy_engine(out_dir)
-    roms = write_rom_data(build, out_dir, args.rom_id)
-    with open(os.path.join(out_dir, "Makefile"), "w", encoding="utf-8") as fh:
-        fh.write(generate_makefile(build, args.rom_id))
+    binarios, salida = generar_para_sistema(build, out_dir, sistema, args.rom_id)
 
     stats = build.stats()
-    _ok("proyecto en C generado en '%s'" % out_dir)
-    _info("codigo:   src/ (motor + gamedata.c con tu juego)")
-    for nombre, tamano in sorted(roms.items()):
-        etiqueta = "sonido: " if "-m1." in nombre else "grafico:"
-        _info("%s  rom/%s (%d KB)" % (etiqueta, nombre, tamano // 1024))
-    _info("%d tiles de sprite, %d paletas, %d niveles, %d efectos, %d musicas"
-          % (stats["tiles_sprite"], stats["paletas"], stats["niveles"],
+    _ok("proyecto para %s generado en '%s'" % (sistema.titulo, out_dir))
+    _info("codigo:   src/ (motor + tu juego)")
+    for linea in salida.resumen:
+        _info(linea)
+    _info("%d niveles, %d enemigos, %d objetos, %d efectos, %d musicas"
+          % (stats["niveles"], stats["enemigos"], stats["objetos"],
              stats["efectos"], stats["musicas"]))
 
     if args.make:
-        return _ejecutar_make(out_dir)
+        return _ejecutar_make(out_dir, sistema)
 
-    if shutil.which("m68k-neogeo-elf-gcc"):
-        print()
-        print("Compila la ROM con:")
+    print()
+    compilador = _compilador_de(sistema)
+    if compilador:
+        print("Compila con:")
         print("  cd %s && make" % out_dir)
-        print("  make run          # arranca ngdevkit-gngeo")
     else:
-        print()
-        print("Para generar la ROM final necesitas ngdevkit (compilador de 68000):")
-        print("  https://github.com/dciabrin/ngdevkit")
+        print("Para construir el binario necesitas un compilador de 68000:")
+        print("  " + _como_instalar(sistema))
         print("Cuando lo tengas:  cd %s && make" % out_dir)
     return 0
 
 
-def _ejecutar_make(out_dir: str) -> int:
-    if not shutil.which("m68k-neogeo-elf-gcc"):
+def _compilador_de(sistema) -> str:
+    candidatos = {
+        "neogeo": ["m68k-neogeo-elf-gcc", "m68k-elf-gcc"],
+        "megadrive": ["m68k-elf-gcc", "m68k-linux-gnu-gcc"],
+        "amiga": ["m68k-amigaos-gcc", "vc", "m68k-elf-gcc", "m68k-linux-gnu-gcc"],
+    }
+    for nombre in candidatos.get(sistema.nombre, ["m68k-elf-gcc"]):
+        if shutil.which(nombre):
+            return nombre
+    return ""
+
+
+def _como_instalar(sistema) -> str:
+    return {
+        "neogeo": "ngdevkit: https://github.com/dciabrin/ngdevkit",
+        "megadrive": "apt install gcc-m68k-linux-gnu   (o el m68k-elf-gcc que uses)",
+        "amiga": "apt install gcc-m68k-linux-gnu   (o vbcc / m68k-amigaos-gcc)",
+    }.get(sistema.nombre, "un gcc para 68000")
+
+
+def _ejecutar_make(out_dir: str, sistema) -> int:
+    if not _compilador_de(sistema):
         raise ProjectError(
-            "no encuentro m68k-neogeo-elf-gcc (el compilador de 68000 de ngdevkit)",
-            hint="instala ngdevkit o quita la opcion --make",
+            "no encuentro un compilador de 68000 para %s" % sistema.titulo,
+            hint=_como_instalar(sistema),
         )
     _info("ejecutando make en %s" % out_dir)
     result = subprocess.run(["make"], cwd=out_dir)
     if result.returncode != 0:
         raise ProjectError("make ha fallado (codigo %d)" % result.returncode)
-    _ok("ROM construida en %s/rom" % out_dir)
+    _ok("binario construido en %s" % os.path.join(out_dir, sistema.carpeta_salida))
     return 0
 
 
 # ------------------------------------------------------------------- parser
+
+def _ayuda_sistemas() -> str:
+    return "maquina de destino: %s" % ", ".join(s.nombre for s in sistemas.disponibles())
+
+
+def cmd_sistemas(args: argparse.Namespace) -> int:
+    print("Sistemas que puede compilar NeoPlat:")
+    print()
+    for sistema in sistemas.disponibles():
+        limites = sistema.limites
+        if limites.paletas > 1:
+            colores = "%d colores a la vez (%d paletas de %d)" % (
+                limites.colores_en_pantalla, limites.paletas,
+                limites.colores_por_paleta)
+        else:
+            colores = "%d colores a la vez, en una sola paleta" % (
+                limites.colores_en_pantalla)
+        actores = ("%d sprites" % limites.sprites) if limites.sprites else \
+            "actores dibujados con el blitter"
+        print("  %-11s %s" % (sistema.nombre, sistema.titulo))
+        print("  %-11s %s, pantalla %dx%d" % ("", sistema.cpu, *sistema.pantalla))
+        print("  %-11s %s, %s" % ("", colores, actores))
+        print()
+    print("Se elige con 'sistema:' en el game.yaml o con --sistema al compilar.")
+    return 0
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -180,6 +235,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_check = sub.add_parser("comprobar", aliases=["check"],
                              help="valida game.yaml y muestra el tamano del juego")
     p_check.add_argument("proyecto", nargs="?", default=".")
+    p_check.add_argument("--sistema", default="", help=_ayuda_sistemas())
     p_check.set_defaults(func=cmd_comprobar)
 
     p_probar = sub.add_parser("probar", aliases=["preview", "play"],
@@ -187,6 +243,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_probar.add_argument("proyecto", nargs="?", default=".")
     p_probar.add_argument("--salida", help="ruta del HTML de salida")
     p_probar.add_argument("--no-abrir", action="store_true", help="no abrir el navegador")
+    p_probar.add_argument("--sistema", default="", help=_ayuda_sistemas())
     p_probar.set_defaults(func=cmd_probar)
 
     p_build = sub.add_parser("compilar", aliases=["build"],
@@ -195,9 +252,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_build.add_argument("--salida", help="carpeta de salida (por defecto build/)")
     p_build.add_argument("--rom-id", default="202",
                          help="identificador del romset (por defecto 202)")
+    p_build.add_argument("--sistema", default="", help=_ayuda_sistemas())
     p_build.add_argument("--make", action="store_true",
-                         help="ejecuta make para construir la ROM (necesita ngdevkit)")
+                         help="ejecuta make para construir el binario")
     p_build.set_defaults(func=cmd_compilar)
+
+    p_sistemas = sub.add_parser("sistemas", aliases=["systems"],
+                                help="lista las maquinas de destino")
+    p_sistemas.set_defaults(func=cmd_sistemas)
 
     return parser
 

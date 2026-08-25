@@ -144,7 +144,7 @@
 </head>
 <body>
 <h1>@TITLE@</h1>
-<p class="sub">preview NeoPlat &middot; 320&times;224 &middot; misma simulacion que la ROM &middot; @AUTHOR@</p>
+<p class="sub">preview NeoPlat &middot; @SISTEMA@ &middot; 320&times;224 &middot; misma simulacion que la ROM &middot; @AUTHOR@</p>
 <div class="frame"><canvas id="pantalla" width="320" height="224"></canvas></div>
 <div class="bar">
   <span><kbd>&larr;</kbd><kbd>&rarr;</kbd> moverse</span>
@@ -426,9 +426,7 @@
     tema: -1,
     pistas: [],           // {pasos, i, resto}
     efecto: null,         // {pasos, i, resto}
-    reloj: (DATA.sonido && DATA.sonido.reloj) || 4000000,
-
-    hz: function (periodo) { return periodo > 0 ? this.reloj / (16 * periodo) : 0; },
+    /* las notas vienen ya en hercios: cada maquina las convierte a lo suyo */
 
     iniciar: function () {
       if (this.ctx || this.silencio) return;
@@ -453,15 +451,15 @@
       this.ruidoBuffer = buffer;
     },
 
-    voz: function (canal, periodo, volumen) {
+    voz: function (canal, hercios, volumen) {
       if (!this.ctx) return;
       var c = this.canales[canal];
       var ahora = this.ctx.currentTime;
-      if (!periodo || volumen <= 0) {
+      if (!hercios || volumen <= 0) {
         c.gain.gain.setTargetAtTime(0, ahora, 0.005);
         return;
       }
-      c.osc.frequency.setValueAtTime(this.hz(periodo), ahora);
+      c.osc.frequency.setValueAtTime(hercios, ahora);
       // el SSG tiene 16 pasos de volumen y suena logaritmico
       var nivel = Math.pow(volumen / 15, 2) * 0.12;
       c.gain.gain.setTargetAtTime(nivel, ahora, 0.005);
@@ -961,6 +959,12 @@
     }
   }
 
+  function nombreDeSistema(id) {
+    var lista = DATA.sistemas || [];
+    for (var i = 0; i < lista.length; i++) if (lista[i].id === id) return lista[i].nombre;
+    return id || "la maquina elegida";
+  }
+
   function nombresCapas() {
     return DATA.layers.map(function (c) { return c.name; });
   }
@@ -973,6 +977,14 @@
     campoTexto(cont, "autor", "juego", "autor", null, j.autor, true);
     campoNumero(cont, "vidas", "juego", "vidas", null, j.vidas);
     campoNumero(cont, "tiempo (s)", "juego", "tiempo", null, j.tiempo);
+    campoLista(cont, "maquina", "juego", "sistema", null, j.sistema,
+               (DATA.sistemas || []).map(function (m) {
+                 return { valor: m.id, texto: m.nombre };
+               }));
+    var nota = crearElemento(cont, "p", "nota");
+    nota.textContent = "el preview se dibuja con los colores de " +
+      nombreDeSistema(DATA.sistema) + "; para verlo en otra maquina, guarda el " +
+      "yaml y vuelve a lanzar `ngplat probar`.";
 
     var fis = document.getElementById("campos-jugador");
     fis.innerHTML = "";

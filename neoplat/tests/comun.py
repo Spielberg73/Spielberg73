@@ -10,6 +10,7 @@ import tempfile
 KIT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(KIT, "tools"))
 
+from ngplat import sistemas                     # noqa: E402
 from ngplat.build import build_project          # noqa: E402
 from ngplat.project import load_project         # noqa: E402
 from ngplat.scaffold import crear_proyecto      # noqa: E402
@@ -31,8 +32,16 @@ class ProyectoTemporal:
         shutil.rmtree(os.path.dirname(self.path), ignore_errors=True)
 
 
-def cargar_demo(path: str):
-    return build_project(load_project(path))
+def cargar_demo(path: str, sistema: str = ""):
+    """Carga un proyecto y lo deja listo para el sistema que se pida.
+
+    Sin `sistema` se usa el del propio game.yaml (Neo Geo, si no dice otra cosa).
+    """
+    proyecto = load_project(path)
+    build = build_project(proyecto)
+    maquina = sistemas.obtener(sistema or proyecto.system)
+    maquina.preparar(build)
+    return build
 
 
 def escribir(path: str, contenido: str) -> str:

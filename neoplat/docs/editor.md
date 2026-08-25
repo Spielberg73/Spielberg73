@@ -53,7 +53,8 @@ niveles: **nuevo** (nace con salida, meta y suelo, listo para jugar),
 
 ## Juego y física
 
-Título, autor, vidas y tiempo límite, y todos los ajustes del jugador con
+Título, autor, vidas, tiempo límite, la **máquina** para la que se compila
+(Neo Geo, Mega Drive o Amiga) y todos los ajustes del jugador con
 deslizadores: velocidad, salto, gravedad, aceleración, fricción, control en el
 aire, corte del salto, caída máxima, rebote, coyote, buffer de salto, vida,
 invulnerabilidad, doble salto y pisar enemigos.
@@ -64,6 +65,11 @@ te dice lo que consigue tu salto con esos números, por ejemplo:
 > con estos ajustes el salto sube 31 px (1 casilla) y cruza 48 px (3 casillas)
 
 Eso es lo que hay que mirar antes de dibujar un hueco.
+
+La máquina se guarda en el `game.yaml` como cualquier otro ajuste, pero no
+cambia el preview al vuelo: los colores que ves son los de la máquina con la
+que se generó. Para verlo con otra, guarda el yaml y vuelve a lanzar
+`ngplat probar --sistema <máquina>`.
 
 ## Enemigos y objetos
 

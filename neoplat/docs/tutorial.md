@@ -183,14 +183,41 @@ niveles:
 
 ```bash
 ../ngplat compilar
-cd build
+cd build/neogeo
 make          # necesita ngdevkit instalado
 make run      # arranca el emulador de ngdevkit
 ```
 
-Si no tienes ngdevkit, `ngplat compilar` ya te ha dejado en `build/` todo el
-proyecto en C y las ROMs gráficas: puedes compilarlo en otro ordenador que sí
-lo tenga.
+Si no tienes ngdevkit, `ngplat compilar` ya te ha dejado en `build/neogeo/`
+todo el proyecto en C y las ROMs gráficas: puedes compilarlo en otro ordenador
+que sí lo tenga.
+
+## 9. El mismo juego en otra máquina
+
+El juego que has escrito vale igual para una Mega Drive o para un Amiga: solo
+cambia cómo se dibuja y cómo suena, no lo que pasa.
+
+```bash
+../ngplat sistemas                       # las tres máquinas y sus límites
+../ngplat compilar --sistema megadrive   # -> build/megadrive/rom/juego.bin
+../ngplat compilar --sistema amiga       # -> build/amiga/disco/MiJuego
+```
+
+Para estas dos no hace falta ngdevkit, solo un compilador de 68000 cualquiera
+(`m68k-elf-gcc`, o el paquete `gcc-m68k-linux-gnu` de Debian y Ubuntu). Añade
+`--make` y te lo construye del tirón.
+
+Cada máquina tiene lo suyo, y `ngplat comprobar --sistema <máquina>` te lo dice
+antes de compilar: la Mega Drive solo muestra 64 colores y una capa de fondo, y
+el Amiga 32 colores y niveles de hasta 16 casillas de alto. Si algo no cabe, el
+mensaje te dice qué es y qué quitar.
+
+También puedes dejarlo escrito en el `game.yaml` y olvidarte:
+
+```yaml
+juego:
+  sistema: megadrive
+```
 
 ## Cuando algo falla
 

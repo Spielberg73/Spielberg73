@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 import os
 from dataclasses import dataclass, field
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from . import gfx
 from .errors import ProjectError
@@ -39,9 +39,11 @@ class LayerBuild:
     layer: Layer
     cols: int
     rows: int
-    tiles: List[int]          # cols*rows numeros de tile en la ROM C
-    palette_index: int
-    frames: int               # tiles distintos que ha ocupado en la ROM
+    tiles: List[int]                 # que dibujo va en cada casilla
+    palette_index: int = 0
+    frames: int = 0                  # dibujos distintos
+    palette: object = None           # gfx.Palette de la capa
+    dibujos: List[List[int]] = field(default_factory=list)   # indices de paleta
 
 
 @dataclass
@@ -61,7 +63,7 @@ class LevelBuild:
 @dataclass
 class Build:
     project: Project
-    rom: gfx.RomData
+    rom: Optional[gfx.RomData]        # empaquetado de Neo Geo (lo pone su sistema)
     tiles: List[TileDef]
     tile_index: Dict[str, int]
     tileset: gfx.Sheet
@@ -75,25 +77,28 @@ class Build:
     hud_palette: int = 0
     sin_table: List[int] = field(default_factory=list)
 
+    # --- lo rellena el sistema de destino (Neo Geo, Mega Drive, Amiga) ---
+    sistema: object = None
+    paletas: List[List[int]] = field(default_factory=list)   # colores ya en su formato
+    tile_gfx: List[int] = field(default_factory=list)        # numero grafico por tile
+    info: Dict[str, object] = field(default_factory=dict)    # datos sueltos del sistema
+
     def actor_builds(self) -> List[ActorBuild]:
         return [self.player] + self.enemies + self.items
 
     def stats(self) -> Dict[str, int]:
-        return {
+        datos = {
             "capas": len(self.layers),
             "efectos": len(self.project.sound.efectos),
             "musicas": len(self.project.sound.musica),
-            "tiles_sprite": self.rom.sprite_tiles,
-            "tiles_fix": self.rom.fix_tiles,
-            "paletas": len(self.rom.palettes),
+            "paletas": len(self.paletas),
             "niveles": len(self.levels),
             "enemigos": len(self.enemies),
             "objetos": len(self.items),
-            "bytes_c1": len(self.rom.c1),
-            "bytes_c2": len(self.rom.c2),
-            "bytes_s1": len(self.rom.s1),
             "bytes_mapas": sum(len(lv.cells) for lv in self.levels),
         }
+        datos.update(self.info.get("stats", {}))     # lo que anada cada sistema
+        return datos
 
 
 def _resolve_anims(actor: Actor, where: str, frames_available: int) -> List[Animation]:
@@ -124,19 +129,18 @@ def _resolve_anims(actor: Actor, where: str, frames_available: int) -> List[Anim
     return out
 
 
-def _load_actor(actor: Actor, where: str, rom: gfx.RomData, root: str) -> ActorBuild:
+def _load_actor(actor: Actor, where: str, root: str) -> ActorBuild:
     sheet = gfx.load_sheet(
         os.path.join(root, actor.sprite), where, actor.frame_w, actor.frame_h
     )
     if sheet.frames == 0:
         raise ProjectError("'%s' no tiene ningun fotograma" % actor.sprite, where=where)
-    rom.pack_sheet(sheet)
     anims = _resolve_anims(actor, where, sheet.frames)
     return ActorBuild(name=actor.name, actor=actor, sheet=sheet, anims=anims)
 
 
-def _load_layer(layer: Layer, rom: gfx.RomData, root: str) -> LayerBuild:
-    """Trocea la imagen de una capa en tiles de 16x16, reutilizando repetidos."""
+def _load_layer(layer: Layer, root: str) -> LayerBuild:
+    """Trocea la imagen de una capa en tiles de 16x16 (sin repetir los iguales)."""
     where = "fondos.%s" % layer.name
     image = read_png(os.path.join(root, layer.image))
     if image.width % gfx.TILE_PX or image.height % gfx.TILE_PX:
@@ -147,7 +151,6 @@ def _load_layer(layer: Layer, rom: gfx.RomData, root: str) -> LayerBuild:
             where=where,
         )
     palette, lookup = gfx.build_palette(image, layer.name, where)
-    palette_index = rom.add_palette(palette)
     indices = gfx.quantize(image, lookup)
     cols = image.width // gfx.TILE_PX
     rows = image.height // gfx.TILE_PX
@@ -157,17 +160,25 @@ def _load_layer(layer: Layer, rom: gfx.RomData, root: str) -> LayerBuild:
             hint="recorta la imagen a 224 pixeles de alto como mucho",
             where=where,
         )
+    # se guardan los dibujos de los tiles (indices de paleta) y, aparte, que
+    # tile va en cada casilla, reutilizando los repetidos
+    dibujos: List[List[int]] = []
+    vistos: Dict[tuple, int] = {}
     tiles: List[int] = []
-    antes = rom.sprite_tiles
     for row in range(rows):
         for col in range(cols):
             tile: List[int] = []
             for y in range(gfx.TILE_PX):
                 base = (row * gfx.TILE_PX + y) * image.width + col * gfx.TILE_PX
                 tile.extend(indices[base:base + gfx.TILE_PX])
-            tiles.append(rom.add_sprite_tile_shared(tile))
+            clave = tuple(tile)
+            if clave not in vistos:
+                vistos[clave] = len(dibujos)
+                dibujos.append(tile)
+            tiles.append(vistos[clave])
     return LayerBuild(name=layer.name, layer=layer, cols=cols, rows=rows, tiles=tiles,
-                      palette_index=palette_index, frames=rom.sprite_tiles - antes)
+                      palette=palette, dibujos=dibujos, palette_index=0,
+                      frames=len(dibujos))
 
 
 def _sin_table() -> List[int]:
@@ -175,11 +186,14 @@ def _sin_table() -> List[int]:
 
 
 def build_project(project: Project) -> Build:
-    """Empaqueta graficos, tiles y niveles. Lanza ProjectError si algo no cabe."""
-    rom = gfx.RomData()
+    """Lee graficos, tiles, niveles y sonido, sin atarse a ninguna maquina.
+
+    El empaquetado para el hardware (formato de los tiles, paletas, ROMs) lo
+    hace despues el sistema de destino: ver tools/ngplat/sistemas/.
+    """
+    rom = gfx.RomData()          # lo usa Neo Geo; los demas sistemas lo ignoran
 
     tileset = gfx.load_tileset(os.path.join(project.root, project.tileset.image))
-    rom.pack_sheet(tileset)
 
     tiles = sorted(project.tiles.values(), key=lambda t: t.char)
     if len(tiles) > 255:
@@ -195,17 +209,17 @@ def build_project(project: Project) -> Build:
             )
 
     layers: List[LayerBuild] = [
-        _load_layer(layer, rom, project.root) for layer in project.layers.values()
+        _load_layer(layer, project.root) for layer in project.layers.values()
     ]
     layer_index = {layer.name: i for i, layer in enumerate(layers)}
 
-    player = _load_actor(project.player, "jugador", rom, project.root)
+    player = _load_actor(project.player, "jugador", project.root)
     enemies = [
-        _load_actor(enemy, "enemigos.%s" % name, rom, project.root)
+        _load_actor(enemy, "enemigos.%s" % name, project.root)
         for name, enemy in project.enemies.items()
     ]
     items = [
-        _load_actor(item, "objetos.%s" % name, rom, project.root)
+        _load_actor(item, "objetos.%s" % name, project.root)
         for name, item in project.items.items()
     ]
     enemy_index = {b.name: i for i, b in enumerate(enemies)}
@@ -257,14 +271,10 @@ def build_project(project: Project) -> Build:
             music=music_index.get(level.music, 0),
         ))
 
-    font = gfx.build_font(rom)
-    hud_palette = rom.add_palette(gfx.hud_palette())
-
     return Build(
         project=project, rom=rom, tiles=tiles, tile_index=tile_index, tileset=tileset,
         player=player, enemies=enemies, items=items, layers=layers, levels=levels,
-        music_order=music_order, font=font, hud_palette=hud_palette,
-        sin_table=_sin_table(),
+        music_order=music_order, sin_table=_sin_table(),
     )
 
 
@@ -326,8 +336,9 @@ def player_values(project: Project) -> Dict[str, object]:
 
 
 def tile_tables(build: Build) -> Tuple[List[int], List[int]]:
+    """Tipo de cada tile y su numero grafico (lo pone el sistema de destino)."""
     kinds = [TILE_KIND_ID[t.kind] for t in build.tiles]
-    graphics = [build.tileset.first_tile + t.index for t in build.tiles]
+    graphics = build.tile_gfx or [t.index for t in build.tiles]
     return kinds, graphics
 
 

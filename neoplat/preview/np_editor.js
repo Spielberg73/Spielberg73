@@ -71,7 +71,8 @@
         }),
         juego: {
           titulo: DATA.title, autor: DATA.author,
-          vidas: DATA.lives, tiempo: DATA.time_limit
+          vidas: DATA.lives, tiempo: DATA.time_limit,
+          sistema: DATA.sistema || "neogeo"
         },
         jugador: {
           velocidad: fijoAUsuario(jugador.speed),

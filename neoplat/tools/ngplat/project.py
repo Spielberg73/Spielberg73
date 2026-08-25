@@ -303,6 +303,7 @@ class Project:
     root: str
     title: str
     author: str
+    system: str            # para que maquina se compila por defecto
     lives: int
     time_limit: int
     hud: bool
@@ -867,6 +868,7 @@ def load_project(path: str) -> Project:
     lives = game.int_(["lives", "vidas"], 3, 1, 9)
     time_limit = game.int_(["time", "tiempo", "tiempo_limite"], 0, 0, 999)
     hud = game.bool_(["hud", "marcador"], True)
+    sistema = (game.str_(["system", "sistema", "maquina", "máquina"], "neogeo") or "neogeo")
     bg = game.raw("background", "fondo", "color_fondo")
     default_bg = parse_color(bg, "juego") if bg is not None else (16, 24, 48)
 
@@ -918,7 +920,8 @@ def load_project(path: str) -> Project:
         )
 
     return Project(
-        root=root, title=title.upper()[:24], author=author[:24], lives=lives,
+        root=root, title=title.upper()[:24], author=author[:24], system=sistema,
+        lives=lives,
         time_limit=time_limit, hud=hud, player=player, tileset=tileset, tiles=tiles,
         enemies=enemies, items=items, layers=layers, sound=sound, levels=levels,
         warnings=warnings,

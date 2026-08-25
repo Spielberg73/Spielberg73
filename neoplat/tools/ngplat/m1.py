@@ -31,7 +31,7 @@ from __future__ import annotations
 from typing import Dict, List, Tuple
 
 from .errors import ProjectError
-from .sonido import EVENTOS, Sonido
+from .sonido import EVENTOS, Sonido, periodo_ssg
 from .z80 import ensamblar
 
 M1_SIZE = 0x20000              # 128 KB, el tamano habitual de una ROM M1
@@ -359,11 +359,11 @@ def _secuencia_bytes(pasos, nombre: str) -> List[str]:
     for paso in pasos:
         duracion = max(1, int(paso.duracion))
         volumen = (paso.volumen & 0x0F) | (0x80 if paso.ruido else 0)
+        periodo = periodo_ssg(paso.frecuencia)
         while duracion > 0:
             trozo = min(255, duracion)
             lineas.append("        db $%02x,$%02x,%d,$%02x"
-                          % (paso.periodo & 0xFF, (paso.periodo >> 8) & 0x0F,
-                             trozo, volumen))
+                          % (periodo & 0xFF, (periodo >> 8) & 0x0F, trozo, volumen))
             duracion -= trozo
     lineas.append("        db 0,0,0,0        ; fin")
     return lineas

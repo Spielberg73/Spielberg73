@@ -43,8 +43,33 @@ class TestCli(unittest.TestCase):
 
         codigo, salida = self._ejecutar("compilar", self.proyecto)
         self.assertEqual(codigo, 0, salida)
-        for esperado in ("build/src/gamedata.c", "build/Makefile", "build/rom/202-c1.c1"):
+        # cada sistema tiene su propia carpeta dentro de build/
+        for esperado in ("build/neogeo/src/gamedata.c", "build/neogeo/Makefile",
+                         "build/neogeo/rom/202-c1.c1"):
             self.assertTrue(os.path.isfile(os.path.join(self.proyecto, esperado)), esperado)
+
+    def test_compila_para_las_tres_maquinas(self):
+        self.assertEqual(self._ejecutar("nuevo", self.proyecto, "--titulo", "CLI")[0], 0)
+        esperados = {
+            "neogeo": ("src/np_video.c", "rom/202-m1.m1", "Makefile"),
+            "megadrive": ("src/graficos.c", "src/sonido.c", "megadrive.ld",
+                          "arreglar_rom.py"),
+            "amiga": ("src/graficos.c", "src/sonido.c", "amiga.ld",
+                      "hacer_ejecutable.py"),
+        }
+        for sistema, archivos in esperados.items():
+            codigo, salida = self._ejecutar("compilar", self.proyecto,
+                                            "--sistema", sistema)
+            self.assertEqual(codigo, 0, salida)
+            for archivo in archivos:
+                ruta = os.path.join(self.proyecto, "build", sistema, archivo)
+                self.assertTrue(os.path.isfile(ruta), "%s: %s" % (sistema, archivo))
+
+    def test_lista_de_sistemas(self):
+        codigo, salida = self._ejecutar("sistemas")
+        self.assertEqual(codigo, 0, salida)
+        for nombre in ("Neo Geo", "Mega Drive", "Amiga"):
+            self.assertIn(nombre, salida)
 
     def test_alias_en_ingles(self):
         self.assertEqual(self._ejecutar("new", self.proyecto)[0], 0)

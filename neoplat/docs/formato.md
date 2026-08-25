@@ -19,7 +19,19 @@ juego:
   tiempo: 0                 # segundos por nivel; 0 = sin límite
   hud: si                   # marcador de puntos/vidas
   fondo: "#101830"          # color de fondo por defecto
+  sistema: neogeo           # neogeo (por defecto), megadrive o amiga
 ```
+
+`sistema` decide para qué máquina se compila y con qué colores se dibuja el
+preview. También se puede elegir sin tocar el archivo, con `--sistema` en
+cualquier orden:
+
+```bash
+ngplat compilar --sistema megadrive
+```
+
+Valen los nombres alternativos de siempre: `genesis` o `md` para la Mega Drive,
+`a500` para el Amiga, `aes` o `mvs` para la Neo Geo.
 
 ## `jugador`
 
@@ -254,16 +266,29 @@ Los niveles se juegan en orden; al terminar el último sale `YOU WIN!`.
 
 ---
 
-## Límites de la consola
+## Límites de cada máquina
+
+Estos son los del juego, valgan para la que valgan:
 
 | Cosa | Límite | Qué pasa si te pasas |
 |---|---|---|
 | Colores por imagen | 15 + transparente | error al compilar, con el número de colores |
 | Entidades por nivel | 64 | error al compilar |
 | Tamaño del nivel | 512 × 256 tiles | error al compilar |
-| Paletas | 256 en total | error al compilar |
-| Sprites en pantalla | 96 para actores | los que sobran no se dibujan |
-| Capas de fondo | 21 sprites cada una | con 2 o 3 vas sobrado |
 | Efectos de sonido | 46 | error al compilar |
 | Músicas | 14, de 2 pistas | error al compilar |
 | Símbolos de tile | 255 | error al compilar |
+
+Y estos cambian según la máquina. `ngplat comprobar` los mira antes de
+compilar y te dice cuál te has saltado.
+
+| | Neo Geo | Mega Drive | Amiga |
+|---|---|---|---|
+| Colores a la vez | 4096 | 64 (4 paletas de 16) | 32 (una sola paleta) |
+| Paletas | 256 | 4, fundiendo las tuyas | 1, fundiendo las tuyas |
+| Dibujos distintos | 65536 tiles | 1408 tiles de 8 × 8 | 1024 de 16 × 16 |
+| Actores en pantalla | 96 sprites | 80 sprites | sin límite fijo (los dibuja el blitter) |
+| Alto del nivel | 256 tiles | 32 tiles | 16 tiles |
+| Capas de parallax | todas | una | ninguna (todavía) |
+
+`ngplat sistemas` los enseña sin salir de la terminal.

@@ -23,8 +23,15 @@ ejemplo:
 	./ngplat probar $(EJEMPLO) --no-abrir
 	./ngplat compilar $(EJEMPLO)
 
+# Compila el ejemplo para las tres maquinas (necesita un compilador de 68000
+# para construir de verdad el cartucho y el ejecutable).
+ejemplo-todos:
+	./ngplat compilar $(EJEMPLO) --sistema neogeo
+	./ngplat compilar $(EJEMPLO) --sistema megadrive --make
+	./ngplat compilar $(EJEMPLO) --sistema amiga --make
+
 limpiar:
 	rm -rf $(EJEMPLO)/build $(EJEMPLO)/preview.html capturas
 	find . -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
 
-.PHONY: test test-rapido test-navegador ejemplo limpiar
+.PHONY: test test-rapido test-navegador ejemplo ejemplo-todos limpiar
