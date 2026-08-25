@@ -314,8 +314,10 @@ Verificado aquí:
   `SEGA MEGA DRIVE`, el nombre del juego, el rango de la ROM y la suma de
   control, que las pruebas vuelven a calcular y comparan.
 - **El binario no lleva nada que el 68000 no entienda**: las pruebas revisan el
-  código máquina y fallan si aparece una instrucción de 68020 o un acceso a una
-  dirección impar.
+  código máquina de las **tres** máquinas (la Neo Geo también, compilando sus
+  fuentes sin enlazar) y fallan si aparece una instrucción de 68020 o un acceso
+  a una dirección impar. Así se encontró que la ROM de Neo Geo arrastraba el
+  mismo fallo que colgaba la de Mega Drive.
 - **El ejecutable de Amiga se construye entero**: dos hunks marcados como RAM
   chip, la tabla de relocalización comprobada entrada por entrada (ninguna
   dirección se sale de su hunk) y `_start` en el primer byte, como espera

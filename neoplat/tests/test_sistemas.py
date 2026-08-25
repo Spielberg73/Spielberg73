@@ -25,6 +25,13 @@ from ngplat.gfx import Palette
 from ngplat.sonido import periodo_paula, periodo_psg
 
 
+def _banderas_del_makefile(ruta):
+    """Las opciones del compilador que importan para esta comprobacion."""
+    with open(ruta, encoding="utf-8") as fh:
+        texto = fh.read()
+    return [b for b in ("-fno-store-merging",) if b in texto]
+
+
 def _compilador_68k():
     for nombre in ("m68k-elf-gcc", "m68k-linux-gnu-gcc"):
         if shutil.which(nombre):
@@ -407,6 +414,43 @@ class TestCompilacionReal(unittest.TestCase):
         bss = (tamanos[1] & 0x3FFFFFFF) * 4
         self.assertGreater(bss, 704 * 256 * 5 // 8)
         self.assertLess(bss + codigo_largo * 4, 512 * 1024)
+
+    def test_ninguna_maquina_genera_accesos_impares(self):
+        """Lo mismo, pero sobre los fuentes de las tres maquinas y sin enlazar:
+        asi tambien entra la Neo Geo, que se construye con ngdevkit y aqui no
+        esta. El fallo lo comete el compilador, no el enlazador."""
+        objdump = self.cc.replace("-gcc", "-objdump")
+        if not shutil.which(objdump):
+            self.skipTest("no hay %s" % objdump)
+        patron = re.compile(
+            r"\b(?!lea|pea)[a-z]+[wl]\s+\S*%(?:a\d|sp|fp)@\((\d+)\)")
+        for sistema in ("neogeo", "megadrive", "amiga"):
+            build = cargar_demo(self.proyecto, sistema)
+            out = os.path.join(self.tmp, "estatico-" + sistema)
+            generar_para_sistema(build, out, sistemas.obtener(sistema), "202")
+            banderas = _banderas_del_makefile(os.path.join(out, "Makefile"))
+            self.assertIn("-fno-store-merging", banderas,
+                          "%s: falta -fno-store-merging en el Makefile" % sistema)
+            impares = []
+            for fuente in sorted(os.listdir(os.path.join(out, "src"))):
+                if not fuente.endswith(".c"):
+                    continue
+                objeto = os.path.join(self.tmp, "prueba.o")
+                compilar = subprocess.run(
+                    [self.cc, "-m68000", "-Os", "-fomit-frame-pointer",
+                     "-ffreestanding", "-fno-builtin", "-std=c99"] + banderas +
+                    ["-I", os.path.join(out, "src"), "-c",
+                     os.path.join(out, "src", fuente), "-o", objeto],
+                    capture_output=True, text=True)
+                if compilar.returncode != 0:
+                    continue          # algun fuente necesita cabeceras del kit
+                hecho = subprocess.run([objdump, "-d", objeto],
+                                       capture_output=True, text=True)
+                for linea in hecho.stdout.split("\n"):
+                    for desplazamiento in patron.findall(linea):
+                        if int(desplazamiento) % 2:
+                            impares.append("%s/%s: %s" % (sistema, fuente, linea.strip()))
+            self.assertEqual(impares, [], "\n".join(impares[:5]))
 
     def test_no_hay_accesos_a_direcciones_impares(self):
         """El 68000 se para con un "address error" si lee o escribe una palabra

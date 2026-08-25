@@ -168,6 +168,21 @@ El identificador `202` es el del romset `puzzledp`, que es el que usa el
 emulador de ngdevkit para el homebrew. Se puede cambiar con
 `ngplat compilar --rom-id`.
 
+## Una trampa del 68000 con la que se cuelga el juego
+
+Con `-Os`, ante dos escrituras de un byte seguidas (`w->keys = 0;
+w->entity_count = 0;`) gcc emite un `clr.w`, una sola escritura de dos bytes.
+Si el par cae en una **dirección impar**, el 68000 se para con un *address
+error*: no puede leer ni escribir palabras en direcciones impares.
+
+Le pasa a cualquier compilador de 68000, ngdevkit incluido, así que el kit
+compila con **`-fno-store-merging`**. Las pruebas revisan el código máquina de
+las tres máquinas y fallan si aparece un solo acceso de ese tipo.
+
+Se descubrió arrancando la ROM de Mega Drive en un emulador (se quedaba
+congelada nada más cargar el nivel); la de Neo Geo tenía exactamente el mismo
+`clr.w %a0@(2109)`.
+
 ## Instalar ngdevkit
 
 ```bash
@@ -178,6 +193,14 @@ brew tap dciabrin/ngdevkit && brew install ngdevkit ngdevkit-gngeo
 ```
 
 Después, `ngplat compilar --make` construye la ROM directamente.
+
+## Lo que aún no se ha podido comprobar
+
+Las otras dos máquinas se arrancan en un emulador dentro de las pruebas
+(`make test-emulador`). La Neo Geo no: emularla necesita la BIOS de la consola,
+que es propietaria y no se puede distribuir. Lo que sí se comprueba es el
+código máquina: que no lleve instrucciones que el 68000 no tiene ni accesos a
+direcciones impares, que es lo que colgaba a las otras dos.
 
 ## Rendimiento
 

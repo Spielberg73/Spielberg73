@@ -9,7 +9,11 @@ CC       := m68k-neogeo-elf-gcc
 OBJCOPY  := m68k-neogeo-elf-objcopy
 GNGEO    ?= ngdevkit-gngeo
 
-CFLAGS   := -std=c99 -Os -fomit-frame-pointer -Wall -Wextra -Isrc
+# -fno-store-merging: sin el, gcc junta dos escrituras de un byte seguidas en
+# una sola de dos bytes, y si cae en una direccion impar el 68000 se para con
+# un "address error". Las pruebas del kit comprueban que no quede ninguna.
+CFLAGS   := -std=c99 -Os -fomit-frame-pointer -fno-store-merging \
+            -Wall -Wextra -Isrc
 LDFLAGS  :=
 
 SRC      := src/main.c src/np_video.c src/np_hud.c src/np_sound.c src/np_world.c \
