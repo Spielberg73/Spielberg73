@@ -19,7 +19,18 @@ Se abre el navegador con el juego. Flechas para moverte, <kbd>Z</kbd> para
 saltar, <kbd>Enter</kbd> para empezar. **Esto es exactamente lo que hará la
 consola**: la simulación es la misma.
 
-## 3. Cambia el mapa
+## 3. Cambia el mapa (con el ratón)
+
+En el preview, pulsa <kbd>E</kbd>. Aparece el editor: eliges qué pintar en la
+paleta de abajo (suelo, plataformas, pinchos, enemigos, monedas, la salida) y
+pintas sobre el nivel. <kbd>Enter</kbd> lo prueba al momento y <kbd>E</kbd> te
+devuelve al editor.
+
+Cuando te guste, pulsa **«game.yaml»** y copia o descarga el archivo: es tu
+`game.yaml` entero, con los mapas nuevos. Detalles en
+[editor.md](editor.md).
+
+## 3b. …o cambia el mapa a mano
 
 Abre `game.yaml` y busca `niveles:`. El mapa son caracteres:
 

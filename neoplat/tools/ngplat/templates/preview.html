@@ -30,6 +30,36 @@
               cursor: pointer; }
   kbd { background: #1d2231; border: 1px solid #2b3245; border-bottom-width: 2px;
         border-radius: 4px; padding: 1px 6px; font: 11px ui-monospace, monospace; color: #cfd6e4; }
+  /* --- editor --- */
+  .editor { display: none; flex-direction: column; gap: 10px; width: 100%; max-width: 760px; }
+  .editor.visible { display: flex; }
+  .barra { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .barra button, .barra select {
+    background: #1d2231; border: 1px solid #2b3245; border-radius: 6px;
+    color: #cfd6e4; font: inherit; font-size: 12px; padding: 4px 9px; cursor: pointer;
+  }
+  .barra button:hover { background: #272e42; }
+  .barra .grupo { display: flex; gap: 4px; align-items: center; }
+  .barra .etiqueta { color: #7d8799; font-size: 11px; text-transform: uppercase;
+                     letter-spacing: .12em; }
+  .paleta { display: flex; flex-wrap: wrap; gap: 6px; }
+  .paleta button {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    background: #161a25; border: 1px solid #2b3245; border-radius: 6px;
+    padding: 4px 5px; cursor: pointer; color: #8b95a8; font-size: 10px;
+    min-width: 46px;
+  }
+  .paleta button.elegido { border-color: #f2b705; color: #f2d98a; background: #221d10; }
+  .paleta canvas { image-rendering: pixelated; width: 32px; height: 32px; }
+  .paleta .simbolo { font: 11px ui-monospace, monospace; color: #cfd6e4; }
+  .aviso { color: #e8b04b; font-size: 12px; min-height: 16px; }
+  .exportar { display: none; flex-direction: column; gap: 6px; }
+  .exportar.visible { display: flex; }
+  .exportar textarea {
+    width: 100%; height: 190px; background: #0f131c; color: #cfd6e4;
+    border: 1px solid #2b3245; border-radius: 6px; padding: 8px;
+    font: 11px/1.45 ui-monospace, monospace; resize: vertical;
+  }
   .pad { display: none; gap: 10px; margin-top: 6px; }
   .pad button {
     width: 62px; height: 56px; border-radius: 12px; border: 1px solid #2b3245;
@@ -50,9 +80,39 @@
   <span><kbd>&darr;</kbd> bajar de plataforma</span>
   <span><kbd>Enter</kbd> empezar</span>
   <span><kbd>R</kbd> reiniciar</span>
+  <span><kbd>E</kbd> editar</span>
   <span><kbd>+</kbd> / <kbd>-</kbd> zoom</span>
   <span><kbd>M</kbd> <button id="silencio" type="button">sonido: si</button></span>
+  <span><kbd>E</kbd> <button id="modo" type="button">editar el nivel</button></span>
 </div>
+<div class="editor" id="editor">
+  <div class="barra">
+    <span class="etiqueta">nivel</span>
+    <select id="ed-nivel"></select>
+    <div class="grupo">
+      <span class="etiqueta">tamaño</span>
+      <button type="button" data-tam="-1,0">&minus; ancho</button>
+      <button type="button" data-tam="1,0">+ ancho</button>
+      <button type="button" data-tam="0,-1">&minus; alto</button>
+      <button type="button" data-tam="0,1">+ alto</button>
+    </div>
+    <button type="button" id="ed-deshacer">deshacer</button>
+    <button type="button" id="ed-rejilla">rejilla</button>
+    <button type="button" id="ed-exportar">game.yaml</button>
+    <button type="button" id="ed-jugar">probar el nivel</button>
+  </div>
+  <div class="paleta" id="ed-paleta"></div>
+  <div class="aviso" id="ed-aviso"></div>
+  <div class="exportar" id="ed-panel">
+    <div class="barra">
+      <button type="button" id="ed-copiar">copiar al portapapeles</button>
+      <button type="button" id="ed-descargar">descargar game.yaml</button>
+      <span class="etiqueta" id="ed-copiado"></span>
+    </div>
+    <textarea id="ed-texto" spellcheck="false" readonly></textarea>
+  </div>
+</div>
+
 <div class="pad">
   <button data-key="left">&larr;</button>
   <button data-key="right">&rarr;</button>
@@ -63,6 +123,9 @@
 
 <script>
 @CORE@
+</script>
+<script>
+@EDITOR@
 </script>
 <script>
 (function () {
@@ -97,6 +160,20 @@
   document.addEventListener("keydown", function (ev) {
     audio.iniciar();
     if (ev.code === "KeyM") { silenciar(); return; }
+    if (ev.code === "KeyE") {
+      if (editor.activo) modoJuego(); else modoEditor();
+      return;
+    }
+    if (editor.activo) {
+      if (ev.code === "KeyZ" && (ev.ctrlKey || ev.metaKey)) { editor.deshacer(); return; }
+      var paso = ev.shiftKey ? 64 : 16;
+      if (ev.code === "ArrowLeft") { editor.mover(-paso, 0); ev.preventDefault(); return; }
+      if (ev.code === "ArrowRight") { editor.mover(paso, 0); ev.preventDefault(); return; }
+      if (ev.code === "ArrowUp") { editor.mover(0, -paso); ev.preventDefault(); return; }
+      if (ev.code === "ArrowDown") { editor.mover(0, paso); ev.preventDefault(); return; }
+      if (ev.code === "Enter") { editor.aplicar(); ev.preventDefault(); return; }
+      return;
+    }
     if (ev.code === "KeyR") { world = NPCore.create(DATA); return; }
     if (ev.code === "Equal" || ev.code === "NumpadAdd") { setScale(scale + 1); return; }
     if (ev.code === "Minus" || ev.code === "NumpadSubtract") { setScale(scale - 1); return; }
@@ -419,6 +496,12 @@
   var last = 0, acc = 0;
   function loop(now) {
     requestAnimationFrame(loop);
+    if (editor.activo) {                 /* en modo edicion el juego se pausa */
+      editor.dibujar();
+      last = now;
+      acc = 0;
+      return;
+    }
     if (!last) last = now;
     acc += now - last;
     last = now;
@@ -437,18 +520,195 @@
     render();
   }
 
+  /* ------------------------------------------------------------- editor */
+  var editor = NPEditor.crear({
+    data: DATA,
+    canvas: canvas,
+    ctx: ctx,
+    dibujarFrame: drawFrame,
+    alJugar: function () {
+      world = NPCore.create(DATA);
+      world.step(NPCore.IN.START);
+      if (editor.nivel > 0) world.loadLevel(editor.nivel);
+      modoJuego();
+    },
+    alCambiar: function () { refrescarEditor(); }
+  });
+
+  var elEditor = document.getElementById("editor");
+  var elNivel = document.getElementById("ed-nivel");
+  var elPaleta = document.getElementById("ed-paleta");
+  var elAviso = document.getElementById("ed-aviso");
+  var elPanel = document.getElementById("ed-panel");
+  var elTexto = document.getElementById("ed-texto");
+  var elModo = document.getElementById("modo");
+
+  DATA.levels.forEach(function (nivel, i) {
+    var opcion = document.createElement("option");
+    opcion.value = String(i);
+    opcion.textContent = (i + 1) + ". " + nivel.name;
+    elNivel.appendChild(opcion);
+  });
+
+  function construirPaleta() {
+    elPaleta.innerHTML = "";
+    editor.paleta().forEach(function (entrada) {
+      var boton = document.createElement("button");
+      boton.type = "button";
+      boton.title = entrada.etiqueta + "  (" + entrada.char + ")";
+      if (entrada.hoja) {
+        var mini = document.createElement("canvas");
+        mini.width = 16;
+        mini.height = 16;
+        var mctx = mini.getContext("2d");
+        mctx.imageSmoothingEnabled = false;
+        var hoja = DATA.sheets[entrada.hoja], imagen = images[entrada.hoja];
+        if (imagen) {
+          var col = entrada.frame % hoja.per_row;
+          var fila = (entrada.frame / hoja.per_row) | 0;
+          mctx.drawImage(imagen, col * hoja.frame_w, fila * hoja.frame_h,
+                         hoja.frame_w, hoja.frame_h, 0, 0, 16,
+                         16 * hoja.frame_h / hoja.frame_w);
+        }
+        boton.appendChild(mini);
+      } else {
+        var icono = document.createElement("div");
+        icono.textContent = "✋";
+        icono.style.fontSize = "22px";
+        icono.style.lineHeight = "32px";
+        boton.appendChild(icono);
+      }
+      var simbolo = document.createElement("span");
+      simbolo.className = "simbolo";
+      simbolo.textContent = entrada.char === "mano" ? "mover" : entrada.char;
+      boton.appendChild(simbolo);
+      var etiqueta = document.createElement("span");
+      etiqueta.textContent = entrada.etiqueta;
+      boton.appendChild(etiqueta);
+      if (entrada.char === editor.herramienta) boton.className = "elegido";
+      boton.addEventListener("click", function () {
+        editor.herramienta = entrada.char;
+        construirPaleta();
+      });
+      elPaleta.appendChild(boton);
+    });
+  }
+
+  function refrescarEditor() {
+    elAviso.textContent = editor.aviso;
+    if (elPanel.classList.contains("visible")) elTexto.value = editor.exportarYaml();
+  }
+
+  function modoEditor() {
+    editor.entrar();
+    elEditor.classList.add("visible");
+    elModo.textContent = "volver a jugar";
+    elNivel.value = String(editor.nivel);
+    construirPaleta();
+    refrescarEditor();
+  }
+
+  function modoJuego() {
+    editor.salir();
+    elEditor.classList.remove("visible");
+    elPanel.classList.remove("visible");
+    elModo.textContent = "editar el nivel";
+  }
+
+  elModo.addEventListener("click", function () {
+    if (editor.activo) modoJuego();
+    else modoEditor();
+  });
+  elNivel.addEventListener("change", function () {
+    editor.cambiarNivel(parseInt(elNivel.value, 10));
+    construirPaleta();
+  });
+  document.getElementById("ed-deshacer").addEventListener("click", function () {
+    editor.deshacer();
+    elNivel.value = String(editor.nivel);
+  });
+  document.getElementById("ed-rejilla").addEventListener("click", function () {
+    editor.rejilla = !editor.rejilla;
+  });
+  document.getElementById("ed-jugar").addEventListener("click", function () {
+    editor.aplicar();
+  });
+  document.getElementById("ed-exportar").addEventListener("click", function () {
+    elPanel.classList.toggle("visible");
+    if (elPanel.classList.contains("visible")) elTexto.value = editor.exportarYaml();
+  });
+  document.getElementById("ed-copiar").addEventListener("click", function () {
+    var aviso = document.getElementById("ed-copiado");
+    elTexto.select();
+    var hecho = false;
+    try { hecho = document.execCommand("copy"); } catch (e) { hecho = false; }
+    if (!hecho && navigator.clipboard) {
+      navigator.clipboard.writeText(elTexto.value).then(function () {
+        aviso.textContent = "copiado";
+      });
+      return;
+    }
+    aviso.textContent = hecho ? "copiado" : "selecciona y copia a mano";
+  });
+  document.getElementById("ed-descargar").addEventListener("click", function () {
+    var blob = new Blob([editor.exportarYaml()], { type: "text/yaml" });
+    var enlace = document.createElement("a");
+    enlace.href = URL.createObjectURL(blob);
+    enlace.download = "game.yaml";
+    enlace.click();
+    setTimeout(function () { URL.revokeObjectURL(enlace.href); }, 2000);
+  });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-tam]"), function (boton) {
+    boton.addEventListener("click", function () {
+      var partes = boton.dataset.tam.split(",");
+      editor.redimensionar(parseInt(partes[0], 10), parseInt(partes[1], 10));
+    });
+  });
+
+  function posicionEnCanvas(ev) {
+    var caja = canvas.getBoundingClientRect();
+    return {
+      x: (ev.clientX - caja.left) * canvas.width / caja.width,
+      y: (ev.clientY - caja.top) * canvas.height / caja.height
+    };
+  }
+
+  canvas.addEventListener("pointerdown", function (ev) {
+    if (!editor.activo) { audio.iniciar(); return; }
+    var p = posicionEnCanvas(ev);
+    editor.pulsar(p.x, p.y, ev.button);
+    canvas.setPointerCapture(ev.pointerId);
+    ev.preventDefault();
+  });
+  canvas.addEventListener("pointermove", function (ev) {
+    if (!editor.activo) return;
+    var p = posicionEnCanvas(ev);
+    editor.mover_raton(p.x, p.y);
+  });
+  canvas.addEventListener("pointerup", function () { editor.soltar(); });
+  canvas.addEventListener("pointercancel", function () { editor.soltar(); });
+  canvas.addEventListener("contextmenu", function (ev) {
+    if (editor.activo) ev.preventDefault();
+  });
+
   /* Enganche para herramientas y pruebas automaticas (capturas, bots...). */
   window.NeoPlat = {
     data: DATA,
     get world() { return world; },
     get input() { return input; },
     audio: audio,
+    editor: editor,
+    modoEditor: modoEditor,
+    modoJuego: modoJuego,
     reiniciar: function () { world = NPCore.create(DATA); },
     pulsar: function (bits) { latched |= bits; },
     soltar: function (bits) { input &= ~bits; }
   };
 
-  loadImages(function () { requestAnimationFrame(loop); });
+  loadImages(function () {
+    construirPaleta();
+    requestAnimationFrame(loop);
+  });
 })();
 </script>
 </body>

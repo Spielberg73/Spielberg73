@@ -8,7 +8,7 @@ compilador genera el proyecto en C, las ROMs gráficas y un **preview jugable en
 el navegador** para probar los cambios en segundos.
 
 ```
-game.yaml + PNG  ──►  ngplat  ──┬──►  preview.html   (jugable al momento)
+game.yaml + PNG  ──►  ngplat  ──┬──►  preview.html   (jugable + editor de niveles)
                                 └──►  build/         (C + ROMs para ngdevkit)
 ```
 
@@ -42,7 +42,16 @@ make run                    # la arranca en el emulador
 
 Controles del preview: flechas para moverte, <kbd>Z</kbd> o <kbd>espacio</kbd>
 para saltar, <kbd>↓</kbd> para bajar de una plataforma, <kbd>Enter</kbd> para
-empezar, <kbd>R</kbd> para reiniciar.
+empezar, <kbd>R</kbd> para reiniciar, <kbd>M</kbd> para silenciar.
+
+## Editor de niveles incluido
+
+El preview trae un editor: pulsa <kbd>E</kbd> y pintas el nivel con el ratón (o
+con el dedo). Colocas tiles, enemigos, objetos y la salida del jugador, cambias
+el tamaño del nivel, lo pruebas al momento con <kbd>Enter</kbd> y te llevas el
+**`game.yaml` completo** con un botón. Sin instalar nada y sin perder el resto
+del archivo: solo se sustituyen los mapas. Ver
+[docs/editor.md](docs/editor.md).
 
 ## Cómo es un juego
 
@@ -119,7 +128,7 @@ tutorial paso a paso en [docs/tutorial.md](docs/tutorial.md).
 |---|---|
 | `ngplat nuevo <carpeta>` | Crea un proyecto jugable con gráficos de ejemplo |
 | `ngplat comprobar [proyecto]` | Valida el `game.yaml` y dice cuánto ocupa el juego |
-| `ngplat probar [proyecto]` | Genera y abre el preview del navegador |
+| `ngplat probar [proyecto]` | Genera y abre el preview (con el editor de niveles) |
 | `ngplat compilar [proyecto]` | Genera `build/` con el C, las ROMs gráficas y el Makefile |
 | `ngplat compilar --make` | Además construye la ROM (necesita ngdevkit) |
 
@@ -144,10 +153,12 @@ neoplat/
 │   ├── core/np_world.c     la simulación (física, colisiones, enemigos)
 │   ├── neogeo/             vídeo, HUD, sonido y mando de la consola
 │   └── host/np_trace.c     ejecuta la simulación en el ordenador (pruebas)
-├── preview/np_core.js      la misma simulación, en JavaScript
+├── preview/
+│   ├── np_core.js          la misma simulación, en JavaScript
+│   └── np_editor.js        el editor de niveles del preview
 ├── examples/bosque-magico/ juego de ejemplo listo para compilar
-└── tests/                  92 pruebas + 24 de jugabilidad + bot que se pasa
-                            los niveles
+└── tests/                  97 pruebas + 24 de jugabilidad + 12 del editor +
+                            bot que se pasa los niveles
 ```
 
 **El motor es C, no C++**, a propósito: el compilador de ngdevkit no trae
@@ -191,6 +202,8 @@ Verificado aquí:
   prueba, así que nunca se cuela un nivel imposible.
 - El preview se abre en Chromium durante las pruebas y se comprueba que dibuja
   lo que debe (capturas de pantalla revisadas a mano).
+- El editor hace el viaje completo en las pruebas: edita un nivel, exporta el
+  `game.yaml` y se vuelve a compilar, comprobando que no se pierde nada.
 - El driver de sonido del Z80 se ejecuta en un emulador incluido en las pruebas:
   se comprueba que recibe las órdenes del 68000 y escribe en el chip los
   periodos y volúmenes de las notas escritas en el `game.yaml`.

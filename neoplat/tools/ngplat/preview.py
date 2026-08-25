@@ -19,6 +19,16 @@ from .paths import PREVIEW_DIR, TEMPLATES_DIR
 from .png import Image, encode_png, read_png
 
 
+def _leer_yaml(root: str) -> str:
+    """Texto original del game.yaml (el editor devuelve una copia modificada)."""
+    for nombre in ("game.yaml", "juego.yaml", "game.yml", "juego.yml"):
+        ruta = os.path.join(root, nombre)
+        if os.path.isfile(ruta):
+            with open(ruta, "r", encoding="utf-8") as fh:
+                return fh.read()
+    return ""
+
+
 def _quantized_data_uri(path: str) -> str:
     """Devuelve el PNG con los colores que se veran en la consola."""
     image = read_png(path)
@@ -97,6 +107,12 @@ def build_data(build: Build) -> Dict[str, object]:
             "repeat": 1 if layer.layer.repeat else 0,
         })
 
+    # El editor necesita el mapa en texto y a que corresponde cada simbolo.
+    tile_chars = [t.char for t in build.tiles]
+    tile_index = {t.char: i for i, t in enumerate(build.tiles)}
+    enemy_index = {b.name: i for i, b in enumerate(build.enemies)}
+    item_index = {b.name: i for i, b in enumerate(build.items)}
+
     levels = []
     for level in build.levels:
         levels.append({
@@ -110,6 +126,14 @@ def build_data(build: Build) -> Dict[str, object]:
             "layers": list(level.layers),
             "music": level.music,
         })
+    for salida, original in zip(levels, project.levels):
+        salida["rows"] = list(original.rows)
+        salida["spawn_chars"] = {
+            char: ({"kind": 0, "def": enemy_index[nombre]} if nombre in enemy_index
+                   else {"kind": 1, "def": item_index[nombre]})
+            for char, nombre in original.spawns.items()
+            if nombre in enemy_index or nombre in item_index
+        }
 
     font = {char: list(rows) for char, rows in gfx.FONT_3X5.items()}
 
@@ -146,10 +170,21 @@ def build_data(build: Build) -> Dict[str, object]:
         "items": items,
         # `gfx` aqui es el numero de tile dentro del tileset (en la ROM se
         # convierte al numero absoluto de la ROM C).
-        "tiles": {"kind": kinds, "gfx": [t.index for t in build.tiles]},
+        "tiles": {
+            "kind": kinds,
+            "gfx": [t.index for t in build.tiles],
+            "chars": tile_chars,
+            "index": tile_index,
+        },
         "levels": levels,
         "layers": layers,
         "sonido": sonido,
+        # el YAML original, para que el editor pueda devolverlo ya modificado
+        "yaml": _leer_yaml(project.root),
+        "nombres": {
+            "enemigos": [b.name for b in build.enemies],
+            "objetos": [b.name for b in build.items],
+        },
         "sin": build.sin_table,
         "sheets": sheets,
         "font": font,
@@ -159,10 +194,13 @@ def build_data(build: Build) -> Dict[str, object]:
 def render_html(build: Build) -> str:
     with open(os.path.join(PREVIEW_DIR, "np_core.js"), "r", encoding="utf-8") as fh:
         core = fh.read()
+    with open(os.path.join(PREVIEW_DIR, "np_editor.js"), "r", encoding="utf-8") as fh:
+        editor = fh.read()
     with open(os.path.join(TEMPLATES_DIR, "preview.html"), "r", encoding="utf-8") as fh:
         template = fh.read()
     data = json.dumps(build_data(build), separators=(",", ":"))
     html = template.replace("@CORE@", core)
+    html = html.replace("@EDITOR@", editor)
     html = html.replace("@DATA@", data)
     html = html.replace("@TITLE@", build.project.title)
     html = html.replace("@AUTHOR@", build.project.author or "")
