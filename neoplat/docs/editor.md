@@ -45,9 +45,9 @@ la derecha y filas por arriba, dejando la fila del suelo donde estaba.
 Pulsa **«game.yaml»**: aparece el archivo completo, ya con tus mapas.
 
 - **«copiar al portapapeles»** y lo pegas en tu `game.yaml`.
-- **«descargar game.yaml»** te lo baja (si abres el preview desde un archivo
-  local; en algunos visores web las descargas están bloqueadas y entonces hay
-  que usar copiar).
+- **«descargar game.yaml»** te lo baja. Si estás viendo el preview publicado en
+  claude.ai, la descarga pasa por el visor y llega como `game.yaml.txt`: solo
+  hay que renombrarlo.
 
 Lo que se exporta es **todo el `game.yaml`**, no solo los mapas: se conservan la
 física del jugador, los enemigos, las capas de fondo, el sonido y los

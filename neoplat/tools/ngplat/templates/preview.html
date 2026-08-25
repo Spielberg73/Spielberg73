@@ -651,12 +651,29 @@
     aviso.textContent = hecho ? "copiado" : "selecciona y copia a mano";
   });
   document.getElementById("ed-descargar").addEventListener("click", function () {
-    var blob = new Blob([editor.exportarYaml()], { type: "text/yaml" });
+    var texto = editor.exportarYaml();
+    var aviso = document.getElementById("ed-copiado");
+    /* Si la pagina esta publicada en claude.ai, las descargas pasan por el
+       visor y solo admiten ciertas extensiones; en local basta con un enlace. */
+    if (window.claude && typeof window.claude.use === "function") {
+      window.claude.use("downloads").then(function (descargas) {
+        if (!descargas) { aviso.textContent = "aqui no se puede descargar: usa copiar"; return; }
+        descargas.save({ filename: "game.yaml.txt", data: texto }).then(function () {
+          aviso.textContent = "guardado (renombralo a game.yaml)";
+        }, function (error) {
+          aviso.textContent = (error && error.code === "declined")
+            ? "descarga cancelada" : "no se pudo descargar: usa copiar";
+        });
+      });
+      return;
+    }
+    var blob = new Blob([texto], { type: "text/yaml" });
     var enlace = document.createElement("a");
     enlace.href = URL.createObjectURL(blob);
     enlace.download = "game.yaml";
     enlace.click();
     setTimeout(function () { URL.revokeObjectURL(enlace.href); }, 2000);
+    aviso.textContent = "descargado";
   });
   Array.prototype.forEach.call(document.querySelectorAll("[data-tam]"), function (boton) {
     boton.addEventListener("click", function () {
