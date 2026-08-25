@@ -19,9 +19,14 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import maquina_neogeo as ng  # noqa: E402
 from imagen import colores, distintos, franja, guardar_png  # noqa: E402
+from sonido import (banda_del_efecto, comprobar_melodia,  # noqa: E402
+                    nivel, pico_por_frame)
+
+FPS = 60
 
 
-def comprobar(carpeta, capturas="capturas"):
+def comprobar(carpeta, capturas="capturas", musica=None, salto=None,
+              sonido=True):
     try:
         import machine68k  # noqa: F401
     except ImportError:
@@ -32,13 +37,14 @@ def comprobar(carpeta, capturas="capturas"):
         return 0
 
     os.makedirs(capturas, exist_ok=True)
+    franja_del_salto = banda_del_efecto(musica, salto) if musica and salto else None
     fallos = []
 
     def exigir(condicion, mensaje):
         if not condicion:
             fallos.append(mensaje)
 
-    maquina = ng.cargar(carpeta)
+    maquina = ng.cargar(carpeta, sonido=sonido)
 
     # --- 1) arranca y pinta la pantalla de titulo ------------------------
     maquina.avanzar(10)
@@ -50,6 +56,9 @@ def comprobar(carpeta, capturas="capturas"):
            % len(tonos))
     print("titulo: %dx%d con %d colores" % (titulo[0], titulo[1], len(tonos)))
     exigir(len(set(franja(titulo, 24))) > 2, "no se ve el marcador arriba")
+    if maquina.sonido:
+        exigir(nivel(maquina.escuchar(30)) < 1.0,
+               "la pantalla de titulo hace ruido: la musica es solo de la partida")
 
     # --- 2) empieza la partida ------------------------------------------
     maquina.pulsar("START")
@@ -65,7 +74,41 @@ def comprobar(carpeta, capturas="capturas"):
     exigir(not any(medio),
            "el texto del titulo sigue escrito en el plano fix al empezar la partida")
 
-    # --- 3) se juega: correr a la derecha y saltar -----------------------
+    # --- 3) y ademas suena ----------------------------------------------
+    #
+    # Aqui se cierra el circuito entero: el 68000 escribe una orden en $320000,
+    # eso dispara una NMI en el Z80, el Z80 ejecuta la ROM M1 y escribe en el
+    # YM2610, y de esos registros sale la onda que se analiza. Es lo unico que
+    # comprueba de verdad que la Neo Geo toca lo que pone el game.yaml.
+    if musica and maquina.sonido:
+        exigir(nivel(maquina.escuchar(10)) > 1.0, "la placa no saca ningun sonido")
+        oido = maquina.escuchar(musica.velocidad * (len(musica.pistas[0]) + 1))
+        aciertos, total, _, notas = comprobar_melodia(oido, maquina.ritmo, musica, FPS)
+        exigir(total and aciertos >= total * 0.8,
+               "el YM2610 no toca la melodia del game.yaml: %d notas de %d "
+               "(se ha oido %s)" % (aciertos, total, [int(n) for n in notas]))
+        print("musica: %d de %d notas son las del game.yaml" % (aciertos, total))
+        exigir(not maquina.sonido.colgado,
+               "el driver del Z80 se ha quedado colgado en %d frames"
+               % maquina.sonido.colgado)
+
+    if franja_del_salto and maquina.sonido:
+        quieto = pico_por_frame(maquina.escuchar, 24, maquina.ritmo,
+                                *franja_del_salto)
+        maquina.pulsar("A")
+        maquina.avanzar(2)
+        maquina.pulsar()
+        saltando = pico_por_frame(maquina.escuchar, 24, maquina.ritmo,
+                                  *franja_del_salto)
+        exigir(saltando > quieto * 2.5,
+               "al saltar no se oye el efecto: entre %.0f y %.0f Hz suena %.1f "
+               "veces mas que estando quieto, y deberia notarse mucho mas"
+               % (franja_del_salto[0], franja_del_salto[1],
+                  saltando / max(1.0, quieto)))
+        print("efecto de salto: %.1f veces mas fuerte que el fondo"
+              % (saltando / max(1.0, quieto)))
+
+    # --- 4) se juega: correr a la derecha y saltar -----------------------
     movimiento = 0.0
     peor = 0
     antes = juego
@@ -84,14 +127,14 @@ def comprobar(carpeta, capturas="capturas"):
     print("jugando: hasta un %.0f%% de la pantalla cambia entre tramos"
           % (movimiento * 100))
 
-    # --- 4) el frame mas caro cabe en los 200.000 ciclos de la maquina ---
+    # --- 5) el frame mas caro cabe en los 200.000 ciclos de la maquina ---
     print("frame mas caro: %d ciclos de los %d que da la consola (%.0f fps)"
           % (peor, ng.CICLOS_FRAME, 60.0 * min(1.0, float(ng.CICLOS_FRAME) / peor)))
     exigir(peor <= ng.CICLOS_FRAME,
            "el frame mas caro gasta %d ciclos y la Neo Geo solo da %d por frame"
            % (peor, ng.CICLOS_FRAME))
 
-    # --- 5) sigue vivo al final -----------------------------------------
+    # --- 6) sigue vivo al final -----------------------------------------
     ultimo = maquina.dibujar()
     maquina.pulsar("RIGHT")
     maquina.avanzar(60)
@@ -116,4 +159,12 @@ def comprobar(carpeta, capturas="capturas"):
 if __name__ == "__main__":
     carpeta = (sys.argv[1] if len(sys.argv) > 1
                else "examples/bosque-magico/build/neogeo")
-    sys.exit(comprobar(carpeta, sys.argv[2] if len(sys.argv) > 2 else "capturas"))
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "tools"))
+    from ngplat.project import load_project
+    from sonido import musica_al_empezar
+    raiz = ng.buscar_proyecto(carpeta)
+    p = load_project(raiz) if raiz else None
+    sys.exit(comprobar(carpeta, sys.argv[2] if len(sys.argv) > 2 else "capturas",
+                       musica_al_empezar(p) if p else None,
+                       p.sound.efectos.get("salto") if p else None))

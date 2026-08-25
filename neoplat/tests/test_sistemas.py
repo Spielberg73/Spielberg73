@@ -350,7 +350,18 @@ class TestCompilacionReal(unittest.TestCase):
         build = cargar_demo(self.proyecto, nombre)
         out = os.path.join(self.tmp, nombre)
         generar_para_sistema(build, out, sistemas.obtener(nombre), "202")
+        self.proyecto_cargado = build.project
         return out
+
+    def _banda_sonora(self):
+        """La musica y el efecto de salto del proyecto de prueba, para que las
+        pruebas de emulador puedan comprobar que suena lo que toca."""
+        from sonido import musica_al_empezar
+        proyecto = getattr(self, "proyecto_cargado", None)
+        if not proyecto:
+            return (None, None, None)
+        return (musica_al_empezar(proyecto), proyecto.sound.efectos.get("salto"),
+                proyecto.sound)
 
     def _construir(self, nombre):
         out = self._generar(nombre)
@@ -511,9 +522,11 @@ class TestCompilacionReal(unittest.TestCase):
             self.skipTest("no esta instalado el core de Genesis Plus GX")
         out = self._construir("megadrive")
         capturas = os.path.join(self.tmp, "capturas-md")
+        musica, salto, _ = self._banda_sonora()
         self.assertEqual(
-            emulador_md.comprobar(os.path.join(out, "rom/juego.bin"), capturas), 0,
-            "la ROM no arranca o no se juega en el emulador")
+            emulador_md.comprobar(os.path.join(out, "rom/juego.bin"), capturas,
+                                  musica, salto), 0,
+            "la ROM no arranca, no se juega o no suena en el emulador")
 
     def test_el_disquete_arranca_en_un_emulador(self):
         """Y encender el Amiga: el disquete entero, del bootblock al ultimo
@@ -524,9 +537,11 @@ class TestCompilacionReal(unittest.TestCase):
             self.skipTest("no esta instalado el core de PUAE")
         out = self._construir("amiga")
         capturas = os.path.join(self.tmp, "capturas-amiga")
+        musica, salto, _ = self._banda_sonora()
         self.assertEqual(
-            emulador_amiga.comprobar(os.path.join(out, "disco/Prueba.adf"), capturas), 0,
-            "el disquete no arranca o no se juega en el emulador")
+            emulador_amiga.comprobar(os.path.join(out, "disco/Prueba.adf"),
+                                     capturas, musica, salto), 0,
+            "el disquete no arranca, no se juega o no suena en el emulador")
 
     def test_la_neogeo_dibuja_el_juego(self):
         """La Neo Geo no se puede arrancar en un emulador normal sin la BIOS de
@@ -540,8 +555,10 @@ class TestCompilacionReal(unittest.TestCase):
         # el Makefile de Neo Geo pide ngdevkit; el banco enlaza su propia ROM
         out = self._generar("neogeo")
         capturas = os.path.join(self.tmp, "capturas-neogeo")
-        self.assertEqual(emulador_neogeo.comprobar(out, capturas), 0,
-                         "la ROM de Neo Geo no dibuja o no se juega")
+        musica, salto, sonido = self._banda_sonora()
+        self.assertEqual(
+            emulador_neogeo.comprobar(out, capturas, musica, salto, sonido), 0,
+                         "la ROM de Neo Geo no dibuja, no se juega o no suena")
 
     def test_las_direcciones_relocalizadas_caen_en_su_hunk(self):
         """La tabla de relocalizacion es lo que hace que el juego se pueda cargar

@@ -42,6 +42,7 @@ ANCHO, ALTO = 320, 224
 
 # --- mapa de memoria de la placa ---------------------------------------
 P1CNT = 0x300000        # mando del jugador 1 (activo a nivel bajo)
+PUERTO_SONIDO = 0x320000  # ordenes para el Z80 (dispara una NMI en la placa)
 STATUS_B = 0x380000     # start y select (tambien a nivel bajo)
 VRAMADDR = 0x3C0000
 VRAMRW = 0x3C0002
@@ -85,7 +86,7 @@ class Maquina:
     `cerrar()` y monta la otra.
     """
 
-    def __init__(self, p1, c1, c2, s1):
+    def __init__(self, p1, c1, c2, s1, sonido=None):
         import machine68k
 
         self.maquina = machine68k.Machine(machine68k.CPUType.M68000, TOPE_RAM_KIB)
@@ -102,6 +103,8 @@ class Maquina:
         self.rarezas = []           # accesos que este banco no sabe emular
         self.frames = 0
         self.ciclos = 0
+        self.sonido = sonido
+        self.ritmo = SONIDO_RITMO
 
         self.pulsar()               # nada pulsado
         self.mem.set_trace_func(self._traza)
@@ -113,7 +116,13 @@ class Maquina:
     def _traza(self, op, ancho, direccion, valor):
         """Musashi avisa de cada acceso a memoria; aqui solo importan los
         registros del chip de video, que en una placa de verdad no son RAM."""
-        if direccion < 0x3C0000 or direccion > 0x3C0007:
+        if direccion < 0x320000 or direccion > 0x3C0007:
+            return 0
+        if direccion == PUERTO_SONIDO:
+            if op == "W" and self.sonido:
+                self.sonido.orden(valor)
+            return 0
+        if direccion < 0x3C0000:
             return 0
         if op == "W":
             if ancho != 1:
@@ -179,6 +188,8 @@ class Maquina:
         gastados = self._hasta_que_espere(tope)
         self.mem.w16(LSPCMODE, VBLANK)      # empieza el vblank: el juego dibuja
         gastados += self._hasta_que_espere(tope)
+        if self.sonido:
+            self.sonido.frame()
         self.frames += 1
         self.ciclos = gastados
         return gastados
@@ -186,6 +197,14 @@ class Maquina:
     def avanzar(self, cuantos=1):
         for _ in range(cuantos):
             self.frame()
+
+    def escuchar(self, cuantos=1):
+        """Avanza `cuantos` frames y devuelve solo el sonido de esos frames."""
+        if not self.sonido:
+            return []
+        self.sonido.escuchar()
+        self.avanzar(cuantos)
+        return self.sonido.escuchar()
 
     def cerrar(self):
         self.maquina.cleanup()
@@ -327,8 +346,45 @@ def construir_p1(carpeta, destino):
     return destino
 
 
-def cargar(carpeta, rom_id="202", trabajo=None):
-    """Compila y monta la maquina a partir de una carpeta build/neogeo."""
+def buscar_proyecto(ruta):
+    """Sube por las carpetas hasta encontrar el game.yaml que genero el build."""
+    carpeta = os.path.abspath(ruta)
+    while carpeta and carpeta != os.path.dirname(carpeta):
+        if os.path.isfile(os.path.join(carpeta, "game.yaml")):
+            return carpeta
+        carpeta = os.path.dirname(carpeta)
+    return ""
+
+
+def montar_sonido(sonido_del_proyecto, m1_en_rom):
+    """El Z80 con la ROM M1 del juego.
+
+    La ROM M1 esta en build/rom, pero para ejecutarla hace falta ademas saber
+    donde cae la etiqueta `esperar_tick`, y eso solo lo sabe el generador. Se
+    vuelve a generar desde el proyecto y se comprueba que sale byte a byte la
+    misma ROM: si no, esta prueba estaria ejecutando otra cosa.
+    """
+    from ngplat.m1 import generar_m1
+    m1, info = generar_m1(sonido_del_proyecto, list(sonido_del_proyecto.musica))
+    if m1_en_rom is not None and m1 != m1_en_rom:
+        raise RuntimeError("la ROM M1 regenerada no coincide con la de build/rom")
+    return Sonido(m1, info["etiquetas"])
+
+
+def _sonido_del_build(carpeta):
+    """Sube por las carpetas hasta el game.yaml y se queda con su sonido."""
+    raiz = buscar_proyecto(carpeta)
+    if not raiz:
+        return None
+    from ngplat.project import load_project
+    return load_project(raiz).sound
+
+
+def cargar(carpeta, rom_id="202", trabajo=None, sonido=True):
+    """Compila y monta la maquina a partir de una carpeta build/neogeo.
+
+    `sonido` puede ser True (busca el game.yaml subiendo carpetas), False (sin
+    Z80) o directamente el `Sonido` de un proyecto ya cargado."""
     trabajo = trabajo or os.path.join(carpeta, "banco")
     os.makedirs(trabajo, exist_ok=True)
     p1 = construir_p1(carpeta, os.path.join(trabajo, "p1.bin"))
@@ -343,4 +399,117 @@ def cargar(carpeta, rom_id="202", trabajo=None):
         return leer(os.path.join(carpeta, "rom",
                                  "%s-%s.%s" % (rom_id, sufijo, sufijo)))
 
-    return Maquina(leer(p1), rom("c1"), rom("c2"), rom("s1"))
+    del_proyecto = _sonido_del_build(carpeta) if sonido is True else sonido
+    chip = montar_sonido(del_proyecto, rom("m1")) if del_proyecto else None
+    return Maquina(leer(p1), rom("c1"), rom("c2"), rom("s1"), chip)
+
+
+# --- el sonido: el Z80, el YM2610 y lo que se oiria ---------------------
+#
+# En la placa el sonido no lo lleva el 68000: escribe un byte en $320000 y eso
+# dispara una NMI en un Z80 que tiene su propia ROM (la M1) y su propio chip.
+# Aqui se junta ese Z80 (tests/z80sim.py, que ya se usaba para probar el
+# driver) con el 68000 del banco, y con los registros que el driver escribe en
+# el YM2610 se genera la onda que saldria por el altavoz.
+#
+# Del YM2610 solo se hace la parte SSG, que es la que usa el kit: tres
+# generadores de onda cuadrada de 12 bits mas uno de ruido.
+#
+#   $00/$01  periodo del canal A (12 bits)     $06  periodo del ruido
+#   $02/$03  periodo del canal B               $07  mezclador
+#   $04/$05  periodo del canal C               $08/$09/$0A  volumen A/B/C
+#
+# La frecuencia es reloj / (16 * periodo), con el reloj del SSG a 4 MHz, y el
+# volumen va en pasos de 3 dB (cada escalon suena la mitad de fuerte en
+# potencia), que es como funciona el chip de verdad.
+
+SSG_RELOJ = 4000000
+SONIDO_RITMO = 44100            # muestras por segundo de lo que se genera aqui
+
+
+class Sonido:
+    """El Z80 con la ROM M1, su YM2610 y el altavoz."""
+
+    def __init__(self, m1, etiquetas):
+        import z80sim
+
+        self.chip = z80sim.YM2610Falso()
+        self.cpu = z80sim.Z80(m1, leer_puerto=self.chip.leer,
+                              escribir_puerto=self.chip.escribir)
+        self.etiquetas = etiquetas
+        self.fases = [0.0, 0.0, 0.0]
+        self.ruido = 0.0
+        self.muestras = []          # int16, mono
+        self.colgado = 0
+        self._arrancar()
+
+    def _arrancar(self):
+        for _ in range(4000):
+            self.cpu.paso()
+            if self.cpu.pc == self.etiquetas["esperar_tick"]:
+                return
+        raise RuntimeError("el driver de sonido no llega a esperar el temporizador")
+
+    def orden(self, byte):
+        """Lo que el 68000 acaba de escribir en el puerto de sonido."""
+        self.chip.comando = byte & 0xFF
+        self.cpu.nmi_pendiente = True
+
+    def frame(self, fps=60.0):
+        """Un aviso del temporizador (un frame) y la onda que sale de el."""
+        self.chip.timer_listo = True
+        for _ in range(40000):
+            self.cpu.paso()
+            if (not self.chip.timer_listo
+                    and self.cpu.pc == self.etiquetas["esperar_tick"]):
+                break
+        else:
+            self.colgado += 1
+        self._generar(int(round(SONIDO_RITMO / fps)))
+
+    def _generar(self, cuantas):
+        """La onda de los tres canales durante ese frame.
+
+        La fase se guarda de un frame para otro: si se empezara de cero cada
+        vez saldrian chasquidos que no existen en la consola."""
+        reg = self.chip.registros
+        mezclador = reg.get(0x07, 0x3F)
+        canales = []
+        for i in range(3):
+            periodo = ((reg.get(i * 2 + 1, 0) & 0x0F) << 8) | reg.get(i * 2, 0)
+            nivel_reg = reg.get(0x08 + i, 0) & 0x0F
+            tono = not (mezclador >> i) & 1
+            amplitud = 0.0 if (nivel_reg == 0 or not tono) else 6000.0 * (
+                0.7071 ** (15 - nivel_reg))
+            hz = SSG_RELOJ / (16.0 * periodo) if periodo else 0.0
+            canales.append((hz, amplitud))
+        # ruido: el mezclador lo enciende por canal (bits 3 a 5)
+        hz_ruido = SSG_RELOJ / (16.0 * max(1, reg.get(0x06, 0) & 0x1F))
+        ruido_on = any(not (mezclador >> (3 + i)) & 1 and (reg.get(0x08 + i, 0) & 0x0F)
+                       for i in range(3))
+        amp_ruido = 4000.0 if ruido_on else 0.0
+
+        import random
+        for _ in range(cuantas):
+            total = 0.0
+            for i, (hz, amplitud) in enumerate(canales):
+                if amplitud <= 0.0 or hz <= 0.0:
+                    continue
+                self.fases[i] += hz / SONIDO_RITMO
+                self.fases[i] %= 1.0
+                total += amplitud if self.fases[i] < 0.5 else -amplitud
+            if amp_ruido:
+                self.ruido += hz_ruido / SONIDO_RITMO
+                if self.ruido >= 1.0:
+                    self.ruido %= 1.0
+                    self._ultimo_ruido = random.choice((1.0, -1.0))
+                total += amp_ruido * getattr(self, "_ultimo_ruido", 1.0)
+            total = max(-32000.0, min(32000.0, total))
+            self.muestras.append(int(total))
+            self.muestras.append(int(total))     # estereo, los dos iguales
+
+    def escuchar(self):
+        """Se lleva lo generado desde la ultima vez."""
+        salida = self.muestras
+        self.muestras = []
+        return salida

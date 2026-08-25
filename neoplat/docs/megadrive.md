@@ -110,6 +110,9 @@ dato:   0 0 dddddd     los 6 bits altos del tono
 El volumen es **atenuación**: 0 suena a tope y 15 calla. El periodo lo calcula
 el compilador con `periodo_psg()`: `3579545 / (32 · hercios)`, en 10 bits.
 
+Las pruebas escuchan lo que sale del PSG emulado y comprueban que son las notas
+del `game.yaml`, una a una: ver [docs/sonido.md](sonido.md).
+
 ## Cómo arranca un cartucho
 
 Un cartucho empieza con dos cosas en direcciones fijas:

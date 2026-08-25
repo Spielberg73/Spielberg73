@@ -16,16 +16,21 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from libretro import (Emulador, buscar_core, colores, distintos,  # noqa: E402
                       franja, guardar_png)
+from sonido import (banda_del_efecto, comprobar_melodia,  # noqa: E402
+                    nivel, pico_por_frame)
 
 CORE = "genesis_plus_gx"
+FPS = 60
 
 
-def comprobar(rom: str, capturas: str = "capturas") -> int:
+def comprobar(rom: str, capturas: str = "capturas", musica=None,
+              salto=None) -> int:
     core = buscar_core(CORE, "NEOPLAT_CORE_MD")
     if not core:
         print("el core de Genesis Plus GX no esta instalado: se salta la prueba")
         return 0
     os.makedirs(capturas, exist_ok=True)
+    franja_del_salto = banda_del_efecto(musica, salto) if musica and salto else None
     fallos = []
 
     def exigir(condicion, mensaje):
@@ -49,6 +54,8 @@ def comprobar(rom: str, capturas: str = "capturas") -> int:
     print("titulo: %dx%d con %d colores" % (titulo[0], titulo[1], len(distintos_titulo)))
     # el marcador vive en las tres primeras filas (plano ventana)
     exigir(len(set(franja(titulo, 24))) > 2, "no se ve el marcador arriba")
+    exigir(nivel(emu.escuchar(30)) < 1.0,
+           "la pantalla de titulo hace ruido: la musica es solo de la partida")
 
     # --- 2) empieza la partida ------------------------------------------
     emu.pulsar("START")
@@ -62,7 +69,36 @@ def comprobar(rom: str, capturas: str = "capturas") -> int:
                      (juego[0], 24, franja(juego, 24))) > 0.005,
            "el marcador no cambia al empezar: el titulo deberia desaparecer")
 
-    # --- 3) se juega: correr a la derecha y saltar -----------------------
+    # --- 3) y ademas suena: el PSG toca la melodia del game.yaml ---------
+    #
+    # Se escucha nada mas empezar el nivel y sin tocar el mando: los efectos
+    # comparten canal con la musica y taparian las notas.
+    if musica:
+        exigir(nivel(emu.escuchar(10)) > 1.0, "la consola no saca ningun sonido")
+        oido = emu.escuchar(musica.velocidad * (len(musica.pistas[0]) + 1))
+        aciertos, total, _, notas = comprobar_melodia(oido, emu.ritmo, musica, FPS)
+        exigir(total and aciertos >= total * 0.8,
+               "el PSG no toca la melodia del game.yaml: %d notas de %d "
+               "(se ha oido %s)" % (aciertos, total, [int(n) for n in notas]))
+        print("musica: %d de %d notas son las del game.yaml" % (aciertos, total))
+
+    # los efectos van por su canal y suenan mas agudos que la musica: al
+    # saltar tiene que aparecer algo en esa franja que antes no estaba
+    if franja_del_salto:
+        quieto = pico_por_frame(emu.escuchar, 24, emu.ritmo, *franja_del_salto)
+        emu.pulsar("B")
+        emu.avanzar(2)
+        emu.pulsar()
+        saltando = pico_por_frame(emu.escuchar, 24, emu.ritmo, *franja_del_salto)
+        exigir(saltando > quieto * 2.5,
+               "al saltar no se oye el efecto: entre %.0f y %.0f Hz suena %.1f "
+               "veces mas que estando quieto, y deberia notarse mucho mas"
+               % (franja_del_salto[0], franja_del_salto[1],
+                  saltando / max(1.0, quieto)))
+        print("efecto de salto: %.1f veces mas fuerte que el fondo"
+              % (saltando / max(1.0, quieto)))
+
+    # --- 4) se juega: correr a la derecha y saltar -----------------------
     movimiento = 0.0
     antes = juego
     for tramo in range(6):
@@ -80,7 +116,7 @@ def comprobar(rom: str, capturas: str = "capturas") -> int:
     print("jugando: hasta un %.0f%% de la pantalla cambia entre tramos"
           % (movimiento * 100))
 
-    # --- 4) sigue vivo al final -----------------------------------------
+    # --- 5) sigue vivo al final -----------------------------------------
     ultimo = emu.frame
     emu.pulsar("RIGHT")
     emu.avanzar(60)
@@ -102,4 +138,12 @@ def comprobar(rom: str, capturas: str = "capturas") -> int:
 if __name__ == "__main__":
     rom = (sys.argv[1] if len(sys.argv) > 1
            else "examples/bosque-magico/build/megadrive/rom/juego.bin")
-    sys.exit(comprobar(rom, sys.argv[2] if len(sys.argv) > 2 else "capturas"))
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "tools"))
+    from ngplat.project import load_project
+    from sonido import buscar_proyecto, musica_al_empezar
+    proyecto = buscar_proyecto(rom)
+    p = load_project(proyecto) if proyecto else None
+    sys.exit(comprobar(rom, sys.argv[2] if len(sys.argv) > 2 else "capturas",
+                       musica_al_empezar(p) if p else None,
+                       p.sound.efectos.get("salto") if p else None))

@@ -12,6 +12,7 @@ emulador_amiga.py) con su core y lo que hay que mirar en la pantalla.
 
 from __future__ import annotations
 
+import array
 import ctypes
 import os
 import sys
@@ -134,6 +135,8 @@ class Emulador:
         self.formato = PIXEL_0RGB1555   # el que trae libretro por defecto
         self.frames = 0
         self.pulsado = set()
+        self.sonido = array.array("h")   # muestras estereo entrelazadas
+        self.ritmo = 0                   # muestras por segundo, lo dice el core
         self._directorio = ctypes.c_char_p(sistema.encode())
         self._guardar_callbacks()
         self.lib.retro_init()
@@ -274,10 +277,20 @@ class Emulador:
                         pixeles.append((r * 255 // 31, g * 255 // 31, b * 255 // 31))
         return (ancho, alto, pixeles)
 
+    # --- el sonido que sale del chip -----------------------------------
+    #
+    # El core entrega muestras de 16 bits con signo, estereo entrelazado
+    # (izquierda, derecha, izquierda...). Se guardan tal cual: lo que se oiria
+    # por el altavoz, ya mezclado por el chip emulado.
+
     def _audio(self, izquierda, derecha):
-        pass
+        self.sonido.append(izquierda)
+        self.sonido.append(derecha)
 
     def _audio_lote(self, datos, marcos):
+        if datos and marcos:
+            trozo = (ctypes.c_int16 * (marcos * 2)).from_address(datos)
+            self.sonido.extend(trozo)
         return marcos
 
     def _estado(self, puerto, dispositivo, indice, boton):
@@ -298,6 +311,7 @@ class Emulador:
             raise RuntimeError("el emulador no ha podido cargar la ROM")
         av = AvInfo()
         self.lib.retro_get_system_av_info(ctypes.byref(av))
+        self.ritmo = int(round(av.timing.sample_rate))
         # sin esto, PUAE no conecta ningun mando al Amiga
         self.lib.retro_set_controller_port_device(0, DEVICE_JOYPAD)
         return av
@@ -309,6 +323,12 @@ class Emulador:
         for _ in range(cuantos):
             self._descifrado = None
             self.lib.retro_run()
+
+    def escuchar(self, cuantos=1):
+        """Avanza `cuantos` frames y devuelve solo el sonido de esos frames."""
+        del self.sonido[:]
+        self.avanzar(cuantos)
+        return self.sonido
 
     def cerrar(self):
         self.lib.retro_unload_game()

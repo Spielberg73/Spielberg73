@@ -356,6 +356,14 @@ Verificado aquí:
 - Ida y vuelta de los tres formatos de gráficos (tiles de Neo Geo, tiles del
   VDP, bitplanes y máscaras del Amiga): codificar y decodificar devuelve la
   imagen original.
+- **Las tres máquinas suenan, y suenan lo que pone el `game.yaml`**: las
+  pruebas capturan lo que sale del altavoz —del core de libretro en Mega Drive
+  y Amiga, y del circuito entero 68000 → Z80 → YM2610 en la Neo Geo— y
+  reconocen las notas una a una. En las tres salen **16 de 16** notas de la
+  melodía, la pantalla de título está callada y al saltar se oye el efecto por
+  encima de la música. Comprobado que la prueba sabe fallar: con una placa muda
+  a propósito, fallan las tres comprobaciones. Cómo se hace, en
+  [docs/sonido.md](docs/sonido.md).
 - Las tres máquinas tocan la misma nota: 440 Hz salen a 440 Hz en el SSG, en el
   PSG y en Paula (con el redondeo de cada chip).
 - El preview se abre en Chromium durante las pruebas y se comprueba que dibuja
@@ -375,9 +383,8 @@ propio kit, que da por buenas dos cosas porque las da por buenas también el
 motor: que el sprite 0 va delante de los demás y que la fila 0 del plano fix cae
 en la línea 0 de la pantalla. Si al probarla en un MVS ves el fondo tapando al
 jugador, se invierte con `NP_SPRITE_FRONT_FIRST` en `np_video.h`; si ves el
-marcador desplazado en vertical, es lo segundo. Tampoco están probados el sonido
-(el driver del Z80 solo corre en el emulador de Z80 de las pruebas) ni las
-muestras digitales.
+marcador desplazado en vertical, es lo segundo. Las muestras digitales siguen
+sin usarse en ninguna de las tres.
 
 Lo que aún no hace:
 

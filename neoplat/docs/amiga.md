@@ -170,6 +170,9 @@ El periodo lo calcula el compilador con `periodo_paula(hz, muestras=2)`:
 abasto). Con dos muestras entran de sobra las notas de 30 a 8000 Hz que acepta
 el kit. El volumen de Paula va de 0 a 64; el del kit, de 0 a 15.
 
+Las pruebas escuchan lo que sale de Paula en el A500 emulado y comprueban que
+son las notas del `game.yaml`, una a una: ver [docs/sonido.md](sonido.md).
+
 ## El disquete (.adf)
 
 Un `.adf` es la copia byte a byte de un disquete de Amiga: 80 cilindros × 2

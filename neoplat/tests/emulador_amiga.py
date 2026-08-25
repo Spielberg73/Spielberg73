@@ -24,6 +24,8 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from libretro import (Emulador, buscar_core, colores, distintos,  # noqa: E402
                       franja, guardar_png)
+from sonido import (banda_del_efecto, comprobar_melodia,  # noqa: E402
+                    nivel, pico_por_frame)
 
 CORE = "puae"
 # arrancar un Amiga lleva su tiempo: AROS tarda unos 50 segundos emulados
@@ -31,12 +33,14 @@ SEGUNDOS_DE_ARRANQUE = 70
 FPS = 50
 
 
-def comprobar(adf: str, capturas: str = "capturas") -> int:
+def comprobar(adf: str, capturas: str = "capturas", musica=None,
+              salto=None) -> int:
     core = buscar_core(CORE, "NEOPLAT_CORE_AMIGA")
     if not core:
         print("el core de PUAE no esta instalado: se salta la prueba")
         return 0
     os.makedirs(capturas, exist_ok=True)
+    franja_del_salto = banda_del_efecto(musica, salto) if musica and salto else None
     fallos = []
 
     def exigir(condicion, mensaje):
@@ -64,6 +68,8 @@ def comprobar(adf: str, capturas: str = "capturas") -> int:
            "a los %d segundos solo hay %d colores: el disquete no ha arrancado"
            % (SEGUNDOS_DE_ARRANQUE, cuantos))
     exigir(len(set(franja(titulo, 24))) > 2, "no se ve el marcador arriba")
+    exigir(nivel(emu.escuchar(25)) < 1.0,
+           "la pantalla de titulo hace ruido: la musica es solo de la partida")
     print("titulo: %dx%d con %d colores" % (titulo[0], titulo[1], cuantos))
 
     # --- 2) empieza la partida (start = segundo boton del joystick) ------
@@ -75,7 +81,36 @@ def comprobar(adf: str, capturas: str = "capturas") -> int:
     guardar_png(juego, os.path.join(capturas, "amiga_juego.png"))
     exigir(distintos(titulo, juego) > 0.001, "la pantalla no cambia al pulsar start")
 
-    # --- 3) se juega ----------------------------------------------------
+    # --- 3) y ademas suena: Paula toca la melodia del game.yaml ----------
+    #
+    # Se escucha nada mas empezar el nivel y sin tocar el mando: los efectos
+    # van por su canal pero se mezclan con la musica y emborronan la medida.
+    if musica:
+        exigir(nivel(emu.escuchar(10)) > 1.0, "el Amiga no saca ningun sonido")
+        oido = emu.escuchar(musica.velocidad * (len(musica.pistas[0]) + 1))
+        aciertos, total, _, notas = comprobar_melodia(oido, emu.ritmo, musica, FPS)
+        exigir(total and aciertos >= total * 0.8,
+               "Paula no toca la melodia del game.yaml: %d notas de %d "
+               "(se ha oido %s)" % (aciertos, total, [int(n) for n in notas]))
+        print("musica: %d de %d notas son las del game.yaml" % (aciertos, total))
+
+    # los efectos van por su canal de Paula y suenan mas agudos que la musica:
+    # al saltar tiene que aparecer algo en esa franja que antes no estaba
+    if franja_del_salto:
+        quieto = pico_por_frame(emu.escuchar, 24, emu.ritmo, *franja_del_salto)
+        emu.pulsar("B")
+        emu.avanzar(2)
+        emu.pulsar()
+        saltando = pico_por_frame(emu.escuchar, 24, emu.ritmo, *franja_del_salto)
+        exigir(saltando > quieto * 2.5,
+               "al saltar no se oye el efecto: entre %.0f y %.0f Hz suena %.1f "
+               "veces mas que estando quieto, y deberia notarse mucho mas"
+               % (franja_del_salto[0], franja_del_salto[1],
+                  saltando / max(1.0, quieto)))
+        print("efecto de salto: %.1f veces mas fuerte que el fondo"
+              % (saltando / max(1.0, quieto)))
+
+    # --- 4) se juega ----------------------------------------------------
     movimiento = 0.0
     antes = juego
     for tramo in range(6):
@@ -93,7 +128,7 @@ def comprobar(adf: str, capturas: str = "capturas") -> int:
     print("jugando: hasta un %.0f%% de la pantalla cambia entre tramos"
           % (movimiento * 100))
 
-    # --- 4) sigue vivo --------------------------------------------------
+    # --- 5) sigue vivo --------------------------------------------------
     ultimo = emu.frame
     emu.pulsar("RIGHT")
     emu.avanzar(100)
@@ -113,4 +148,12 @@ def comprobar(adf: str, capturas: str = "capturas") -> int:
 if __name__ == "__main__":
     disco = (sys.argv[1] if len(sys.argv) > 1
              else "examples/bosque-magico/build/amiga/disco/BosqueMagico.adf")
-    sys.exit(comprobar(disco, sys.argv[2] if len(sys.argv) > 2 else "capturas"))
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "tools"))
+    from ngplat.project import load_project
+    from sonido import buscar_proyecto, musica_al_empezar
+    proyecto = buscar_proyecto(disco)
+    p = load_project(proyecto) if proyecto else None
+    sys.exit(comprobar(disco, sys.argv[2] if len(sys.argv) > 2 else "capturas",
+                       musica_al_empezar(p) if p else None,
+                       p.sound.efectos.get("salto") if p else None))

@@ -149,9 +149,12 @@ El periodo de una nota es `4.000.000 / (16 * frecuencia)` y el compas lo marca
 el temporizador B del YM2610, programado a unos 60 Hz para que la musica avance
 al ritmo del juego.
 
-Las pruebas ejecutan este driver en un emulador de Z80 (`tests/z80sim.py`) y
-comprueban que escribe los periodos correctos, pero **no se ha probado en
-hardware**. Las muestras digitales (ROM V1) todavia no se usan.
+Las pruebas ejecutan este driver en un emulador de Z80 (`tests/z80sim.py`) y,
+desde el banco de pruebas, el circuito entero: el 68000 escribe en `$320000`,
+eso dispara la NMI del Z80, el Z80 ejecuta la ROM M1 de verdad y de los
+registros que deja en el YM2610 se genera la onda, que se compara con las notas
+del `game.yaml`. Cómo, en [docs/sonido.md](sonido.md). Las muestras digitales
+(ROM V1) todavía no se usan.
 
 ## La ROM que se genera
 
@@ -267,6 +270,7 @@ escrituras a VRAM de más.
 
 ## Lo que aún no se ha podido comprobar
 
-El banco de pruebas cubre el vídeo y el mando. Siguen sin probarse en hardware
-el sonido (el driver del Z80 solo se ejecuta en `tests/z80sim.py`), el zoom de
-sprites (que el motor no usa) y las muestras digitales de la ROM V1.
+El banco de pruebas cubre el vídeo, el mando y el sonido. Siguen sin usarse el
+zoom de sprites, los cuatro canales FM del YM2610 y las muestras digitales de
+la ROM V1. Y nada de esto se ha visto en una placa de verdad: el banco es del
+propio kit.
