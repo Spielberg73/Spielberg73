@@ -22,7 +22,7 @@ from ..errors import ProjectError
 from ..sonido import periodo_psg
 from .base import Limites, Salida, Sistema, registrar
 
-MAX_TILES = 1408          # lo que cabe en la VRAM antes de la tabla de ventana
+MAX_TILES = 1344          # lo que cabe en la VRAM antes de la tabla de sprites
 
 
 class MegaDrive(Sistema):
@@ -38,6 +38,7 @@ class MegaDrive(Sistema):
         ("include/np_world.h", "src/np_world.h"),
         ("include/np_sonido.h", "src/np_sonido.h"),
         ("core/np_world.c", "src/np_world.c"),
+        ("core/np_aritmetica.c", "src/np_aritmetica.c"),
         ("megadrive/np_md.h", "src/np_md.h"),
         ("megadrive/np_video.c", "src/np_video.c"),
         ("megadrive/np_hud.c", "src/np_hud.c"),
@@ -282,12 +283,19 @@ endif
 OBJCOPY ?= $(patsubst %%-gcc,%%-objcopy,$(CC))
 PYTHON  ?= python3
 
+# -fno-store-merging: sin el, gcc junta dos escrituras de un byte seguidas en
+# una sola de dos bytes, y si cae en una direccion impar el 68000 se para con
+# un "address error". Las pruebas del kit comprueban que no quede ninguna.
 CFLAGS  := -m68000 -Os -fomit-frame-pointer -fno-builtin -ffreestanding \\
-           -std=c99 -Wall -Wextra -Isrc
-LDFLAGS := -nostdlib -T megadrive.ld -Wl,--build-id=none
+           -fno-store-merging -std=c99 -Wall -Wextra -Isrc
+# -nodefaultlibs: la libgcc de un compilador de 68k para Linux esta hecha para
+# 68020 y lleva instrucciones que el 68000 no tiene; las rutinas de multiplicar
+# y dividir las pone src/np_aritmetica.c.
+LDFLAGS := -nostdlib -nodefaultlibs -T megadrive.ld -Wl,--build-id=none
 
 SRC := src/arranque.c src/main.c src/np_video.c src/np_hud.c src/np_sound.c \\
-       src/np_world.c src/gamedata.c src/graficos.c src/sonido.c
+       src/np_world.c src/np_aritmetica.c src/gamedata.c src/graficos.c \\
+       src/sonido.c
 OBJ := $(SRC:.c=.o)
 ROM := rom/juego.bin
 
@@ -298,7 +306,7 @@ all: $(ROM)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 juego.elf: $(OBJ)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJ) -lgcc
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJ)
 
 $(ROM): juego.elf
 	@mkdir -p rom

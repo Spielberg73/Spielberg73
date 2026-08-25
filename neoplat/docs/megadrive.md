@@ -50,17 +50,30 @@ en la VSRAM. El plano B las lleva multiplicadas por la velocidad de la capa.
 
 ## Reparto de la VRAM
 
+El VDP no acepta cualquier dirección: los planos A y B tienen que empezar en un
+múltiplo de 8 KB, la ventana en uno de 4 KB (en modo de 320 px) y las tablas de
+sprites y de scroll en uno de 1 KB. Y cada tabla **ocupa de verdad lo que dice
+su tamaño**, así que ninguna puede pisar a otra:
+
 ```
-$0000   tiles del juego (los que quepan hasta $B000)
-$B000   tabla del plano ventana   (64 × 32 celdas)
-$BC00   tabla de sprites          (80 entradas)
-$C000   tabla del plano A
-$E000   tabla del plano B
-$F400   tabla de scroll horizontal
+$0000   dibujos             42 KB → 1344 tiles de 8×8
+$A800   tabla de sprites    80 entradas de 8 bytes
+$AC00   scroll horizontal
+$B000   marcador            64 × 32 celdas (4 KB)
+$C000   escenario           64 × 64 celdas (8 KB)
+$E000   parallax            64 × 64 celdas (8 KB)
 ```
 
-Cabe algo menos de 1408 tiles de 8 × 8. Si te pasas, `ngplat comprobar` te lo
+Cabe algo menos de 1344 tiles de 8 × 8. Si te pasas, `ngplat comprobar` te lo
 dice antes de compilar.
+
+Con planos de 64 × 64 celdas cada tabla son 8 KB, y tres tablas de 8 KB no caben
+junto con los dibujos: por eso el marcador usa 64 × 32 (le sobra: sólo ocupa las
+tres primeras filas).
+
+El marcador se muestra porque el registro $12 dice "la ventana son las tres
+primeras filas". Si se deja a cero, la ventana no ocupa nada y el marcador se
+escribe pero no se ve.
 
 ## Colores
 
@@ -123,6 +136,26 @@ Lo primero que hace el motor al encenderse es el baile del **TMSS**: las Mega
 Drive de segunda hornada exigen que se escriba `"SEGA"` en `$A14000` antes de
 tocar el VDP, o se apagan.
 
+## Dos trampas del 68000 con las que se cuelga el juego
+
+Las dos las encontró la prueba del emulador (`make test-emulador`) y ninguna
+podía verse compilando:
+
+**1. La libgcc del compilador es de 68020.** Cuando el compilador se encuentra
+un `*`, un `/` o un `%` de 32 bits genera una llamada a `__mulsi3`, `__divsi3`,
+`__modsi3`… El 68000 no tiene esas instrucciones. Esas rutinas suelen venir en
+la libgcc, pero la de un compilador de 68k para Linux está hecha para **68020**
+y lleva cosas como `bsr.l` (`61ff`), que el 68000 no entiende: en la primera
+división el juego se para con una excepción de "línea F". Por eso NeoPlat trae
+las suyas en `engine/core/np_aritmetica.c` y enlaza con `-nodefaultlibs`.
+
+**2. gcc junta dos escrituras de un byte en una de dos.** Con `-Os`, ante
+`w->keys = 0; w->entity_count = 0;` (dos `uint8_t` seguidos) gcc emite un
+`clr.w`. Si el par cae en una dirección impar, el 68000 se para con un "address
+error": **no puede leer ni escribir palabras en direcciones impares**. Se
+arregla con `-fno-store-merging`, y las pruebas del kit revisan el binario ya
+hecho para que no quede ninguno.
+
 ## Si algo se ve raro
 
 - **Gráficos revueltos**: el orden de los nibbles de `gfx_md.codificar_tile()`
@@ -133,3 +166,10 @@ tocar el VDP, o se apagan.
   `partir_16()`.
 - **La pantalla no arranca**: casi siempre es el TMSS o los registros del VDP
   de `np_md_init()`.
+- **Se queda congelado**: casi seguro que es una de las dos trampas de arriba.
+  `make test-emulador` lo pilla; para saber dónde, mete una escritura a una
+  dirección de RAM que no uses (`*(volatile uint16_t *)0xFFFFF0 = n;`) en varios
+  puntos y mira ese byte con el emulador.
+- **Se ve sólo media pantalla**: comprueba el registro $0C (debe valer $81 para
+  320 px)... o que quien lee el framebuffer no esté suponiendo 4 bytes por
+  píxel cuando el emulador da 2.

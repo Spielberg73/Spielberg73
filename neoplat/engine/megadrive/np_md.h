@@ -31,13 +31,26 @@
 #define MD_TMSS        ((volatile uint32_t *)0xA14000)
 #define MD_VERSION     ((volatile uint8_t *)0xA10001)
 
-/* --- reparto de la VRAM (64 KB) ---------------------------------------- */
+/* --- reparto de la VRAM (64 KB) ----------------------------------------
+ *
+ * El VDP no admite cualquier direccion: los planos A y B van en multiplos de
+ * 8 KB, la ventana en multiplos de 4 KB (en modo de 320 px) y las tablas de
+ * sprites y de scroll en multiplos de 1 KB. Y cada tabla ocupa de verdad lo
+ * que dice su tamano, asi que ninguna puede pisar a otra:
+ *
+ *   0x0000  dibujos            42 KB -> 1344 tiles de 8x8
+ *   0xA800  tabla de sprites   80 entradas de 8 bytes
+ *   0xAC00  scroll horizontal
+ *   0xB000  marcador           64x32 celdas (4 KB)
+ *   0xC000  escenario          64x64 celdas (8 KB)
+ *   0xE000  parallax           64x64 celdas (8 KB)
+ */
 #define MD_TILES       0x0000    /* los dibujos, 32 bytes cada uno */
+#define MD_SPRITES     0xA800    /* tabla de sprites: 80 entradas de 8 bytes */
+#define MD_HSCROLL     0xAC00    /* tabla de scroll horizontal */
 #define MD_WINDOW      0xB000    /* marcador: 64x32 celdas */
-#define MD_SPRITES     0xBC00    /* tabla de sprites: 80 entradas de 8 bytes */
 #define MD_PLANE_A     0xC000    /* escenario: 64x64 celdas */
 #define MD_PLANE_B     0xE000    /* parallax:  64x64 celdas */
-#define MD_HSCROLL     0xF400    /* tabla de scroll horizontal */
 
 #define MD_PLANE_W 64            /* celdas de ancho de cada plano */
 #define MD_PLANE_H 64

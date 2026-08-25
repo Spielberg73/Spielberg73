@@ -18,6 +18,14 @@ test-rapido:
 test-navegador: ejemplo
 	$(PYTHON) tests/navegador.py $(EJEMPLO)/preview.html capturas
 
+# Arranca la ROM de Mega Drive en un emulador de verdad y deja capturas.
+# Necesita el core de Genesis Plus GX:
+#   apt-get install libretro-genesisplusgx
+test-emulador:
+	./ngplat compilar $(EJEMPLO) --sistema megadrive --make
+	$(PYTHON) tests/emulador_md.py \
+		$(EJEMPLO)/build/megadrive/rom/juego.bin capturas
+
 ejemplo:
 	./ngplat comprobar $(EJEMPLO)
 	./ngplat probar $(EJEMPLO) --no-abrir
@@ -34,4 +42,4 @@ limpiar:
 	rm -rf $(EJEMPLO)/build $(EJEMPLO)/preview.html capturas
 	find . -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
 
-.PHONY: test test-rapido test-navegador ejemplo ejemplo-todos limpiar
+.PHONY: test test-rapido test-navegador test-emulador ejemplo ejemplo-todos limpiar

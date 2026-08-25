@@ -8,6 +8,7 @@ espera cada maquina.
 """
 
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -406,6 +407,64 @@ class TestCompilacionReal(unittest.TestCase):
         bss = (tamanos[1] & 0x3FFFFFFF) * 4
         self.assertGreater(bss, 704 * 256 * 5 // 8)
         self.assertLess(bss + codigo_largo * 4, 512 * 1024)
+
+    def test_no_hay_accesos_a_direcciones_impares(self):
+        """El 68000 se para con un "address error" si lee o escribe una palabra
+        en una direccion impar, y gcc genera esos accesos cuando junta dos
+        escrituras de un byte seguidas (por eso el kit compila con
+        -fno-store-merging). Esta prueba lo comprueba en el binario ya hecho."""
+        objdump = self.cc.replace("-gcc", "-objdump")
+        if not shutil.which(objdump):
+            self.skipTest("no hay %s" % objdump)
+        # una instruccion de palabra (.w) o palabra larga (.l) sobre un registro
+        # de direccion con desplazamiento: movew %d0,%a0@(2109)
+        patron = re.compile(
+            r"\b(?!lea|pea)[a-z]+[wl]\s+\S*%(?:a\d|sp|fp)@\((\d+)\)")
+        for sistema in ("megadrive", "amiga"):
+            out = self._construir(sistema)
+            hecho = subprocess.run([objdump, "-d", os.path.join(out, "juego.elf")],
+                                   capture_output=True, text=True)
+            self.assertEqual(hecho.returncode, 0, hecho.stderr)
+            impares = []
+            for linea in hecho.stdout.split("\n"):
+                for desplazamiento in patron.findall(linea):
+                    if int(desplazamiento) % 2:
+                        impares.append(linea.strip())
+            self.assertEqual(impares, [],
+                             "%s: accesos a direcciones impares:\n%s"
+                             % (sistema, "\n".join(impares[:5])))
+
+    def test_no_quedan_instrucciones_de_68020(self):
+        """La libgcc de un compilador de 68k para Linux esta hecha para 68020 y
+        cuela instrucciones que el 68000 no tiene; el kit trae las suyas."""
+        objdump = self.cc.replace("-gcc", "-objdump")
+        if not shutil.which(objdump):
+            self.skipTest("no hay %s" % objdump)
+        for sistema in ("megadrive", "amiga"):
+            out = self._construir(sistema)
+            hecho = subprocess.run([objdump, "-d", os.path.join(out, "juego.elf")],
+                                   capture_output=True, text=True)
+            # bsr.l (61ff) y bra.l (60ff) son del 68020; en un 68000 se ejecutan
+            # como un salto a una direccion impar
+            malas = [l.strip() for l in hecho.stdout.split("\n")
+                     if re.search(r":\s+6[01]ff\b", l)]
+            self.assertEqual(malas, [], "%s:\n%s" % (sistema, "\n".join(malas[:5])))
+            for rutina in ("__mulsi3", "__divsi3", "__udivsi3", "__modsi3",
+                           "__umodsi3"):
+                self.assertIn(rutina, hecho.stdout,
+                              "%s: falta %s (deberia venir de np_aritmetica.c)"
+                              % (sistema, rutina))
+
+    def test_la_rom_arranca_en_un_emulador(self):
+        """La comprobacion que ninguna otra puede hacer: encender la consola."""
+        import emulador_md
+        if not emulador_md.buscar_core():
+            self.skipTest("no esta instalado el core de Genesis Plus GX")
+        out = self._construir("megadrive")
+        capturas = os.path.join(self.tmp, "capturas")
+        self.assertEqual(
+            emulador_md.comprobar(os.path.join(out, "rom/juego.bin"), capturas), 0,
+            "la ROM no arranca o no se juega en el emulador")
 
     def test_las_direcciones_relocalizadas_caen_en_su_hunk(self):
         """La tabla de relocalizacion es lo que hace que el juego se pueda cargar

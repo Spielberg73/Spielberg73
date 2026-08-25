@@ -77,8 +77,8 @@ void np_md_init(void)
     np_md_reg(0x0D, MD_HSCROLL >> 10);
     np_md_reg(0x0F, 0x02);      /* avanzar de dos en dos bytes */
     np_md_reg(0x10, 0x11);      /* planos de 64x64 celdas */
-    np_md_reg(0x11, 0x00);
-    np_md_reg(0x12, 0x00);
+    np_md_reg(0x11, 0x00);      /* la ventana no ocupa nada a lo ancho... */
+    np_md_reg(0x12, 0x03);      /* ...pero si las tres primeras filas */
 
     /* VRAM a cero */
     np_md_vram_addr(MD_ADDR(MD_VRAM_WRITE, 0));

@@ -46,6 +46,7 @@ class Amiga(Sistema):
         ("include/np_world.h", "src/np_world.h"),
         ("include/np_sonido.h", "src/np_sonido.h"),
         ("core/np_world.c", "src/np_world.c"),
+        ("core/np_aritmetica.c", "src/np_aritmetica.c"),
         ("amiga/np_amiga.h", "src/np_amiga.h"),
         ("amiga/np_video.c", "src/np_video.c"),
         ("amiga/np_hud.c", "src/np_hud.c"),
@@ -340,12 +341,19 @@ $(error no encuentro un compilador de 68000: instala gcc-m68k-linux-gnu o m68k-e
 endif
 PYTHON ?= python3
 
+# -fno-store-merging: sin el, gcc junta dos escrituras de un byte seguidas en
+# una sola de dos bytes, y si cae en una direccion impar el 68000 se para con
+# un "address error". Las pruebas del kit comprueban que no quede ninguna.
 CFLAGS  := -m68000 -Os -fomit-frame-pointer -fno-builtin -ffreestanding \\
-           -std=c99 -Wall -Wextra -Isrc
-LDFLAGS := -nostdlib -T amiga.ld -Wl,--emit-relocs -Wl,--build-id=none
+           -fno-store-merging -std=c99 -Wall -Wextra -Isrc
+# -nodefaultlibs: la libgcc de un compilador de 68k para Linux esta hecha para
+# 68020 y lleva instrucciones que el 68000 no tiene; las rutinas de multiplicar
+# y dividir las pone src/np_aritmetica.c.
+LDFLAGS := -nostdlib -nodefaultlibs -T amiga.ld -Wl,--emit-relocs -Wl,--build-id=none
 
 SRC := src/arranque.c src/main.c src/np_video.c src/np_hud.c src/np_sound.c \\
-       src/np_world.c src/gamedata.c src/graficos.c src/sonido.c
+       src/np_world.c src/np_aritmetica.c src/gamedata.c src/graficos.c \\
+       src/sonido.c
 OBJ := $(SRC:.c=.o)
 JUEGO := disco/%s
 ADF   := disco/%s.adf
@@ -358,7 +366,7 @@ all: $(ADF)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 juego.elf: $(OBJ)
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJ) -lgcc
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJ)
 
 $(JUEGO): juego.elf
 	@mkdir -p disco

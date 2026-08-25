@@ -228,6 +228,7 @@ neoplat/
 │   └── art.py / scaffold.py  el proyecto de ejemplo
 ├── engine/
 │   ├── core/np_world.c     la simulación (física, colisiones, enemigos)
+│   ├── core/np_aritmetica.c multiplicar y dividir 32 bits en un 68000
 │   ├── neogeo/             vídeo, HUD, sonido y mando de la consola
 │   ├── megadrive/          VDP, plano ventana, PSG, arranque y cabecera
 │   ├── amiga/              copper, blitter, Paula y arranque
@@ -239,8 +240,8 @@ neoplat/
 │   ├── np_pixel.js         el lienzo para dibujar enemigos y objetos
 │   └── np_bot.js           el bot que comprueba si un nivel se puede terminar
 ├── examples/bosque-magico/ juego de ejemplo listo para compilar
-└── tests/                  132 pruebas + 24 de jugabilidad + 49 del editor +
-                            bot que se pasa los niveles
+└── tests/                  142 pruebas + 24 de jugabilidad + 49 del editor +
+                            bot que se pasa los niveles + emulador y navegador
 ```
 
 **El motor es C, no C++**, a propósito: el compilador de ngdevkit no trae
@@ -277,10 +278,15 @@ consola, y da igual en cuál.
 ## Pruebas
 
 ```bash
-make test          # herramientas, validación, generación de C y paridad C/JS
+make test           # herramientas, validación, generación de C y paridad C/JS
+make test-emulador  # arranca la ROM de Mega Drive en un emulador de verdad
+make test-navegador # abre el preview y el editor en Chromium
 node tests/comportamiento.js   # 24 pruebas de jugabilidad
 make ejemplo-todos             # compila el ejemplo para las tres máquinas
 ```
+
+Las dos pruebas con emulador y navegador son opcionales: si no tienes
+`libretro-genesisplusgx` o Playwright instalados, se saltan solas.
 
 Lo que comprueban: el lector de PNG contra Pillow, el lector de YAML contra
 PyYAML, ida y vuelta de los tres formatos de gráficos (tiles de Neo Geo, tiles
@@ -298,9 +304,18 @@ Verificado aquí:
 
 - El proyecto en C generado compila con `gcc -Wall -Wextra -Werror`, y también
   **de verdad para 68000** con `m68k-linux-gnu-gcc`.
+- **La ROM de Mega Drive arranca y se juega en un emulador**: las pruebas la
+  ejecutan en Genesis Plus GX sin pantalla, comprueban que dibuja la pantalla de
+  título con su marcador, que al pulsar start empieza la partida y que el
+  escenario se mueve al correr, y dejan capturas. Es lo único que no se puede
+  comprobar compilando, y encontró dos fallos que ninguna otra prueba veía (ver
+  [docs/megadrive.md](docs/megadrive.md)).
 - **El cartucho de Mega Drive se construye entero**: 128 KB con la cabecera
   `SEGA MEGA DRIVE`, el nombre del juego, el rango de la ROM y la suma de
   control, que las pruebas vuelven a calcular y comparan.
+- **El binario no lleva nada que el 68000 no entienda**: las pruebas revisan el
+  código máquina y fallan si aparece una instrucción de 68020 o un acceso a una
+  dirección impar.
 - **El ejecutable de Amiga se construye entero**: dos hunks marcados como RAM
   chip, la tabla de relocalización comprobada entrada por entrada (ninguna
   dirección se sale de su hunk) y `_start` en el primer byte, como espera
@@ -332,15 +347,15 @@ Verificado aquí:
   se comprueba que recibe las órdenes del 68000 y escribe en el chip los
   periodos y volúmenes de las notas escritas en el `game.yaml`.
 
-**Todavía sin verificar en hardware ni emulador**: el binario se construye y
-tiene la forma que documenta cada fabricante (ver [docs/neogeo.md](docs/neogeo.md),
-[docs/megadrive.md](docs/megadrive.md) y [docs/amiga.md](docs/amiga.md)), pero
-aquí no hay ni consolas ni emuladores instalados, así que no lo he visto
-arrancar. Lo que las pruebas garantizan es que el formato es coherente y que
-las cuentas cuadran, no que el chip lo interprete como espero. Si al arrancar
-ves los gráficos revueltos, lo más probable es que haya que ajustar el orden de
+**Sin probar en hardware real**: la ROM de Mega Drive se ha visto funcionando en
+un emulador, pero no en una consola de verdad; la de Neo Geo y el disquete de
+Amiga están construidos según la documentación de cada fabricante (ver
+[docs/neogeo.md](docs/neogeo.md) y [docs/amiga.md](docs/amiga.md)) y sus
+formatos están comprobados de ida y vuelta, pero **tampoco los he visto
+arrancar**: aquí no hay ngdevkit ni un emulador de Amiga. Si al probarlos ves
+los gráficos revueltos, lo más probable es que haya que ajustar el orden de
 bytes descrito en esos documentos: está aislado en dos funciones por máquina
-(`gfx.py`, `gfx_md.py`, `gfx_amiga.py`).
+(`gfx.py`, `gfx_amiga.py`).
 
 Lo que aún no hace:
 
