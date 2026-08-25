@@ -4,3 +4,4 @@ preview.html
 np_trace
 build/
 capturas/
+*.yaml.bak

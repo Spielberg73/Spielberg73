@@ -110,6 +110,10 @@ edites; <kbd>Enter</kbd> y lo estás jugando otra vez.
   botón que **lanza un bot a terminarse el nivel** para comprobar que es posible.
 - **Exporta tu `game.yaml` entero**, conservando comentarios y formato: solo
   cambia las líneas que has tocado.
+- **Genera la ROM desde el propio editor**: eliges máquina y el botón guarda el
+  `game.yaml` y compila, con el registro ahí mismo. Lo hace el `ngplat probar`
+  que tienes abierto (una página web no compila nada), así que el botón solo
+  está vivo si el preview lo está sirviendo él.
 - **Guarda solo** en el navegador: si cierras sin exportar, te ofrece recuperar
   lo que estabas haciendo.
 
@@ -190,7 +194,7 @@ tutorial paso a paso en [docs/tutorial.md](docs/tutorial.md).
 |---|---|
 | `ngplat nuevo <carpeta>` | Crea un proyecto jugable con gráficos de ejemplo |
 | `ngplat comprobar [proyecto]` | Valida el `game.yaml` y dice cuánto ocupa el juego |
-| `ngplat probar [proyecto]` | Genera y abre el preview (con el editor de niveles) |
+| `ngplat probar [proyecto]` | Abre el preview y el editor, y se queda sirviéndolo |
 | `ngplat compilar [proyecto]` | Genera `build/<máquina>/` con el C, los gráficos y el Makefile |
 | `ngplat compilar --make` | Además construye la ROM o el disquete |
 | `ngplat sistemas` | Lista las máquinas de destino y lo que aguanta cada una |
@@ -198,6 +202,11 @@ tutorial paso a paso en [docs/tutorial.md](docs/tutorial.md).
 Cualquier orden acepta `--sistema neogeo|megadrive|amiga` para trabajar con una
 máquina sin tocar el `game.yaml`. El preview también: dibuja con los colores
 que se van a ver de verdad en esa máquina.
+
+`ngplat probar` abre el navegador y **se queda sirviendo** el preview en
+localhost hasta que pulses Ctrl+C; eso es lo que hace que el botón «generar ROM»
+del editor funcione. Con `--no-servidor` se abre el archivo a pelo, como antes,
+y con `--no-abrir` solo se genera el HTML.
 
 Todas las órdenes tienen alias en inglés (`new`, `check`, `preview`, `build`).
 
@@ -224,6 +233,7 @@ neoplat/
 │   ├── sonido.py           notas -> periodos del SSG, del PSG o de Paula
 │   ├── m1.py / z80.py      driver de sonido del Z80 y su ensamblador
 │   ├── preview.py          genera el preview jugable
+│   ├── servidor.py         localhost: el editor manda el yaml y compila
 │   ├── png.py / miniyaml.py  lectores propios (cero dependencias)
 │   └── art.py / scaffold.py  el proyecto de ejemplo
 ├── engine/
@@ -240,7 +250,7 @@ neoplat/
 │   ├── np_pixel.js         el lienzo para dibujar enemigos y objetos
 │   └── np_bot.js           el bot que comprueba si un nivel se puede terminar
 ├── examples/bosque-magico/ juego de ejemplo listo para compilar
-└── tests/                  145 pruebas + 24 de jugabilidad + 49 del editor +
+└── tests/                  156 pruebas + 24 de jugabilidad + 49 del editor +
                             bot que se pasa los niveles + emuladores y navegador
 ```
 

@@ -72,9 +72,11 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
         pagina.locator("#pantalla").screenshot(path=os.path.join(capturas, "juego.png"))
 
         audio = pagina.evaluate("""() => { const a = window.NeoPlat.audio;
-            return { contexto: !!a.ctx, canales: a.canales.length, pistas: a.pistas.length }; }""")
+            return { contexto: !!a.ctx, canales: a.canales.length, pistas: a.pistas.length,
+                     ganancia: Math.max(...a.canales.map(c => c.gain.gain.value)) }; }""")
         print("audio:", json.dumps(audio))
         exigir(audio["contexto"] and audio["canales"] == 3, "el audio no ha arrancado")
+        exigir(audio["ganancia"] > 0, "los osciladores no estan sonando al jugar")
 
         # --------------------------------------------------------- editor
         pagina.click("#modo")
@@ -87,6 +89,13 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
             pestanas: document.querySelectorAll('#pestanas button').length })""")
         print("editor:", json.dumps(interfaz))
         exigir(interfaz["activo"], "no entra en modo edicion")
+        # en el editor el bucle no llama a tick(): si nadie calla los
+        # osciladores se quedan sonando la ultima nota para siempre
+        pagina.wait_for_timeout(300)
+        callado = pagina.evaluate(
+            "() => Math.max(...window.NeoPlat.audio.canales.map(c => c.gain.gain.value))")
+        exigir(callado < 0.001,
+               "el sonido se queda sonando al pasar al editor (ganancia %.4f)" % callado)
         exigir(interfaz["ancho"] == 480, "el lienzo no se agranda al editar")
         exigir(interfaz["herramientas"] >= 6, "faltan herramientas")
         exigir(interfaz["paleta"] >= 5, "la paleta sale vacia")
@@ -247,6 +256,28 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
             "() => { try { return Object.keys(localStorage).some(k => k.indexOf('neoplat:') === 0); }"
             " catch (e) { return 'sin acceso'; } }")
         exigir(guardado is True, "no guarda los cambios en el navegador: %s" % guardado)
+
+        # la pestana de generar la ROM
+        pagina.click("#pestanas button[data-panel=rom]")
+        pagina.wait_for_timeout(200)
+        panel = pagina.evaluate("""() => ({
+            solo: [...document.querySelectorAll('.panel')]
+                    .filter(e => getComputedStyle(e).display !== 'none')
+                    .map(e => e.id),
+            maquinas: [...document.querySelectorAll('#rom-sistema option')].map(o => o.value),
+            servidor: window.NeoPlat.rom.disponible,
+            boton: document.querySelector('#rom-generar').disabled })""")
+        print("rom:", json.dumps(panel))
+        exigir(panel["solo"] == ["panel-rom"],
+               "la pestana ROM deja otros paneles a la vista: %s" % panel["solo"])
+        exigir(len(panel["maquinas"]) == 3,
+               "faltan maquinas donde elegir: %s" % panel["maquinas"])
+        # aqui el preview se abre como file://, asi que no hay ngplat con quien
+        # hablar: el boton tiene que estar apagado y decir por que
+        exigir(not panel["servidor"], "cree que hay servidor abriendo un archivo")
+        exigir(panel["boton"], "ofrece generar la ROM sin servidor detras")
+        exigir("ngplat probar" in pagina.inner_text("#rom-ayuda"),
+               "no explica como levantar el servidor")
 
         # volver a jugar con lo editado
         pagina.click("#pestanas button[data-panel=mapa]")

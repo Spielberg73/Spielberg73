@@ -130,6 +130,38 @@ El archivo completo con tus cambios. **Copiar al portapapeles** o **descargar**.
 Si estás en el preview publicado en claude.ai, la descarga pasa por el visor y
 llega como `game.yaml.txt`: solo hay que renombrarlo.
 
+## Generar ROM
+
+La pestaña **generar ROM** compila el juego sin salir del editor: eliges máquina
+y el botón guarda tu `game.yaml` en el proyecto y compila, dejando el registro
+de lo que ha pasado ahí mismo.
+
+Para que funcione, el preview lo tiene que estar sirviendo el propio `ngplat`,
+porque una página web no puede compilar nada. Eso es lo que hace `ngplat probar`
+por defecto:
+
+```bash
+ngplat probar          # abre el navegador y se queda sirviendo; Ctrl+C para parar
+```
+
+Si abres el `preview.html` a mano (doble clic, `--no-servidor`, o el preview
+publicado en claude.ai) el botón sale apagado y te dice esto mismo: ahí hay que
+exportar el `game.yaml` desde la pestaña de al lado y compilar con
+`ngplat compilar --make`.
+
+Detalles que conviene saber:
+
+- **Guarda de verdad.** El `game.yaml` del proyecto se sobrescribe con lo que
+  tengas en el editor, dejando el anterior en `game.yaml.bak`.
+- **Si lo que mandas no se puede leer, no se guarda.** El archivo vuelve a como
+  estaba y el registro dice qué línea falla.
+- **Si no hay compilador de 68000**, el proyecto se genera igual (código C,
+  ROMs de gráficos, ROM de sonido) y el registro te dice qué falta instalar.
+- El servidor escucha **solo en 127.0.0.1** y exige una clave que se genera al
+  arrancar y que va en la dirección que abre el navegador. Sin eso, cualquier
+  otra página que tuvieras abierta podría escribir en tu `game.yaml` y lanzar un
+  `make`: los navegadores dejan que cualquier sitio hable con localhost.
+
 ## No se pierde nada
 
 El editor **guarda solo** en el navegador cada vez que tocas algo. Si cierras

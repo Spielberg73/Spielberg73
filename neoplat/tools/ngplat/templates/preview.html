@@ -94,7 +94,10 @@
   }
   .problemas button.grave { border-left-color: #c4453c; }
   .problemas .todo-bien { color: #6fbf73; font-size: 12px; }
-  .exportar { display: flex; flex-direction: column; gap: 6px; }
+  /* Solo el hueco: la direccion y el display ya los pone .panel. Si aqui se
+     repite 'display:flex' gana sobre el 'display:none' de .panel (misma
+     especificidad, regla posterior) y el panel sale bajo todas las pestanas. */
+  .exportar { gap: 6px; }
   .exportar textarea {
     width: 100%; height: 210px; background: #0f131c; color: #cfd6e4;
     border: 1px solid #2b3245; border-radius: 6px; padding: 8px;
@@ -120,6 +123,16 @@
   .tira canvas { image-rendering: pixelated; border: 1px solid #2b3245; border-radius: 4px;
                  cursor: pointer; background: #11141d; }
   .tira canvas.elegido { border-color: #f2b705; }
+  .registro {
+    width: 100%; max-height: 260px; overflow: auto; margin: 0;
+    background: #0f131c; color: #cfd6e4; border: 1px solid #2b3245;
+    border-radius: 6px; padding: 8px; white-space: pre-wrap; word-break: break-word;
+    font: 11px/1.5 ui-monospace, monospace;
+  }
+  .registro:empty { display: none; }
+  .registro .mal { color: #e8756b; }
+  .registro .bien { color: #6fbf73; }
+  .registro .aviso { color: #e8b04b; }
   .pendientes { display: flex; flex-direction: column; gap: 4px; }
   .pendientes button { text-align: left; background: #161a25; border: 1px solid #2b3245;
     border-left: 3px solid #58d0e8; border-radius: 6px; color: #cfd6e4; font: inherit;
@@ -183,6 +196,7 @@
     <button type="button" data-panel="actores">enemigos y objetos</button>
     <button type="button" data-panel="revisar">revisar<span class="contador" id="es-problemas" hidden>0</span></button>
     <button type="button" data-panel="yaml">game.yaml</button>
+    <button type="button" data-panel="rom">generar ROM</button>
   </div>
 
   <div class="panel visible" id="panel-mapa">
@@ -276,6 +290,21 @@
       <span class="nota" id="nota-stats"></span>
     </div>
     <div class="problemas" id="lista-problemas"></div>
+  </div>
+
+  <div class="panel exportar" id="panel-rom">
+    <div class="barra">
+      <span class="etiqueta">maquina</span>
+      <select id="rom-sistema"></select>
+      <button type="button" id="rom-generar">generar ROM</button>
+      <label class="campo" style="flex-direction:row;align-items:center;gap:6px">
+        <input type="checkbox" id="rom-make" checked>
+        <span>compilar el binario</span>
+      </label>
+      <span class="nota" id="rom-estado"></span>
+    </div>
+    <div class="nota" id="rom-ayuda"></div>
+    <pre class="registro" id="rom-registro"></pre>
   </div>
 
   <div class="panel exportar" id="panel-yaml">
@@ -541,8 +570,36 @@
 
     alternarSilencio: function () {
       this.silencio = !this.silencio;
-      if (this.silencio) { this.voz(0, 0, 0); this.voz(1, 0, 0); this.voz(2, 0, 0); }
+      if (this.silencio) this.callar();
       return this.silencio;
+    },
+
+    callar: function () {
+      this.voz(0, 0, 0);
+      this.voz(1, 0, 0);
+      this.voz(2, 0, 0);
+    },
+
+    /* Al pasar al editor el bucle deja de llamar a tick(). Los osciladores no
+     * se paran solos: se quedarian sonando la ultima nota para siempre, tres a
+     * la vez. Hay que callarlos a mano (y lo mismo al esconder la pestana, que
+     * tampoco recibe frames pero si se oye). */
+    pausar: function () {
+      if (!this.ctx) return;
+      this.callar();
+      this.efecto = null;
+    },
+
+    /* Al volver, que la nota que estaba sonando vuelva ya, sin esperar a que
+     * la secuencia llegue al siguiente paso. */
+    reanudar: function () {
+      if (!this.ctx || this.silencio) return;
+      for (var t = 0; t < this.pistas.length; t++) {
+        var p = this.pistas[t];
+        if (!p.pasos.length) continue;
+        var paso = p.pasos[(p.i - 1 + p.pasos.length) % p.pasos.length];
+        if (paso) this.voz(t, paso[0], paso[2]);
+      }
     }
   };
 
@@ -1607,6 +1664,7 @@
   }
 
   function modoEditor() {
+    audio.pausar();
     document.body.classList.add("editando");
     tamanoCanvas(true);
     editor.entrar();
@@ -1617,6 +1675,7 @@
   }
 
   function modoJuego() {
+    audio.reanudar();
     document.body.classList.remove("editando");
     editor.salir();
     tamanoCanvas(false);
@@ -1626,6 +1685,11 @@
 
   elModo.addEventListener("click", function () {
     if (editor.activo) modoJuego(); else modoEditor();
+  });
+
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) audio.pausar();
+    else if (!editor.activo) audio.reanudar();
   });
 
   /* --- pestanas ------------------------------------------------------- */
@@ -1643,6 +1707,7 @@
         refrescarPendientes();
       }
       if (boton.dataset.panel === "revisar") { editor.revisar(); refrescarProblemas(); }
+      if (boton.dataset.panel === "rom") document.getElementById("rom-estado").textContent = "";
     });
   });
 
@@ -1736,6 +1801,106 @@
     aviso.textContent = "descargado";
   });
 
+  /* --- generar la ROM ------------------------------------------------
+   *
+   * Una pagina no compila nada. Si el preview lo esta sirviendo el propio
+   * `ngplat probar` (o sea, viene por http y trae la clave en la direccion),
+   * este boton le manda el game.yaml que estas editando y el proceso de
+   * ngplat hace el resto: lo guarda, genera el proyecto y llama a make. Si el
+   * archivo se ha abierto a pelo (file://) no hay con quien hablar, y lo unico
+   * que se puede hacer es decir que orden escribir.
+   */
+  var rom = {
+    clave: "",
+    disponible: false,
+    trabajando: false,
+
+    arrancar: function () {
+      var laClave = "";
+      try {
+        laClave = new URLSearchParams(location.search).get("t") || "";
+      } catch (e) { laClave = ""; }
+      this.clave = laClave;
+      this.disponible = /^https?:$/.test(location.protocol) && !!laClave;
+
+      var elige = document.getElementById("rom-sistema");
+      var lista = (DATA.sistemas || []);
+      for (var i = 0; i < lista.length; i++) {
+        var opcion = document.createElement("option");
+        opcion.value = lista[i].id;
+        opcion.textContent = lista[i].nombre;
+        if (lista[i].id === DATA.sistema) opcion.selected = true;
+        elige.appendChild(opcion);
+      }
+
+      var ayuda = document.getElementById("rom-ayuda");
+      if (this.disponible) {
+        ayuda.textContent = "Guarda el game.yaml en el proyecto (deja una copia "
+          + "en game.yaml.bak) y compila. Tarda unos segundos.";
+      } else {
+        ayuda.textContent = "Esta pagina esta abierta como archivo, y un archivo "
+          + "no puede compilar nada. Arranca 'ngplat probar' sin --no-servidor y "
+          + "abre la direccion que imprime; o exporta el game.yaml desde la "
+          + "pestana de al lado y compila con 'ngplat compilar --make'.";
+        document.getElementById("rom-generar").disabled = true;
+      }
+    },
+
+    escribir: function (lineas, clase) {
+      var caja = document.getElementById("rom-registro");
+      caja.textContent = "";
+      for (var i = 0; i < lineas.length; i++) {
+        var linea = document.createElement("div");
+        linea.textContent = lineas[i];
+        if (/^aviso:/.test(lineas[i])) linea.className = "aviso";
+        else if (clase) linea.className = clase;
+        caja.appendChild(linea);
+      }
+      caja.scrollTop = caja.scrollHeight;
+    },
+
+    generar: function () {
+      if (!this.disponible || this.trabajando) return;
+      var yo = this;
+      var estado = document.getElementById("rom-estado");
+      var boton = document.getElementById("rom-generar");
+      this.trabajando = true;
+      boton.disabled = true;
+      estado.textContent = "compilando...";
+      this.escribir([]);
+      fetch("/compilar?t=" + encodeURIComponent(this.clave), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-NeoPlat": this.clave },
+        body: JSON.stringify({
+          yaml: editor.exportarYaml(),
+          sistema: document.getElementById("rom-sistema").value,
+          make: document.getElementById("rom-make").checked
+        })
+      }).then(function (respuesta) {
+        return respuesta.json();
+      }).then(function (datos) {
+        estado.textContent = datos.ok ? "listo" : "ha fallado";
+        var lineas = (datos.lineas || []).slice();
+        if (datos.ok) {
+          // lo que se estaba editando ya esta en el proyecto: el borrador del
+          // navegador deja de tener sentido
+          editor.descartarGuardado();
+          lineas.push("recarga la pagina para seguir editando sobre lo guardado");
+        }
+        yo.escribir(lineas, datos.ok ? "bien" : "mal");
+      })["catch"](function (error) {
+        estado.textContent = "sin respuesta";
+        yo.escribir(["no he podido hablar con ngplat: " + error,
+                     "si has parado el servidor, vuelve a arrancarlo"], "mal");
+      }).then(function () {
+        yo.trabajando = false;
+        boton.disabled = false;
+      });
+    }
+  };
+  rom.arrancar();
+  conClic("rom-generar", function () { rom.generar(); });
+
   /* --- recuperar lo que se estaba editando ---------------------------- */
 
   var guardado = editor.hayGuardado();
@@ -1793,7 +1958,7 @@
 
   window.addEventListener("resize", function () { aplicarTamanoCss(editor.activo); });
 
-  /* Enganche para herramientas y pruebas automaticas  /* Enganche para herramientas y pruebas automaticas (capturas, bots...). */
+  /* Enganche para herramientas y pruebas automaticas (capturas, bots...). */
   window.NeoPlat = {
     data: DATA,
     get world() { return world; },
@@ -1803,6 +1968,7 @@
     pixel: function () { return lienzoPixel; },
     modoEditor: modoEditor,
     modoJuego: modoJuego,
+    rom: rom,
     reiniciar: function () { world = NPCore.create(DATA); },
     pulsar: function (bits) { latched |= bits; },
     soltar: function (bits) { input &= ~bits; }

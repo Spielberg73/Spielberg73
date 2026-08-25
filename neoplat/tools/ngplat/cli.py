@@ -114,14 +114,45 @@ def cmd_probar(args: argparse.Namespace) -> int:
     destino = args.salida or os.path.join(project.root, "preview.html")
     write_preview(build, destino)
     _ok("preview generado: %s" % destino)
-    if not args.no_abrir:
-        try:
-            import webbrowser
 
-            webbrowser.open("file://" + os.path.abspath(destino))
-            _info("abriendo en el navegador...")
-        except Exception:
-            _info("abrelo a mano en tu navegador")
+    if args.no_abrir or args.no_servidor:
+        if not args.no_abrir:
+            _abrir("file://" + os.path.abspath(destino))
+        return 0
+    return _servir(project.root, destino, args.puerto)
+
+
+def _abrir(direccion: str) -> None:
+    try:
+        import webbrowser
+
+        webbrowser.open(direccion)
+        _info("abriendo en el navegador...")
+    except Exception:
+        _info("abrelo a mano en tu navegador")
+
+
+def _servir(raiz: str, preview: str, puerto: int) -> int:
+    """Sirve el preview desde localhost para que el editor pueda compilar.
+
+    Abierto como file://, el editor solo puede exportar el game.yaml: una
+    pagina no compila nada. Servido desde aqui, el boton "generar ROM" manda lo
+    que estas editando y este proceso hace el trabajo.
+    """
+    from .servidor import crear
+
+    servidor, direccion = crear(raiz, preview, puerto)
+    _ok("servidor en %s" % direccion)
+    _info("desde el editor, la pestana ROM guarda el game.yaml y compila")
+    _info("Ctrl+C para parar")
+    _abrir(direccion)
+    try:
+        servidor.serve_forever()
+    except KeyboardInterrupt:
+        print()
+        _info("servidor parado")
+    finally:
+        servidor.server_close()
     return 0
 
 
@@ -242,7 +273,12 @@ def build_parser() -> argparse.ArgumentParser:
                               help="genera y abre el preview jugable")
     p_probar.add_argument("proyecto", nargs="?", default=".")
     p_probar.add_argument("--salida", help="ruta del HTML de salida")
-    p_probar.add_argument("--no-abrir", action="store_true", help="no abrir el navegador")
+    p_probar.add_argument("--no-abrir", action="store_true",
+                          help="solo generar el HTML, sin abrir ni servir")
+    p_probar.add_argument("--no-servidor", action="store_true",
+                          help="abrir el HTML como file:// (sin generar ROM desde el editor)")
+    p_probar.add_argument("--puerto", type=int, default=0,
+                          help="puerto del servidor local (0 = el que haya libre)")
     p_probar.add_argument("--sistema", default="", help=_ayuda_sistemas())
     p_probar.set_defaults(func=cmd_probar)
 
