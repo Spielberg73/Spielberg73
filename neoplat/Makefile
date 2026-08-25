@@ -18,13 +18,21 @@ test-rapido:
 test-navegador: ejemplo
 	$(PYTHON) tests/navegador.py $(EJEMPLO)/preview.html capturas
 
-# Arranca la ROM de Mega Drive en un emulador de verdad y deja capturas.
-# Necesita el core de Genesis Plus GX:
-#   apt-get install libretro-genesisplusgx
-test-emulador:
+# Arranca lo compilado en emuladores de verdad y deja capturas. Necesita los
+# cores de libretro; si no estan, cada prueba se salta sola:
+#   Mega Drive:  apt-get install libretro-genesisplusgx
+#   Amiga:       puae_libretro.so del buildbot de libretro, en /usr/local/lib/libretro
+test-emulador: test-emulador-md test-emulador-amiga
+
+test-emulador-md:
 	./ngplat compilar $(EJEMPLO) --sistema megadrive --make
 	$(PYTHON) tests/emulador_md.py \
 		$(EJEMPLO)/build/megadrive/rom/juego.bin capturas
+
+test-emulador-amiga:
+	./ngplat compilar $(EJEMPLO) --sistema amiga --make
+	$(PYTHON) tests/emulador_amiga.py \
+		$(EJEMPLO)/build/amiga/disco/BosqueMagico.adf capturas
 
 ejemplo:
 	./ngplat comprobar $(EJEMPLO)
@@ -42,4 +50,4 @@ limpiar:
 	rm -rf $(EJEMPLO)/build $(EJEMPLO)/preview.html capturas
 	find . -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
 
-.PHONY: test test-rapido test-navegador test-emulador ejemplo ejemplo-todos limpiar
+.PHONY: test test-rapido test-navegador test-emulador test-emulador-md test-emulador-amiga ejemplo ejemplo-todos limpiar

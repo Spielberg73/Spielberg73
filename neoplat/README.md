@@ -240,8 +240,8 @@ neoplat/
 │   ├── np_pixel.js         el lienzo para dibujar enemigos y objetos
 │   └── np_bot.js           el bot que comprueba si un nivel se puede terminar
 ├── examples/bosque-magico/ juego de ejemplo listo para compilar
-└── tests/                  142 pruebas + 24 de jugabilidad + 49 del editor +
-                            bot que se pasa los niveles + emulador y navegador
+└── tests/                  143 pruebas + 24 de jugabilidad + 49 del editor +
+                            bot que se pasa los niveles + emuladores y navegador
 ```
 
 **El motor es C, no C++**, a propósito: el compilador de ngdevkit no trae
@@ -279,7 +279,7 @@ consola, y da igual en cuál.
 
 ```bash
 make test           # herramientas, validación, generación de C y paridad C/JS
-make test-emulador  # arranca la ROM de Mega Drive en un emulador de verdad
+make test-emulador  # arranca la ROM y el disquete en emuladores de verdad
 make test-navegador # abre el preview y el editor en Chromium
 node tests/comportamiento.js   # 24 pruebas de jugabilidad
 make ejemplo-todos             # compila el ejemplo para las tres máquinas
@@ -320,6 +320,10 @@ Verificado aquí:
   chip, la tabla de relocalización comprobada entrada por entrada (ninguna
   dirección se sale de su hunk) y `_start` en el primer byte, como espera
   AmigaDOS.
+- **El disquete de Amiga arranca y se juega en un emulador**: las pruebas lo
+  meten en un A500 emulado (PUAE con la ROM libre de AROS), esperan a que
+  arranque solo, comprueban que sale el juego con su marcador, pulsan start y
+  juegan. Encontró un fallo en el bootblock que ninguna otra prueba veía.
 - **Y el disquete también**: un `.adf` de 901120 bytes con bootblock `DOS\0`,
   sistema de ficheros OFS y `s/startup-sequence`. Las pruebas comprueban que
   **todas** las sumas de control cuadran (la del bootblock, con acarreo, y la de
@@ -347,15 +351,13 @@ Verificado aquí:
   se comprueba que recibe las órdenes del 68000 y escribe en el chip los
   periodos y volúmenes de las notas escritas en el `game.yaml`.
 
-**Sin probar en hardware real**: la ROM de Mega Drive se ha visto funcionando en
-un emulador, pero no en una consola de verdad; la de Neo Geo y el disquete de
-Amiga están construidos según la documentación de cada fabricante (ver
-[docs/neogeo.md](docs/neogeo.md) y [docs/amiga.md](docs/amiga.md)) y sus
-formatos están comprobados de ida y vuelta, pero **tampoco los he visto
-arrancar**: aquí no hay ngdevkit ni un emulador de Amiga. Si al probarlos ves
-los gráficos revueltos, lo más probable es que haya que ajustar el orden de
-bytes descrito en esos documentos: está aislado en dos funciones por máquina
-(`gfx.py`, `gfx_amiga.py`).
+**Sin probar en hardware real**: la ROM de Mega Drive y el disquete de Amiga se
+han visto funcionando en emuladores, pero no en máquinas de verdad. La ROM de
+Neo Geo está construida según la documentación del fabricante (ver
+[docs/neogeo.md](docs/neogeo.md)) y su formato está comprobado de ida y vuelta,
+pero **no la he visto arrancar**: aquí no hay ngdevkit. Si al probarla ves los
+gráficos revueltos, lo más probable es que haya que ajustar el orden de bytes
+descrito en ese documento: está aislado en dos funciones de `gfx.py`.
 
 Lo que aún no hace:
 

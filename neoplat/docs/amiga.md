@@ -145,6 +145,22 @@ Dentro va el ejecutable y un `s/startup-sequence` de una línea que lo lanza.
 Al encender, el Amiga lee el bootblock, arranca AmigaDOS, monta el disco,
 ejecuta el startup-sequence y ya estás jugando: **no hace falta Workbench**.
 
+### El bootblock tiene que decir que el disco arranca solo
+
+El código del bootblock hace dos cosas, y la primera parece cosmética pero no
+lo es:
+
+1. abre `expansion.library` y le pone el bit **`EBB_SILENTSTART`** (el 6 de
+   `eb_Flags`), que le dice al sistema que el disquete arranca por su cuenta;
+2. busca `dos.library` en la ROM y le pasa el control.
+
+Sin el primer paso —el bootblock corto de AmigaDOS 1.x, que es sólo el segundo—
+el sistema arranca en modo normal y **su shell no llega a ejecutar el juego**:
+se queda en `BosqueMagico: file is not executable`. Comprobado en un Amiga
+emulado, y comprobado también que es ese bit exacto: poniendo el 5 o el 7 en
+vez del 6, no arranca. Es la diferencia entre que el disquete funcione y que
+no.
+
 Se usa **OFS** (*Old File System*, `DOS\0`) a propósito, no FFS: es el único
 que arranca en un Kickstart 1.3 sin meter el sistema de ficheros en el propio
 disco. Gasta 24 bytes de cabecera en cada bloque, así que caben 488 bytes de
@@ -208,3 +224,10 @@ los juegos de la época.
 - **El emulador dice que el disquete no es de sistema**: es el bootblock. Con
   `xdftool disco.adf list` (del paquete `amitools`) se ve si el disco se lee y
   qué lleva dentro.
+- **"file is not executable"**: el sistema de ficheros está bien y el fichero se
+  encuentra; lo que falta es el `EBB_SILENTSTART` del bootblock (ver arriba).
+- **Para ver qué pasa por dentro**: `make test-emulador-amiga` arranca el
+  disquete en un A500 emulado y deja capturas. Para depurar el juego, escribe
+  marcas en una dirección de memoria chip que no uses
+  (`*(volatile uint16_t *)0x180 = n;`) y léelas desde el emulador: tras el
+  takeover esa zona es tuya.

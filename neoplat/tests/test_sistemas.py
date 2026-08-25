@@ -458,13 +458,27 @@ class TestCompilacionReal(unittest.TestCase):
     def test_la_rom_arranca_en_un_emulador(self):
         """La comprobacion que ninguna otra puede hacer: encender la consola."""
         import emulador_md
-        if not emulador_md.buscar_core():
+        from libretro import buscar_core
+        if not buscar_core(emulador_md.CORE, "NEOPLAT_CORE_MD"):
             self.skipTest("no esta instalado el core de Genesis Plus GX")
         out = self._construir("megadrive")
-        capturas = os.path.join(self.tmp, "capturas")
+        capturas = os.path.join(self.tmp, "capturas-md")
         self.assertEqual(
             emulador_md.comprobar(os.path.join(out, "rom/juego.bin"), capturas), 0,
             "la ROM no arranca o no se juega en el emulador")
+
+    def test_el_disquete_arranca_en_un_emulador(self):
+        """Y encender el Amiga: el disquete entero, del bootblock al ultimo
+        bitplane."""
+        import emulador_amiga
+        from libretro import buscar_core
+        if not buscar_core(emulador_amiga.CORE, "NEOPLAT_CORE_AMIGA"):
+            self.skipTest("no esta instalado el core de PUAE")
+        out = self._construir("amiga")
+        capturas = os.path.join(self.tmp, "capturas-amiga")
+        self.assertEqual(
+            emulador_amiga.comprobar(os.path.join(out, "disco/Prueba.adf"), capturas), 0,
+            "el disquete no arranca o no se juega en el emulador")
 
     def test_las_direcciones_relocalizadas_caen_en_su_hunk(self):
         """La tabla de relocalizacion es lo que hace que el juego se pueda cargar

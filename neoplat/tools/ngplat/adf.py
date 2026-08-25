@@ -92,36 +92,71 @@ def _poner_nombre(bloque: bytearray, offset: int, nombre: str, largo: int) -> No
 
 
 def _codigo_de_arranque() -> bytes:
-    """El codigo del bootblock: 'arranca AmigaDOS y quitate de en medio'.
+    """El codigo del bootblock: "este disco arranca solo; arranca AmigaDOS".
 
-    Es el arranque normal de un disquete de AmigaDOS, escrito en codigo maquina
-    del 68000 (son nueve instrucciones). Cuando el Amiga lo llama, a6 ya trae la
-    base de exec.
+    Es el arranque normal de un disquete de AmigaDOS 2.0 en adelante, escrito en
+    codigo maquina del 68000. Cuando el Amiga lo llama, a6 ya trae la base de
+    exec. Hace dos cosas:
 
+      1. abre expansion.library y le pone el bit EBB_SILENTSTART, que le dice al
+         sistema que el disco arranca por su cuenta y que no hace falta la
+         pantalla de arranque;
+      2. busca dos.library en la ROM y le pasa el control.
+
+    El primer paso parece cosmetico pero **no lo es**: sin el, el sistema
+    arranca en modo normal y su shell no llega a ejecutar el juego (se queda en
+    "file is not executable"). Comprobado en un Amiga emulado; es la diferencia
+    entre que el disquete funcione y que no.
+
+        lea     expansion(pc),a1
+        moveq   #37,d0
+        jsr     -552(a6)        ; OpenLibrary("expansion.library", 37)
+        tst.l   d0
+        beq.s   sinExpansion
+        movea.l d0,a1
+        bset    #6,34(a1)       ; eb_Flags: EBB_SILENTSTART
+        jsr     -414(a6)        ; CloseLibrary
+    sinExpansion:
         lea     dos(pc),a1
         jsr     -96(a6)         ; FindResident("dos.library")
         tst.l   d0
         beq.s   fallo
-        move.l  d0,a0
-        move.l  22(a0),a0       ; el punto de entrada de la biblioteca
+        movea.l d0,a0
+        movea.l 22(a0),a0       ; rt_Init: por ahi sigue el arranque
         moveq   #0,d0
         rts
-    fallo:  moveq #-1,d0
+    fallo:
+        moveq   #-1,d0
         rts
-        dc.b    'dos.library',0
     """
-    return bytes([
-        0x43, 0xFA, 0x00, 0x18,          # lea 24(pc),a1  -> la cadena de abajo
-        0x4E, 0xAE, 0xFF, 0xA0,          # jsr -96(a6)    -> FindResident
-        0x4A, 0x80,                      # tst.l d0
-        0x67, 0x0A,                      # beq.s fallo
-        0x20, 0x40,                      # move.l d0,a0
-        0x20, 0x68, 0x00, 0x16,          # move.l 22(a0),a0
-        0x70, 0x00,                      # moveq #0,d0
-        0x4E, 0x75,                      # rts
-        0x70, 0xFF,                      # moveq #-1,d0
-        0x4E, 0x75,                      # rts
-    ]) + b"dos.library\0"
+    dos = b"dos.library\0"
+    expansion = b"expansion.library\0"
+    codigo = bytes([
+        0x43, 0xFA, 0x00, 0x3E,                  # 0x00 lea 0x3E(pc),a1
+        0x70, 0x25,                              # 0x04 moveq #37,d0
+        0x4E, 0xAE, 0xFD, 0xD8,                  # 0x06 jsr -552(a6)  OpenLibrary
+        0x4A, 0x80,                              # 0x0A tst.l d0
+        0x67, 0x0C,                              # 0x0C beq.s sinExpansion
+        0x22, 0x40,                              # 0x0E movea.l d0,a1
+        0x08, 0xE9, 0x00, 0x06, 0x00, 0x22,      # 0x10 bset #6,34(a1)
+        0x4E, 0xAE, 0xFE, 0x62,                  # 0x16 jsr -414(a6)  CloseLibrary
+        0x43, 0xFA, 0x00, 0x18,                  # 0x1A lea 0x18(pc),a1
+        0x4E, 0xAE, 0xFF, 0xA0,                  # 0x1E jsr -96(a6)   FindResident
+        0x4A, 0x80,                              # 0x22 tst.l d0
+        0x67, 0x0A,                              # 0x24 beq.s fallo
+        0x20, 0x40,                              # 0x26 movea.l d0,a0
+        0x20, 0x68, 0x00, 0x16,                  # 0x28 movea.l 22(a0),a0
+        0x70, 0x00,                              # 0x2C moveq #0,d0
+        0x4E, 0x75,                              # 0x2E rts
+        0x70, 0xFF,                              # 0x30 moveq #-1,d0
+        0x4E, 0x75,                              # 0x32 rts
+    ])
+    # los dos `lea` van con desplazamiento desde el PC: si se toca el codigo de
+    # arriba hay que recolocarlos, y esto lo canta en el sitio
+    assert len(codigo) == 0x34, len(codigo)
+    assert 0x02 + 0x3E == len(codigo) + len(dos), "el lea de expansion.library"
+    assert 0x1C + 0x18 == len(codigo), "el lea de dos.library"
+    return codigo + dos + expansion
 
 
 class Disco:
