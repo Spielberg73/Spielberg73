@@ -192,17 +192,36 @@ static void np_redibujar_todo(const NpWorld *w)
 
 /* --- un frame ----------------------------------------------------------- */
 
+/* Repintar el fondo es lo mas caro del frame, y los actores suelen ir juntos
+   (las monedas van de tres en tres): sin esto, un mismo tile se repinta una vez
+   por cada actor que lo toca. Un bit por tile del mapa de bits basta. */
+#define NP_TILES_X (NP_MAPA_ANCHO / NP_TILE)
+#define NP_TILES_Y (NP_MAPA_ALTO / NP_TILE)
+static uint8_t np_ya_repintado[(NP_TILES_X * NP_TILES_Y + 7) / 8];
+
 static void np_repintar_rastros(const NpWorld *w)
 {
     uint8_t i;
+    uint16_t b;
+    if (!np_rastro_count) return;
+    for (b = 0; b < sizeof(np_ya_repintado); b++) np_ya_repintado[b] = 0;
+
     for (i = 0; i < np_rastro_count; i++) {
         NpRastro *r = &np_rastros[i];
+        /* el ultimo pixel del actor es x + ancho - 1: sin el -1 se repinta una
+           columna (y una fila) de tiles que el actor no llega a tocar */
+        int32_t tx0 = r->x / NP_TILE, tx1 = (r->x + r->ancho - 1) / NP_TILE;
+        int32_t ty0 = r->y / NP_TILE, ty1 = (r->y + r->alto - 1) / NP_TILE;
         int32_t tx, ty;
-        for (tx = r->x / NP_TILE; tx <= (r->x + r->ancho) / NP_TILE; tx++) {
-            for (ty = r->y / NP_TILE; ty <= (r->y + r->alto) / NP_TILE; ty++) {
-                int32_t columna = tx - np_base_tile;
-                if (columna < 0 || columna >= NP_MAPA_ANCHO / NP_TILE) continue;
-                if (ty < 0 || ty >= NP_MAPA_ALTO / NP_TILE) continue;
+        for (tx = tx0; tx <= tx1; tx++) {
+            int32_t columna = tx - np_base_tile;
+            if (columna < 0 || columna >= NP_TILES_X) continue;
+            for (ty = ty0; ty <= ty1; ty++) {
+                uint16_t indice;
+                if (ty < 0 || ty >= NP_TILES_Y) continue;
+                indice = (uint16_t)(ty * NP_TILES_X + columna);
+                if (np_ya_repintado[indice >> 3] & (1 << (indice & 7))) continue;
+                np_ya_repintado[indice >> 3] |= (uint8_t)(1 << (indice & 7));
                 np_blit_tile(np_tile_gfx_at(w->level, tx, ty),
                              columna * NP_TILE, ty * NP_TILE);
             }

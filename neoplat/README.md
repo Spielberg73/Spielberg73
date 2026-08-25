@@ -320,6 +320,9 @@ Verificado aquí:
   chip, la tabla de relocalización comprobada entrada por entrada (ninguna
   dirección se sale de su hunk) y `_start` en el primer byte, como espera
   AmigaDOS.
+- **El juego va a 49 de los 50 fps del Amiga** (25 antes de optimizar): medido
+  en líneas de barrido dentro de un A500 emulado, parte por parte. Cómo se hizo,
+  en [docs/amiga.md](docs/amiga.md).
 - **El disquete de Amiga arranca y se juega en un emulador**: las pruebas lo
   meten en un A500 emulado (PUAE con la ROM libre de AROS), esperan a que
   arranque solo, comprueban que sale el juego con su marcador, pulsan start y

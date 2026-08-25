@@ -108,6 +108,50 @@ Las capas de parallax **todavía no se dibujan** en Amiga (haría falta modo
 *dual playfield*, que dejaría el juego en 8 colores), así que sus colores ni se
 cuentan ni gastan memoria.
 
+## Que quepa en un frame
+
+El Amiga PAL da **50 frames por segundo, y cada frame son 312 líneas de
+barrido**: si lo que hay que hacer no cabe en 312, se pierde un frame y el
+juego va a la mitad de velocidad. Con cinco bitplanes en baja resolución el
+DMA de vídeo se lleva una buena parte de los accesos a memoria chip, así que
+hay menos margen del que parece.
+
+Medido en un A500 emulado, jugando (líneas por frame):
+
+| | al principio | ahora |
+|---|---|---|
+| simular (`np_world_step`) | 76 | 76 |
+| repintar el fondo de los actores | 70 | 34 |
+| dibujar los actores | 33 | 33 |
+| marcador | **184** | 2 |
+| escenario, scroll, sonido y mando | 8 | 8 |
+| **total** | **~370** | **~153** |
+| **velocidad** | **25 fps** | **49 fps** |
+
+Las dos cosas que lo arreglaron:
+
+- **El marcador sólo repinta lo que cambia.** Escribir en el mapa de bits lo
+  hace la CPU byte a byte (8 filas × 5 bitplanes por carácter), y repintar
+  `SCORE 000000 … LIVES 3` entero costaba más de la mitad de un frame, 50 veces
+  por segundo, para dejarlo igual. Ahora las palabras fijas se escriben una vez
+  y cada número sólo cuando cambia: en un frame normal no se escribe nada.
+- **Un tile del fondo se repinta una sola vez.** Los actores van juntos (las
+  monedas, de tres en tres) y sus rectángulos comparten tiles; un bit por tile
+  del mapa de bits basta para no repetir el trabajo. De paso se corrigió un
+  `+1` que repintaba una columna y una fila de tiles que el actor no tocaba.
+
+### Cómo medirlo
+
+El reloj del Amiga para esto es el propio haz de la pantalla: `VPOSR` y
+`VHPOSR` dicen por qué línea va. Leyendo la línea antes y después de cada parte
+sale lo que cuesta, y las cuentas salen en la misma unidad que el presupuesto
+(312 líneas). Dos avisos:
+
+- el contador vuelve a cero en cada frame, así que **algo que dure más de 312
+  líneas se mide de menos**: si los números no cuadran, es eso;
+- para medir una función sola, llamarla 100 veces seguidas y dividir da una
+  cifra mucho más limpia que medirla una vez.
+
 ## Cómo suena
 
 Paula tiene cuatro canales que leen una onda de la RAM chip por DMA y la

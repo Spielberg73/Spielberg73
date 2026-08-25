@@ -30,10 +30,22 @@ static void np_hud_char(uint8_t col, uint8_t fila, uint8_t c)
     }
 }
 
+/* Lo ultimo que se escribio, para no repintar lo que no ha cambiado. */
+static uint32_t np_hud_puntos = 0xFFFFFFFFUL;
+static uint16_t np_hud_tiempo = 0xFFFF;
+static uint16_t np_hud_estado = 0xFFFF;
+static uint8_t np_hud_vidas = 0xFF;
+static uint8_t np_hud_etiquetas;
+
 void np_hud_clear(void)
 {
     uint16_t i;
     for (i = 0; i < NP_HUD_ALTO * NP_HUD_PASO; i++) np_hud_bitmap[i] = 0;
+    np_hud_puntos = 0xFFFFFFFFUL;
+    np_hud_tiempo = 0xFFFF;
+    np_hud_estado = 0xFFFF;
+    np_hud_vidas = 0xFF;
+    np_hud_etiquetas = 0;
 }
 
 void np_hud_print(uint8_t col, uint8_t fila, const char *texto)
@@ -61,23 +73,39 @@ static void np_hud_borrar_fila(uint8_t fila)
     for (col = 0; col < NP_HUD_COLUMNAS; col++) np_hud_char(col, fila, ' ');
 }
 
+/* Escribir en el mapa de bits lo hace la CPU byte a byte, y con cinco
+ * bitplanes por medio la memoria chip va justa: repintar el marcador entero
+ * cuesta mas de la mitad de un frame. Por eso solo se toca lo que cambia; en
+ * un frame normal no se escribe nada. */
 void np_hud_draw(const NpWorld *w)
 {
-    static uint16_t ultimo_estado = 0xFFFF;
+    uint16_t segundos;
 
-    np_hud_print(2, 0, "SCORE");
-    np_hud_number(8, 0, w->score, 6);
-    np_hud_print(30, 0, "LIVES");
-    np_hud_number(36, 0, w->lives, 1);
+    if (!np_hud_etiquetas) {            /* las palabras fijas, una sola vez */
+        np_hud_print(2, 0, "SCORE");
+        np_hud_print(30, 0, "LIVES");
+        if (np_time_limit) np_hud_print(18, 0, "TIME");
+        np_hud_etiquetas = 1;
+    }
+    if (w->score != np_hud_puntos) {
+        np_hud_number(8, 0, w->score, 6);
+        np_hud_puntos = w->score;
+    }
+    if (w->lives != np_hud_vidas) {
+        np_hud_number(36, 0, w->lives, 1);
+        np_hud_vidas = w->lives;
+    }
     if (np_time_limit) {
-        np_hud_print(18, 0, "TIME");
-        np_hud_number(23, 0, w->time_left / 60, 3);
+        segundos = (uint16_t)(w->time_left / 60);
+        if (segundos != np_hud_tiempo) {
+            np_hud_number(23, 0, segundos, 3);
+            np_hud_tiempo = segundos;
+        }
     }
 
-    if (w->state != ultimo_estado) {
-        np_hud_borrar_fila(2);
-        ultimo_estado = w->state;
-    }
+    if (w->state == np_hud_estado) return;    /* el mensaje sigue igual */
+    np_hud_borrar_fila(2);
+    np_hud_estado = w->state;
     switch (w->state) {
     case NP_STATE_TITLE:
         np_hud_print(12, 2, np_game_title);
