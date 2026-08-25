@@ -200,12 +200,21 @@ cambia cómo se dibuja y cómo suena, no lo que pasa.
 ```bash
 ../ngplat sistemas                       # las tres máquinas y sus límites
 ../ngplat compilar --sistema megadrive   # -> build/megadrive/rom/juego.bin
-../ngplat compilar --sistema amiga       # -> build/amiga/disco/MiJuego
+../ngplat compilar --sistema amiga       # -> build/amiga/disco/MiJuego.adf
 ```
 
 Para estas dos no hace falta ngdevkit, solo un compilador de 68000 cualquiera
 (`m68k-elf-gcc`, o el paquete `gcc-m68k-linux-gnu` de Debian y Ubuntu). Añade
 `--make` y te lo construye del tirón.
+
+Lo del Amiga es un **disquete de verdad**: un `.adf` de 880 KB que arranca solo,
+sin Workbench. Lo metes en FS-UAE, WinUAE o Amiberry (o en un Gotek, si tienes
+el Amiga delante) y enciendes:
+
+```bash
+cd build/amiga
+make run          # con FS-UAE instalado, mete el disquete y arranca
+```
 
 Cada máquina tiene lo suyo, y `ngplat comprobar --sistema <máquina>` te lo dice
 antes de compilar: la Mega Drive solo muestra 64 colores y una capa de fondo, y

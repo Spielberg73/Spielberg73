@@ -14,7 +14,7 @@ segundos.
                                 │
 game.yaml + PNG  ──►  ngplat  ──┼──►  build/neogeo/         ROMs C1/C2/S1/M1
                                 ├──►  build/megadrive/      cartucho .bin
-                                └──►  build/amiga/          ejecutable AmigaDOS
+                                └──►  build/amiga/          disquete .adf
 ```
 
 El juego lo describes una vez. Lo que cambia de una máquina a otra es cómo se
@@ -29,7 +29,7 @@ Geo, en la Mega Drive y en el Amiga.
 | Colores | 4096 en pantalla | 4 paletas de 16 | una paleta de 32 |
 | Sonido | YM2610 (SSG) por Z80 | PSG SN76489 | Paula (4 canales) |
 | Parallax | sí | una capa | todavía no |
-| Sale | ROMs de cartucho | `.bin` con cabecera y suma | ejecutable con hunks |
+| Sale | ROMs de cartucho | `.bin` con cabecera y suma | disquete `.adf` arrancable |
 
 ## Instalación
 
@@ -55,8 +55,8 @@ depende de la máquina:
 | Amiga | lo mismo que la Mega Drive (o `m68k-amigaos-gcc` si lo tienes) |
 
 Para Mega Drive y Amiga no hace falta nada más: el resto (cabecera del
-cartucho, suma de control, hunks y relocalización) lo hace el propio kit con
-Python.
+cartucho, suma de control, hunks, relocalización y el disquete de 880 KB con su
+bootblock y su sistema de ficheros) lo hace el propio kit con Python.
 
 ## Empezar
 
@@ -74,7 +74,7 @@ Para otra máquina, solo cambia una palabra:
 ```bash
 ../ngplat sistemas                       # lista las máquinas y sus límites
 ../ngplat compilar --sistema megadrive   # -> build/megadrive/rom/juego.bin
-../ngplat compilar --sistema amiga       # -> build/amiga/disco/MiJuego
+../ngplat compilar --sistema amiga       # -> build/amiga/disco/MiJuego.adf
 ```
 
 O lo dejas escrito en el `game.yaml` y te olvidas:
@@ -192,7 +192,7 @@ tutorial paso a paso en [docs/tutorial.md](docs/tutorial.md).
 | `ngplat comprobar [proyecto]` | Valida el `game.yaml` y dice cuánto ocupa el juego |
 | `ngplat probar [proyecto]` | Genera y abre el preview (con el editor de niveles) |
 | `ngplat compilar [proyecto]` | Genera `build/<máquina>/` con el C, los gráficos y el Makefile |
-| `ngplat compilar --make` | Además construye la ROM o el ejecutable |
+| `ngplat compilar --make` | Además construye la ROM o el disquete |
 | `ngplat sistemas` | Lista las máquinas de destino y lo que aguanta cada una |
 
 Cualquier orden acepta `--sistema neogeo|megadrive|amiga` para trabajar con una
@@ -219,6 +219,7 @@ neoplat/
 │   ├── gfx_md.py           PNG → tiles de 8x8 del VDP y reparto de paletas
 │   ├── gfx_amiga.py        PNG → 5 bitplanes entrelazados y sus máscaras
 │   ├── hunk.py             ELF → ejecutable de AmigaDOS (hunks + relocalización)
+│   ├── adf.py              disquete de 880 KB arrancable (bootblock + OFS)
 │   ├── claves.py           nombres que acepta cada opción (los usa el editor)
 │   ├── sonido.py           notas -> periodos del SSG, del PSG o de Paula
 │   ├── m1.py / z80.py      driver de sonido del Z80 y su ensamblador
@@ -304,6 +305,11 @@ Verificado aquí:
   chip, la tabla de relocalización comprobada entrada por entrada (ninguna
   dirección se sale de su hunk) y `_start` en el primer byte, como espera
   AmigaDOS.
+- **Y el disquete también**: un `.adf` de 901120 bytes con bootblock `DOS\0`,
+  sistema de ficheros OFS y `s/startup-sequence`. Las pruebas comprueban que
+  **todas** las sumas de control cuadran (la del bootblock, con acarreo, y la de
+  cada bloque del disco), que el bitmap marca exactamente lo ocupado y que el
+  ejecutable sale del disco byte a byte igual que entró.
 - Motor en C y preview en JavaScript dan resultados idénticos frame a frame.
 - Las mecánicas de plataformas funcionan (24 pruebas de jugabilidad).
 - Los niveles de ejemplo se pueden terminar: un bot los juega enteros en cada

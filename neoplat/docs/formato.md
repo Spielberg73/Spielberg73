@@ -290,5 +290,6 @@ compilar y te dice cuál te has saltado.
 | Actores en pantalla | 96 sprites | 80 sprites | sin límite fijo (los dibuja el blitter) |
 | Alto del nivel | 256 tiles | 32 tiles | 16 tiles |
 | Capas de parallax | todas | una | ninguna (todavía) |
+| Qué sale | ROMs de cartucho | `.bin` de cartucho | disquete `.adf` |
 
 `ngplat sistemas` los enseña sin salir de la terminal.

@@ -17,7 +17,7 @@ import unittest
 import comun
 from comun import cargar_demo
 
-from ngplat import gfx, gfx_amiga, gfx_md, hunk, sistemas
+from ngplat import adf, gfx, gfx_amiga, gfx_md, hunk, sistemas
 from ngplat.codegen import generar_para_sistema
 from ngplat.errors import ProjectError
 from ngplat.gfx import Palette
@@ -164,6 +164,85 @@ class TestSonidoDeCadaChip(unittest.TestCase):
             self.assertLessEqual(periodo, 65535)
 
 
+class TestDisquete(unittest.TestCase):
+    """El .adf: un disquete de Amiga de 880 KB que arranca solo."""
+
+    def test_tamano_y_arranque(self):
+        disco = adf.Disco("PRUEBA")
+        imagen = disco.bytes()
+        self.assertEqual(len(imagen), 901120, "un disquete son 80x2x11x512 bytes")
+        self.assertEqual(imagen[0:4], b"DOS\0", "falta la marca del sistema OFS")
+        self.assertIn(b"dos.library", imagen[:1024], "el bootblock no arranca nada")
+
+    def test_las_sumas_de_control_cuadran(self):
+        """El Amiga rechaza el disco si una suma no da cero."""
+        disco = adf.Disco("PRUEBA")
+        disco.fichero("JUEGO", b"x" * 5000)
+        imagen = disco.bytes()
+
+        # el bootblock: suma con acarreo de sus 1024 bytes
+        suma = 0
+        for i in range(0, 1024, 4):
+            anterior = suma
+            suma = (suma + struct.unpack_from(">I", imagen, i)[0]) & 0xFFFFFFFF
+            if suma < anterior:
+                suma = (suma + 1) & 0xFFFFFFFF
+        self.assertEqual(suma, 0xFFFFFFFF, "la suma del bootblock no cuadra")
+
+        # los demas bloques: la suma de las 128 palabras largas tiene que dar 0
+        for numero in range(2, adf.BLOQUES):
+            base = numero * adf.BLOQUE
+            (tipo, ) = struct.unpack_from(">I", imagen, base)
+            if tipo not in (adf.T_HEADER, adf.T_DATA, adf.T_LIST):
+                continue
+            suma = 0
+            for i in range(0, adf.BLOQUE, 4):
+                suma = (suma + struct.unpack_from(">I", imagen, base + i)[0]) & 0xFFFFFFFF
+            self.assertEqual(suma, 0, "el bloque %d tiene mal la suma" % numero)
+
+    def test_ida_y_vuelta_de_un_fichero_grande(self):
+        """Mas de 72 bloques de datos: hacen falta bloques de extension."""
+        datos = bytes((i * 7 + 3) & 0xFF for i in range(200 * 1024))
+        disco = adf.Disco("PRUEBA")
+        disco.fichero("GRANDE", datos)
+        vuelta = adf.leer(disco.bytes())
+        self.assertEqual(vuelta["GRANDE"], datos)
+
+    def test_el_disco_del_juego_arranca_el_ejecutable(self):
+        tmp = tempfile.mkdtemp(prefix="neoplat-adf-")
+        try:
+            ruta = os.path.join(tmp, "juego.adf")
+            adf.crear_disco_de_juego(ruta, "MI JUEGO", "MiJuego", b"ejecutable")
+            with open(ruta, "rb") as fh:
+                contenido = adf.leer(fh.read())
+            self.assertEqual(contenido["MiJuego"], b"ejecutable")
+            arranque = contenido["s/startup-sequence"].decode("latin-1")
+            self.assertIn("MiJuego", arranque,
+                          "el startup-sequence no lanza el juego")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_el_bitmap_marca_lo_ocupado(self):
+        disco = adf.Disco("PRUEBA")
+        disco.fichero("JUEGO", b"x" * 5000)
+        imagen = disco.bytes()
+        base = (adf.BLOQUE_RAIZ + 1) * adf.BLOQUE
+        libres = 0
+        for numero in range(2, adf.BLOQUES):
+            palabra = struct.unpack_from(">I", imagen, base + 4 + ((numero - 2) // 32) * 4)[0]
+            libre = (palabra >> ((numero - 2) % 32)) & 1
+            if libre:
+                libres += 1
+            else:
+                self.assertIn(numero, disco.usados, "el bloque %d no esta en uso" % numero)
+        self.assertEqual(libres, adf.BLOQUES - len(disco.usados))
+
+    def test_no_deja_meter_mas_de_880_kb(self):
+        disco = adf.Disco("PRUEBA")
+        with self.assertRaises(adf.ErrorAdf):
+            disco.fichero("ENORME", b"x" * (900 * 1024))
+
+
 class TestProyectoGenerado(unittest.TestCase):
     """Genera el proyecto para cada maquina y mira que salga completo."""
 
@@ -198,7 +277,8 @@ class TestProyectoGenerado(unittest.TestCase):
         build, out = self._generar("amiga")
         for archivo in ("src/gamedata.c", "src/graficos.c", "src/sonido.c",
                         "src/np_video.c", "src/np_hud.c", "src/arranque.c",
-                        "amiga.ld", "Makefile", "hacer_ejecutable.py"):
+                        "amiga.ld", "Makefile", "hacer_ejecutable.py",
+                        "hacer_adf.py"):
             self.assertTrue(os.path.isfile(os.path.join(out, archivo)), archivo)
         with open(os.path.join(out, "src/graficos.c"), encoding="utf-8") as fh:
             texto = fh.read()
@@ -285,6 +365,22 @@ class TestCompilacionReal(unittest.TestCase):
         for i in range(0x200, len(rom), 2):
             suma = (suma + (rom[i] << 8) + rom[i + 1]) & 0xFFFF
         self.assertEqual(struct.unpack_from(">H", rom, 0x18E)[0], suma)
+
+    def test_disquete_de_amiga(self):
+        """El .adf construido de verdad: arranca y lleva dentro el ejecutable."""
+        out = self._construir("amiga")
+        ruta = os.path.join(out, "disco/Prueba.adf")
+        self.assertTrue(os.path.isfile(ruta), "no se ha creado el disquete")
+        with open(ruta, "rb") as fh:
+            imagen = fh.read()
+        self.assertEqual(len(imagen), 901120)
+        self.assertEqual(imagen[0:4], b"DOS\0")
+        contenido = adf.leer(imagen)
+        self.assertIn("Prueba", contenido)
+        self.assertIn("s/startup-sequence", contenido)
+        with open(os.path.join(out, "disco/Prueba"), "rb") as fh:
+            self.assertEqual(contenido["Prueba"], fh.read(),
+                             "el ejecutable del disco no es el que se compilo")
 
     def test_ejecutable_de_amiga(self):
         out = self._construir("amiga")

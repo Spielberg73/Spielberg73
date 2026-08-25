@@ -11,8 +11,9 @@ aqui:
     que muestra el Amiga de una vez (el ultimo se reserva para el marcador)
   - el sonido sale por Paula con una onda cuadrada de dos bytes a la que se le
     cambia el periodo: las mismas notas que en las otras dos maquinas
-  - el resultado no es un cartucho sino un ejecutable de AmigaDOS, que se hace
-    con hunk.py a partir del ELF del enlazador
+  - el resultado no es un cartucho sino un **disquete arrancable** (.adf): el
+    ejecutable lo hace hunk.py a partir del ELF del enlazador y adf.py lo mete
+    en un disco de 880 KB con su bootblock y su sistema de ficheros
 """
 
 from __future__ import annotations
@@ -172,14 +173,19 @@ class Amiga(Sistema):
 
         salida.archivos["src/graficos.c"] = _graficos_c(build, banco)
         salida.archivos["src/sonido.c"] = _sonido_c(build)
-        salida.archivos["Makefile"] = _makefile(build, _nombre_ejecutable(build))
-        salida.archivos["hacer_ejecutable.py"] = _hacer_ejecutable_py()
+        nombre = _nombre_ejecutable(build)
+        salida.archivos["Makefile"] = _makefile(build, nombre,
+                                                _etiqueta_disco(build.project.title))
+        salida.archivos["hacer_ejecutable.py"] = _fuente_de("hunk.py")
+        salida.archivos["hacer_adf.py"] = _fuente_de("adf.py")
         salida.resumen.append(
             "graficos: %d dibujos de 16x16 (%d KB de dibujos y %d KB de mascaras)"
             % (banco.cuantos, len(banco.tiles) // 1024, len(banco.mascaras) // 1024))
         salida.resumen.append(
             "colores:  %d de los 32 del Amiga (el 31 es el del marcador)"
             % build.info["stats"]["colores"])
+        salida.resumen.append(
+            "disquete: disco/%s.adf (880 KB, arranca solo en cualquier Amiga)" % nombre)
         return salida
 
 
@@ -312,7 +318,7 @@ def _sonido_c(build: Build) -> str:
     return "\n".join(partes)
 
 
-def _makefile(build: Build, nombre: str) -> str:
+def _makefile(build: Build, nombre: str, etiqueta: str) -> str:
     return """# Makefile generado por ngplat para "%s" (Amiga).
 # Se reescribe en cada `ngplat compilar`: pon tus cambios en game.yaml.
 #
@@ -321,8 +327,9 @@ def _makefile(build: Build, nombre: str) -> str:
 #   m68k-elf-gcc
 #   m68k-linux-gnu-gcc    (el paquete gcc-m68k-linux-gnu de Debian/Ubuntu)
 #
-# El enlazador saca un ELF; hacer_ejecutable.py lo convierte en un ejecutable
-# de AmigaDOS de verdad (hunks + tabla de relocalizacion, todo en RAM chip).
+# El enlazador saca un ELF; hacer_ejecutable.py lo convierte en un ejecutable de
+# AmigaDOS de verdad (hunks + tabla de relocalizacion, todo en RAM chip) y
+# hacer_adf.py monta con el un disquete de 880 KB que arranca solo.
 
 # make trae su propio CC por defecto, asi que solo se cambia si nadie lo ha puesto
 ifeq ($(origin CC), default)
@@ -341,9 +348,11 @@ SRC := src/arranque.c src/main.c src/np_video.c src/np_hud.c src/np_sound.c \\
        src/np_world.c src/gamedata.c src/graficos.c src/sonido.c
 OBJ := $(SRC:.c=.o)
 JUEGO := disco/%s
+ADF   := disco/%s.adf
+DISCO := "%s"
 
-all: $(JUEGO)
-	@echo "ejecutable listo: $(JUEGO)"
+all: $(ADF)
+	@echo "disquete listo: $(ADF)"
 
 %%.o: %%.c
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -355,25 +364,35 @@ $(JUEGO): juego.elf
 	@mkdir -p disco
 	$(PYTHON) hacer_ejecutable.py $< $@
 
-# Copia `disco/` a un disquete o a una carpeta compartida del emulador y
-# arranca el juego desde ahi. Con FS-UAE: `make run`.
+# El .adf es la copia de un disquete: se mete en el emulador (o en un Gotek, o
+# en un Amiga de verdad con ADF Blitz) y arranca solo, sin Workbench.
+$(ADF): $(JUEGO) hacer_adf.py
+	$(PYTHON) hacer_adf.py $@ $(DISCO) %s $(JUEGO)
+
+# Con un emulador instalado, `make run` mete el disquete y enciende el Amiga.
 EMU ?= fs-uae
 run: all
-	$(EMU) --hard_drive_0=disco
+	$(EMU) --floppy_drive_0=$(ADF)
 
 clean:
-	rm -f $(OBJ) juego.elf $(JUEGO)
+	rm -f $(OBJ) juego.elf $(JUEGO) $(ADF)
 
 .PHONY: all run clean
-""" % (build.project.title, nombre)
+""" % (build.project.title, nombre, nombre, etiqueta, nombre)
 
 
-def _hacer_ejecutable_py() -> str:
-    """El conversor a hunks, tal cual, para que el proyecto generado se valga solo."""
+def _fuente_de(modulo: str) -> str:
+    """Copia un modulo del kit tal cual, para que el proyecto generado se valga solo."""
     ruta = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                        "hunk.py")
+                        modulo)
     with open(ruta, "r", encoding="utf-8") as fh:
         return fh.read()
+
+
+def _etiqueta_disco(titulo: str) -> str:
+    """Nombre del volumen: AmigaDOS no admite ':' ni '/' y se queda en 30 letras."""
+    limpio = "".join(c if (c.isalnum() or c in " -_") else " " for c in titulo)
+    return " ".join(limpio.split())[:30].upper() or "NEOPLAT"
 
 
 registrar(Amiga())

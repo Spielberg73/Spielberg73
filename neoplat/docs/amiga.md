@@ -126,6 +126,44 @@ El periodo lo calcula el compilador con `periodo_paula(hz, muestras=2)`:
 abasto). Con dos muestras entran de sobra las notas de 30 a 8000 Hz que acepta
 el kit. El volumen de Paula va de 0 a 64; el del kit, de 0 a 15.
 
+## El disquete (.adf)
+
+Un `.adf` es la copia byte a byte de un disquete de Amiga: 80 cilindros × 2
+caras × 11 sectores × 512 bytes = **901120 bytes**. Es lo que comen los
+emuladores (FS-UAE, WinUAE, Amiberry), los Gotek y los cargadores de ADF de un
+Amiga de verdad. `tools/ngplat/adf.py` lo monta entero, sin nada instalado:
+
+```
+bloques 0-1    bootblock: "DOS\0", su suma de control y el código que arranca
+               AmigaDOS (busca dos.library en la ROM y le pasa el control)
+bloque 880     raíz del disco: nombre del volumen, tabla hash y dónde está el bitmap
+bloque 881     bitmap: un bit por bloque, a 1 si está libre
+el resto       las cabeceras y los datos de los ficheros
+```
+
+Dentro va el ejecutable y un `s/startup-sequence` de una línea que lo lanza.
+Al encender, el Amiga lee el bootblock, arranca AmigaDOS, monta el disco,
+ejecuta el startup-sequence y ya estás jugando: **no hace falta Workbench**.
+
+Se usa **OFS** (*Old File System*, `DOS\0`) a propósito, no FFS: es el único
+que arranca en un Kickstart 1.3 sin meter el sistema de ficheros en el propio
+disco. Gasta 24 bytes de cabecera en cada bloque, así que caben 488 bytes de
+datos por bloque en vez de 512; a cambio arranca en cualquier Amiga.
+
+Tres detalles que hay que hacer bien o el Amiga rechaza el disco:
+
+- **La suma del bootblock** es distinta a las demás: suma con acarreo de sus
+  1024 bytes, invertida. La de los demás bloques es la suma de las 128 palabras
+  largas cambiada de signo, de modo que el bloque entero sume cero.
+- **La tabla de bloques de datos** de un fichero se rellena **del final hacia el
+  principio**. Si el fichero pasa de 72 bloques (35 KB), los siguientes van en
+  *bloques de extensión* encadenados.
+- **Los nombres se guardan en una tabla hash** de 72 entradas
+  (`hash = (hash · 13 + letra) & 0x7FF`), con una cadena para las colisiones.
+
+El disco sale siempre igual byte a byte (las fechas son fijas), así que dos
+compilaciones del mismo juego dan el mismo `.adf`.
+
 ## Cómo arranca un ejecutable de AmigaDOS
 
 Aquí no hay direcciones fijas: un ejecutable es una lista de trozos (*hunks*)
@@ -167,3 +205,6 @@ los juegos de la época.
   bajos de `cam_x` para los dos playfields (los mismos cuatro bits, dos veces).
 - **No arranca**: comprueba con un volcador de hunks que el primer hunk empieza
   con el `jsr` de `_start` y que los dos hunks van marcados como CHIP.
+- **El emulador dice que el disquete no es de sistema**: es el bootblock. Con
+  `xdftool disco.adf list` (del paquete `amitools`) se ve si el disco se lee y
+  qué lleva dentro.
