@@ -19,6 +19,7 @@ from ngplat.project import BEHAVIORS, ITEM_EFFECTS, load_project
 VALORES = {
     "titulo": '"OTRO"', "autor": '"YO"', "vidas": "4", "tiempo": "30",
     "hud": "no", "fondo": '"#204060"', "camara": '"pantallas"',
+    "amiga": '"8colores"',
     "velocidad": "2.0", "aceleracion": "0.4", "friccion": "0.3",
     "control_aire": "0.2", "salto": "5.0", "corte_salto": "1.2",
     "gravedad": "0.3", "max_caida": "7", "doble_salto": "si",

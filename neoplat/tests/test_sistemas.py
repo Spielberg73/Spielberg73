@@ -147,6 +147,32 @@ class TestGraficosAmiga(unittest.TestCase):
         with self.assertRaises(ProjectError):
             gfx_amiga.fusionar_paletas(paletas)
 
+    def test_en_doble_plano_los_colores_que_sobran_se_aproximan(self):
+        """Con siete colores por plano no hay dibujo que quepa: en vez de dar un
+        error, cada color se cambia por el mas parecido de los que se quedan."""
+        paletas = [Palette("p%d" % i, [(i * 16 + c * 3, 40, 80) for c in range(15)])
+                   for i in range(3)]
+        with self.assertRaises(ProjectError):
+            gfx_amiga.fusionar_paletas(paletas, tope=8)
+        unica = gfx_amiga.fusionar_paletas(paletas, tope=8, aproximar=True)
+        self.assertLessEqual(len(unica.colores), 8)
+        self.assertGreater(unica.perdidos, 0)
+        for paleta in paletas:
+            for indice_local, color in enumerate(paleta.colors):
+                destino = unica.asignacion[paleta.name][indice_local + 1]
+                self.assertLess(destino, 8)
+                elegido = unica.colores[destino]
+                # el que le toca es el mas parecido de los que hay
+                distancias = [gfx_amiga._distancia(color, c) for c in unica.colores[1:]]
+                self.assertEqual(gfx_amiga._distancia(color, elegido), min(distancias))
+
+    def test_el_doble_plano_gasta_tres_bitplanes_por_dibujo(self):
+        banco = gfx_amiga.BancoAmiga(planos=3)
+        banco.anadir(_tile16(3))
+        self.assertEqual(banco.bytes_por_tile, 16 * 3 * 2)
+        self.assertEqual(len(banco.tiles), 96)
+        self.assertEqual(len(banco.mascaras), 96)
+
     def test_el_banco_comparte_los_dibujos_repetidos(self):
         banco = gfx_amiga.BancoAmiga()
         primero = banco.anadir(_tile16(3))
@@ -293,6 +319,35 @@ class TestProyectoGenerado(unittest.TestCase):
         self.assertIn("np_tile_data", texto)
         self.assertIn("np_tile_mask", texto)
         self.assertIn("np_colores[32]", texto)
+
+    def test_amiga_en_doble_plano_pide_seis_bitplanes(self):
+        """Con 'amiga: 8colores' salen tres bitplanes por plano y el mapa de
+        bits del parallax, que en el modo normal no existe."""
+        otro = os.path.join(self.tmp, "juego8")
+        if not os.path.isdir(otro):
+            shutil.copytree(self.proyecto, otro)
+            yaml = os.path.join(otro, "game.yaml")
+            with open(yaml, encoding="utf-8") as fh:
+                texto = fh.read()
+            assert "  amiga: 32colores" in texto, "el andamiaje ya no trae el modo"
+            with open(yaml, "w", encoding="utf-8") as fh:
+                fh.write(texto.replace("  amiga: 32colores", "  amiga: 8colores", 1))
+        build = cargar_demo(otro, "amiga")
+        sistema = sistemas.obtener("amiga")
+        sistema.comprobar(build)
+        salida_dir = os.path.join(self.tmp, "build-amiga8")
+        generar_para_sistema(build, salida_dir, sistema, "202")
+        self.assertIn("#define NP_PLANOS 3", build.info["cabecera"])
+        with open(os.path.join(salida_dir, "src/graficos.c"), encoding="utf-8") as fh:
+            texto = fh.read()
+        self.assertIn("np_fondo_bitmap", texto)
+        self.assertIn("np_colores[32]", texto)
+        # los dibujos ocupan tres bitplanes, no cinco
+        banco = build.info["banco"]
+        self.assertEqual(len(banco.tiles), banco.cuantos * 96)
+        # y el parallax se empaqueta de verdad: alguna casilla apunta a un dibujo
+        self.assertTrue(any(any(c.tiles) for c in build.layers),
+                        "el parallax no se ha metido en el banco")
 
     def test_jaguar_genera_todo(self):
         build, out = self._generar("jaguar")

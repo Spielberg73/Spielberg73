@@ -73,6 +73,7 @@
           titulo: DATA.title, autor: DATA.author,
           vidas: DATA.lives, tiempo: DATA.time_limit,
           camara: DATA.camara_pantallas ? "pantallas" : "scroll",
+          amiga: DATA.amiga_modo || "32colores",
           sistema: DATA.sistema || "neogeo"
         },
         jugador: {
@@ -955,6 +956,7 @@
       DATA.lives = Math.round(editor.modelo.juego.vidas);
       DATA.time_limit = Math.round(editor.modelo.juego.tiempo);
       DATA.camara_pantallas = editor.modelo.juego.camara === "pantallas" ? 1 : 0;
+      DATA.amiga_modo = editor.modelo.juego.amiga;
       for (var i = 0; i < editor.modelo.filas.length; i++) reconstruirNivel(i);
     }
     editor.aplicarAlMotor = aplicarAlMotor;

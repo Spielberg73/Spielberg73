@@ -78,8 +78,28 @@
    este mismo codigo se pueda comprobar en el ordenador (las pruebas lo hacen). */
 #define NP_DIR(p) ((uint32_t)(uintptr_t)(p))
 
-/* --- pantalla ----------------------------------------------------------- */
+/* --- pantalla -----------------------------------------------------------
+ *
+ * El Amiga tiene dos modos, y se elige en el game.yaml con `amiga:`:
+ *
+ *   32colores  cinco bitplanes, un solo plano de juego. Todos los colores para
+ *              los dibujos, pero no hay sitio para capas de fondo.
+ *   8colores   *dual playfield*: los seis bitplanes se parten en dos planos
+ *              independientes de tres, cada uno con su scroll por hardware.
+ *              El juego va delante con 7 colores y el parallax detras con
+ *              otros 7. Es la unica forma de tener parallax de verdad en un
+ *              A500: dibujarlo con el blitter no cabe en un frame, esta medido
+ *              (ver docs/amiga.md).
+ *
+ * gamedata.h define NP_PLANOS a 3 o a 5; aqui solo esta el valor por defecto. */
+#ifndef NP_PLANOS
 #define NP_PLANOS 5
+#endif
+#if NP_PLANOS == 3
+#define NP_DOBLE_PLANO 1
+#else
+#define NP_DOBLE_PLANO 0
+#endif
 #define NP_MAPA_ANCHO 704                       /* pixeles del mapa de bits */
 #define NP_MAPA_ALTO 256
 #define NP_BYTES_FILA (NP_MAPA_ANCHO / 8)       /* 88 bytes por plano y fila */
@@ -91,7 +111,11 @@
 #define NP_HUD_ALTO 24                          /* tres filas de 8 pixeles */
 #define NP_HUD_BYTES_FILA 40                    /* 320 px de ancho         */
 #define NP_HUD_PASO (NP_HUD_BYTES_FILA * NP_PLANOS)
+#if NP_DOBLE_PLANO
+#define NP_HUD_COLOR 7                          /* el ultimo del plano de delante */
+#else
 #define NP_HUD_COLOR 31                         /* el ultimo color de la paleta */
+#endif
 
 void np_amiga_init(void);
 void np_video_frame(const NpWorld *w);
@@ -109,6 +133,9 @@ void np_hud_number(uint8_t col, uint8_t fila, uint32_t valor, uint8_t digitos);
 /* datos que genera el compilador (graficos.c) */
 extern uint8_t np_bitmap[];                      /* el mapa de bits, en RAM chip */
 extern uint8_t np_hud_bitmap[];                  /* la franja del marcador       */
+#if NP_DOBLE_PLANO
+extern uint8_t np_fondo_bitmap[];                /* el plano de atras (parallax) */
+#endif
 extern const uint8_t np_tile_data[];             /* dibujos entrelazados */
 extern const uint8_t np_tile_mask[];             /* sus mascaras */
 extern const uint16_t np_colores[32];

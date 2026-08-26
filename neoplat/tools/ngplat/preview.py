@@ -198,6 +198,7 @@ def build_data(build: Build) -> Dict[str, object]:
             "objetos": [b.name for b in build.items],
         },
         "camara_pantallas": 1 if project.camera == "pantallas" else 0,
+        "amiga_modo": project.amiga_modo,
         "sistema": sistema.nombre,
         "sistemas": [{"id": m.nombre, "nombre": m.titulo, "binario": m.nombre_binario}
                      for m in sistemas.disponibles()],

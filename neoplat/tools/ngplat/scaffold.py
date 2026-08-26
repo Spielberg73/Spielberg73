@@ -109,6 +109,7 @@ juego:
   vidas: 3
   tiempo: 0            # segundos por nivel (0 = sin limite)
   camara: scroll       # scroll (el escenario se desliza) o pantallas
+  amiga: 32colores     # solo en Amiga: 32colores o 8colores (con parallax)
   fondo: "#101830"
 
 jugador:

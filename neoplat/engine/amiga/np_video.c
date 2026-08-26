@@ -31,7 +31,14 @@ static const NpLevel *np_nivel_actual;
 #define NP_COP_COLOR0    (NP_COP_CABECERA + 1)    /* el fondo, que cambia   */
 #define NP_COP_HUD       NP_COP_COLORES           /* BPLCON1 y los modulos  */
 #define NP_COP_HUD_PTR   (NP_COP_HUD + 6)
+/* En doble plano la seccion de arriba lleva los punteros de los dos planos:
+   los del marcador y los del parallax, que a partir de ahi sigue solo. */
+#if NP_DOBLE_PLANO
+#define NP_COP_FONDO_PTR (NP_COP_HUD_PTR + NP_PLANOS * 4)
+#define NP_COP_ESPERA    (NP_COP_FONDO_PTR + NP_PLANOS * 4)
+#else
 #define NP_COP_ESPERA    (NP_COP_HUD_PTR + NP_PLANOS * 4)
+#endif
 #define NP_COP_JUEGO     (NP_COP_ESPERA + 2)
 #define NP_COP_JUEGO_PTR (NP_COP_JUEGO + 6)
 #define NP_COP_FIN       (NP_COP_JUEGO_PTR + NP_PLANOS * 4)
@@ -48,15 +55,26 @@ static void np_esperar_blitter(void)
 
 /* --- copper y pantalla -------------------------------------------------- */
 
-/* Escribe en la lista los cinco punteros de bitplane a partir de `sitio`. */
-static void np_copper_punteros(uint16_t *sitio, uint32_t direccion, uint16_t paso)
+/* Escribe en la lista los punteros de bitplane a partir de `sitio`.
+ *
+ * En doble plano los seis bitplanes se reparten alternos: los impares (BPL1,
+ * BPL3, BPL5) son el plano de delante y los pares (BPL2, BPL4, BPL6) el de
+ * atras, asi que cada plano usa un registro si y otro no. */
+#if NP_DOBLE_PLANO
+#define NP_SALTO_REG 8
+#else
+#define NP_SALTO_REG 4
+#endif
+
+static void np_copper_punteros(uint16_t *sitio, uint32_t direccion, uint16_t paso,
+                               uint16_t primer_reg)
 {
     uint8_t i;
     for (i = 0; i < NP_PLANOS; i++) {
         uint32_t plano = direccion + i * paso;
-        sitio[0] = (uint16_t)(0x00E0 + i * 4);
+        sitio[0] = (uint16_t)(primer_reg + i * NP_SALTO_REG);
         sitio[1] = (uint16_t)(plano >> 16);
-        sitio[2] = (uint16_t)(0x00E2 + i * 4);
+        sitio[2] = (uint16_t)(primer_reg + 2 + i * NP_SALTO_REG);
         sitio[3] = (uint16_t)(plano & 0xFFFF);
         sitio += 4;
     }
@@ -67,7 +85,12 @@ static void np_montar_copper(void)
     uint16_t *p = np_copper;
     uint8_t i;
 
+#if NP_DOBLE_PLANO
+    /* seis bitplanes y el bit de doble plano: dos planos de tres cada uno */
+    *p++ = 0x0100; *p++ = (6 << 12) | 0x0400 | 0x0200;   /* BPLCON0 */
+#else
     *p++ = 0x0100; *p++ = (NP_PLANOS << 12) | 0x0200;   /* BPLCON0: 5 planos */
+#endif
     *p++ = 0x0104; *p++ = 0x0024;                        /* BPLCON2 */
     *p++ = 0x008E; *p++ = 0x2C81;                        /* DIWSTRT */
     *p++ = 0x0090; *p++ = 0x0CC1;                        /* DIWSTOP: 320x224 */
@@ -81,21 +104,33 @@ static void np_montar_copper(void)
 
     /* franja del marcador */
     *p++ = 0x0102; *p++ = 0x0000;                        /* BPLCON1: sin scroll */
-    *p++ = 0x0108; *p++ = (uint16_t)(NP_HUD_PASO - 40);  /* BPL1MOD */
+    *p++ = 0x0108; *p++ = (uint16_t)(NP_HUD_PASO - 40);  /* BPL1MOD: plano de delante */
+#if NP_DOBLE_PLANO
+    /* el plano de atras lleva su propio modulo y sigue solo todo el frame */
+    *p++ = 0x010A; *p++ = (uint16_t)(NP_PASO_FILA - 40); /* BPL2MOD */
+#else
     *p++ = 0x010A; *p++ = (uint16_t)(NP_HUD_PASO - 40);  /* BPL2MOD */
-    np_copper_punteros(p, NP_DIR(np_hud_bitmap), NP_HUD_BYTES_FILA);
+#endif
+    np_copper_punteros(p, NP_DIR(np_hud_bitmap), NP_HUD_BYTES_FILA, 0x00E0);
     p += NP_PLANOS * 4;
+#if NP_DOBLE_PLANO
+    np_copper_punteros(p, NP_DIR(np_fondo_bitmap), NP_BYTES_FILA, 0x00E4);
+    p += NP_PLANOS * 4;
+#endif
 
     /* ...hasta aqui; de la linea NP_HUD_ALTO en adelante manda el juego */
     *p++ = (uint16_t)(((NP_LINEA_ARRIBA + NP_HUD_ALTO) << 8) | 0x01);
     *p++ = 0xFFFE;
 
     *p++ = 0x0102; *p++ = 0x0000;                        /* BPLCON1: scroll fino */
-    /* entrelazado: al acabar una fila hay que saltar los otros cuatro planos
+    /* entrelazado: al acabar una fila hay que saltar los demas bitplanes
        y la parte del mapa que no se ve */
     *p++ = 0x0108; *p++ = (uint16_t)(NP_PASO_FILA - 40);
+#if !NP_DOBLE_PLANO
+    /* en doble plano BPL2MOD es del plano de atras y ya se puso arriba */
     *p++ = 0x010A; *p++ = (uint16_t)(NP_PASO_FILA - 40);
-    np_copper_punteros(p, NP_DIR(np_bitmap), NP_BYTES_FILA);
+#endif
+    np_copper_punteros(p, NP_DIR(np_bitmap), NP_BYTES_FILA, 0x00E0);
     p += NP_PLANOS * 4;
 
     *p++ = 0xFFFF; *p++ = 0xFFFE;                        /* fin de la lista */
@@ -104,7 +139,7 @@ static void np_montar_copper(void)
 /* Mete en la lista del copper donde empieza cada bitplane este frame. */
 static void np_punteros(uint32_t direccion)
 {
-    np_copper_punteros(np_copper + NP_COP_JUEGO_PTR, direccion, NP_BYTES_FILA);
+    np_copper_punteros(np_copper + NP_COP_JUEGO_PTR, direccion, NP_BYTES_FILA, 0x00E0);
 }
 
 void np_amiga_init(void)
@@ -123,10 +158,10 @@ void np_amiga_init(void)
 
 /* --- blitter ------------------------------------------------------------ */
 
-/* Copia un tile (16x16, cinco planos entrelazados) al mapa de bits. */
-static void np_blit_tile(uint16_t tile, int32_t x, int32_t y)
+/* Copia un tile (16x16, NP_PLANOS planos entrelazados) al mapa de bits `base`. */
+static void np_blit_tile_en(uint32_t base, uint16_t tile, int32_t x, int32_t y)
 {
-    uint32_t destino = NP_DIR(np_bitmap) + (uint32_t)y * NP_PASO_FILA + (x / 8);
+    uint32_t destino = base + (uint32_t)y * NP_PASO_FILA + (x / 8);
     const uint8_t *origen = np_tile_data + (uint32_t)tile * (NP_TILE * NP_PLANOS * 2);
     np_esperar_blitter();
     BLTCON0 = 0x09F0;                  /* A -> D, sin desplazar */
@@ -138,6 +173,11 @@ static void np_blit_tile(uint16_t tile, int32_t x, int32_t y)
     BLTAPT = NP_DIR(origen);
     BLTDPT = destino;
     BLTSIZE = (uint16_t)(((NP_TILE * NP_PLANOS) << 6) | 1);
+}
+
+static void np_blit_tile(uint16_t tile, int32_t x, int32_t y)
+{
+    np_blit_tile_en(NP_DIR(np_bitmap), tile, x, y);
 }
 
 /* Dibuja un actor recortado por su mascara (cookie cut). */
@@ -189,6 +229,81 @@ static void np_redibujar_todo(const NpWorld *w)
     for (i = 0; i < NP_MAPA_ANCHO / NP_TILE; i++) np_columna(w, np_base_tile + i);
     np_rastro_count = 0;
 }
+
+#if NP_DOBLE_PLANO
+/* --- el plano de atras (parallax) --------------------------------------
+ *
+ * Se pinta una vez al entrar en el nivel, repitiendo el dibujo de la capa a lo
+ * ancho de todo el mapa de bits. Despues solo se mueven sus punteros, que es
+ * gratis: el scroll de los dos planos es independiente por hardware, y esa es
+ * justo la razon de existir de este modo.
+ */
+static void np_limpiar_fondo(void)
+{
+    uint32_t *p = (uint32_t *)(void *)np_fondo_bitmap;
+    uint32_t i;
+    np_esperar_blitter();
+    for (i = 0; i < NP_MAPA_ALTO * NP_PASO_FILA / 4; i++) *p++ = 0;
+}
+
+static void np_pintar_fondo(const NpWorld *w)
+{
+    np_limpiar_fondo();
+#if NP_LAYER_COUNT > 0
+    if (w->level->layer_count && np_layers[w->level->layers[0]].cols) {
+        const NpLayer *capa = &np_layers[w->level->layers[0]];
+        int32_t columnas = NP_MAPA_ANCHO / NP_TILE;
+        int32_t c, r;
+        for (c = 0; c < columnas; c++) {
+            int32_t fuente = c % capa->cols;
+            for (r = 0; r < capa->rows; r++) {
+                int32_t y = capa->offset_y + r * NP_TILE;
+                if (y < 0 || y + NP_TILE > NP_MAPA_ALTO) continue;
+                np_blit_tile_en(NP_DIR(np_fondo_bitmap),
+                                capa->tiles[r * capa->cols + fuente],
+                                c * NP_TILE, y);
+            }
+        }
+    }
+#else
+    (void)w;
+#endif
+    np_esperar_blitter();
+}
+
+/* Mueve el plano de atras: grueso con los punteros, fino con BPLCON1. */
+static uint16_t np_mover_fondo(const NpWorld *w)
+{
+    int32_t sx = 0, sy = 0, periodo = 0;
+    int32_t maximo = NP_MAPA_ANCHO - NP_SCREEN_W;   /* lo que se puede desplazar */
+    uint32_t direccion;
+#if NP_LAYER_COUNT > 0
+    if (w->level->layer_count) {
+        const NpLayer *capa = &np_layers[w->level->layers[0]];
+        sx = ((int32_t)w->cam_x * capa->speed_x) >> 8;
+        sy = ((int32_t)w->cam_y * capa->speed_y) >> 8;
+        periodo = capa->cols * NP_TILE;
+    }
+#endif
+    /* el dibujo esta repetido a lo ancho del mapa de bits, asi que al llegar a
+       su ancho se puede volver al principio sin que se note. Una capa mas ancha
+       que el hueco que sobra no tiene donde volver: se para en el borde. */
+    if (periodo >= NP_TILE && periodo <= maximo) {
+        sx %= periodo;
+        if (sx < 0) sx += periodo;
+    } else {
+        if (sx < 0) sx = 0;
+        if (sx > maximo) sx = maximo;
+    }
+    if (sy < 0) sy = 0;
+    if (sy > NP_MAPA_ALTO - NP_SCREEN_H - NP_HUD_ALTO)
+        sy = NP_MAPA_ALTO - NP_SCREEN_H - NP_HUD_ALTO;
+    direccion = NP_DIR(np_fondo_bitmap) + (uint32_t)sy * NP_PASO_FILA
+              + (uint32_t)(sx / 16) * 2;
+    np_copper_punteros(np_copper + NP_COP_FONDO_PTR, direccion, NP_BYTES_FILA, 0x00E4);
+    return (uint16_t)(sx & 15);
+}
+#endif /* NP_DOBLE_PLANO */
 
 /* --- un frame ----------------------------------------------------------- */
 
@@ -270,6 +385,9 @@ void np_video_frame(const NpWorld *w)
         np_nivel_actual = w->level;
         /* el color 0 es el fondo de la pantalla, y cada nivel trae el suyo */
         np_copper[NP_COP_COLOR0] = w->level->background;
+#if NP_DOBLE_PLANO
+        np_pintar_fondo(w);          /* el parallax se pinta una vez por nivel */
+#endif
         np_redibujar_todo(w);
         ultima_columna = columna;
     } else {
@@ -315,7 +433,15 @@ void np_video_frame(const NpWorld *w)
         + (uint32_t)(w->cam_y + NP_HUD_ALTO) * NP_PASO_FILA
         + (uint32_t)((w->cam_x - np_base_tile * NP_TILE) / 16) * 2;
     np_punteros(direccion);
+#if NP_DOBLE_PLANO
+    {
+        uint16_t fino = np_mover_fondo(w);
+        np_copper[NP_COP_HUD + 1] = (uint16_t)(fino << 4);
+        np_copper[NP_COP_JUEGO + 1] = (uint16_t)((fino << 4) | (w->cam_x & 15));
+    }
+#else
     np_copper[NP_COP_JUEGO + 1] = (uint16_t)(((w->cam_x & 15) << 4) | (w->cam_x & 15));
+#endif
 
 #if NP_HUD_ENABLED
     np_hud_draw(w);

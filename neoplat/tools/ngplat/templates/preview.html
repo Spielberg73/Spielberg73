@@ -1038,6 +1038,10 @@
       { valor: "scroll", texto: "scroll (el escenario se desliza)" },
       { valor: "pantallas", texto: "pantalla a pantalla (salta de una a otra)" }
     ]);
+    campoLista(cont, "colores del Amiga", "juego", "amiga", null, j.amiga, [
+      { valor: "32colores", texto: "32 colores (sin parallax)" },
+      { valor: "8colores", texto: "8 colores por plano (con parallax)" }
+    ]);
     campoLista(cont, "maquina", "juego", "sistema", null, j.sistema,
                (DATA.sistemas || []).map(function (m) {
                  return { valor: m.id, texto: m.nombre };

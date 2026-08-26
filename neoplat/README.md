@@ -28,9 +28,9 @@ Y las cuatro llevan un **68000**, que es lo que hace que el motor sea uno solo.
 | CPU | 68000 a 12 MHz | 68000 a 7,6 MHz | 68000 a 7 MHz | 68000 a 13,3 MHz |
 | Escenario | columnas de sprites | plano A del VDP | mapa de bits + blitter | mapa de bits lineal |
 | Actores | sprites | sprites del VDP | blitter con máscara | objetos del chip |
-| Colores | 4096 en pantalla | 4 paletas de 16 | una paleta de 32 | una tabla de 256 |
+| Colores | 4096 en pantalla | 4 paletas de 16 | una de 32, o dos de 8 | una tabla de 256 |
 | Sonido | YM2610 (SSG) por Z80 | PSG SN76489 | Paula (4 canales) | todavía no |
-| Parallax | sí | una capa | todavía no | todavía no |
+| Parallax | sí | una capa | una capa (`amiga: 8colores`) | todavía no |
 | Sale | ROMs de cartucho | `.bin` con cabecera y suma | disquete `.adf` arrancable | cartucho `.j64` |
 
 ## Instalación
@@ -419,12 +419,11 @@ Lo que aún no hace:
   un programa para el DSP, que es otro juego de instrucciones y otro
   ensamblador. Por ahora el juego sale mudo en esa máquina y el compilador
   avisa.
-- **Parallax en Amiga**: en la Neo Geo van todas las capas y en la Mega Drive
-  una; en el Amiga el fondo se ve del color de fondo del nivel. Haría falta
-  modo *dual playfield*, que deja el juego en 7 colores por plano en vez de 32.
-  Dibujarlas con el blitter y quedarse con los 32 colores está medido y **no
-  cabe**: 1.311 líneas de barrido sobre las 313 que da un frame
-  ([docs/amiga.md](docs/amiga.md)).
+- **Varias capas de parallax en Amiga**: con `amiga: 8colores` el juego usa el
+  modo *dual playfield* del OCS y se dibuja **una** capa, movida por hardware;
+  las demás se ignoran. Dibujarlas con el blitter y quedarse con los 32 colores
+  está medido y **no cabe**: 1.311 líneas de barrido sobre las 313 que da un
+  frame ([docs/amiga.md](docs/amiga.md)).
 - **Muestras digitales**: la música y los efectos usan ondas cuadradas en las
   tres máquinas que suenan; las voces y percusiones sampleadas aún no (ni la ROM V1 de la
   Neo Geo ni los samples de Paula ni el YM2612).

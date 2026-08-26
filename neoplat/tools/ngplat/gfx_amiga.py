@@ -117,6 +117,7 @@ class PaletaUnica:
     """Los 32 colores del juego y como llegar a ellos desde cada dibujo."""
     colores: List[RGB] = field(default_factory=list)
     asignacion: Dict[str, Dict[int, int]] = field(default_factory=dict)
+    perdidos: int = 0              # colores que no cabian y se han aproximado
 
     def palabras(self) -> List[int]:
         salida = [amiga_color(c) for c in self.colores]
@@ -124,46 +125,134 @@ class PaletaUnica:
         return salida[:COLORES]
 
 
-def fusionar_paletas(paletas: List[Palette]) -> PaletaUnica:
-    """Junta todas las paletas del juego en los 32 colores del Amiga."""
-    unica = PaletaUnica(colores=[(0, 0, 0)])       # el 0 es el color de fondo
+def fusionar_paletas(paletas: List[Palette], tope: int = COLORES,
+                     pesos: Dict[RGB, int] | None = None,
+                     aproximar: bool = False) -> PaletaUnica:
+    """Junta todas las paletas del juego en los colores que quepan.
+
+    `tope` cuenta el color 0, que es el del fondo. Si los dibujos usan mas
+    colores de los que caben hay dos salidas: dar un error (lo normal, con 32
+    colores nunca pasa) o, con `aproximar`, quedarse con los colores mas
+    usados y cambiar los demas por el mas parecido. Eso ultimo hace falta en el
+    modo de doble plano del Amiga, donde solo hay siete colores por plano y no
+    hay dibujo que quepa sin retocarlo.
+    """
+    distintos: List[RGB] = []
+    culpable = ""
+    for paleta in paletas:
+        for color in paleta.colors:
+            if color not in distintos:
+                distintos.append(color)
+                if not culpable and len(distintos) + 1 > tope:
+                    culpable = paleta.name
+
+    if len(distintos) + 1 > tope:
+        if not aproximar:
+            raise ProjectError(
+                "los graficos usan %d colores distintos y aqui caben %d"
+                % (len(distintos) + 1, tope),
+                hint="repite colores entre dibujos: el primero que se sale es "
+                     "'%s'" % culpable,
+            )
+        elegidos = _reducir(distintos, pesos or {}, tope - 1)
+    else:
+        elegidos = list(distintos)
+
+    unica = PaletaUnica(colores=[(0, 0, 0)] + elegidos)   # el 0 es el fondo
+    unica.perdidos = len(distintos) - len(elegidos)
+    cercano = {c: 1 + _mas_parecido(c, elegidos) for c in distintos}
     for paleta in paletas:
         mapa = {0: 0}
         for i, color in enumerate(paleta.colors):
-            if color not in unica.colores:
-                if len(unica.colores) >= COLORES:
-                    raise ProjectError(
-                        "los graficos usan mas de %d colores distintos y el Amiga "
-                        "muestra %d a la vez" % (len(unica.colores) + 1, COLORES),
-                        hint="repite colores entre dibujos o quita alguna capa de fondo; "
-                             "la que no cabe es '%s'" % paleta.name,
-                    )
-                unica.colores.append(color)
-            mapa[i + 1] = unica.colores.index(color)
+            mapa[i + 1] = cercano[color]
         unica.asignacion[paleta.name] = mapa
     return unica
+
+
+def _distancia(a: RGB, b: RGB) -> int:
+    return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2
+
+
+def _mas_parecido(color: RGB, candidatos: List[RGB]) -> int:
+    mejor, mejor_d = 0, None
+    for i, c in enumerate(candidatos):
+        d = _distancia(color, c)
+        if mejor_d is None or d < mejor_d:
+            mejor, mejor_d = i, d
+    return mejor
+
+
+def _reducir(colores: List[RGB], pesos: Dict[RGB, int], cuantos: int) -> List[RGB]:
+    """Corte por la mediana: parte la nube de colores en `cuantos` cajas y se
+    queda con el color medio de cada una, pesando cuanto se usa cada uno.
+
+    Es el metodo de toda la vida para bajar de colores, y es determinista: la
+    misma imagen da siempre la misma paleta.
+    """
+    peso = lambda c: max(1, pesos.get(c, 1))
+    cajas: List[List[RGB]] = [list(colores)]
+    while len(cajas) < cuantos:
+        # se parte la caja mas ancha, medida en el canal que mas varia
+        mejor, mejor_rango, mejor_canal = -1, -1, 0
+        for i, caja in enumerate(cajas):
+            if len(caja) < 2:
+                continue
+            for canal in range(3):
+                valores = [c[canal] for c in caja]
+                rango = max(valores) - min(valores)
+                if rango > mejor_rango:
+                    mejor, mejor_rango, mejor_canal = i, rango, canal
+        if mejor < 0:
+            break
+        caja = cajas.pop(mejor)
+        caja.sort(key=lambda c: (c[mejor_canal], c))
+        # se corta donde la mitad del peso queda a cada lado
+        total = sum(peso(c) for c in caja)
+        acumulado, corte = 0, 1
+        for i, c in enumerate(caja[:-1]):
+            acumulado += peso(c)
+            corte = i + 1
+            if acumulado * 2 >= total:
+                break
+        cajas.append(caja[:corte])
+        cajas.append(caja[corte:])
+
+    salida = []
+    for caja in cajas:
+        total = sum(peso(c) for c in caja)
+        salida.append(tuple(sum(c[canal] * peso(c) for c in caja) // total
+                            for canal in range(3)))
+    return salida
 
 
 # ------------------------------------------------------------ los dibujos
 
 @dataclass
 class BancoAmiga:
-    """Todos los dibujos del juego, ya entrelazados, y sus mascaras."""
+    """Todos los dibujos del juego, ya entrelazados, y sus mascaras.
+
+    `planos` son 5 en el modo normal y 3 en doble plano, donde los seis
+    bitplanes se reparten entre los dos planos."""
     tiles: bytearray = field(default_factory=bytearray)
     mascaras: bytearray = field(default_factory=bytearray)
+    planos: int = PLANOS
     _cache: Dict[Tuple[int, ...], int] = field(default_factory=dict)
 
     @property
+    def bytes_por_tile(self) -> int:
+        return TILE_PX * self.planos * 2
+
+    @property
     def cuantos(self) -> int:
-        return len(self.tiles) // BYTES_POR_TILE
+        return len(self.tiles) // self.bytes_por_tile
 
     def anadir(self, pixeles: Sequence[int], compartir: bool = True) -> int:
         clave = tuple(pixeles)
         if compartir and clave in self._cache:
             return self._cache[clave]
         indice = self.cuantos
-        self.tiles.extend(codificar_tile(pixeles))
-        self.mascaras.extend(codificar_mascara(pixeles))
+        self.tiles.extend(codificar_tile(pixeles, self.planos))
+        self.mascaras.extend(codificar_mascara(pixeles, self.planos))
         if compartir:
             self._cache[clave] = indice
         return indice

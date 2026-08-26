@@ -99,14 +99,25 @@ planos de una sola pasada, en vez de cinco.
 El color del Amiga es una palabra `0000 RRRR GGGG BBBB`: **cuatro bits por
 canal**. Está en `gfx_amiga.amiga_color()`.
 
-Solo hay **una paleta de 32 colores** para todo lo que se ve a la vez, así que
-`fusionar_paletas()` mete todas las del proyecto en ella reutilizando los
-colores repetidos. El 0 es el fondo y el 31 se reserva para el marcador, así
-que a los dibujos les quedan 31.
+Cuántos colores hay depende del modo (`amiga:` en el `game.yaml`):
 
-Las capas de parallax **todavía no se dibujan** en Amiga (haría falta modo
-*dual playfield*, que dejaría el juego en 8 colores), así que sus colores ni se
-cuentan ni gastan memoria.
+| | `32colores` | `8colores` |
+|---|---|---|
+| Bitplanes | 5, un solo plano | 6, repartidos 3 y 3 |
+| Colores del juego | 31 (el 0 es el fondo, el 31 el marcador) | 7 (el 0 transparente, el 7 el marcador) |
+| Colores del parallax | — | 7 (registros 9 a 15) |
+| Parallax | no se dibuja | sí, por hardware |
+
+En los dos casos `fusionar_paletas()` mete todas las paletas del proyecto en
+una sola reutilizando los colores repetidos. La diferencia es qué pasa cuando
+no caben: con 32 da un error (nunca ha pasado con dibujos normales), y con 8
+**no puede darlo**, porque no hay dibujo de verdad que quepa en siete colores.
+Ahí se hace lo de siempre en estos casos: **corte por la mediana**. Se cuenta
+cuántos píxeles usa cada color, se parte la nube de colores en siete cajas
+(siempre por el canal que más varía y por la mitad del peso, no del número de
+colores) y cada caja se queda con su color medio; después cada color original
+se cambia por el más parecido de los siete. Es determinista, y `ngplat
+compilar` avisa de cuántos colores ha tenido que aproximar.
 
 ## Que quepa en un frame
 
@@ -165,11 +176,11 @@ Dos cosas se leen ahí:
   `np_tile_gfx_column()` bajan a 683, un **28% menos**. Es la misma trampa que
   se encontró en la Neo Geo.
 
-### Por qué no hay parallax por blitter
+### Por qué el parallax no se dibuja con el blitter
 
 La pregunta natural es: si el fondo ya se dibuja con el blitter, ¿por qué no
-dibujar también las capas de parallax y saltarse el *dual playfield* (que
-dejaría el juego en 7 colores por plano)? Porque no cabe, y por mucho:
+dibujar también las capas de parallax y quedarse siempre con 32 colores?
+Porque no cabe, y por mucho:
 
 Las dos capas del ejemplo ocupan 21 columnas × 10 filas de tiles = **210 tiles
 con máscara** por frame, porque se mueven a otra velocidad que el scroll por
@@ -189,6 +200,30 @@ que hagas.
 Con el hueco que hay de verdad (313 − 272 del peor frame ≈ 40 líneas, o unas
 190 si sólo miras la media) caben **entre 10 y 46 tiles con máscara por
 frame**: una tira de dos filas de alto. No da para una capa de fondo.
+
+### El parallax de verdad: dual playfield
+
+Como el blitter no puede, el parallax lo hace el **hardware de vídeo**, que
+sale gratis. El OCS sabe partir los seis bitplanes en dos planos independientes
+de tres (`BPLCON0` bit 10, `DBLPF`): los impares (BPL1, BPL3, BPL5) forman el
+plano de delante y los pares (BPL2, BPL4, BPL6) el de detrás. Cada uno tiene:
+
+- **su propio scroll fino**, en `BPLCON1`: los bits 0-3 mueven los planos
+  impares y los 4-7 los pares. Por eso en el modo de 32 colores hay que poner
+  el mismo valor en los dos nibbles, y aquí no;
+- **su propio módulo**, `BPL1MOD` para los impares y `BPL2MOD` para los pares,
+  lo que permite que los dos mapas de bits tengan anchos distintos;
+- **sus propios punteros**, así que el scroll grueso también es independiente.
+
+En NeoPlat el plano de delante es el juego (colores 0-7) y el de detrás el
+parallax (colores 8-15). El plano de detrás se pinta **una sola vez al entrar
+en el nivel**, repitiendo el dibujo de la capa a lo ancho de todo el mapa de
+bits; a partir de ahí moverlo cuesta escribir cuatro palabras en la lista del
+copper: `np_mover_fondo()` pone el scroll grueso en los punteros y devuelve los
+cuatro bits del fino. Cero blits por frame, cero líneas de presupuesto.
+
+El precio son los colores (7 y 7 en vez de 31) y **una sola capa**: si el nivel
+tiene varias, se dibuja la primera y `ngplat` avisa.
 
 ### Cómo medirlo
 

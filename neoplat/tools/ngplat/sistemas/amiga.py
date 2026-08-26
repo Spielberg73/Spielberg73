@@ -30,6 +30,12 @@ from .base import Limites, Salida, Sistema, registrar
 ALTO_MAX_TILES = gfx_amiga.TILE_PX          # el mapa de bits son 256 lineas
 COLOR_HUD = 31                              # el ultimo color, reservado
 MAX_COLORES_JUEGO = COLOR_HUD               # los otros 31 son del juego
+
+# En doble plano (8 colores) los seis bitplanes se parten en dos planos de tres:
+# el juego delante con los colores 0-7 y el parallax detras con los 8-15.
+COLOR_HUD_DOBLE = 7
+COLORES_POR_PLANO = 8
+ANCHO_PARALLAX = 704 - 320                  # lo que el plano de atras puede correr
 MAX_TILES = 1024                            # 160 KB de dibujos: de sobra en chip
 
 
@@ -71,24 +77,24 @@ class Amiga(Sistema):
 
     def preparar(self, build: Build) -> None:
         build.sistema = self
-        banco = gfx_amiga.BancoAmiga()
+        doble = build.project.amiga_modo == "8colores"
+        planos = 3 if doble else gfx_amiga.PLANOS
+        color_hud = COLOR_HUD_DOBLE if doble else COLOR_HUD
+        banco = gfx_amiga.BancoAmiga(planos=planos)
 
-        # 1) las paletas del juego caben todas en los 32 colores del Amiga.
-        #    Las capas de parallax se quedan fuera: en el Amiga todavia no se
-        #    dibujan (ver comprobar), asi que ni gastan colores ni memoria.
+        # 1) las paletas. Con 32 colores caben todas juntas; en doble plano el
+        #    juego se queda con siete y el parallax con otros siete, porque cada
+        #    plano solo tiene tres bitplanes. Ahi no hay dibujo que quepa tal
+        #    cual, asi que los colores que sobran se acercan al mas parecido.
         paletas = [build.tileset.palette]
         paletas += [a.sheet.palette for a in build.actor_builds()]
-        unica = gfx_amiga.fusionar_paletas(paletas)
-        if len(unica.colores) > MAX_COLORES_JUEGO:
-            raise ProjectError(
-                "los graficos usan %d colores distintos y en el Amiga quedan %d "
-                "(el ultimo es del marcador)"
-                % (len(unica.colores), MAX_COLORES_JUEGO),
-                hint="repite colores entre dibujos o quita alguna capa de fondo",
-            )
+        pesos = _pesos([(build.tileset.palette, build.tileset.tiles)]
+                       + [(a.sheet.palette, a.sheet.tiles) for a in build.actor_builds()])
+        unica = gfx_amiga.fusionar_paletas(paletas, tope=color_hud, pesos=pesos,
+                                           aproximar=doble)
 
-        def remapear(tile, nombre):
-            mapa = unica.asignacion[nombre]
+        def remapear(tile, nombre, mapa=None):
+            mapa = mapa if mapa is not None else unica.asignacion[nombre]
             return [mapa.get(v, 0) for v in tile]
 
         # 2) los dibujos, ya entrelazados y con su mascara
@@ -104,10 +110,30 @@ class Amiga(Sistema):
                 banco.anadir(remapear(tile, actor.sheet.palette.name), compartir=False)
             actor.sheet.palette_index = 0
 
-        for capa in build.layers:
-            capa.tiles = [0] * len(capa.tiles)
-            capa.palette_index = 0
-            capa.dibujos = []
+        # 3) las capas de parallax: solo se dibujan en doble plano, y con su
+        #    propia paleta de siete colores (los registros 9 a 15).
+        colores_fondo = []
+        perdidos_fondo = 0
+        if doble and build.layers:
+            pesos_fondo = _pesos([(c.palette, [c.dibujos[i] for i in c.tiles])
+                                  for c in build.layers])
+            fondo = gfx_amiga.fusionar_paletas(
+                [c.palette for c in build.layers], tope=COLORES_POR_PLANO,
+                pesos=pesos_fondo, aproximar=True)
+            perdidos_fondo = fondo.perdidos
+            colores_fondo = fondo.palabras()[:COLORES_POR_PLANO]
+            for capa in build.layers:
+                mapa = fondo.asignacion[capa.palette.name]
+                nuevos = [banco.anadir(remapear(d, capa.palette.name, mapa))
+                          for d in capa.dibujos]
+                capa.tiles = [nuevos[i] for i in capa.tiles]
+                capa.palette_index = 0
+                capa.dibujos = []
+        else:
+            for capa in build.layers:
+                capa.tiles = [0] * len(capa.tiles)
+                capa.palette_index = 0
+                capa.dibujos = []
 
         if banco.cuantos > MAX_TILES:
             raise ProjectError(
@@ -116,7 +142,7 @@ class Amiga(Sistema):
                 hint="usa menos dibujos distintos o capas de fondo mas pequenas",
             )
 
-        # 3) la fuente del marcador: 8x8 en un solo bit por pixel
+        # 4) la fuente del marcador: 8x8 en un solo bit por pixel
         fuente: Dict[str, int] = {}
         glifos = [[0] * 8]                       # el 0 es el hueco en blanco
         for i, char in enumerate(gfx.FONT_CHARS):
@@ -124,7 +150,12 @@ class Amiga(Sistema):
             fuente[char] = i + 1
 
         colores = unica.palabras()
-        colores[COLOR_HUD] = gfx_amiga.amiga_color((255, 255, 255))
+        colores[color_hud] = gfx_amiga.amiga_color((255, 255, 255))
+        if doble:
+            # los ocho de arriba son el plano de atras
+            for i in range(COLORES_POR_PLANO):
+                colores[COLORES_POR_PLANO + i] = (colores_fondo[i]
+                                                  if i < len(colores_fondo) else 0)
 
         # el color de fondo de cada nivel, en el formato de esta maquina
         for nivel in build.levels:
@@ -143,15 +174,24 @@ class Amiga(Sistema):
                 "bytes_dibujos": len(banco.tiles),
                 "bytes_mascaras": len(banco.mascaras),
                 "colores": len(unica.colores),
+                "aproximados": unica.perdidos + perdidos_fondo,
             },
+            "doble": doble,
             "cabecera": [
                 "#define NP_TILE_COUNT %d" % banco.cuantos,
                 "#define NP_FONT_COUNT %d" % len(glifos),
+                "#define NP_PLANOS %d" % planos,
             ],
         }
 
     def comprobar(self, build: Build) -> List[str]:
         avisos: List[str] = []
+        if build.info.get("stats", {}).get("aproximados"):
+            avisos.append(
+                "con 'amiga: 8colores' solo hay siete colores por plano: %d colores "
+                "de tus dibujos se han cambiado por el mas parecido de los que "
+                "caben. Si quieres mandar tu en los colores, dibuja con siete"
+                % build.info["stats"]["aproximados"])
         for nivel in build.levels:
             if nivel.height > ALTO_MAX_TILES:
                 self.error(
@@ -160,11 +200,27 @@ class Amiga(Sistema):
                     "haz los niveles mas bajos y mas largos",
                 )
         for nivel in build.levels:
-            if nivel.layers:
+            if nivel.layers and not build.info.get("doble"):
                 avisos.append(
-                    "en Amiga todavia no se dibujan las capas de parallax: el fondo "
-                    "de '%s' se vera del color de fondo" % nivel.name)
+                    "con 'amiga: 32colores' no se dibujan las capas de parallax: el "
+                    "fondo de '%s' se vera del color de fondo. Con 'amiga: 8colores' "
+                    "si se dibujan, a cambio de bajar a 7 colores por plano"
+                    % nivel.name)
                 break
+            if len(nivel.layers) > 1 and build.info.get("doble"):
+                avisos.append(
+                    "el Amiga solo tiene sitio para una capa de parallax: en '%s' se "
+                    "usara la primera" % nivel.name)
+                break
+        if build.info.get("doble"):
+            for capa in build.layers:
+                if capa.cols * gfx_amiga.TILE_PX > ANCHO_PARALLAX:
+                    avisos.append(
+                        "la capa '%s' mide %d pixeles de ancho y el plano de atras "
+                        "solo puede correr %d antes de tener que volver al "
+                        "principio: se parara en el borde"
+                        % (capa.name, capa.cols * gfx_amiga.TILE_PX, ANCHO_PARALLAX))
+                    break
         return avisos
 
     # --- generacion ----------------------------------------------------
@@ -184,7 +240,9 @@ class Amiga(Sistema):
             "graficos: %d dibujos de 16x16 (%d KB de dibujos y %d KB de mascaras)"
             % (banco.cuantos, len(banco.tiles) // 1024, len(banco.mascaras) // 1024))
         salida.resumen.append(
-            "colores:  %d de los 32 del Amiga (el 31 es el del marcador)"
+            ("colores:  %d por plano de los 8 del doble plano (el 7 es el del marcador)"
+             if build.info["doble"] else
+             "colores:  %d de los 32 del Amiga (el 31 es el del marcador)")
             % build.info["stats"]["colores"])
         salida.resumen.append(
             "disquete: disco/%s.adf (880 KB, arranca solo en cualquier Amiga)" % nombre)
@@ -197,6 +255,19 @@ def _nombre_ejecutable(build: Build) -> str:
         c if c.isalnum() else " " for c in build.project.title).split() if t]
     nombre = "".join(t[:1].upper() + t[1:].lower() for t in trozos)
     return nombre or "Juego"
+
+
+def _pesos(partes) -> Dict[tuple, int]:
+    """Cuenta cuantos pixeles usa cada color, para saber cuales merece la pena
+    conservar cuando hay que bajar de colores."""
+    pesos: Dict[tuple, int] = {}
+    for paleta, dibujos in partes:
+        for dibujo in dibujos:
+            for v in dibujo:
+                if v:
+                    color = paleta.colors[v - 1]
+                    pesos[color] = pesos.get(color, 0) + 1
+    return pesos
 
 
 def _glifo_1bpp(pixeles) -> List[int]:
@@ -233,19 +304,24 @@ def _graficos_c(build: Build, banco: gfx_amiga.BancoAmiga) -> str:
         " * y entrega puesto a cero. */",
         "uint8_t np_bitmap[NP_MAPA_ALTO * NP_PASO_FILA];",
         "uint8_t np_hud_bitmap[NP_HUD_ALTO * NP_HUD_PASO];",
+        "#if NP_DOBLE_PLANO",
+        "/* El plano de atras, donde va el parallax: mismo tamano que el del",
+        " * juego, con su propio scroll por hardware. */",
+        "uint8_t np_fondo_bitmap[NP_MAPA_ALTO * NP_PASO_FILA];",
+        "#endif",
         "",
         "/* Cada dibujo son 16 filas x 5 bitplanes x 2 bytes = 160 bytes.",
         " * Las dos palabras de mas del final son para el blitter: al desplazar un",
         " * dibujo lee una palabra por detras de la ultima fila. */",
         "const uint8_t np_tile_data[NP_TILE_COUNT * %d + 4] = {"
-        % gfx_amiga.BYTES_POR_TILE,
+        % banco.bytes_por_tile,
         _c_bytes(bytes(banco.tiles)),
         "};",
         "",
         "/* Y su mascara: un bit por pixel, 1 donde el dibujo tapa el fondo,",
         " * repetida para los cinco bitplanes. */",
         "const uint8_t np_tile_mask[NP_TILE_COUNT * %d + 4] = {"
-        % gfx_amiga.BYTES_MASCARA,
+        % banco.bytes_por_tile,
         _c_bytes(bytes(banco.mascaras)),
         "};",
         "",

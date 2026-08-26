@@ -375,6 +375,15 @@ prueba("el yaml recoge la maquina de destino", function () {
             "no se ha escrito la maquina en el yaml");
 });
 
+prueba("el yaml recoge la camara y el modo de color del Amiga", function () {
+  var e = nuevoEditor();
+  e.ponerPropiedad("juego", "camara", "pantallas");
+  e.ponerPropiedad("juego", "amiga", "8colores");
+  var yaml = e.exportarYaml();
+  assert.ok(/^\s*camara: pantallas\b/m.test(yaml), "falta la camara");
+  assert.ok(/^\s*amiga: 8colores\b/m.test(yaml), "falta el modo del Amiga");
+});
+
 prueba("el yaml quita los enemigos borrados", function () {
   var e = nuevoEditor();
   var nombre = e.modelo.enemigos[0].nombre;

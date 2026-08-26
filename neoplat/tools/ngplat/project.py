@@ -308,6 +308,7 @@ class Project:
     time_limit: int
     hud: bool
     camera: str            # "scroll" o "pantallas"
+    amiga_modo: str        # "32colores" o "8colores"
     player: Player
     tileset: Tileset
     tiles: Dict[str, TileDef]
@@ -422,6 +423,35 @@ def _leer_camara(game: Node) -> str:
             where="juego",
         )
     return CAMARAS[clave]
+
+
+MODOS_AMIGA = {
+    "32colores": "32colores", "32": "32colores", "32_colores": "32colores",
+    "normal": "32colores", "un_plano": "32colores",
+    "8colores": "8colores", "8": "8colores", "8_colores": "8colores",
+    "parallax": "8colores", "doble_plano": "8colores", "dual": "8colores",
+}
+
+
+def _leer_modo_amiga(game: Node) -> str:
+    """En el Amiga hay que elegir: 32 colores o parallax de verdad.
+
+    Los seis bitplanes del OCS se pueden usar de dos maneras: cinco para un
+    solo plano de 32 colores, o tres y tres para dos planos independientes de
+    8. El segundo modo es la unica forma de tener parallax en un A500 (esta
+    medido: dibujarlo con el blitter no cabe en un frame), y cuesta pasar de 32
+    colores a 7 mas otros 7.
+    """
+    texto = (game.str_(["amiga", "modo_amiga"], "32colores") or "32colores")
+    clave = str(texto).strip().lower().replace(" ", "_").replace("-", "_")
+    if clave not in MODOS_AMIGA:
+        raise ProjectError(
+            "no entiendo el modo de Amiga '%s'" % texto,
+            hint="pon '32colores' (mas colores, sin parallax) o '8colores' "
+                 "(parallax de verdad, 7 colores por plano)",
+            where="juego",
+        )
+    return MODOS_AMIGA[clave]
 
 
 def _read_player(node: Node, root: str) -> Player:
@@ -891,6 +921,7 @@ def load_project(path: str) -> Project:
     time_limit = game.int_(["time", "tiempo", "tiempo_limite"], 0, 0, 999)
     hud = game.bool_(["hud", "marcador"], True)
     camera = _leer_camara(game)
+    amiga_modo = _leer_modo_amiga(game)
     sistema = (game.str_(["system", "sistema", "maquina", "máquina"], "neogeo") or "neogeo")
     bg = game.raw("background", "fondo", "color_fondo")
     default_bg = parse_color(bg, "juego") if bg is not None else (16, 24, 48)
@@ -954,7 +985,7 @@ def load_project(path: str) -> Project:
 
     return Project(
         root=root, title=title.upper()[:24], author=author[:24], system=sistema,
-        lives=lives, camera=camera,
+        lives=lives, camera=camera, amiga_modo=amiga_modo,
         time_limit=time_limit, hud=hud, player=player, tileset=tileset, tiles=tiles,
         enemies=enemies, items=items, layers=layers, sound=sound, levels=levels,
         warnings=warnings,

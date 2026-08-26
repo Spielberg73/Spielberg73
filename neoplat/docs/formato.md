@@ -19,6 +19,7 @@ juego:
   tiempo: 0                 # segundos por nivel; 0 = sin límite
   hud: si                   # marcador de puntos/vidas
   camara: scroll            # scroll o pantallas
+  amiga: 32colores          # solo en Amiga: 32colores o 8colores
   fondo: "#101830"          # color de fondo por defecto
   sistema: neogeo           # neogeo, megadrive, amiga o jaguar
 ```
@@ -34,6 +35,19 @@ juego:
 Con `pantallas` conviene que los niveles midan un número exacto de pantallas
 (múltiplos de 20 tiles de ancho y 14 de alto); si no, la última se solapa con la
 anterior y el compilador avisa.
+
+`amiga` solo se mira al compilar para Amiga, y decide cómo se reparten sus seis
+bitplanes:
+
+| | |
+|---|---|
+| `32colores` | cinco bitplanes en un solo plano: **31 colores** para los dibujos, sin parallax. |
+| `8colores` | tres y tres, en *dual playfield*: el juego delante con **7 colores** y una capa de parallax detrás con otros 7, movida por hardware. |
+
+En `8colores` casi ningún dibujo cabe tal cual, así que los colores que sobran
+se cambian por el más parecido de los que quedan y el compilador te dice
+cuántos ha tenido que aproximar. Si quieres mandar tú en los colores, dibuja
+con siete. Las demás máquinas ignoran esta opción.
 
 `sistema` decide para qué máquina se compila y con qué colores se dibuja el
 preview. También se puede elegir sin tocar el archivo, con `--sistema` en
@@ -295,14 +309,15 @@ Estos son los del juego, valgan para la que valgan:
 Y estos cambian según la máquina. `ngplat comprobar` los mira antes de
 compilar y te dice cuál te has saltado.
 
-| | Neo Geo | Mega Drive | Amiga |
-|---|---|---|---|
-| Colores a la vez | 4096 | 64 (4 paletas de 16) | 32 (una sola paleta) |
-| Paletas | 256 | 4, fundiendo las tuyas | 1, fundiendo las tuyas |
-| Dibujos distintos | 65536 tiles | 1408 tiles de 8 × 8 | 1024 de 16 × 16 |
-| Actores en pantalla | 96 sprites | 80 sprites | sin límite fijo (los dibuja el blitter) |
-| Alto del nivel | 256 tiles | 32 tiles | 16 tiles |
-| Capas de parallax | todas | una | ninguna (todavía) |
-| Qué sale | ROMs de cartucho | `.bin` de cartucho | disquete `.adf` |
+| | Neo Geo | Mega Drive | Amiga | Jaguar |
+|---|---|---|---|---|
+| Colores a la vez | 4096 | 64 (4 paletas de 16) | 32, o 8 + 8 | 256 (una tabla) |
+| Paletas | 256 | 4, fundiendo las tuyas | 1, fundiendo las tuyas | 1, fundiendo las tuyas |
+| Dibujos distintos | 65536 tiles | 1408 tiles de 8 × 8 | 1024 de 16 × 16 | sin límite fijo |
+| Actores en pantalla | 96 sprites | 80 sprites | sin límite fijo (los dibuja el blitter) | sin límite fijo |
+| Alto del nivel | 256 tiles | 32 tiles | 16 tiles | 16 tiles |
+| Capas de parallax | todas | una | una, con `amiga: 8colores` | ninguna (todavía) |
+| Sonido | YM2610 | PSG SN76489 | Paula | todavía no |
+| Qué sale | ROMs de cartucho | `.bin` de cartucho | disquete `.adf` | cartucho `.j64` |
 
 `ngplat sistemas` los enseña sin salir de la terminal.
