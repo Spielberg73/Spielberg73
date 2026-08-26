@@ -94,6 +94,7 @@
 #define NP_MAPA_ALTO 256
 #define NP_TILE 16
 #define NP_HUD_ALTO 24
+#define NP_FONDO_ALTO 224           /* alto del mapa de bits del parallax     */
 #define NP_HUD_COLOR 255            /* el ultimo color de la tabla           */
 #define NP_ACTORES_MAX 48           /* objetos de la lista para los actores  */
 
@@ -115,6 +116,9 @@ void np_hud_number(uint8_t col, uint8_t fila, uint32_t valor, uint8_t digitos);
 /* datos que genera el compilador (graficos.c) */
 extern uint8_t np_bitmap[];                 /* el mapa de bits del escenario */
 extern uint8_t np_hud_bitmap[];             /* la franja del marcador        */
+#if NP_LAYER_COUNT > 0
+extern uint8_t np_fondo_bitmap[];           /* el parallax, por detras       */
+#endif
 extern const uint8_t np_tile_data[];        /* tiles de 16x16, un byte por pixel */
 extern const uint16_t np_colores[256];
 extern const uint8_t np_font_data[];        /* fuente de 8x8, un bit por pixel */

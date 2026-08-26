@@ -149,10 +149,10 @@ void np_jaguar_init(void)
 /* --- escenario ---------------------------------------------------------- */
 
 /* Copia un tile de 16x16 al mapa de bits. Un byte por pixel: es una copia y ya. */
-static void np_pegar_tile(uint16_t tile, int32_t x, int32_t y)
+static void np_pegar_tile_en(uint8_t *mapa, uint16_t tile, int32_t x, int32_t y)
 {
     const uint8_t *origen = np_tile_data + (uint32_t)tile * (NP_TILE * NP_TILE);
-    uint8_t *destino = np_bitmap + (uint32_t)y * NP_MAPA_ANCHO + x;
+    uint8_t *destino = mapa + (uint32_t)y * NP_MAPA_ANCHO + x;
     uint8_t fila;
     for (fila = 0; fila < NP_TILE; fila++) {
         uint32_t *d = (uint32_t *)(void *)destino;
@@ -162,6 +162,11 @@ static void np_pegar_tile(uint16_t tile, int32_t x, int32_t y)
         origen += NP_TILE;
         destino += NP_MAPA_ANCHO;
     }
+}
+
+static void np_pegar_tile(uint16_t tile, int32_t x, int32_t y)
+{
+    np_pegar_tile_en(np_bitmap, tile, x, y);
 }
 
 static void np_columna(const NpWorld *w, int32_t tile_x)
@@ -185,6 +190,70 @@ static void np_redibujar_todo(const NpWorld *w)
        compilador se cargaria las copias */
     __asm__ __volatile__ ("" ::: "memory");
 }
+
+#if NP_LAYER_COUNT > 0
+/* --- el parallax --------------------------------------------------------
+ *
+ * En la Jaguar el parallax es casi gratis: la capa es **otro objeto** de la
+ * lista, con su propio mapa de bits y su propia posicion. El chip lo compone
+ * antes que el escenario, y como el escenario lleva el color 0 transparente,
+ * se ve por los huecos.
+ *
+ * El dibujo se pinta una vez al entrar en el nivel, repetido a lo ancho; a
+ * partir de ahi mover la capa es cambiar dos numeros en la lista.
+ */
+static void np_pintar_fondo(const NpWorld *w)
+{
+    uint32_t *p = (uint32_t *)(void *)np_fondo_bitmap;
+    uint32_t i;
+    for (i = 0; i < (uint32_t)NP_MAPA_ANCHO * NP_FONDO_ALTO / 4; i++) *p++ = 0;
+    if (w->level->layer_count && np_layers[w->level->layers[0]].cols) {
+        const NpLayer *capa = &np_layers[w->level->layers[0]];
+        int32_t columnas = NP_MAPA_ANCHO / NP_TILE;
+        int32_t c, r;
+        for (c = 0; c < columnas; c++) {
+            int32_t fuente = c % capa->cols;
+            for (r = 0; r < capa->rows; r++) {
+                int32_t y = capa->offset_y + r * NP_TILE;
+                if (y < 0 || y + NP_TILE > NP_FONDO_ALTO) continue;
+                np_pegar_tile_en(np_fondo_bitmap,
+                                 capa->tiles[r * capa->cols + fuente],
+                                 c * NP_TILE, y);
+            }
+        }
+    }
+    __asm__ __volatile__ ("" ::: "memory");
+}
+
+/* Mete el objeto del parallax en la lista, ya desplazado. */
+static void np_objeto_fondo(const NpWorld *w)
+{
+    int32_t sx = 0, sy = 0, periodo = 0;
+    int32_t maximo = NP_MAPA_ANCHO - NP_SCREEN_W;
+    if (!w->level->layer_count) return;
+    {
+        const NpLayer *capa = &np_layers[w->level->layers[0]];
+        sx = ((int32_t)w->cam_x * capa->speed_x) >> 8;
+        sy = ((int32_t)w->cam_y * capa->speed_y) >> 8;
+        periodo = capa->cols * NP_TILE;
+    }
+    /* el dibujo esta repetido, asi que al llegar a su ancho se vuelve al
+       principio sin que se note; una capa mas ancha que el hueco se para */
+    if (periodo >= NP_TILE && periodo <= maximo) {
+        sx %= periodo;
+        if (sx < 0) sx += periodo;
+    } else {
+        if (sx < 0) sx = 0;
+        if (sx > maximo) sx = maximo;
+    }
+    if (sy < 0) sy = 0;
+    if (sy > NP_FONDO_ALTO - NP_SCREEN_H) sy = NP_FONDO_ALTO - NP_SCREEN_H;
+    np_objeto(NP_DIR(np_fondo_bitmap) + (uint32_t)sy * NP_MAPA_ANCHO
+              + ((uint32_t)sx & ~7u),
+              (int16_t)(-(sx & 7)), 0,
+              NP_SCREEN_W / 8 + 1, NP_SCREEN_H, NP_MAPA_ANCHO / 8, 1);
+}
+#endif /* NP_LAYER_COUNT */
 
 /* --- actores ------------------------------------------------------------ */
 
@@ -218,6 +287,9 @@ void np_video_frame(const NpWorld *w)
 
     if (w->level != np_nivel_actual) {
         np_nivel_actual = w->level;
+#if NP_LAYER_COUNT > 0
+        np_pintar_fondo(w);          /* el parallax se pinta una vez por nivel */
+#endif
         np_redibujar_todo(w);
         ultima_columna = columna;
     } else {
@@ -239,8 +311,13 @@ void np_video_frame(const NpWorld *w)
     np_ramas();
     BG = w->level->background;
 
-    /* El fondo: el scroll grueso mueve la direccion de ocho en ocho pixeles y
-       el fino se hace con la posicion X. */
+#if NP_LAYER_COUNT > 0
+    np_objeto_fondo(w);              /* primero el parallax: va por detras */
+#endif
+
+    /* El escenario: el scroll grueso mueve la direccion de ocho en ocho pixeles
+       y el fino se hace con la posicion X. Va con el color 0 transparente, asi
+       que por los huecos se ve el parallax (o el color de fondo del nivel). */
     {
         int32_t dx = w->cam_x - np_base_tile * NP_TILE;
         int32_t dy = w->cam_y;
@@ -248,7 +325,7 @@ void np_video_frame(const NpWorld *w)
         if (dy > NP_MAPA_ALTO - NP_SCREEN_H) dy = NP_MAPA_ALTO - NP_SCREEN_H;
         datos = NP_DIR(np_bitmap) + (uint32_t)dy * NP_MAPA_ANCHO + ((uint32_t)dx & ~7u);
         np_objeto(datos, (int16_t)(-(dx & 7)), 0,
-                  NP_SCREEN_W / 8 + 1, NP_SCREEN_H, NP_MAPA_ANCHO / 8, 0);
+                  NP_SCREEN_W / 8 + 1, NP_SCREEN_H, NP_MAPA_ANCHO / 8, 1);
     }
 
     for (i = 0; i < w->entity_count; i++) {

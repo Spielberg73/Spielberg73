@@ -96,6 +96,29 @@ programa — los lee el chip por DMA. Sin `volatile` (o una barrera de memoria)
 gcc borra todas las escrituras por inservibles y no se ve nada. Es la misma
 trampa en las dos, y no avisa.
 
+## El parallax: otro objeto y ya está
+
+De las cuatro máquinas, la Jaguar es donde el parallax sale más barato. No hay
+que redibujar nada por frame: la capa es **otro objeto** de la lista, con su
+propio mapa de bits y su propia posición, y el chip lo compone antes que el
+escenario. Moverlo es cambiar dos números:
+
+```c
+np_objeto(NP_DIR(np_fondo_bitmap) + sy * NP_MAPA_ANCHO + (sx & ~7),
+          -(sx & 7), 0, ...);
+```
+
+El dibujo de la capa se pinta una sola vez al entrar en el nivel, repetido a lo
+ancho de los 704 píxeles del mapa de bits; como el ancho de la capa (256 px)
+cabe en el hueco que sobra (704 − 320 = 384), al llegar a su ancho se vuelve al
+principio y no se nota el corte.
+
+Para que se vea por detrás, el objeto del escenario lleva **el color 0
+transparente**. Eso arregla de paso otra cosa: hasta ahora los huecos del
+escenario se veían negros (el color 0 de la tabla) en vez del color de fondo del
+nivel, que es lo que hacen las otras tres máquinas. Ahora por ahí se ve el
+`BG`, que es justo el `fondo:` del `game.yaml`.
+
 ## El mando
 
 Es una matriz: se escribe una **palabra** con la fila que se quiere en
@@ -199,8 +222,8 @@ sonaba. El fallo estaba en la prueba: el botón de empezar en la Jaguar es
 - **Muestras digitales.** Los DAC son de 16 bits y darían para voces y
   percusión de verdad; de momento son ondas cuadradas y ruido, como en las otras
   tres máquinas.
-- **Capas de parallax.** Cabrían de sobra —la Jaguar puede componer muchos más
-  objetos— pero todavía no están.
+- **Más de una capa de parallax.** Se dibuja una; cabrían más, porque cada capa
+  es sólo un objeto más de la lista.
 - **Color directo.** Se usan los 256 de la tabla. La Jaguar puede hacer 16 bits
   por píxel, y sería la única de las cuatro donde los PNG no habría que
   recortarlos: se verían tal cual.

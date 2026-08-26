@@ -31,6 +31,7 @@ CORE = "virtualjaguar"
 # El boton START del mando de RetroPad es el OPTION de la Jaguar; el que usa el
 # kit para empezar la partida es PAUSE, que el core pone en SELECT.
 EMPEZAR = "SELECT"
+SALTAR = "A"
 FPS = 60
 
 
@@ -91,7 +92,7 @@ def comprobar(rom: str, capturas: str = "capturas",
 
     if franja_del_salto:
         quieto = pico_por_frame(emu.escuchar, 24, emu.ritmo, *franja_del_salto)
-        emu.pulsar("B")
+        emu.pulsar(SALTAR)
         emu.avanzar(2)
         emu.pulsar()
         saltando = pico_por_frame(emu.escuchar, 24, emu.ritmo, *franja_del_salto)

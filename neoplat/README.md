@@ -30,7 +30,7 @@ Y las cuatro llevan un **68000**, que es lo que hace que el motor sea uno solo.
 | Actores | sprites | sprites del VDP | blitter con máscara | objetos del chip |
 | Colores | 4096 en pantalla | 4 paletas de 16 | una de 32, o dos de 8 | una tabla de 256 |
 | Sonido | YM2610 (SSG) por Z80 | PSG SN76489 | Paula (4 canales) | los DAC, por el DSP de Jerry |
-| Parallax | sí | una capa | una capa (`amiga: 8colores`) | todavía no |
+| Parallax | sí | una capa | una capa (`amiga: 8colores`) | una capa |
 | Sale | ROMs de cartucho | `.bin` con cabecera y suma | disquete `.adf` arrancable | cartucho `.j64` |
 
 ## Instalación

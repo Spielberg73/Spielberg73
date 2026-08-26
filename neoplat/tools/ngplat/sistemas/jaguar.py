@@ -48,7 +48,7 @@ class Jaguar(Sistema):
     carpeta_salida = "rom"
     nombre_binario = "el cartucho"
     notas = [
-        "parallax: todavia no",
+        "parallax: una capa, en un objeto por detras del escenario",
         "sonido:   dos DAC de 16 bits alimentados por el DSP de Jerry;",
         "          tres ondas cuadradas y un ruido, las mismas notas que las otras",
     ]
@@ -88,9 +88,12 @@ class Jaguar(Sistema):
                 banco.anadir(remapear(tile, actor.sheet.palette.name), compartir=False)
             actor.sheet.palette_index = 0
 
-        # las capas de parallax todavia no se dibujan en la Jaguar
+        # las capas de parallax: se pintan en su propio mapa de bits, que es
+        # otro objeto de la lista por detras del escenario
         for capa in build.layers:
-            capa.tiles = [0] * len(capa.tiles)
+            nuevos = [banco.anadir(remapear(d, capa.palette.name))
+                      for d in capa.dibujos]
+            capa.tiles = [nuevos[i] for i in capa.tiles]
             capa.palette_index = 0
             capa.dibujos = []
 
@@ -137,10 +140,10 @@ class Jaguar(Sistema):
     def comprobar(self, build: Build) -> List[str]:
         avisos: List[str] = []
         for nivel in build.levels:
-            if nivel.layers:
+            if len(nivel.layers) > 1:
                 avisos.append(
-                    "en Jaguar todavia no se dibujan las capas de parallax: el fondo "
-                    "de '%s' se vera del color de fondo" % nivel.name)
+                    "la Jaguar dibuja una sola capa de parallax: en '%s' se usara "
+                    "la primera" % nivel.name)
                 break
 
         return avisos
@@ -286,6 +289,11 @@ def _graficos_c(build: Build, banco: gfx_jaguar.BancoJaguar) -> str:
         " * chip de video por DMA, y tienen que empezar en un multiplo de 8. */",
         "uint8_t np_bitmap[NP_MAPA_ANCHO * NP_MAPA_ALTO] __attribute__((aligned(8)));",
         "uint8_t np_hud_bitmap[NP_SCREEN_W * NP_HUD_ALTO] __attribute__((aligned(8)));",
+        "#if NP_LAYER_COUNT > 0",
+        "/* el mapa de bits de la capa de parallax, que va en otro objeto */",
+        "uint8_t np_fondo_bitmap[NP_MAPA_ANCHO * NP_FONDO_ALTO]"
+        " __attribute__((aligned(8)));",
+        "#endif",
         "",
         "/* Cada dibujo son 16x16 bytes seguidos, uno por pixel. El indice 0 es",
         " * transparente: el chip lo salta al componer, asi que no hacen falta",

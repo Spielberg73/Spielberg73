@@ -28,8 +28,13 @@
 #define NP_CANALES 3
 #define NP_PARAMETROS 7
 #define NP_DESPLAZAMIENTO 14        /* el que usa jerry.py al guardar el paso */
+/* Aqui los cuatro canales se suman en el mismo DAC, asi que el reparto de
+   volumen lo decide el motor: los efectos y la percusion pesan casi el doble
+   que la musica para que se oigan por encima de ella, como en las maquinas que
+   tienen un canal aparte. Con los volumenes mas altos posibles la suma se
+   queda en 22.500 de los 32.767 que caben. */
 #define NP_AMPLITUD 400             /* por cada punto de volumen (0-15)       */
-#define NP_PASO_RUIDO 0             /* el ruido no lleva paso, va a su ritmo  */
+#define NP_AMPLITUD_SFX 700
 
 typedef struct {
     const NpSndPaso *paso;
@@ -43,12 +48,17 @@ static NpCanal np_canales[NP_CANALES];
 static uint8_t np_musica_actual;
 static volatile uint32_t *np_bloque;
 
+static uint32_t np_amplitud(uint8_t canal, uint8_t volumen)
+{
+    uint16_t escala = (canal >= 2) ? NP_AMPLITUD_SFX : NP_AMPLITUD;
+    return (uint32_t)((volumen > 15 ? 15 : volumen) * escala);
+}
+
 static void np_nota(uint8_t canal, uint16_t campo, uint8_t volumen)
 {
     if (!np_bloque) return;
     np_bloque[canal] = (uint32_t)campo << NP_DESPLAZAMIENTO;
-    np_bloque[NP_CANALES + canal] =
-        (uint32_t)((volumen > 15 ? 15 : volumen) * NP_AMPLITUD);
+    np_bloque[NP_CANALES + canal] = np_amplitud(canal, volumen);
 }
 
 static void np_callar(uint8_t canal)
@@ -58,9 +68,7 @@ static void np_callar(uint8_t canal)
 
 static void np_ruido(uint8_t volumen)
 {
-    if (np_bloque)
-        np_bloque[NP_CANALES * 2] =
-            (uint32_t)((volumen > 15 ? 15 : volumen) * NP_AMPLITUD);
+    if (np_bloque) np_bloque[NP_CANALES * 2] = np_amplitud(2, volumen);
 }
 
 void np_sound_init(void)

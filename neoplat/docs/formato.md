@@ -331,7 +331,7 @@ compilar y te dice cuál te has saltado.
 | Dibujos distintos | 65536 tiles | 1408 tiles de 8 × 8 | 1024 de 16 × 16 | sin límite fijo |
 | Actores en pantalla | 96 sprites | 80 sprites | sin límite fijo (los dibuja el blitter) | sin límite fijo |
 | Alto del nivel | 256 tiles | 32 tiles | 16 tiles | 16 tiles |
-| Capas de parallax | todas | una | una, con `amiga: 8colores` | ninguna (todavía) |
+| Capas de parallax | todas | una | una, con `amiga: 8colores` | una |
 | Sonido | YM2610 | PSG SN76489 | Paula | los DAC, por el DSP |
 | Qué sale | ROMs de cartucho | `.bin` de cartucho | disquete `.adf` | cartucho `.j64` |
 
