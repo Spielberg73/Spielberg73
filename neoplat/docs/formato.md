@@ -36,6 +36,21 @@ Con `pantallas` conviene que los niveles midan un número exacto de pantallas
 (múltiplos de 20 tiles de ancho y 14 de alto); si no, la última se solapa con la
 anterior y el compilador avisa.
 
+**Lo que cuesta el salto.** Cambiar de pantalla obliga a repintar las veinte
+columnas del escenario de una vez, y eso aprieta en las cuatro máquinas. Cada
+una lo lleva a su manera:
+
+| | |
+|---|---|
+| Neo Geo | rellena diez columnas por frame y apaga las que aún no valen: el cambio se ve como un barrido de dos frames. Sin esto se iba a 214.558 ciclos de los 200.000 que da la consola (medido con el banco del kit). |
+| Mega Drive | escribe las veinte columnas del plano en el frame del salto |
+| Amiga | repinta con el blitter las veinte columnas: unas 620 líneas de barrido sobre las 313 de un frame, o sea dos o tres frames perdidos en el cambio |
+| Jaguar | repinta el mapa de bits entero, como en cualquier otro frame |
+
+Las cuatro se comprueban en emulador (`tests/test_sistemas.py`,
+`TestCamaraPorPantallas`): que la vista se quede quieta casi todos los frames y
+que de vez en cuando cambie de golpe.
+
 `amiga` solo se mira al compilar para Amiga, y decide cómo se reparten sus seis
 bitplanes:
 

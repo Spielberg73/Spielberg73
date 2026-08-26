@@ -21,6 +21,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from camara import Vigia, comprobar_salto  # noqa: E402
 from libretro import (Emulador, buscar_core, colores, distintos,  # noqa: E402
                       franja, guardar_png)
 
@@ -30,7 +31,8 @@ CORE = "virtualjaguar"
 EMPEZAR = "SELECT"
 
 
-def comprobar(rom: str, capturas: str = "capturas") -> int:
+def comprobar(rom: str, capturas: str = "capturas",
+              pantallas: bool = False) -> int:
     core = buscar_core(CORE, "NEOPLAT_CORE_JAGUAR")
     if not core:
         print("el core de Virtual Jaguar no esta instalado: se salta la prueba")
@@ -69,10 +71,13 @@ def comprobar(rom: str, capturas: str = "capturas") -> int:
     # --- 3) se juega: correr a la derecha y saltar -----------------------
     movimiento = 0.0
     antes = juego
+    vigia = Vigia() if pantallas else None
     for tramo in range(5):
         for i in range(50):
             emu.pulsar("RIGHT", "A") if i % 25 == 0 else emu.pulsar("RIGHT")
             emu.avanzar(1)
+            if vigia:
+                vigia.mirar(emu.frame)
         ahora = emu.frame
         movimiento = max(movimiento, distintos(antes, ahora))
         antes = ahora
@@ -83,6 +88,8 @@ def comprobar(rom: str, capturas: str = "capturas") -> int:
            % (movimiento * 100))
     print("jugando: hasta un %.0f%% de la pantalla cambia entre tramos"
           % (movimiento * 100))
+    if vigia:
+        comprobar_salto(vigia, exigir)
 
     # --- 4) el marcador se ve una vez, no dos ---------------------------
     #
@@ -126,4 +133,11 @@ def comprobar(rom: str, capturas: str = "capturas") -> int:
 if __name__ == "__main__":
     rom = (sys.argv[1] if len(sys.argv) > 1
            else "examples/bosque-magico/build/jaguar/rom/BosqueMagico.j64")
-    sys.exit(comprobar(rom, sys.argv[2] if len(sys.argv) > 2 else "capturas"))
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "tools"))
+    from ngplat.project import load_project
+    from sonido import buscar_proyecto
+    proyecto = buscar_proyecto(rom)
+    p = load_project(proyecto) if proyecto else None
+    sys.exit(comprobar(rom, sys.argv[2] if len(sys.argv) > 2 else "capturas",
+                       pantallas=bool(p and p.camera == "pantallas")))

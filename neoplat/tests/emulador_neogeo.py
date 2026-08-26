@@ -17,6 +17,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from camara import Vigia, comprobar_salto  # noqa: E402
 import maquina_neogeo as ng  # noqa: E402
 from imagen import colores, distintos, franja, guardar_png  # noqa: E402
 from sonido import (banda_del_efecto, comprobar_melodia,  # noqa: E402
@@ -26,7 +27,7 @@ FPS = 60
 
 
 def comprobar(carpeta, capturas="capturas", musica=None, salto=None,
-              sonido=True):
+              sonido=True, pantallas=False):
     try:
         import machine68k  # noqa: F401
     except ImportError:
@@ -112,10 +113,13 @@ def comprobar(carpeta, capturas="capturas", musica=None, salto=None,
     movimiento = 0.0
     peor = 0
     antes = juego
+    vigia = Vigia() if pantallas else None
     for tramo in range(6):
         for i in range(50):
             maquina.pulsar("RIGHT", "A") if i % 25 == 0 else maquina.pulsar("RIGHT")
             peor = max(peor, maquina.frame())
+            if vigia:
+                vigia.mirar(maquina.dibujar())
         ahora = maquina.dibujar()
         movimiento = max(movimiento, distintos(antes, ahora))
         antes = ahora
@@ -126,6 +130,8 @@ def comprobar(carpeta, capturas="capturas", musica=None, salto=None,
            % (movimiento * 100))
     print("jugando: hasta un %.0f%% de la pantalla cambia entre tramos"
           % (movimiento * 100))
+    if vigia:
+        comprobar_salto(vigia, exigir)
 
     # --- 5) el frame mas caro cabe en los 200.000 ciclos de la maquina ---
     print("frame mas caro: %d ciclos de los %d que da la consola (%.0f fps)"
@@ -167,4 +173,5 @@ if __name__ == "__main__":
     p = load_project(raiz) if raiz else None
     sys.exit(comprobar(carpeta, sys.argv[2] if len(sys.argv) > 2 else "capturas",
                        musica_al_empezar(p) if p else None,
-                       p.sound.efectos.get("salto") if p else None))
+                       p.sound.efectos.get("salto") if p else None,
+                       pantallas=bool(p and p.camera == "pantallas")))

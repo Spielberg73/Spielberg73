@@ -22,6 +22,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from camara import Vigia, comprobar_salto  # noqa: E402
 from libretro import (Emulador, buscar_core, colores, distintos,  # noqa: E402
                       franja, guardar_png)
 from sonido import (banda_del_efecto, comprobar_melodia,  # noqa: E402
@@ -70,7 +71,8 @@ def _desplazamiento(antes, ahora, maximo=70):
 
 
 def comprobar(adf: str, capturas: str = "capturas", musica=None,
-              salto=None, parallax: bool = False) -> int:
+              salto=None, parallax: bool = False,
+              pantallas: bool = False) -> int:
     core = buscar_core(CORE, "NEOPLAT_CORE_AMIGA")
     if not core:
         print("el core de PUAE no esta instalado: se salta la prueba")
@@ -190,10 +192,13 @@ def comprobar(adf: str, capturas: str = "capturas", musica=None,
     # --- 4) se juega ----------------------------------------------------
     movimiento = 0.0
     antes = juego
+    vigia = Vigia() if pantallas else None
     for tramo in range(6):
         for i in range(60):
             emu.pulsar("RIGHT", "B") if i % 30 == 0 else emu.pulsar("RIGHT")
             emu.avanzar(1)
+            if vigia:
+                vigia.mirar(emu.frame)
         ahora = emu.frame
         movimiento = max(movimiento, distintos(antes, ahora))
         antes = ahora
@@ -204,6 +209,8 @@ def comprobar(adf: str, capturas: str = "capturas", musica=None,
            % (movimiento * 100))
     print("jugando: hasta un %.0f%% de la pantalla cambia entre tramos"
           % (movimiento * 100))
+    if vigia:
+        comprobar_salto(vigia, exigir)
 
     # --- 5) sigue vivo --------------------------------------------------
     ultimo = emu.frame
@@ -234,4 +241,5 @@ if __name__ == "__main__":
     sys.exit(comprobar(disco, sys.argv[2] if len(sys.argv) > 2 else "capturas",
                        musica_al_empezar(p) if p else None,
                        p.sound.efectos.get("salto") if p else None,
-                       parallax=bool(p and p.amiga_modo == "8colores" and p.layers)))
+                       parallax=bool(p and p.amiga_modo == "8colores" and p.layers),
+                       pantallas=bool(p and p.camera == "pantallas")))

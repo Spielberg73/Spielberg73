@@ -716,5 +716,91 @@ class TestCompilacionReal(unittest.TestCase):
         self.assertEqual(vistos, info["reloc_codigo"] + info["reloc_bss"])
 
 
+class TestCamaraPorPantallas(unittest.TestCase):
+    """La camara por pantallas, en las cuatro maquinas de verdad.
+
+    La paridad C/JS ya comprueba que el motor la calcula bien, pero eso es la
+    simulacion. Lo que se mira aqui es el chip de video: cuando la vista salta
+    320 pixeles de golpe, cada maquina tiene que repintar la pantalla entera en
+    un frame, y ahi es donde se rompen las cosas.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cc = _compilador_68k()
+        if not cls.cc:
+            raise unittest.SkipTest("no hay un compilador de 68000 instalado")
+        cls.tmp = tempfile.mkdtemp(prefix="neoplat-pantallas-")
+        from comun import proyecto_por_pantallas
+        cls.proyecto = proyecto_por_pantallas(os.path.join(cls.tmp, "juego"))
+
+    @classmethod
+    def tearDownClass(cls):
+        if getattr(cls, "tmp", ""):
+            shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def _generar(self, nombre):
+        build = cargar_demo(self.proyecto, nombre)
+        out = os.path.join(self.tmp, nombre)
+        generar_para_sistema(build, out, sistemas.obtener(nombre), "202")
+        return out
+
+    def _construir(self, nombre):
+        out = self._generar(nombre)
+        hecho = subprocess.run(["make", "-C", out], capture_output=True, text=True)
+        self.assertEqual(hecho.returncode, 0, hecho.stdout + hecho.stderr)
+        return out
+
+    def _capturas(self, nombre):
+        return os.path.join(self.tmp, "capturas-" + nombre)
+
+    def test_la_megadrive_salta_de_pantalla(self):
+        import emulador_md
+        from libretro import buscar_core
+        if not buscar_core(emulador_md.CORE, "NEOPLAT_CORE_MD"):
+            self.skipTest("no esta instalado el core de Genesis Plus GX")
+        out = self._construir("megadrive")
+        self.assertEqual(
+            emulador_md.comprobar(os.path.join(out, "rom/juego.bin"),
+                                  self._capturas("md"), pantallas=True), 0,
+            "la Mega Drive no salta de pantalla como debe")
+
+    def test_el_amiga_salta_de_pantalla(self):
+        import emulador_amiga
+        from libretro import buscar_core
+        if not buscar_core(emulador_amiga.CORE, "NEOPLAT_CORE_AMIGA"):
+            self.skipTest("no esta instalado el core de PUAE")
+        out = self._construir("amiga")
+        self.assertEqual(
+            emulador_amiga.comprobar(os.path.join(out, "disco/Pantallas.adf"),
+                                     self._capturas("amiga"), pantallas=True), 0,
+            "el Amiga no salta de pantalla como debe")
+
+    def test_la_jaguar_salta_de_pantalla(self):
+        import emulador_jaguar
+        from libretro import buscar_core
+        if not buscar_core(emulador_jaguar.CORE, "NEOPLAT_CORE_JAGUAR"):
+            self.skipTest("no esta instalado el core de Virtual Jaguar")
+        out = self._construir("jaguar")
+        self.assertEqual(
+            emulador_jaguar.comprobar(os.path.join(out, "rom/Pantallas.j64"),
+                                      self._capturas("jaguar"), pantallas=True), 0,
+            "la Jaguar no salta de pantalla como debe")
+
+    def test_la_neogeo_salta_de_pantalla_sin_pasarse_de_ciclos(self):
+        """La mas exigente: el banco de Neo Geo cuenta los ciclos, y saltar de
+        pantalla obliga a rehacer veinte columnas de fondo de golpe."""
+        import emulador_neogeo
+        try:
+            import machine68k  # noqa: F401
+        except ImportError:
+            self.skipTest("falta machine68k (pip3 install amitools)")
+        out = self._generar("neogeo")
+        self.assertEqual(
+            emulador_neogeo.comprobar(out, self._capturas("neogeo"),
+                                      pantallas=True), 0,
+            "la Neo Geo no salta de pantalla, o no le cabe en un frame")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -193,7 +193,15 @@ static void np_draw_layers(const NpWorld *w)
  * veintiuna columnas ya estan donde tienen que estar y solo hay que rellenar
  * el tilemap de la que acaba de entrar por el borde: 30 escrituras en la VRAM
  * en vez de 630. Antes de esto la consola bajaba a 29 fps cada 16 pixeles de
- * scroll (medido con tests/maquina_neogeo.py). */
+ * scroll (medido con tests/maquina_neogeo.py).
+ *
+ * Con la camara por pantallas la cuenta cambia: la vista salta veinte columnas
+ * de golpe y esas veinte no caben en un frame (medido: 214.558 ciclos de los
+ * 200.000 que da la consola). Asi que se rellenan NP_BG_POR_FRAME por frame y
+ * las que aun no valen se apagan, que es preferible a ensenar los tiles de la
+ * pantalla anterior en el sitio equivocado. Se ve como un barrido de un par de
+ * frames, que es justo lo que hacian los juegos de pantalla a pantalla. */
+#define NP_BG_POR_FRAME 10
 static void np_draw_background(const NpWorld *w)
 {
     static int32_t cargada[NP_BG_COLUMNS];
@@ -211,6 +219,7 @@ static void np_draw_background(const NpWorld *w)
      * del array: mas vale gastar una comparacion al frame. */
     int32_t resto = col % NP_BG_COLUMNS;
     uint16_t ranura = (uint16_t)(resto < 0 ? resto + NP_BG_COLUMNS : resto);
+    uint16_t presupuesto = NP_BG_POR_FRAME;
     uint16_t i;
 
     primera_vez = 0;
@@ -219,12 +228,24 @@ static void np_draw_background(const NpWorld *w)
 
     for (i = 0; i < NP_BG_COLUMNS; i++) {
         int32_t mapa = col + i;
+        uint8_t lista = 1;
         if (todas || cargada[ranura] != mapa) {
-            np_bg_column(w, ranura, mapa, row);
-            cargada[ranura] = mapa;
+            /* al moverse en vertical hay que rehacerlas todas si o si: ahi no
+               hay columna que dejar para luego sin que se vea el hueco */
+            if (todas || presupuesto) {
+                np_bg_column(w, ranura, mapa, row);
+                cargada[ranura] = mapa;
+                if (presupuesto) presupuesto--;
+            } else {
+                lista = 0;
+            }
         }
-        np_sprite_pos((uint16_t)(NP_BG_FIRST_SPRITE + ranura),
-                      (int16_t)(i * 16 - off_x), (int16_t)(-off_y), NP_BG_ROWS);
+        if (lista) {
+            np_sprite_pos((uint16_t)(NP_BG_FIRST_SPRITE + ranura),
+                          (int16_t)(i * 16 - off_x), (int16_t)(-off_y), NP_BG_ROWS);
+        } else {
+            np_sprite_hide((uint16_t)(NP_BG_FIRST_SPRITE + ranura));
+        }
         if (++ranura == NP_BG_COLUMNS) ranura = 0;
     }
 }

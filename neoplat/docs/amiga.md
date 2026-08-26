@@ -237,6 +237,19 @@ y una capa de fondo de 256 px de ancho (que es lo que cabe en el hueco de 384
 que tiene el plano de atras para correr antes de volver al principio). El
 ejemplo ya montado está en `examples/cueva-de-hierro/`.
 
+### Cambiar de pantalla
+
+Con `camara: pantallas` la vista no se desliza: salta 320 píxeles de golpe. Eso
+obliga a repintar las veinte columnas del escenario en un frame, y a 2,20 líneas
+por tile opaco son unas **620 líneas** sobre las 313 que da un frame: dos o tres
+frames perdidos justo en el cambio de pantalla. Se nota, pero es el momento en
+que la pantalla cambia entera de todas formas, que es lo que hacían estos
+juegos.
+
+Se podría evitar: el mapa de bits tiene 44 columnas y una pantalla son 20, así
+que mientras la cámara está parada sobraría sitio para ir dibujando la pantalla
+siguiente poco a poco. No está hecho.
+
 ### Cómo medirlo
 
 El reloj del Amiga para esto es el propio haz de la pantalla: `VPOSR` y

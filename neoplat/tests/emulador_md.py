@@ -16,6 +16,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from libretro import (Emulador, buscar_core, colores, distintos,  # noqa: E402
                       franja, guardar_png)
+from camara import Vigia, comprobar_salto  # noqa: E402
 from sonido import (banda_del_efecto, comprobar_melodia,  # noqa: E402
                     nivel, pico_por_frame)
 
@@ -24,7 +25,7 @@ FPS = 60
 
 
 def comprobar(rom: str, capturas: str = "capturas", musica=None,
-              salto=None) -> int:
+              salto=None, pantallas: bool = False) -> int:
     core = buscar_core(CORE, "NEOPLAT_CORE_MD")
     if not core:
         print("el core de Genesis Plus GX no esta instalado: se salta la prueba")
@@ -101,10 +102,13 @@ def comprobar(rom: str, capturas: str = "capturas", musica=None,
     # --- 4) se juega: correr a la derecha y saltar -----------------------
     movimiento = 0.0
     antes = juego
+    vigia = Vigia() if pantallas else None
     for tramo in range(6):
         for i in range(50):
             emu.pulsar("RIGHT", "B") if i % 25 == 0 else emu.pulsar("RIGHT")
             emu.avanzar(1)
+            if vigia:
+                vigia.mirar(emu.frame)
         ahora = emu.frame
         movimiento = max(movimiento, distintos(antes, ahora))
         antes = ahora
@@ -115,6 +119,8 @@ def comprobar(rom: str, capturas: str = "capturas", musica=None,
            % (movimiento * 100))
     print("jugando: hasta un %.0f%% de la pantalla cambia entre tramos"
           % (movimiento * 100))
+    if vigia:
+        comprobar_salto(vigia, exigir)
 
     # --- 5) sigue vivo al final -----------------------------------------
     ultimo = emu.frame
@@ -146,4 +152,5 @@ if __name__ == "__main__":
     p = load_project(proyecto) if proyecto else None
     sys.exit(comprobar(rom, sys.argv[2] if len(sys.argv) > 2 else "capturas",
                        musica_al_empezar(p) if p else None,
-                       p.sound.efectos.get("salto") if p else None))
+                       p.sound.efectos.get("salto") if p else None,
+                       pantallas=bool(p and p.camera == "pantallas")))

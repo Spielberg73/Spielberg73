@@ -32,6 +32,59 @@ class ProyectoTemporal:
         shutil.rmtree(os.path.dirname(self.path), ignore_errors=True)
 
 
+# Un nivel de tres pantallas exactas (60x14 tiles) para probar la camara por
+# pantallas. Dos cosas a proposito:
+#
+#   - no tiene pinchos ni agujeros, asi el jugador puede correr a la derecha
+#     todo el rato sin morirse y las medidas del emulador salen limpias;
+#   - cada pantalla lleva un bloque de piedra a una altura distinta, para que
+#     al saltar de una a otra cambie media pantalla y se pueda medir. Los
+#     bloques van por el aire, sin tapar el camino del suelo.
+
+def _mapa_por_pantallas() -> list:
+    ancho, alto, pantalla = 60, 14, 20
+    filas = [["."] * ancho for _ in range(alto)]
+    for p in range(ancho // pantalla):
+        x = p * pantalla + 4
+        techo = 3 + p * 2                      # cada pantalla, mas abajo
+        for fila in range(techo, techo + 2):
+            for i in range(10):
+                filas[fila][x + i] = ","
+        for i in range(5):                     # una plataforma con monedas
+            filas[techo + 4][x + 2 + i] = "="
+            if i < 3:
+                filas[techo + 3][x + 3 + i] = "c"
+    filas[alto - 2][1] = "P"
+    filas[alto - 2][34] = "s"
+    filas[alto - 2][ancho - 3] = "G"
+    filas[alto - 1] = ["#"] * ancho
+    return ["".join(f) for f in filas]
+
+
+_MAPA_PANTALLAS = _mapa_por_pantallas()
+
+
+def proyecto_por_pantallas(destino: str, titulo: str = "PANTALLAS") -> str:
+    """Proyecto de ejemplo con `camara: pantallas` y niveles de pantallas enteras."""
+    crear_proyecto(destino, titulo, "TEST")
+    yaml = os.path.join(destino, "game.yaml")
+    with open(yaml, encoding="utf-8") as fh:
+        texto = fh.read()
+    assert "  camara: scroll" in texto, "el andamiaje ya no trae la camara"
+    texto = texto.replace("  camara: scroll", "  camara: pantallas", 1)
+    # se sustituyen los dos mapas por el de tres pantallas
+    cabeza, _, _ = texto.partition("niveles:")
+    mapa = "\n".join("      " + fila for fila in _MAPA_PANTALLAS)
+    texto = cabeza + ("niveles:\n"
+                      '  - nombre: "UNA"\n'
+                      '    fondo: "#101830"\n'
+                      "    musica: bosque\n"
+                      "    mapa: |\n%s\n" % mapa)
+    with open(yaml, "w", encoding="utf-8") as fh:
+        fh.write(texto)
+    return destino
+
+
 def cargar_demo(path: str, sistema: str = ""):
     """Carga un proyecto y lo deja listo para el sistema que se pida.
 
