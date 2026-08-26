@@ -247,6 +247,10 @@ def cmd_sistemas(args: argparse.Namespace) -> int:
         print("  %-11s %s" % (sistema.nombre, sistema.titulo))
         print("  %-11s %s, pantalla %dx%d" % ("", sistema.cpu, *sistema.pantalla))
         print("  %-11s %s, %s" % ("", colores, actores))
+        print("  %-11s sale:     %s, en build/%s/%s/"
+              % ("", sistema.nombre_binario, sistema.nombre, sistema.carpeta_salida))
+        for nota in sistema.notas:
+            print("  %-11s %s" % ("", nota))
         print()
     print("Se elige con 'sistema:' en el game.yaml o con --sistema al compilar.")
     return 0

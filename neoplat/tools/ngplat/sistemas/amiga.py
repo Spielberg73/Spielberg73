@@ -64,6 +64,12 @@ class Amiga(Sistema):
     extension_ejecutable = ""
     carpeta_salida = "disco"       # una carpeta que se copia tal cual al disquete
     nombre_binario = "el disquete"
+    notas = [
+        "colores:  'amiga: 32colores' da 31 colores y ningun parallax;",
+        "          'amiga: 8colores' parte los bitplanes en dos planos de 7 y 7",
+        "          colores, y ahi si hay una capa de parallax por hardware",
+        "sonido:   Paula, cuatro canales",
+    ]
 
     # --- colores -------------------------------------------------------
 

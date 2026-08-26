@@ -46,6 +46,10 @@ class Jaguar(Sistema):
     extension_ejecutable = "j64"
     carpeta_salida = "rom"
     nombre_binario = "el cartucho"
+    notas = [
+        "parallax: todavia no",
+        "sonido:   todavia no; el juego sale mudo y el compilador avisa",
+    ]
 
     # --- colores -------------------------------------------------------
 

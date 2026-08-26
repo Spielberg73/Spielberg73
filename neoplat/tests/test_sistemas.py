@@ -195,6 +195,24 @@ class TestGraficosAmiga(unittest.TestCase):
         self.assertEqual(banco.anadir(_tile16(3), compartir=False), 1)
 
 
+class TestListado(unittest.TestCase):
+    """Lo que cuenta `ngplat sistemas` tiene que seguir siendo verdad."""
+
+    def test_cada_maquina_dice_como_suena_y_que_hace_con_el_parallax(self):
+        for nombre in ("neogeo", "megadrive", "amiga", "jaguar"):
+            sistema = sistemas.obtener(nombre)
+            texto = " ".join(sistema.notas).lower()
+            self.assertTrue(sistema.notas, "%s no cuenta nada de si" % nombre)
+            self.assertIn("sonido:", texto, nombre)
+            self.assertTrue("parallax" in texto or "colores:" in texto, nombre)
+
+    def test_el_amiga_dice_que_tiene_dos_modos(self):
+        notas = " ".join(sistemas.obtener("amiga").notas)
+        for modo in ("32colores", "8colores"):
+            self.assertIn(modo, notas,
+                          "el listado no menciona 'amiga: %s'" % modo)
+
+
 class TestSonidoDeCadaChip(unittest.TestCase):
     def test_la_misma_nota_en_los_tres_chips(self):
         """440 Hz tienen que sonar a 440 Hz en las tres maquinas (con su redondeo)."""

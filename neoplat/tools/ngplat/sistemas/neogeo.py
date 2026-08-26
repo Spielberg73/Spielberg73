@@ -29,6 +29,10 @@ class NeoGeo(Sistema):
     pantalla = (320, 224)
     limites = Limites(colores_por_paleta=16, paletas=256, sprites=96, tiles=65536,
                       colores_en_pantalla=4096)
+    notas = [
+        "parallax: todas las capas del proyecto, cada una con su paleta",
+        "sonido:   YM2610, tres canales de onda cuadrada por un Z80",
+    ]
     archivos_motor = [
         ("include/np_types.h", "src/np_types.h"),
         ("include/np_game.h", "src/np_game.h"),

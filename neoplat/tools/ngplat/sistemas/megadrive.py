@@ -49,6 +49,10 @@ class MegaDrive(Sistema):
     ]
     extension_ejecutable = "bin"
     nombre_binario = "el cartucho"
+    notas = [
+        "parallax: una capa, en el plano B del VDP",
+        "sonido:   PSG SN76489, tres canales de onda cuadrada",
+    ]
 
     # --- colores -------------------------------------------------------
 

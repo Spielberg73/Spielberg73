@@ -213,7 +213,7 @@ tutorial paso a paso en [docs/tutorial.md](docs/tutorial.md).
 | `ngplat probar [proyecto]` | Abre el preview y el editor, y se queda sirviéndolo |
 | `ngplat compilar [proyecto]` | Genera `build/<máquina>/` con el C, los gráficos y el Makefile |
 | `ngplat compilar --make` | Además construye la ROM o el disquete |
-| `ngplat sistemas` | Lista las máquinas de destino y lo que aguanta cada una |
+| `ngplat sistemas` | Lista las máquinas, lo que aguanta cada una, cómo suena y qué hace con el parallax |
 
 Cualquier orden acepta `--sistema neogeo|megadrive|amiga` para trabajar con una
 máquina sin tocar el `game.yaml`. El preview también: dibuja con los colores

@@ -59,6 +59,10 @@ class Sistema:
     # como se llama lo que sale, con su articulo, para poder decirselo al
     # usuario: no todas las maquinas hacen una ROM (el Amiga hace un disquete)
     nombre_binario = "la ROM"
+    # lo que hay que saber de esta maquina y no cabe en los limites: que hace
+    # con el parallax, con que chip suena y si tiene modos que elegir. Lo
+    # imprime `ngplat sistemas`.
+    notas: List[str] = []
 
     def comprobar(self, build: Build) -> List[str]:
         """Avisos propios del sistema (o ProjectError si algo no cabe)."""
