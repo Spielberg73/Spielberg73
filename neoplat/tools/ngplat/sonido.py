@@ -25,6 +25,7 @@ SSG_MAX_PERIOD = 4095                # el periodo es de 12 bits
 SSG_MIN_PERIOD = 1
 
 PSG_CLOCK = 3579545                  # Hz del SN76489 (Mega Drive)
+YM2149_CLOCK = 2000000               # Hz del YM2149 (Atari ST)
 PSG_MAX_PERIOD = 1023                # 10 bits
 PAULA_CLOCK = 3546895                # reloj de Paula en PAL (Amiga)
 PAULA_MIN_PERIOD = 124               # por debajo la DMA no da abasto
@@ -101,6 +102,15 @@ def periodo_psg(hz: float) -> int:
     if hz <= 0:
         return 0
     return max(1, min(PSG_MAX_PERIOD, int(round(PSG_CLOCK / (32.0 * hz)))))
+
+
+def periodo_ym2149(hz: float) -> int:
+    """Atari ST (YM2149). Es el mismo chip que el SSG de la Neo Geo pero a la
+    mitad de reloj, asi que el mismo periodo da una nota una octava mas baja."""
+    if hz <= 0:
+        return 0
+    return max(SSG_MIN_PERIOD, min(SSG_MAX_PERIOD,
+                                   int(round(YM2149_CLOCK / (16.0 * hz)))))
 
 
 def periodo_paula(hz: float, muestras: int = 32) -> int:

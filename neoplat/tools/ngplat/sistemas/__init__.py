@@ -8,3 +8,4 @@ from . import neogeo    # noqa: F401  (se registra al importarse)
 from . import megadrive  # noqa: F401
 from . import amiga      # noqa: F401
 from . import jaguar     # noqa: F401
+from . import atarist    # noqa: F401

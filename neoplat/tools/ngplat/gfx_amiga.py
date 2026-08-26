@@ -120,9 +120,19 @@ class PaletaUnica:
     perdidos: int = 0              # colores que no cabian y se han aproximado
 
     def palabras(self) -> List[int]:
-        salida = [amiga_color(c) for c in self.colores]
-        salida.extend([0] * (COLORES - len(salida)))
-        return salida[:COLORES]
+        return self.palabras_de(amiga_color, COLORES)
+
+    def palabras_de(self, convertir, cuantos: int) -> List[int]:
+        """La misma paleta en el formato de otra maquina.
+
+        La fusion de paletas no tiene nada de Amiga: es la misma cuenta en el
+        Atari ST, que tambien ensena una sola paleta de todo lo que hay en
+        pantalla. Lo unico que cambia es cuantos colores caben y como se
+        escribe cada uno.
+        """
+        salida = [convertir(c) for c in self.colores]
+        salida.extend([0] * (cuantos - len(salida)))
+        return salida[:cuantos]
 
 
 def fusionar_paletas(paletas: List[Palette], tope: int = COLORES,
