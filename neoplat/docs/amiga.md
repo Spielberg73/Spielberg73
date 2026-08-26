@@ -140,6 +140,56 @@ Las dos cosas que lo arreglaron:
   del mapa de bits basta para no repetir el trabajo. De paso se corrigió un
   `+1` que repintaba una columna y una fila de tiles que el actor no tocaba.
 
+### Lo que cuesta cada cosa
+
+Medido dentro del A500 emulado, contando líneas de barrido con un reloj que
+acumula (el contador del hardware se pone a cero en cada frame, así que
+restarlo a pelo da números al revés en cuanto la medida cruza un frame):
+
+| | líneas |
+|---|---|
+| un tile opaco (`np_blit_tile`, 16×16, 5 planos) | **2,20** |
+| un tile recortado por máscara (`np_blit_bob`) | **4,07** |
+| repintar la pantalla entera, 21 × 15 tiles | **950** |
+| lo mismo pidiendo los tiles de columna en columna | **683** |
+| un frame de juego, corriendo | **122** de media, **272** el peor |
+| **lo que da la máquina** | **313** |
+
+Dos cosas se leen ahí:
+
+- Un blit con máscara cuesta **el doble** que uno opaco: lee tres sitios
+  (máscara, dibujo y fondo) y escribe uno.
+- De las 950 líneas de repintar la pantalla, **267 no son blitter**: son las
+  multiplicaciones de 32 bits de `np_tile_gfx_at()`, una por tile, que en un
+  68000 se hacen en software. Pidiendo la columna de una vez con
+  `np_tile_gfx_column()` bajan a 683, un **28% menos**. Es la misma trampa que
+  se encontró en la Neo Geo.
+
+### Por qué no hay parallax por blitter
+
+La pregunta natural es: si el fondo ya se dibuja con el blitter, ¿por qué no
+dibujar también las capas de parallax y saltarse el *dual playfield* (que
+dejaría el juego en 7 colores por plano)? Porque no cabe, y por mucho:
+
+Las dos capas del ejemplo ocupan 21 columnas × 10 filas de tiles = **210 tiles
+con máscara** por frame, porque se mueven a otra velocidad que el scroll por
+hardware y hay que redibujarlas enteras. A 4,07 líneas cada uno son **855
+líneas**. Y encima hay que repintar los tiles del escenario que caen sobre esa
+banda: 210 más, opacos, **456 líneas**.
+
+**1.311 líneas de parallax sobre un presupuesto de 313.** Con las 122 que ya
+gasta el juego, el frame saldría por unas 1.430: **4,6 frames**, o sea unos
+11 fps en vez de 50.
+
+Y no es cuestión de afinar el código: el suelo es el DMA. 210 tiles × 16 filas
+× 5 planos × 4 accesos son 67.200 accesos de blitter, y medido el blitter da
+unos 79 accesos por línea con la pantalla encendida. Son 850 líneas hagas lo
+que hagas.
+
+Con el hueco que hay de verdad (313 − 272 del peor frame ≈ 40 líneas, o unas
+190 si sólo miras la media) caben **entre 10 y 46 tiles con máscara por
+frame**: una tira de dos filas de alto. No da para una capa de fondo.
+
 ### Cómo medirlo
 
 El reloj del Amiga para esto es el propio haz de la pantalla: `VPOSR` y

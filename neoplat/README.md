@@ -401,7 +401,10 @@ Lo que aún no hace:
 
 - **Parallax en Amiga**: en la Neo Geo van todas las capas y en la Mega Drive
   una; en el Amiga el fondo se ve del color de fondo del nivel. Haría falta
-  modo *dual playfield*, que deja el juego en 8 colores.
+  modo *dual playfield*, que deja el juego en 7 colores por plano en vez de 32.
+  Dibujarlas con el blitter y quedarse con los 32 colores está medido y **no
+  cabe**: 1.311 líneas de barrido sobre las 313 que da un frame
+  ([docs/amiga.md](docs/amiga.md)).
 - **Muestras digitales**: la música y los efectos usan ondas cuadradas en las
   tres máquinas; las voces y percusiones sampleadas aún no (ni la ROM V1 de la
   Neo Geo ni los samples de Paula ni el YM2612).
