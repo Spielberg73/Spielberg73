@@ -91,14 +91,21 @@ void np_md_init(void)
 
 /* --- fondo ------------------------------------------------------------- */
 
-/* Escribe una columna del escenario (dos celdas por tile del nivel). */
+/* Escribe una columna del escenario (dos celdas por tile del nivel).
+ *
+ * Los tiles se piden de una vez: asi hay una multiplicacion de 32 bits por
+ * columna y no una por tile, que en un 68000 son llamadas a np_aritmetica.c. */
 static void np_columna_escenario(const NpWorld *w, int32_t tile_x)
 {
     const NpLevel *nivel = w->level;
+    uint16_t tiles[MD_PLANE_H / 2];
     uint16_t columna = (uint16_t)((tile_x * 2) & (MD_PLANE_W - 1));
+    int32_t alto = (int32_t)nivel->height;
     int32_t fila;
-    for (fila = 0; fila < (int32_t)nivel->height && fila < MD_PLANE_H / 2; fila++) {
-        uint16_t base = np_tile_gfx_at(nivel, tile_x, fila);
+    if (alto > MD_PLANE_H / 2) alto = MD_PLANE_H / 2;
+    np_tile_gfx_column(nivel, tile_x, 0, (uint16_t)alto, tiles);
+    for (fila = 0; fila < alto; fila++) {
+        uint16_t base = tiles[fila];
         uint16_t paleta = np_tileset_palette;
         /* un tile de 16x16 son cuatro de 8x8, guardados por columnas */
         np_celda(MD_PLANE_A, columna, (uint16_t)(fila * 2), MD_CELDA(base + 0, paleta, 0));

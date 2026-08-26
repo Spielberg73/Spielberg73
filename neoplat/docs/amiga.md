@@ -170,11 +170,13 @@ Dos cosas se leen ahí:
 
 - Un blit con máscara cuesta **el doble** que uno opaco: lee tres sitios
   (máscara, dibujo y fondo) y escribe uno.
-- De las 950 líneas de repintar la pantalla, **267 no son blitter**: son las
+- De las 950 líneas de repintar la pantalla, **267 no eran blitter**: eran las
   multiplicaciones de 32 bits de `np_tile_gfx_at()`, una por tile, que en un
   68000 se hacen en software. Pidiendo la columna de una vez con
   `np_tile_gfx_column()` bajan a 683, un **28% menos**. Es la misma trampa que
-  se encontró en la Neo Geo.
+  se encontró en la Neo Geo, y `np_columna()` ya lo hace así: en el ensamblador
+  que sale del compilador, el bucle de dentro pasó de una llamada por tile a un
+  `movew %a2@+,%d0` leyendo del array, con una sola llamada por columna.
 
 ### Por qué el parallax no se dibuja con el blitter
 
