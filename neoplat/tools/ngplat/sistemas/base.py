@@ -56,6 +56,9 @@ class Sistema:
     extension_ejecutable = "bin"
     # donde deja `make` el cartucho o el ejecutable, dentro del proyecto generado
     carpeta_salida = "rom"
+    # como se llama lo que sale, con su articulo, para poder decirselo al
+    # usuario: no todas las maquinas hacen una ROM (el Amiga hace un disquete)
+    nombre_binario = "la ROM"
 
     def comprobar(self, build: Build) -> List[str]:
         """Avisos propios del sistema (o ProjectError si algo no cabe)."""

@@ -198,7 +198,8 @@ def build_data(build: Build) -> Dict[str, object]:
             "objetos": [b.name for b in build.items],
         },
         "sistema": sistema.nombre,
-        "sistemas": [{"id": m.nombre, "nombre": m.titulo} for m in sistemas.disponibles()],
+        "sistemas": [{"id": m.nombre, "nombre": m.titulo, "binario": m.nombre_binario}
+                     for m in sistemas.disponibles()],
         "sin": build.sin_table,
         "sheets": sheets,
         "font": font,

@@ -130,11 +130,19 @@ El archivo completo con tus cambios. **Copiar al portapapeles** o **descargar**.
 Si estás en el preview publicado en claude.ai, la descarga pasa por el visor y
 llega como `game.yaml.txt`: solo hay que renombrarlo.
 
-## Generar ROM
+## Compilar
 
-La pestaña **generar ROM** compila el juego sin salir del editor: eliges máquina
+La pestaña **compilar** construye el juego sin salir del editor: eliges máquina
 y el botón guarda tu `game.yaml` en el proyecto y compila, dejando el registro
 de lo que ha pasado ahí mismo.
+
+El botón dice lo que va a salir, porque no todas las máquinas hacen lo mismo:
+
+| Máquina | Sale |
+|---|---|
+| Neo Geo | **la ROM** — el romset P1/C1/C2/S1/M1 |
+| Mega Drive | **el cartucho** — un `.bin` de 128 KB |
+| Amiga | **el disquete** — un `.adf` de 880 KB que arranca solo |
 
 Para que funcione, el preview lo tiene que estar sirviendo el propio `ngplat`,
 porque una página web no puede compilar nada. Eso es lo que hace `ngplat probar`

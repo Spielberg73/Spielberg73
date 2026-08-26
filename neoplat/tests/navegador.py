@@ -71,9 +71,21 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
         exigir(estado["x"] > 10, "el jugador no avanza")
         pagina.locator("#pantalla").screenshot(path=os.path.join(capturas, "juego.png"))
 
-        audio = pagina.evaluate("""() => { const a = window.NeoPlat.audio;
-            return { contexto: !!a.ctx, canales: a.canales.length, pistas: a.pistas.length,
-                     ganancia: Math.max(...a.canales.map(c => c.gain.gain.value)) }; }""")
+        # La ganancia se mira durante medio segundo y se coge la mayor: en un
+        # instante suelto se puede caer justo en un silencio de la melodia, y
+        # entonces el cero no significa que no suene.
+        audio = pagina.evaluate("""() => new Promise(listo => {
+            const a = window.NeoPlat.audio;
+            let pico = 0, vueltas = 0;
+            const reloj = setInterval(() => {
+              pico = Math.max(pico, ...a.canales.map(c => c.gain.gain.value));
+              if (++vueltas >= 25) {
+                clearInterval(reloj);
+                listo({ contexto: !!a.ctx, canales: a.canales.length,
+                        pistas: a.pistas.length, ganancia: pico });
+              }
+            }, 20);
+          })""")
         print("audio:", json.dumps(audio))
         exigir(audio["contexto"] and audio["canales"] == 3, "el audio no ha arrancado")
         exigir(audio["ganancia"] > 0, "los osciladores no estan sonando al jugar")
@@ -272,6 +284,19 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
                "la pestana ROM deja otros paneles a la vista: %s" % panel["solo"])
         exigir(len(panel["maquinas"]) == 3,
                "faltan maquinas donde elegir: %s" % panel["maquinas"])
+        # el boton dice lo que va a salir: no todas las maquinas hacen una ROM
+        etiquetas = {}
+        for maquina in panel["maquinas"]:
+            pagina.select_option("#rom-sistema", maquina)
+            pagina.wait_for_timeout(60)
+            etiquetas[maquina] = pagina.text_content("#rom-generar")
+        print("rom, etiquetas:", json.dumps(etiquetas))
+        exigir(etiquetas.get("amiga") == "generar el disquete",
+               "en Amiga el boton no dice disquete: %r" % etiquetas.get("amiga"))
+        exigir(etiquetas.get("neogeo") == "generar la ROM",
+               "en Neo Geo el boton no dice ROM: %r" % etiquetas.get("neogeo"))
+        exigir(len(set(etiquetas.values())) == 3,
+               "el boton dice lo mismo para las tres maquinas: %s" % etiquetas)
         # aqui el preview se abre como file://, asi que no hay ngplat con quien
         # hablar: el boton tiene que estar apagado y decir por que
         exigir(not panel["servidor"], "cree que hay servidor abriendo un archivo")

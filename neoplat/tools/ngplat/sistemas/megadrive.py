@@ -48,6 +48,7 @@ class MegaDrive(Sistema):
         ("megadrive/megadrive.ld", "megadrive.ld"),
     ]
     extension_ejecutable = "bin"
+    nombre_binario = "el cartucho"
 
     # --- colores -------------------------------------------------------
 

@@ -57,6 +57,7 @@ class Amiga(Sistema):
     ]
     extension_ejecutable = ""
     carpeta_salida = "disco"       # una carpeta que se copia tal cual al disquete
+    nombre_binario = "el disquete"
 
     # --- colores -------------------------------------------------------
 

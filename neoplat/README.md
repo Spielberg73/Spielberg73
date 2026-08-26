@@ -110,10 +110,11 @@ edites; <kbd>Enter</kbd> y lo estás jugando otra vez.
   botón que **lanza un bot a terminarse el nivel** para comprobar que es posible.
 - **Exporta tu `game.yaml` entero**, conservando comentarios y formato: solo
   cambia las líneas que has tocado.
-- **Genera la ROM desde el propio editor**: eliges máquina y el botón guarda el
-  `game.yaml` y compila, con el registro ahí mismo. Lo hace el `ngplat probar`
-  que tienes abierto (una página web no compila nada), así que el botón solo
-  está vivo si el preview lo está sirviendo él.
+- **Compila desde el propio editor**: eliges máquina y el botón guarda el
+  `game.yaml` y construye lo que toque —la ROM, el cartucho o el disquete—, con
+  el registro ahí mismo. Lo hace el `ngplat probar` que tienes abierto (una
+  página web no compila nada), así que el botón solo está vivo si el preview lo
+  está sirviendo él.
 - **Guarda solo** en el navegador: si cierras sin exportar, te ofrece recuperar
   lo que estabas haciendo.
 

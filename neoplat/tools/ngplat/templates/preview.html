@@ -196,7 +196,7 @@
     <button type="button" data-panel="actores">enemigos y objetos</button>
     <button type="button" data-panel="revisar">revisar<span class="contador" id="es-problemas" hidden>0</span></button>
     <button type="button" data-panel="yaml">game.yaml</button>
-    <button type="button" data-panel="rom">generar ROM</button>
+    <button type="button" data-panel="rom">compilar</button>
   </div>
 
   <div class="panel visible" id="panel-mapa">
@@ -296,10 +296,10 @@
     <div class="barra">
       <span class="etiqueta">maquina</span>
       <select id="rom-sistema"></select>
-      <button type="button" id="rom-generar">generar ROM</button>
+      <button type="button" id="rom-generar">generar</button>
       <label class="campo" style="flex-direction:row;align-items:center;gap:6px">
         <input type="checkbox" id="rom-make" checked>
-        <span>compilar el binario</span>
+        <span id="rom-etiqueta-make">construir el binario</span>
       </label>
       <span class="nota" id="rom-estado"></span>
     </div>
@@ -1832,6 +1832,8 @@
         if (lista[i].id === DATA.sistema) opcion.selected = true;
         elige.appendChild(opcion);
       }
+      elige.addEventListener("change", function () { rom.ponerNombres(); });
+      this.ponerNombres();
 
       var ayuda = document.getElementById("rom-ayuda");
       if (this.disponible) {
@@ -1844,6 +1846,23 @@
           + "pestana de al lado y compila con 'ngplat compilar --make'.";
         document.getElementById("rom-generar").disabled = true;
       }
+    },
+
+    /* No todas las maquinas hacen una ROM: el Amiga hace un disquete y la Mega
+     * Drive un cartucho. El boton dice lo que va a salir de verdad. */
+    binarioDe: function (id) {
+      var lista = (DATA.sistemas || []);
+      for (var i = 0; i < lista.length; i++)
+        if (lista[i].id === id) return lista[i].binario || "la ROM";
+      return "la ROM";
+    },
+
+    ponerNombres: function () {
+      var elige = document.getElementById("rom-sistema");
+      var nombre = this.binarioDe(elige.value);
+      document.getElementById("rom-generar").textContent = "generar " + nombre;
+      document.getElementById("rom-etiqueta-make").textContent =
+        "construir " + nombre;
     },
 
     escribir: function (lineas, clase) {
