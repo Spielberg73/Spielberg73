@@ -18,7 +18,7 @@ import unittest
 import comun
 from comun import cargar_demo
 
-from ngplat import adf, gfx, gfx_amiga, gfx_md, hunk, sistemas
+from ngplat import adf, gfx, gfx_amiga, gfx_md, hunk, prg, sistemas, st_disk
 from ngplat.codegen import generar_para_sistema
 from ngplat.errors import ProjectError
 from ngplat.gfx import Palette
@@ -307,6 +307,91 @@ class TestDisquete(unittest.TestCase):
         disco = adf.Disco("PRUEBA")
         with self.assertRaises(adf.ErrorAdf):
             disco.fichero("ENORME", b"x" * (900 * 1024))
+
+
+class TestDisqueteSt(unittest.TestCase):
+    """El .st: un disquete de Atari ST de 720 KB con un FAT12 dentro.
+
+    Lo que se comprueba es lo que mira TOS al encender: el tamano, la tabla de
+    parametros del sector de arranque (que va al reves, en little endian) y que
+    el juego esta en la carpeta AUTO, que es de donde lo saca solo.
+    """
+
+    def test_tamano_y_tabla_de_parametros(self):
+        imagen = st_disk.Disco("PRUEBA").bytes()
+        self.assertEqual(len(imagen), 737280, "un disquete son 80x2x9x512 bytes")
+        campos = struct.unpack_from("<HBHBHHBHHH", imagen, 11)
+        self.assertEqual(campos, (512, 2, 1, 2, 112, 1440, 0xF9, 5, 9, 2),
+                         "la tabla de parametros no describe un disco de 720 KB")
+
+    def test_el_sector_de_arranque_no_se_ejecuta(self):
+        """TOS ejecuta el sector 0 solo si sus palabras suman $1234. Aqui el
+        juego lo lanza la carpeta AUTO, asi que no debe sumar eso."""
+        imagen = st_disk.Disco("PRUEBA").bytes()
+        suma = sum(struct.unpack_from(">H", imagen, i)[0]
+                   for i in range(0, 512, 2)) & 0xFFFF
+        self.assertNotEqual(suma, 0x1234)
+
+    def test_ida_y_vuelta_de_un_fichero_grande(self):
+        """Mas de un cluster: hace falta que la cadena de la FAT este bien."""
+        datos = bytes((i * 7 + 3) & 0xFF for i in range(200 * 1024))
+        disco = st_disk.Disco("PRUEBA")
+        disco.fichero("GRANDE.BIN", datos)
+        self.assertEqual(st_disk.leer(disco.bytes())["GRANDE.BIN"], datos)
+
+    def test_el_ultimo_cluster_del_disco_tambien_se_apunta(self):
+        """En FAT12 las entradas van de dos en dos y aqui hay un numero impar:
+        si se cuentan mal, el ultimo cluster se pierde."""
+        disco = st_disk.Disco("PRUEBA")
+        datos = b"z" * ((st_disk.CLUSTERES - 2) * st_disk.CLUSTER)
+        disco.fichero("TODO.BIN", datos)
+        self.assertEqual(st_disk.leer(disco.bytes())["TODO.BIN"], datos)
+
+    def test_el_juego_va_dentro_de_auto(self):
+        tmp = tempfile.mkdtemp(prefix="neoplat-st-")
+        try:
+            ruta = os.path.join(tmp, "juego.st")
+            st_disk.crear_disco_de_juego(ruta, "MIJUEG", "JUEGO.PRG", b"ejecutable")
+            with open(ruta, "rb") as fh:
+                contenido = st_disk.leer(fh.read())
+            self.assertEqual(contenido["AUTO/JUEGO.PRG"], b"ejecutable",
+                             "TOS solo arranca solo lo que hay en AUTO")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_no_deja_meter_mas_de_720_kb(self):
+        disco = st_disk.Disco("PRUEBA")
+        with self.assertRaises(st_disk.ErrorSt):
+            disco.fichero("ENORME.BIN", b"x" * (800 * 1024))
+
+    def test_el_nombre_tiene_que_caber_en_ocho_y_tres(self):
+        disco = st_disk.Disco("PRUEBA")
+        with self.assertRaises(st_disk.ErrorSt):
+            disco.fichero("UNNOMBREMUYLARGO.PRG", b"x")
+
+
+class TestEjecutablePrg(unittest.TestCase):
+    """La tabla de relocalizacion del .PRG, que es la parte que se puede
+    equivocar sin que salte nada hasta que el ST se cuelga."""
+
+    def test_sin_correcciones(self):
+        self.assertEqual(prg.tabla_de_relocalizacion([]), b"\0\0\0\0")
+
+    def test_la_primera_va_entera_y_las_demas_de_a_byte(self):
+        tabla = prg.tabla_de_relocalizacion([4, 10, 20])
+        self.assertEqual(tabla, struct.pack(">I", 4) + bytes([6, 10, 0]))
+
+    def test_un_hueco_grande_se_parte_en_saltos_de_254(self):
+        tabla = prg.tabla_de_relocalizacion([0, 600])
+        self.assertEqual(tabla[:4], struct.pack(">I", 0))
+        pasos = tabla[4:-1]
+        avance = sum(prg.SALTO if p == 1 else p for p in pasos)
+        self.assertEqual(avance, 600, "los saltos no llegan a la correccion")
+        self.assertEqual(tabla[-1], 0, "la tabla no se cierra")
+
+    def test_las_correcciones_van_en_direcciones_pares(self):
+        with self.assertRaises(prg.ErrorPrg):
+            prg.tabla_de_relocalizacion([3])
 
 
 class TestProyectoGenerado(unittest.TestCase):
