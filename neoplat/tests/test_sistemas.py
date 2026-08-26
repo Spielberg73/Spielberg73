@@ -685,9 +685,11 @@ class TestCompilacionReal(unittest.TestCase):
         rom = [f for f in os.listdir(os.path.join(out, "rom")) if f.endswith(".j64")]
         self.assertTrue(rom, "no se ha creado el cartucho")
         capturas = os.path.join(self.tmp, "capturas-jaguar")
+        musica, salto, _ = self._banda_sonora()
         self.assertEqual(
-            emulador_jaguar.comprobar(os.path.join(out, "rom", rom[0]), capturas), 0,
-            "el cartucho no arranca o no se juega en el emulador")
+            emulador_jaguar.comprobar(os.path.join(out, "rom", rom[0]), capturas,
+                                      musica=musica, salto=salto), 0,
+            "el cartucho no arranca, no se juega o no suena en el emulador")
 
     def test_cartucho_de_jaguar(self):
         """La consola lee la pila en cart+$400 y el punto de entrada en

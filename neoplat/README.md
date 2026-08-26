@@ -29,7 +29,7 @@ Y las cuatro llevan un **68000**, que es lo que hace que el motor sea uno solo.
 | Escenario | columnas de sprites | plano A del VDP | mapa de bits + blitter | mapa de bits lineal |
 | Actores | sprites | sprites del VDP | blitter con máscara | objetos del chip |
 | Colores | 4096 en pantalla | 4 paletas de 16 | una de 32, o dos de 8 | una tabla de 256 |
-| Sonido | YM2610 (SSG) por Z80 | PSG SN76489 | Paula (4 canales) | todavía no |
+| Sonido | YM2610 (SSG) por Z80 | PSG SN76489 | Paula (4 canales) | los DAC, por el DSP de Jerry |
 | Parallax | sí | una capa | una capa (`amiga: 8colores`) | todavía no |
 | Sale | ROMs de cartucho | `.bin` con cabecera y suma | disquete `.adf` arrancable | cartucho `.j64` |
 
@@ -249,6 +249,7 @@ neoplat/
 │   ├── claves.py           nombres que acepta cada opción (los usa el editor)
 │   ├── sonido.py           notas -> periodos del SSG, del PSG o de Paula
 │   ├── m1.py / z80.py      driver de sonido del Z80 y su ensamblador
+│   ├── jerry.py / dsp.py   driver de sonido del DSP de la Jaguar, y el suyo
 │   ├── preview.py          genera el preview jugable
 │   ├── servidor.py         localhost: el editor manda el yaml y compila
 │   ├── png.py / miniyaml.py  lectores propios (cero dependencias)
@@ -393,16 +394,16 @@ Verificado aquí:
 - Ida y vuelta de los cuatro formatos de gráficos (tiles de Neo Geo, tiles del
   VDP, bitplanes y máscaras del Amiga, un byte por píxel de la Jaguar): codificar y decodificar devuelve la
   imagen original.
-- **Tres de las cuatro máquinas suenan, y suenan lo que pone el `game.yaml`**: las
-  pruebas capturan lo que sale del altavoz —del core de libretro en Mega Drive
-  y Amiga, y del circuito entero 68000 → Z80 → YM2610 en la Neo Geo— y
-  reconocen las notas una a una. En las tres salen **16 de 16** notas de la
+- **Las cuatro máquinas suenan, y suenan lo que pone el `game.yaml`**: las
+  pruebas capturan lo que sale del altavoz —del core de libretro en Mega Drive,
+  Amiga y Jaguar, y del circuito entero 68000 → Z80 → YM2610 en la Neo Geo— y
+  reconocen las notas una a una. En las cuatro salen **16 de 16** notas de la
   melodía, la pantalla de título está callada y al saltar se oye el efecto por
   encima de la música. Comprobado que la prueba sabe fallar: con una placa muda
   a propósito, fallan las tres comprobaciones. Cómo se hace, en
   [docs/sonido.md](docs/sonido.md).
-- Esas tres máquinas tocan la misma nota: 440 Hz salen a 440 Hz en el SSG, en el
-  PSG y en Paula (con el redondeo de cada chip).
+- Las cuatro tocan la misma nota: 440 Hz salen a 440 Hz en el SSG, en el PSG, en
+  Paula y en los DAC de la Jaguar (con el redondeo de cada uno).
 - El preview se abre en Chromium durante las pruebas y se comprueba que dibuja
   lo que debe (capturas de pantalla revisadas a mano).
 - El editor hace el viaje completo en las pruebas: edita mapas, física y
@@ -425,18 +426,14 @@ sin usarse en ninguna de las cuatro.
 
 Lo que aún no hace:
 
-- **Sonido en Jaguar**: Jerry tiene dos DAC de 16 bits, pero alimentarlos pide
-  un programa para el DSP, que es otro juego de instrucciones y otro
-  ensamblador. Por ahora el juego sale mudo en esa máquina y el compilador
-  avisa.
 - **Varias capas de parallax en Amiga**: con `amiga: 8colores` el juego usa el
   modo *dual playfield* del OCS y se dibuja **una** capa, movida por hardware;
   las demás se ignoran. Dibujarlas con el blitter y quedarse con los 32 colores
   está medido y **no cabe**: 1.311 líneas de barrido sobre las 313 que da un
   frame ([docs/amiga.md](docs/amiga.md)).
 - **Muestras digitales**: la música y los efectos usan ondas cuadradas en las
-  tres máquinas que suenan; las voces y percusiones sampleadas aún no (ni la ROM V1 de la
-  Neo Geo ni los samples de Paula ni el YM2612).
+  cuatro máquinas; las voces y percusiones sampleadas aún no (ni la ROM V1 de la
+  Neo Geo ni los samples de Paula ni el YM2612 ni los DAC de la Jaguar).
 - **Jefes o eventos guionizados**: hay cinco comportamientos de enemigo fijos.
 - **Dos jugadores**.
 - **Zoom de sprites** (la Neo Geo lo permite; el motor no lo usa).

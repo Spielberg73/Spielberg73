@@ -22,6 +22,8 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from camara import Vigia, comprobar_salto  # noqa: E402
+from sonido import (banda_del_efecto, comprobar_melodia,  # noqa: E402
+                    nivel, pico_por_frame)
 from libretro import (Emulador, buscar_core, colores, distintos,  # noqa: E402
                       franja, guardar_png)
 
@@ -29,15 +31,17 @@ CORE = "virtualjaguar"
 # El boton START del mando de RetroPad es el OPTION de la Jaguar; el que usa el
 # kit para empezar la partida es PAUSE, que el core pone en SELECT.
 EMPEZAR = "SELECT"
+FPS = 60
 
 
 def comprobar(rom: str, capturas: str = "capturas",
-              pantallas: bool = False) -> int:
+              pantallas: bool = False, musica=None, salto=None) -> int:
     core = buscar_core(CORE, "NEOPLAT_CORE_JAGUAR")
     if not core:
         print("el core de Virtual Jaguar no esta instalado: se salta la prueba")
         return 0
     os.makedirs(capturas, exist_ok=True)
+    franja_del_salto = banda_del_efecto(musica, salto) if musica and salto else None
     fallos = []
 
     def exigir(condicion, mensaje):
@@ -58,6 +62,9 @@ def comprobar(rom: str, capturas: str = "capturas",
            % len(tonos))
     print("titulo: %dx%d con %d colores" % (titulo[0], titulo[1], len(tonos)))
     exigir(len(set(franja(titulo, 32))) > 2, "no se ve el marcador arriba")
+    if musica:
+        exigir(nivel(emu.escuchar(20)) < 1.0,
+               "la pantalla de titulo hace ruido: la musica es solo de la partida")
 
     # --- 2) empieza la partida ------------------------------------------
     emu.pulsar(EMPEZAR)
@@ -67,6 +74,34 @@ def comprobar(rom: str, capturas: str = "capturas",
     juego = emu.frame
     guardar_png(juego, os.path.join(capturas, "jag_juego.png"))
     exigir(distintos(titulo, juego) > 0.002, "la pantalla no cambia al empezar")
+
+    # --- 2b) y suena: el DSP toca la melodia del game.yaml ---------------
+    #
+    # La Jaguar no tiene chip de sonido: las ondas las hace el programa que
+    # corre en el DSP de Jerry (tools/ngplat/jerry.py), muestra a muestra. Aqui
+    # se cierra el circuito entero, del game.yaml al DAC.
+    if musica:
+        exigir(nivel(emu.escuchar(10)) > 1.0, "la Jaguar no saca ningun sonido")
+        oido = emu.escuchar(musica.velocidad * (len(musica.pistas[0]) + 1))
+        aciertos, total, _, notas = comprobar_melodia(oido, emu.ritmo, musica, FPS)
+        exigir(total and aciertos >= total * 0.8,
+               "el DSP no toca la melodia del game.yaml: %d notas de %d "
+               "(se ha oido %s)" % (aciertos, total, [int(n) for n in notas]))
+        print("musica: %d de %d notas son las del game.yaml" % (aciertos, total))
+
+    if franja_del_salto:
+        quieto = pico_por_frame(emu.escuchar, 24, emu.ritmo, *franja_del_salto)
+        emu.pulsar("B")
+        emu.avanzar(2)
+        emu.pulsar()
+        saltando = pico_por_frame(emu.escuchar, 24, emu.ritmo, *franja_del_salto)
+        exigir(saltando > quieto * 2.5,
+               "al saltar no se oye el efecto: entre %.0f y %.0f Hz suena %.1f "
+               "veces mas que estando quieto, y deberia notarse mucho mas"
+               % (franja_del_salto[0], franja_del_salto[1],
+                  saltando / max(1.0, quieto)))
+        print("efecto de salto: %.1f veces mas fuerte que el fondo"
+              % (saltando / max(1.0, quieto)))
 
     # --- 3) se juega: correr a la derecha y saltar -----------------------
     movimiento = 0.0
@@ -139,5 +174,8 @@ if __name__ == "__main__":
     from sonido import buscar_proyecto
     proyecto = buscar_proyecto(rom)
     p = load_project(proyecto) if proyecto else None
+    from sonido import musica_al_empezar
     sys.exit(comprobar(rom, sys.argv[2] if len(sys.argv) > 2 else "capturas",
-                       pantallas=bool(p and p.camera == "pantallas")))
+                       pantallas=bool(p and p.camera == "pantallas"),
+                       musica=musica_al_empezar(p) if p else None,
+                       salto=p.sound.efectos.get("salto") if p else None))

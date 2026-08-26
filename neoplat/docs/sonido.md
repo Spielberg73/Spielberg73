@@ -77,21 +77,25 @@ diluye). Al saltar tiene que aparecer ahí algo que antes no estaba.
 ## Lo que se comprueba en cada máquina
 
 ```bash
-make test-emulador          # las tres
+make test-emulador          # las cuatro
 ```
 
-En las tres: que la pantalla de título está **callada** (la música es solo de
+En las cuatro: que la pantalla de título está **callada** (la música es solo de
 la partida), que al empezar el nivel suenan **las 16 notas** de la melodía del
 `game.yaml`, y que al saltar se oye el efecto por encima de la música.
 
 Comprobado que las pruebas saben fallar: con una placa muda a propósito (el
 68000 no manda la orden al Z80) las tres comprobaciones fallan.
 
+La Jaguar es el caso raro: no tiene chip de sonido, así que las ondas las hace
+un programa que corre en el DSP de Jerry y que también genera el kit
+([docs/jaguar.md](jaguar.md)).
+
 ## Lo que aún no hace
 
-- **Muestras digitales.** Los tres chips pueden reproducirlas (la ROM V1 de la
-  Neo Geo, el YM2612 de la Mega Drive, Paula en el Amiga) y de momento solo se
-  usan ondas cuadradas y ruido.
+- **Muestras digitales.** Las cuatro máquinas pueden (la ROM V1 de la Neo Geo,
+  el YM2612 de la Mega Drive, Paula en el Amiga, los DAC de la Jaguar) y de
+  momento solo se usan ondas cuadradas y ruido.
 - **FM.** La Mega Drive tiene el YM2612 y la Neo Geo cuatro canales FM del
   YM2610 sin tocar; el kit usa los de onda cuadrada de las dos, que es lo que
   permite que suene igual en las tres.

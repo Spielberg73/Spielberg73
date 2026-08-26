@@ -13,7 +13,7 @@ from __future__ import annotations
 import os
 from typing import Dict, List
 
-from .. import gfx, gfx_jaguar
+from .. import gfx, gfx_jaguar, jerry
 from ..build import Build
 from ..errors import ProjectError
 from .base import Limites, Salida, Sistema, registrar
@@ -34,6 +34,7 @@ class Jaguar(Sistema):
         ("include/np_types.h", "src/np_types.h"),
         ("include/np_game.h", "src/np_game.h"),
         ("include/np_world.h", "src/np_world.h"),
+        ("include/np_sonido.h", "src/np_sonido.h"),
         ("core/np_world.c", "src/np_world.c"),
         ("core/np_aritmetica.c", "src/np_aritmetica.c"),
         ("jaguar/np_jaguar.h", "src/np_jaguar.h"),
@@ -48,7 +49,8 @@ class Jaguar(Sistema):
     nombre_binario = "el cartucho"
     notas = [
         "parallax: todavia no",
-        "sonido:   todavia no; el juego sale mudo y el compilador avisa",
+        "sonido:   dos DAC de 16 bits alimentados por el DSP de Jerry;",
+        "          tres ondas cuadradas y un ruido, las mismas notas que las otras",
     ]
 
     # --- colores -------------------------------------------------------
@@ -114,8 +116,11 @@ class Jaguar(Sistema):
         build.hud_palette = 0
         build.paletas = [colores[i:i + 16] for i in range(0, 256, 16)]
         build.tile_gfx = [build.tileset.first_tile + t.index for t in build.tiles]
+        codigo_dsp, etiquetas_dsp = jerry.generar()
         build.info = {
             "banco": banco,
+            "dsp": codigo_dsp,
+            "dsp_etiquetas": etiquetas_dsp,
             "glifos": glifos,
             "colores": colores,
             "stats": {
@@ -137,8 +142,7 @@ class Jaguar(Sistema):
                     "en Jaguar todavia no se dibujan las capas de parallax: el fondo "
                     "de '%s' se vera del color de fondo" % nivel.name)
                 break
-        if build.project.sound.musica or build.project.sound.efectos:
-            avisos.append("en Jaguar todavia no hay sonido: el juego sale mudo")
+
         return avisos
 
     # --- generacion -----------------------------------------------------
@@ -149,6 +153,7 @@ class Jaguar(Sistema):
         nombre = _nombre_rom(build)
 
         salida.archivos["src/graficos.c"] = _graficos_c(build, banco)
+        salida.archivos["src/sonido.c"] = _sonido_c(build)
         salida.archivos["jaguar.ld"] = _linker()
         salida.archivos["Makefile"] = _makefile(nombre)
         salida.archivos["hacer_rom.py"] = _hacer_rom()
@@ -158,8 +163,88 @@ class Jaguar(Sistema):
         salida.resumen.append(
             "colores:  %d de los 256 de la Jaguar (el 255 es el del marcador)"
             % build.info["stats"]["colores"])
+        salida.resumen.append(
+            "sonido:   %d muestras por segundo, con un driver de %d bytes para el DSP"
+            % (jerry.MUESTRAS, len(build.info["dsp"])))
         salida.resumen.append("cartucho: rom/%s.j64 (2 MB)" % nombre)
         return salida
+
+
+def _secuencia_c(nombre: str, pasos) -> List[str]:
+    lineas = ["static const NpSndPaso %s[] = {" % nombre]
+    for paso in pasos:
+        duracion = max(1, int(paso.duracion))
+        volumen = (paso.volumen & 0x0F) | (0x80 if paso.ruido else 0)
+        campo = jerry.paso_de_frecuencia(paso.frecuencia)
+        while duracion > 0:
+            trozo = min(255, duracion)
+            lineas.append("    { %d, %d, 0x%02x }," % (campo, trozo, volumen))
+            duracion -= trozo
+    lineas.append("    { 0, 0, 0 }")
+    lineas.append("};")
+    return lineas
+
+
+def _sonido_c(build: Build) -> str:
+    """La musica y los efectos, mas el driver del DSP ya ensamblado."""
+    from ..sonido import EVENTOS
+    sonido = build.project.sound
+    efectos = [n for n in EVENTOS if n in sonido.efectos]
+    codigo = build.info["dsp"]
+    etiquetas = build.info["dsp_etiquetas"]
+    partes = [
+        "/* Archivo generado por ngplat.",
+        " *",
+        " * Los pasos de fase de cada nota (la Jaguar sintetiza las ondas por",
+        " * software) y el programa que corre en el DSP de Jerry, ensamblado por",
+        " * tools/ngplat/jerry.py: %d bytes a %d muestras por segundo." % (
+            len(codigo), jerry.MUESTRAS),
+        " */",
+        '#include "np_sonido.h"',
+        '#include "np_types.h"',
+        "",
+    ]
+    for i, nombre in enumerate(efectos):
+        partes.extend(_secuencia_c("np_sfx%d" % i, sonido.efectos[nombre].pasos))
+        partes.append("")
+    for i, nombre in enumerate(build.music_order):
+        tema = sonido.musica[nombre]
+        for p in range(2):
+            pista = tema.pistas[p] if p < len(tema.pistas) else []
+            partes.extend(_secuencia_c("np_mus%d_%d" % (i, p), pista))
+        partes.append("")
+
+    partes.append("const NpSndPaso *const np_snd_efectos[] = {")
+    partes.append("    " + (", ".join("np_sfx%d" % i for i in range(len(efectos)))
+                            if efectos else "0"))
+    partes.append("};")
+    partes.append("const NpSndPaso *const np_snd_musica[] = {")
+    if build.music_order:
+        entradas = []
+        for i in range(len(build.music_order)):
+            entradas.append("np_mus%d_0" % i)
+            entradas.append("np_mus%d_1" % i)
+        partes.append("    " + ", ".join(entradas))
+    else:
+        partes.append("    0")
+    partes.append("};")
+    partes.append("const uint16_t np_snd_efecto_count = %d;" % len(efectos))
+    partes.append("const uint16_t np_snd_musica_count = %d;" % len(build.music_order))
+    partes.append("")
+
+    palabras = [int.from_bytes(codigo[i:i + 4], "big")
+                for i in range(0, len(codigo), 4)]
+    partes.append("/* el driver, tal cual se copia a la RAM del DSP */")
+    partes.append("const uint32_t np_dsp_codigo[] = {")
+    for i in range(0, len(palabras), 6):
+        partes.append("    " + ", ".join("0x%08xu" % p for p in palabras[i:i + 6]) + ",")
+    partes.append("};")
+    partes.append("const uint16_t np_dsp_palabras = %d;" % len(palabras))
+    partes.append("const uint32_t np_dsp_inicio = 0x%08xu;" % etiquetas["inicio"])
+    partes.append("const uint32_t np_dsp_parametros = 0x%08xu;"
+                  % etiquetas["parametros"])
+    partes.append("const uint16_t np_dsp_sclk = %d;" % jerry.SCLK)
+    return "\n".join(partes) + "\n"
 
 
 def _nombre_rom(build: Build) -> str:
@@ -270,7 +355,8 @@ CFLAGS := -m68000 -Os -fomit-frame-pointer -fno-builtin -ffreestanding \\
 LDFLAGS := -nostdlib -nodefaultlibs -T jaguar.ld -Wl,--build-id=none
 
 SRC := src/arranque.S src/main.c src/np_video.c src/np_hud.c src/np_sound.c \\
-       src/np_world.c src/np_aritmetica.c src/gamedata.c src/graficos.c
+       src/np_world.c src/np_aritmetica.c src/gamedata.c src/graficos.c \\
+       src/sonido.c
 ROM := rom/%s.j64
 
 all: $(ROM)

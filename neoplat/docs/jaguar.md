@@ -137,11 +137,68 @@ desactivada por defecto), así que esta máquina se comprueba de verdad, igual q
 la Mega Drive y el Amiga: se arranca, se mira el título, se pulsa el botón, se
 juega y se comprueba que el escenario se mueve.
 
+## El sonido: un programa para el DSP
+
+La Jaguar **no tiene chip de sonido**. Tiene dos DAC de 16 bits (`LTXD` en
+`$F1A148` y `RTXD` en `$F1A14C`) y hace falta alguien que les dé una muestra
+cada vez que el reloj de audio hace tic, unas veinte mil veces por segundo. El
+68000 no puede: la interrupción del reloj de audio (I2S) no le llega a él, le
+llega al **DSP** de Jerry. Así que para que la Jaguar suene hay que escribir un
+programa para ese procesador, igual que en la Neo Geo hay que escribir uno para
+el Z80.
+
+El kit trae el ensamblador (`tools/ngplat/dsp.py`, 300 líneas) y el driver
+(`tools/ngplat/jerry.py`, 292 bytes de código máquina). El reparto es:
+
+| | |
+|---|---|
+| el **DSP** | genera las ondas: tres cuadradas y un ruido, sumadas, una muestra por interrupción |
+| el **68000** | lo mismo que en el Amiga y la Mega Drive: lleva las secuencias del `game.yaml` y, cada frame, deja en la RAM del DSP qué nota toca cada canal |
+
+Se hablan por un bloque de siete palabras en la RAM del DSP: `paso0 paso1 paso2
+amplitud0 amplitud1 amplitud2 amplitud_ruido`.
+
+**Cómo suena un canal.** Un acumulador de fase de 32 bits al que se le suma un
+`paso` por muestra; el bit de arriba dice si la cuadrada está arriba o abajo. Es
+la forma más barata de hacer una cuadrada exacta, y da la misma nota que el SSG
+de la Neo Geo o el PSG de la Mega Drive:
+
+    paso = frecuencia * 2^32 / muestras_por_segundo
+
+Con `SCLK = 19` salen 26.590.906 / (64 × 20) = **20.774 muestras por segundo**.
+El error de afinación es menor del 0,05% (menos de un cente).
+
+**Lo que hay que saber del juego de instrucciones**, y que cuesta encontrar:
+
+- cada instrucción es **una palabra de 16 bits**: seis de código, cinco del
+  primer operando y cinco del segundo, que casi siempre es el destino;
+- `movei` lleva detrás la constante de 32 bits **con la palabra baja primero**;
+- `shlq` es la **única** instrucción cuyo inmediato se guarda como `32 - n`;
+- `jump` y `jr` tienen **ranura de retardo**: la instrucción de detrás se
+  ejecuta antes de saltar;
+- al entrar en la interrupción el DSP fuerza el banco 0 de registros, mete la
+  dirección de vuelta en la pila (`r31`) y pone `IMASK`. Para volver hay que
+  sacarla, **sumarle 2** y escribir `D_FLAGS` con `IMASK` a cero y el bit de
+  limpiar el aviso de I2S (`$420`), en la ranura de retardo del `jump`.
+
+El vector de la interrupción I2S es el segundo: `$F1B010`. Los vectores ocupan
+16 bytes cada uno y sólo se usa ése, así que el manejador empieza ahí y sigue de
+largo.
+
+**Cómo se depuró.** A la primera no sonaba nada, y con el emulador no se ve
+dentro del DSP. Se fue por partes, cada una una ROM: (1) el 68000 escribiendo el
+DAC directamente → sonaba, así que `SCLK` y `SMODE` estaban bien; (2) el DSP
+escribiendo el DAC desde su bucle principal → sonaba, así que el DSP arrancaba;
+(3) un manejador de I2S que sólo cambiaba el signo → sonaba, así que la
+interrupción y la vuelta estaban bien; (4) el manejador entero con constantes →
+sonaba. El fallo estaba en la prueba: el botón de empezar en la Jaguar es
+`SELECT`, no `A`, y la partida nunca había arrancado.
+
 ## Lo que aún no hace
 
-- **Sonido.** Jerry tiene dos DAC de 16 bits, pero alimentarlos pide un programa
-  para el DSP, que es otro juego de instrucciones y otro ensamblador. El juego
-  sale mudo y el compilador avisa.
+- **Muestras digitales.** Los DAC son de 16 bits y darían para voces y
+  percusión de verdad; de momento son ondas cuadradas y ruido, como en las otras
+  tres máquinas.
 - **Capas de parallax.** Cabrían de sobra —la Jaguar puede componer muchos más
   objetos— pero todavía no están.
 - **Color directo.** Se usan los 256 de la tabla. La Jaguar puede hacer 16 bits

@@ -54,6 +54,25 @@
 #define JOYSTICK  REG32(0x14000)    /* mando y botones, activos a nivel bajo */
 #define CONFIG    REG16(0x14002)    /* bit 4: 1 = NTSC, 0 = PAL              */
 
+/* --- Jerry: sonido ------------------------------------------------------
+ *
+ * La Jaguar no tiene chip de sonido: tiene dos DAC de 16 bits y un DSP que los
+ * alimenta muestra a muestra. El programa del DSP lo genera el compilador
+ * (tools/ngplat/jerry.py) y va en sonido.c; aqui solo estan sus registros.
+ */
+#define D_FLAGS   REG32(0x1A100)
+#define D_PC      REG32(0x1A110)
+#define D_CTRL    REG32(0x1A114)
+#define SCLK      REG32(0x1A150)    /* muestras = reloj / (64 * (SCLK + 1)) */
+#define SMODE     REG32(0x1A154)
+#define D_RAM     ((volatile uint32_t *)(uintptr_t)(TOM + 0x1B000))
+
+#define NP_DSPGO      0x00000001u
+#define NP_SMODE_INT  0x01u         /* Jerry genera su propio reloj de audio  */
+#define NP_SMODE_WSEN 0x04u
+#define NP_SMODE_FALL 0x10u
+#define NP_SMODE (NP_SMODE_INT | NP_SMODE_WSEN | NP_SMODE_FALL)
+
 /* --- modo de video ------------------------------------------------------ */
 #define NP_VIDEN   0x0001
 #define NP_RGB16   0x0006
@@ -99,5 +118,12 @@ extern uint8_t np_hud_bitmap[];             /* la franja del marcador        */
 extern const uint8_t np_tile_data[];        /* tiles de 16x16, un byte por pixel */
 extern const uint16_t np_colores[256];
 extern const uint8_t np_font_data[];        /* fuente de 8x8, un bit por pixel */
+
+/* el driver del DSP, tambien generado (sonido.c) */
+extern const uint32_t np_dsp_codigo[];
+extern const uint16_t np_dsp_palabras;      /* cuantos long ocupa            */
+extern const uint32_t np_dsp_inicio;        /* por donde arranca el DSP      */
+extern const uint32_t np_dsp_parametros;    /* el bloque que escribe el 68000 */
+extern const uint16_t np_dsp_sclk;
 
 #endif /* NP_JAGUAR_H */

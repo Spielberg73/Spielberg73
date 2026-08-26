@@ -332,7 +332,7 @@ compilar y te dice cuál te has saltado.
 | Actores en pantalla | 96 sprites | 80 sprites | sin límite fijo (los dibuja el blitter) | sin límite fijo |
 | Alto del nivel | 256 tiles | 32 tiles | 16 tiles | 16 tiles |
 | Capas de parallax | todas | una | una, con `amiga: 8colores` | ninguna (todavía) |
-| Sonido | YM2610 | PSG SN76489 | Paula | todavía no |
+| Sonido | YM2610 | PSG SN76489 | Paula | los DAC, por el DSP |
 | Qué sale | ROMs de cartucho | `.bin` de cartucho | disquete `.adf` | cartucho `.j64` |
 
 `ngplat sistemas` los enseña sin salir de la terminal.
