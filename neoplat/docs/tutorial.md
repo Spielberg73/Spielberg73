@@ -194,18 +194,20 @@ que sí lo tenga.
 
 ## 9. El mismo juego en otra máquina
 
-El juego que has escrito vale igual para una Mega Drive o para un Amiga: solo
-cambia cómo se dibuja y cómo suena, no lo que pasa.
+El juego que has escrito vale igual para una Mega Drive, para un Amiga o para
+un Atari ST: solo cambia cómo se dibuja y cómo suena, no lo que pasa.
 
 ```bash
-../ngplat sistemas                       # las tres máquinas y sus límites
+../ngplat sistemas                       # las cinco máquinas y sus límites
 ../ngplat compilar --sistema megadrive   # -> build/megadrive/rom/juego.bin
 ../ngplat compilar --sistema amiga       # -> build/amiga/disco/MiJuego.adf
+../ngplat compilar --sistema jaguar      # -> build/jaguar/rom/MiJuego.j64
+../ngplat compilar --sistema atarist     # -> build/atarist/disco/mijuego.st
 ```
 
-Para estas dos no hace falta ngdevkit, solo un compilador de 68000 cualquiera
-(`m68k-elf-gcc`, o el paquete `gcc-m68k-linux-gnu` de Debian y Ubuntu). Añade
-`--make` y te lo construye del tirón.
+Para estas cuatro no hace falta ngdevkit, solo un compilador de 68000
+cualquiera (`m68k-elf-gcc`, o el paquete `gcc-m68k-linux-gnu` de Debian y
+Ubuntu). Añade `--make` y te lo construye del tirón.
 
 Lo del Amiga es un **disquete de verdad**: un `.adf` de 880 KB que arranca solo,
 sin Workbench. Lo metes en FS-UAE, WinUAE o Amiberry (o en un Gotek, si tienes
@@ -216,10 +218,20 @@ cd build/amiga
 make run          # con FS-UAE instalado, mete el disquete y arranca
 ```
 
+Y el del Atari ST es otro disquete de verdad: un `.st` de 720 KB con el juego
+en la carpeta `AUTO`, que es de donde TOS lo arranca solo al encender. Va en
+Hatari, en Steem o en un ST con un Gotek delante:
+
+```bash
+cd build/atarist
+make run          # con Hatari instalado, mete el disquete y arranca
+```
+
 Cada máquina tiene lo suyo, y `ngplat comprobar --sistema <máquina>` te lo dice
-antes de compilar: la Mega Drive solo muestra 64 colores y una capa de fondo, y
-el Amiga 32 colores y niveles de hasta 16 casillas de alto. Si algo no cabe, el
-mensaje te dice qué es y qué quitar.
+antes de compilar: la Mega Drive solo muestra 64 colores y una capa de fondo,
+el Amiga 32 colores y niveles de hasta 16 casillas de alto, y el Atari ST 15
+colores, sin parallax y con una pantalla de 200 líneas en vez de 224. Si algo
+no cabe, el mensaje te dice qué es y qué quitar.
 
 También puedes dejarlo escrito en el `game.yaml` y olvidarte:
 

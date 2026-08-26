@@ -54,7 +54,8 @@ niveles: **nuevo** (nace con salida, meta y suelo, listo para jugar),
 ## Juego y física
 
 Título, autor, vidas, tiempo límite, la **máquina** para la que se compila
-(Neo Geo, Mega Drive o Amiga) y todos los ajustes del jugador con
+(Neo Geo, Mega Drive, Amiga, Jaguar o Atari ST) y todos los ajustes del
+jugador con
 deslizadores: velocidad, salto, gravedad, aceleración, fricción, control en el
 aire, corte del salto, caída máxima, rebote, coyote, buffer de salto, vida,
 invulnerabilidad, doble salto y pisar enemigos.
@@ -108,7 +109,7 @@ que este viva dentro del kit:
 
 - **los colores son los de la máquina de destino.** El dibujo se carga desde el
   PNG ya pasado por el redondeo de la máquina, así que lo que ves en el lienzo
-  es exactamente lo que se verá en la Neo Geo, el Amiga o donde sea. Y el
+  es exactamente lo que se verá en la Neo Geo, el Atari ST o donde sea. Y el
   contador de arriba a la derecha dice **cuántos colores llevas de los que
   caben**, en rojo si te pasas, antes de que te lo diga el compilador;
 - **la animación corre a la velocidad de verdad.** La vista previa de la derecha
@@ -171,6 +172,8 @@ El botón dice lo que va a salir, porque no todas las máquinas hacen lo mismo:
 | Neo Geo | **la ROM** — el romset P1/C1/C2/S1/M1 |
 | Mega Drive | **el cartucho** — un `.bin` de 128 KB |
 | Amiga | **el disquete** — un `.adf` de 880 KB que arranca solo |
+| Atari Jaguar | **el cartucho** — un `.j64` con su cabecera |
+| Atari ST | **el disquete** — un `.st` de 720 KB que arranca solo |
 
 Para que funcione, el preview lo tiene que estar sirviendo el propio `ngplat`,
 porque una página web no puede compilar nada. Eso es lo que hace `ngplat probar`
