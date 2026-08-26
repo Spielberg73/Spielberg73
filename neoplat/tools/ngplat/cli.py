@@ -192,6 +192,7 @@ def _compilador_de(sistema) -> str:
         "neogeo": ["m68k-neogeo-elf-gcc", "m68k-elf-gcc"],
         "megadrive": ["m68k-elf-gcc", "m68k-linux-gnu-gcc"],
         "amiga": ["m68k-amigaos-gcc", "vc", "m68k-elf-gcc", "m68k-linux-gnu-gcc"],
+        "jaguar": ["m68k-linux-gnu-gcc", "m68k-elf-gcc"],
     }
     for nombre in candidatos.get(sistema.nombre, ["m68k-elf-gcc"]):
         if shutil.which(nombre):
@@ -204,6 +205,7 @@ def _como_instalar(sistema) -> str:
         "neogeo": "ngdevkit: https://github.com/dciabrin/ngdevkit",
         "megadrive": "apt install gcc-m68k-linux-gnu   (o el m68k-elf-gcc que uses)",
         "amiga": "apt install gcc-m68k-linux-gnu   (o vbcc / m68k-amigaos-gcc)",
+        "jaguar": "apt install gcc-m68k-linux-gnu   (el GPU y el DSP no se usan)",
     }.get(sistema.nombre, "un gcc para 68000")
 
 

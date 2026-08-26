@@ -89,6 +89,7 @@ def obtener(nombre: str) -> Sistema:
         "megadrive": "megadrive", "genesis": "megadrive", "md": "megadrive",
         "segamegadrive": "megadrive", "segagenesis": "megadrive",
         "amiga": "amiga", "a500": "amiga", "commodoreamiga": "amiga",
+        "jaguar": "jaguar", "atarijaguar": "jaguar", "jag": "jaguar", "j64": "jaguar",
     }
     clave = alias.get(clave, clave)
     if clave not in _SISTEMAS:

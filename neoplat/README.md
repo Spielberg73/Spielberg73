@@ -1,8 +1,8 @@
 # NeoPlat
 
 Kit para hacer juegos de plataformas 2D **sin programar** y compilarlos para
-tres máquinas de verdad: **Neo Geo** (AES/MVS), **Mega Drive** (Genesis) y
-**Amiga** (OCS/ECS).
+cuatro máquinas de verdad: **Neo Geo** (AES/MVS), **Mega Drive** (Genesis),
+**Amiga** (OCS/ECS) y **Atari Jaguar**.
 
 Describes el juego en un archivo `game.yaml`, dibujas los gráficos en PNG y el
 compilador genera el proyecto en C, los gráficos ya convertidos al formato de
@@ -14,22 +14,24 @@ segundos.
                                 │
 game.yaml + PNG  ──►  ngplat  ──┼──►  build/neogeo/         ROMs C1/C2/S1/M1
                                 ├──►  build/megadrive/      cartucho .bin
-                                └──►  build/amiga/          disquete .adf
+                                ├──►  build/amiga/          disquete .adf
+                                └──►  build/jaguar/         cartucho .j64
 ```
 
 El juego lo describes una vez. Lo que cambia de una máquina a otra es cómo se
 dibuja y cómo suena, no lo que pasa: la simulación (`engine/core/np_world.c`)
-es la misma en las tres, así que un salto mide exactamente lo mismo en la Neo
-Geo, en la Mega Drive y en el Amiga.
+es la misma en las cuatro, así que un salto mide exactamente lo mismo en todas.
+Y las cuatro llevan un **68000**, que es lo que hace que el motor sea uno solo.
 
-| | Neo Geo | Mega Drive | Amiga |
-|---|---|---|---|
-| CPU | 68000 a 12 MHz | 68000 a 7,6 MHz | 68000 a 7 MHz |
-| Escenario | columnas de sprites | plano A del VDP | mapa de bits + blitter |
-| Colores | 4096 en pantalla | 4 paletas de 16 | una paleta de 32 |
-| Sonido | YM2610 (SSG) por Z80 | PSG SN76489 | Paula (4 canales) |
-| Parallax | sí | una capa | todavía no |
-| Sale | ROMs de cartucho | `.bin` con cabecera y suma | disquete `.adf` arrancable |
+| | Neo Geo | Mega Drive | Amiga | Jaguar |
+|---|---|---|---|---|
+| CPU | 68000 a 12 MHz | 68000 a 7,6 MHz | 68000 a 7 MHz | 68000 a 13,3 MHz |
+| Escenario | columnas de sprites | plano A del VDP | mapa de bits + blitter | mapa de bits lineal |
+| Actores | sprites | sprites del VDP | blitter con máscara | objetos del chip |
+| Colores | 4096 en pantalla | 4 paletas de 16 | una paleta de 32 | una tabla de 256 |
+| Sonido | YM2610 (SSG) por Z80 | PSG SN76489 | Paula (4 canales) | todavía no |
+| Parallax | sí | una capa | todavía no | todavía no |
+| Sale | ROMs de cartucho | `.bin` con cabecera y suma | disquete `.adf` arrancable | cartucho `.j64` |
 
 ## Instalación
 
@@ -53,10 +55,12 @@ depende de la máquina:
 | Neo Geo | [ngdevkit](https://github.com/dciabrin/ngdevkit) (`m68k-neogeo-elf-gcc`) |
 | Mega Drive | `m68k-elf-gcc`, o el paquete `gcc-m68k-linux-gnu` de Debian/Ubuntu |
 | Amiga | lo mismo que la Mega Drive (o `m68k-amigaos-gcc` si lo tienes) |
+| Jaguar | lo mismo que la Mega Drive; el GPU y el DSP no se usan, así que no hace falta el SDK de Atari |
 
-Para Mega Drive y Amiga no hace falta nada más: el resto (cabecera del
-cartucho, suma de control, hunks, relocalización y el disquete de 880 KB con su
-bootblock y su sistema de ficheros) lo hace el propio kit con Python.
+Para Mega Drive, Amiga y Jaguar no hace falta nada más: el resto (cabecera del
+cartucho, suma de control, hunks, relocalización, el disquete de 880 KB con su
+bootblock y su sistema de ficheros, y la cabecera del cartucho de Jaguar) lo
+hace el propio kit con Python.
 
 ## Empezar
 
@@ -228,6 +232,7 @@ neoplat/
 │   ├── gfx.py              PNG → paletas y tiles de Neo Geo (C ROM / S ROM)
 │   ├── gfx_md.py           PNG → tiles de 8x8 del VDP y reparto de paletas
 │   ├── gfx_amiga.py        PNG → 5 bitplanes entrelazados y sus máscaras
+│   ├── gfx_jaguar.py       PNG → un byte por píxel y tabla de 256 colores
 │   ├── hunk.py             ELF → ejecutable de AmigaDOS (hunks + relocalización)
 │   ├── adf.py              disquete de 880 KB arrancable (bootblock + OFS)
 │   ├── claves.py           nombres que acepta cada opción (los usa el editor)
@@ -251,7 +256,7 @@ neoplat/
 │   ├── np_pixel.js         el lienzo para dibujar enemigos y objetos
 │   └── np_bot.js           el bot que comprueba si un nivel se puede terminar
 ├── examples/bosque-magico/ juego de ejemplo listo para compilar
-└── tests/                  156 pruebas + 24 de jugabilidad + 49 del editor +
+└── tests/                  159 pruebas + 24 de jugabilidad + 49 del editor +
                             bot que se pasa los niveles + emuladores y navegador
 ```
 
@@ -276,7 +281,7 @@ colisiones, editor, preview, pruebas) ya está hecho y no se toca.
 
 ## La misma simulación en los cuatro sitios
 
-`engine/core/np_world.c` (las tres máquinas) y `preview/np_core.js` (navegador)
+`engine/core/np_world.c` (las cuatro máquinas) y `preview/np_core.js` (navegador)
 son la misma simulación escrita dos veces: enteros y coma fija 24.8, sin
 decimales.
 `tests/test_paridad.py` ejecuta las dos con las mismas pulsaciones y compara
@@ -293,7 +298,7 @@ make test           # herramientas, validación, generación de C y paridad C/JS
 make test-emulador  # arranca la ROM y el disquete en emuladores de verdad
 make test-navegador # abre el preview y el editor en Chromium
 node tests/comportamiento.js   # 24 pruebas de jugabilidad
-make ejemplo-todos             # compila el ejemplo para las tres máquinas
+make ejemplo-todos             # compila el ejemplo para las cuatro máquinas
 ```
 
 Las pruebas con emulador y navegador son opcionales: si no tienes
@@ -303,8 +308,8 @@ el kit trae su propio banco de pruebas: el 68000 de verdad (Musashi, el núcleo
 de MAME) y el chip de vídeo escrito a mano en `tests/maquina_neogeo.py`.
 
 Lo que comprueban: el lector de PNG contra Pillow, el lector de YAML contra
-PyYAML, ida y vuelta de los tres formatos de gráficos (tiles de Neo Geo, tiles
-del VDP, bitplanes y máscaras del Amiga), los mensajes de error del
+PyYAML, ida y vuelta de los cuatro formatos de gráficos (tiles de Neo Geo, tiles
+del VDP, bitplanes y máscaras del Amiga, un byte por píxel de la Jaguar), los mensajes de error del
 `game.yaml`, que el C generado compile sin avisos (`-Wall -Wextra -Werror`) y
 también con un compilador de 68000 de verdad, que el cartucho de Mega Drive y
 el ejecutable de Amiga se construyan y tengan la forma que espera cada máquina,
@@ -337,8 +342,16 @@ Verificado aquí:
   de optimizar): el banco cuenta los ciclos de 68000 de cada frame y la prueba
   falla si alguno se pasa de los 200.000 que da la consola. Cómo se hizo, en
   [docs/neogeo.md](docs/neogeo.md).
+- **El cartucho de Atari Jaguar arranca y se juega en un emulador**: las
+  pruebas lo ejecutan en Virtual Jaguar, que no necesita la BIOS de Atari para
+  los cartuchos, y comprueban que sale el título con su marcador, que al pulsar
+  el botón empieza la partida, que el escenario se mueve al correr y que el
+  marcador **no sale duplicado** (el chip de vídeo compone la lista de objetos
+  mientras el haz recorre la pantalla, así que reescribirla a destiempo pinta
+  las cosas dos veces). Cómo funciona la máquina y las cuatro trampas que
+  costaron encontrarla, en [docs/jaguar.md](docs/jaguar.md).
 - **El binario no lleva nada que el 68000 no entienda**: las pruebas revisan el
-  código máquina de las **tres** máquinas (la Neo Geo también, compilando sus
+  código máquina de las **cuatro** máquinas (la Neo Geo también, compilando sus
   fuentes sin enlazar) y fallan si aparece una instrucción de 68020 o un acceso
   a una dirección impar. Así se encontró que la ROM de Neo Geo arrastraba el
   mismo fallo que colgaba la de Mega Drive.
@@ -362,12 +375,12 @@ Verificado aquí:
 - Las mecánicas de plataformas funcionan (24 pruebas de jugabilidad).
 - Los niveles de ejemplo se pueden terminar: un bot los juega enteros en cada
   prueba, así que nunca se cuela un nivel imposible.
-- El mismo juego compilado para las tres máquinas describe exactamente los
+- El mismo juego compilado para las cuatro máquinas describe exactamente los
   mismos niveles, enemigos y mapas: lo comprueban las pruebas.
-- Ida y vuelta de los tres formatos de gráficos (tiles de Neo Geo, tiles del
-  VDP, bitplanes y máscaras del Amiga): codificar y decodificar devuelve la
+- Ida y vuelta de los cuatro formatos de gráficos (tiles de Neo Geo, tiles del
+  VDP, bitplanes y máscaras del Amiga, un byte por píxel de la Jaguar): codificar y decodificar devuelve la
   imagen original.
-- **Las tres máquinas suenan, y suenan lo que pone el `game.yaml`**: las
+- **Tres de las cuatro máquinas suenan, y suenan lo que pone el `game.yaml`**: las
   pruebas capturan lo que sale del altavoz —del core de libretro en Mega Drive
   y Amiga, y del circuito entero 68000 → Z80 → YM2610 en la Neo Geo— y
   reconocen las notas una a una. En las tres salen **16 de 16** notas de la
@@ -375,7 +388,7 @@ Verificado aquí:
   encima de la música. Comprobado que la prueba sabe fallar: con una placa muda
   a propósito, fallan las tres comprobaciones. Cómo se hace, en
   [docs/sonido.md](docs/sonido.md).
-- Las tres máquinas tocan la misma nota: 440 Hz salen a 440 Hz en el SSG, en el
+- Esas tres máquinas tocan la misma nota: 440 Hz salen a 440 Hz en el SSG, en el
   PSG y en Paula (con el redondeo de cada chip).
 - El preview se abre en Chromium durante las pruebas y se comprueba que dibuja
   lo que debe (capturas de pantalla revisadas a mano).
@@ -388,17 +401,21 @@ Verificado aquí:
   se comprueba que recibe las órdenes del 68000 y escribe en el chip los
   periodos y volúmenes de las notas escritas en el `game.yaml`.
 
-**Sin probar en hardware real**: las tres se han visto funcionando en
+**Sin probar en hardware real**: las cuatro se han visto funcionando en
 emuladores, pero no en máquinas de verdad. Y en la Neo Geo el emulador es el del
 propio kit, que da por buenas dos cosas porque las da por buenas también el
 motor: que el sprite 0 va delante de los demás y que la fila 0 del plano fix cae
 en la línea 0 de la pantalla. Si al probarla en un MVS ves el fondo tapando al
 jugador, se invierte con `NP_SPRITE_FRONT_FIRST` en `np_video.h`; si ves el
 marcador desplazado en vertical, es lo segundo. Las muestras digitales siguen
-sin usarse en ninguna de las tres.
+sin usarse en ninguna de las cuatro.
 
 Lo que aún no hace:
 
+- **Sonido en Jaguar**: Jerry tiene dos DAC de 16 bits, pero alimentarlos pide
+  un programa para el DSP, que es otro juego de instrucciones y otro
+  ensamblador. Por ahora el juego sale mudo en esa máquina y el compilador
+  avisa.
 - **Parallax en Amiga**: en la Neo Geo van todas las capas y en la Mega Drive
   una; en el Amiga el fondo se ve del color de fondo del nivel. Haría falta
   modo *dual playfield*, que deja el juego en 7 colores por plano en vez de 32.
@@ -406,7 +423,7 @@ Lo que aún no hace:
   cabe**: 1.311 líneas de barrido sobre las 313 que da un frame
   ([docs/amiga.md](docs/amiga.md)).
 - **Muestras digitales**: la música y los efectos usan ondas cuadradas en las
-  tres máquinas; las voces y percusiones sampleadas aún no (ni la ROM V1 de la
+  tres máquinas que suenan; las voces y percusiones sampleadas aún no (ni la ROM V1 de la
   Neo Geo ni los samples de Paula ni el YM2612).
 - **Jefes o eventos guionizados**: hay cinco comportamientos de enemigo fijos.
 - **Dos jugadores**.

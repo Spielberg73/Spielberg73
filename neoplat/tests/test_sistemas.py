@@ -61,7 +61,7 @@ class TestColores(unittest.TestCase):
             self.assertLessEqual(valor, 0x0FFF)
 
     def test_cada_maquina_ve_su_propio_color(self):
-        for nombre in ("neogeo", "megadrive", "amiga"):
+        for nombre in ("neogeo", "megadrive", "amiga", "jaguar"):
             visible = sistemas.obtener(nombre).color_visible((200, 12, 90))
             self.assertEqual(len(visible), 3)
             for canal in visible:
@@ -294,10 +294,23 @@ class TestProyectoGenerado(unittest.TestCase):
         self.assertIn("np_tile_mask", texto)
         self.assertIn("np_colores[32]", texto)
 
-    def test_los_tres_sistemas_describen_el_mismo_juego(self):
+    def test_jaguar_genera_todo(self):
+        build, out = self._generar("jaguar")
+        for archivo in ("src/gamedata.c", "src/graficos.c", "src/np_video.c",
+                        "src/np_hud.c", "src/arranque.S", "jaguar.ld",
+                        "Makefile", "hacer_rom.py"):
+            self.assertTrue(os.path.isfile(os.path.join(out, archivo)), archivo)
+        with open(os.path.join(out, "src/graficos.c"), encoding="utf-8") as fh:
+            texto = fh.read()
+        self.assertIn("np_colores[256]", texto, "la Jaguar tiene 256 colores")
+        self.assertNotIn("np_tile_mask", texto,
+                         "en la Jaguar no hacen falta mascaras: el color 0 es "
+                         "transparente para el chip")
+
+    def test_los_sistemas_describen_el_mismo_juego(self):
         """Cambiar de maquina no cambia el juego: niveles, enemigos y mapas."""
         referencia = None
-        for nombre in ("neogeo", "megadrive", "amiga"):
+        for nombre in ("neogeo", "megadrive", "amiga", "jaguar"):
             build = cargar_demo(self.proyecto, nombre)
             resumen = [(n.name, n.width, n.height, n.cells, n.spawns)
                        for n in build.levels]
@@ -431,7 +444,7 @@ class TestCompilacionReal(unittest.TestCase):
         self.assertLess(bss + codigo_largo * 4, 512 * 1024)
 
     def test_ninguna_maquina_genera_accesos_impares(self):
-        """Lo mismo, pero sobre los fuentes de las tres maquinas y sin enlazar:
+        """Lo mismo, pero sobre los fuentes de las cuatro maquinas y sin enlazar:
         asi tambien entra la Neo Geo, que se construye con ngdevkit y aqui no
         esta. El fallo lo comete el compilador, no el enlazador."""
         objdump = self.cc.replace("-gcc", "-objdump")
@@ -439,7 +452,7 @@ class TestCompilacionReal(unittest.TestCase):
             self.skipTest("no hay %s" % objdump)
         patron = re.compile(
             r"\b(?!lea|pea)[a-z]+[wl]\s+\S*%(?:a\d|sp|fp)@\((\d+)\)")
-        for sistema in ("neogeo", "megadrive", "amiga"):
+        for sistema in ("neogeo", "megadrive", "amiga", "jaguar"):
             build = cargar_demo(self.proyecto, sistema)
             out = os.path.join(self.tmp, "estatico-" + sistema)
             generar_para_sistema(build, out, sistemas.obtener(sistema), "202")
@@ -559,6 +572,35 @@ class TestCompilacionReal(unittest.TestCase):
         self.assertEqual(
             emulador_neogeo.comprobar(out, capturas, musica, salto, sonido), 0,
                          "la ROM de Neo Geo no dibuja, no se juega o no suena")
+
+    def test_el_cartucho_de_jaguar_arranca_en_un_emulador(self):
+        """La Jaguar se puede comprobar de verdad: su emulador no necesita la
+        BIOS de Atari para los cartuchos."""
+        import emulador_jaguar
+        from libretro import buscar_core
+        if not buscar_core(emulador_jaguar.CORE, "NEOPLAT_CORE_JAGUAR"):
+            self.skipTest("no esta instalado el core de Virtual Jaguar")
+        out = self._construir("jaguar")
+        rom = [f for f in os.listdir(os.path.join(out, "rom")) if f.endswith(".j64")]
+        self.assertTrue(rom, "no se ha creado el cartucho")
+        capturas = os.path.join(self.tmp, "capturas-jaguar")
+        self.assertEqual(
+            emulador_jaguar.comprobar(os.path.join(out, "rom", rom[0]), capturas), 0,
+            "el cartucho no arranca o no se juega en el emulador")
+
+    def test_cartucho_de_jaguar(self):
+        """La consola lee la pila en cart+$400 y el punto de entrada en
+        cart+$404: sin eso salta a la direccion 0 y no arranca."""
+        out = self._construir("jaguar")
+        rom = [f for f in os.listdir(os.path.join(out, "rom")) if f.endswith(".j64")][0]
+        with open(os.path.join(out, "rom", rom), "rb") as fh:
+            datos = fh.read()
+        self.assertEqual(len(datos), 2 * 1024 * 1024)
+        pila, entrada = struct.unpack_from(">II", datos, 0x400)
+        self.assertEqual(pila, 0x001FFFFC)
+        self.assertEqual(entrada, 0x00802000)
+        self.assertNotEqual(datos[0x2000:0x2004], b"\x00\x00\x00\x00",
+                            "no hay codigo en el punto de entrada")
 
     def test_las_direcciones_relocalizadas_caen_en_su_hunk(self):
         """La tabla de relocalizacion es lo que hace que el juego se pueda cargar
