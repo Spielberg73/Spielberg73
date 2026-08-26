@@ -232,6 +232,69 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
         exigir(creado["dibujo"].startswith("data:image"), "no se ha guardado el dibujo")
         exigir(creado["enPaleta"], "el enemigo nuevo no sale en la paleta")
 
+        # --- el editor de dibujos: abrir lo que ya existe y retocarlo -----
+        pagina.click("#pestanas button[data-panel=dibujos]")
+        pagina.wait_for_timeout(300)
+        lista = pagina.evaluate("""() => Array.from(
+            document.querySelectorAll('#dib-lista button')).map(b => b.textContent.trim())""")
+        print("dibujos:", json.dumps(lista))
+        exigir(any(t.startswith("jugador") for t in lista), "no se puede abrir al jugador")
+        exigir(any(t.startswith("tiles") for t in lista), "no se puede abrir el escenario")
+        exigir(any(t.startswith("cielo") for t in lista), "no se pueden abrir los fondos")
+
+        pagina.evaluate("() => window.NeoPlat.dibujos.abrir('player')")
+        pagina.wait_for_timeout(300)
+        abierto = pagina.evaluate("""() => { const d = window.NeoPlat.dibujos.estado();
+            return { hoja: d.hoja, frames: d.lienzo.frames,
+                     ancho: d.lienzo.ancho, vacio: d.lienzo.vacio(),
+                     colores: d.lienzo.indicesUsados().length,
+                     cuenta: document.getElementById('dib-cuenta').textContent }; }""")
+        print("abierto:", json.dumps(abierto))
+        exigir(abierto["hoja"] == "player" and abierto["frames"] == 6,
+               "el jugador no se ha abierto entero: %s" % abierto)
+        exigir(not abierto["vacio"], "el dibujo del jugador ha salido en blanco")
+        exigir(abierto["colores"] > 1, "no ha sacado la paleta del PNG")
+        exigir("de 15" in abierto["cuenta"],
+               "no dice cuantos colores caben en la maquina: %s" % abierto["cuenta"])
+
+        # dibujar una linea con el raton sobre el fotograma 3
+        caja = pagina.locator("#dib-canvas").bounding_box()
+        zoom = pagina.evaluate("() => window.NeoPlat.dibujos.estado().zoom")
+        pagina.evaluate("() => { window.NeoPlat.dibujos.estado().herramienta = 'linea';"
+                        " window.NeoPlat.dibujos.estado().color = 3; }")
+        y = caja["y"] + zoom * 2.5
+        pagina.mouse.move(caja["x"] + zoom * 33.5, y)
+        pagina.mouse.down()
+        pagina.mouse.move(caja["x"] + zoom * 44.5, y)
+        pagina.mouse.up()
+        pagina.wait_for_timeout(200)
+        tras = pagina.evaluate("""() => { const d = window.NeoPlat.dibujos.estado();
+            let n = 0;
+            for (let x = 0; x < 16; x++) if (d.lienzo.coger(2, x, 2) === 3) n++;
+            return { pintados: n, frame: d.frame, tocado: d.tocado }; }""")
+        print("linea:", json.dumps(tras))
+        exigir(tras["pintados"] >= 10, "la linea no ha llegado: %s" % tras)
+        exigir(tras["frame"] == 2, "no ha entendido en que fotograma se pinta")
+
+        # deshacer devuelve el dibujo a como estaba
+        pagina.click("#dib-deshacer")
+        pagina.wait_for_timeout(150)
+        deshecho = pagina.evaluate("""() => { const d = window.NeoPlat.dibujos.estado();
+            let n = 0;
+            for (let x = 0; x < 16; x++) if (d.lienzo.coger(2, x, 2) === 3) n++;
+            return n; }""")
+        exigir(deshecho < tras["pintados"], "deshacer no ha hecho nada")
+
+        # el PNG que sale mide lo que tiene que medir
+        png = pagina.evaluate("() => window.NeoPlat.dibujos.png()")
+        exigir(png.startswith("data:image/png;base64,"), "no sale un PNG")
+        medidas = pagina.evaluate("""() => new Promise(listo => {
+            const i = new Image();
+            i.onload = () => listo([i.width, i.height]);
+            i.src = window.NeoPlat.dibujos.png(); })""")
+        print("png del jugador:", json.dumps(medidas))
+        exigir(medidas == [96, 16], "el PNG no mide lo que la hoja: %s" % medidas)
+
         # se pinta en el mapa y aparece al jugar
         pagina.click("#pestanas button[data-panel=mapa]")
         pagina.evaluate("""() => { const e = window.NeoPlat.editor;

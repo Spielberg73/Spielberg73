@@ -53,13 +53,18 @@ def _quantized_data_uri(path: str, sistema) -> str:
     return "data:image/png;base64," + base64.b64encode(data).decode("ascii")
 
 
-def _sheet_entry(path: str, frame_w: int, frame_h: int, sistema) -> Dict[str, object]:
+def _sheet_entry(path: str, frame_w: int, frame_h: int, sistema,
+                 ruta: str = "") -> Dict[str, object]:
     image = read_png(path)
     return {
         "url": _quantized_data_uri(path, sistema),
         "frame_w": frame_w,
         "frame_h": frame_h,
         "per_row": max(1, image.width // frame_w),
+        # el archivo dentro del proyecto, para que el editor de dibujos sepa
+        # a donde tiene que devolverlo cuando lo guardes
+        "ruta": ruta,
+        "frames": max(1, (image.width // frame_w) * (image.height // frame_h)),
     }
 
 
@@ -75,13 +80,15 @@ def build_data(build: Build) -> Dict[str, object]:
         sheets[sheet_name] = _sheet_entry(
             os.path.join(project.root, actor_build.actor.sprite),
             actor_build.actor.frame_w, actor_build.actor.frame_h, sistema,
+            actor_build.actor.sprite,
         )
         values["sheet"] = sheet_name
         values["sprite"] = actor_build.actor.sprite      # ruta del PNG original
         return values
 
     sheets["__tiles__"] = _sheet_entry(
-        os.path.join(project.root, project.tileset.image), 16, 16, sistema
+        os.path.join(project.root, project.tileset.image), 16, 16, sistema,
+        project.tileset.image,
     )
 
     player = dict(player_values(project))
@@ -105,7 +112,8 @@ def build_data(build: Build) -> Dict[str, object]:
     for i, layer in enumerate(build.layers):
         nombre = "layer%d" % i
         sheets[nombre] = _sheet_entry(
-            os.path.join(project.root, layer.layer.image), 16, 16, sistema
+            os.path.join(project.root, layer.layer.image), 16, 16, sistema,
+            layer.layer.image,
         )
         sheets[nombre]["per_row"] = layer.cols
         layers.append({
@@ -200,6 +208,12 @@ def build_data(build: Build) -> Dict[str, object]:
         "camara_pantallas": 1 if project.camera == "pantallas" else 0,
         "amiga_modo": project.amiga_modo,
         "sistema": sistema.nombre,
+        # lo que aguanta la maquina, para que el editor de dibujos pueda avisar
+        # antes de que el compilador te lo diga
+        "limites": {
+            "colores": sistema.limites.colores_por_paleta - 1,
+            "colores_en_pantalla": sistema.limites.colores_en_pantalla,
+        },
         "sistemas": [{"id": m.nombre, "nombre": m.titulo, "binario": m.nombre_binario}
                      for m in sistemas.disponibles()],
         "sin": build.sin_table,

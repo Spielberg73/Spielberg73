@@ -14,6 +14,8 @@ navegadores dejan que cualquier sitio mande peticiones a localhost.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import os
 import secrets
@@ -32,6 +34,7 @@ from .preview import write_preview
 from .project import load_project
 
 MAX_YAML = 4 * 1024 * 1024      # un game.yaml de mas de 4 MB es un error, no un juego
+MAX_DIBUJO = 2 * 1024 * 1024    # y un PNG de mas de 2 MB tampoco es un sprite
 
 
 def compilador_de(sistema) -> str:
@@ -122,6 +125,40 @@ def compilar(raiz: str, nombre_sistema: str, hacer_make: bool = True
     return (True, lineas)
 
 
+def ruta_de_dibujo(raiz: str, ruta: str) -> str:
+    """Comprueba que la ruta que manda el editor es un PNG dentro del proyecto.
+
+    El servidor solo escucha en localhost y pide una clave, pero aun asi no se
+    fia de la ruta: se resuelve contra la raiz del proyecto y tiene que caer
+    dentro. Asi un '../../.ssh/algo' no sale de la carpeta.
+    """
+    if not ruta or not ruta.lower().endswith(".png"):
+        raise ValueError("solo se guardan archivos .png")
+    if os.path.isabs(ruta) or "\\" in ruta:
+        raise ValueError("la ruta tiene que ser relativa al proyecto")
+    base = os.path.realpath(raiz)
+    destino = os.path.realpath(os.path.join(base, ruta))
+    if destino != base and not destino.startswith(base + os.sep):
+        raise ValueError("la ruta se sale del proyecto")
+    return destino
+
+
+def png_de_data_uri(datos: str) -> bytes:
+    """Saca los bytes de un data: URI y comprueba que es un PNG de verdad."""
+    marca = "base64,"
+    if not datos.startswith("data:image/png;") or marca not in datos:
+        raise ValueError("se esperaba un PNG en base64")
+    try:
+        crudo = base64.b64decode(datos.split(marca, 1)[1], validate=True)
+    except (ValueError, binascii.Error):
+        raise ValueError("el base64 no vale")
+    if len(crudo) > MAX_DIBUJO:
+        raise ValueError("el dibujo es demasiado grande")
+    if crudo[:8] != b"\x89PNG\r\n\x1a\n":
+        raise ValueError("eso no es un PNG")
+    return crudo
+
+
 def _interesa(linea: str) -> bool:
     """Si esa linea de make merece salir en el registro del editor."""
     if "warning:" in linea or "error:" in linea:
@@ -189,15 +226,19 @@ class _Manejador(BaseHTTPRequestHandler):
             return self._responder(403, b"solo localhost", "text/plain")
         if not self._clave_ok() or not self._origen_ok():
             return self._json(403, {"ok": False, "lineas": ["clave incorrecta"]})
-        if urlparse(self.path).path != "/compilar":
+        camino = urlparse(self.path).path
+        if camino not in ("/compilar", "/dibujo"):
             return self._json(404, {"ok": False, "lineas": ["no hay nada aqui"]})
         largo = int(self.headers.get("Content-Length") or 0)
-        if largo <= 0 or largo > MAX_YAML:
+        tope = MAX_DIBUJO if camino == "/dibujo" else MAX_YAML
+        if largo <= 0 or largo > tope:
             return self._json(400, {"ok": False, "lineas": ["peticion vacia o enorme"]})
         try:
             peticion = json.loads(self.rfile.read(largo).decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
             return self._json(400, {"ok": False, "lineas": ["no entiendo la peticion"]})
+        if camino == "/dibujo":
+            return self._guardar_dibujo(peticion)
 
         texto = peticion.get("yaml") or ""
         nombre = str(peticion.get("sistema") or "")
@@ -223,6 +264,24 @@ class _Manejador(BaseHTTPRequestHandler):
             except Exception as error:                    # noqa: BLE001
                 ok, lineas = False, ["error inesperado: %s" % error]
         self._json(200, {"ok": ok, "lineas": lineas})
+
+    def _guardar_dibujo(self, peticion) -> None:
+        """Guarda un PNG del editor de dibujos dentro del proyecto."""
+        ruta = str(peticion.get("ruta") or "")
+        datos = str(peticion.get("datos") or "")
+        try:
+            destino = ruta_de_dibujo(self.server.raiz, ruta)
+            crudo = png_de_data_uri(datos)
+        except ValueError as error:
+            return self._json(400, {"ok": False, "error": str(error)})
+        with self.server.candado:
+            try:
+                os.makedirs(os.path.dirname(destino), exist_ok=True)
+                with open(destino, "wb") as fh:
+                    fh.write(crudo)
+            except OSError as error:
+                return self._json(500, {"ok": False, "error": str(error)})
+        self._json(200, {"ok": True, "ruta": ruta, "bytes": len(crudo)})
 
     def log_message(self, formato, *args):   # noqa: A003 (firma de http.server)
         pass                                  # sin ruido en la terminal

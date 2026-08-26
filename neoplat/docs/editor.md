@@ -94,19 +94,47 @@ hace falta:
 
 Al crearlo aparece en la paleta del mapa y lo puedes pintar y probar al momento.
 
-### El editor de dibujos
+Si eliges «dibujarlo aquí» sale un lienzo pequeño con lo justo para inventarse
+un bicho. Para todo lo demás está la pestaña **dibujos**.
 
-Si eliges «dibujarlo aquí» sale un lienzo de píxeles con las reglas de la
-consola: **15 colores más el transparente**. Trae lápiz, borrador, relleno y
-cuentagotas, deshacer, varios fotogramas (con «copiar frame» para animar a
-partir del anterior), «espejo» y un color libre para cambiar cualquier casilla
-de la paleta. Empieza con un bicho de ejemplo para no partir del vacío, y te
-dice cuántos colores llevas gastados.
+## Dibujos
 
-El dibujo se convierte en un PNG normal. Como el navegador no puede escribir en
-tu carpeta, en la pestaña **game.yaml** aparece la lista de **dibujos pendientes
-de guardar** con un botón por cada uno: descárgalos y déjalos en `graficos/`
-junto al `game.yaml`. El archivo ya apunta a ellos.
+Aquí se dibuja **cualquier cosa del proyecto**: el jugador, cada enemigo, cada
+objeto, el escenario y las capas de fondo. La lista de la izquierda las tiene
+todas; se pincha una y se abre con su propia paleta.
+
+Dos cosas que no puede hacer un editor de píxeles normal, y que son la razón de
+que este viva dentro del kit:
+
+- **los colores son los de la máquina de destino.** El dibujo se carga desde el
+  PNG ya pasado por el redondeo de la máquina, así que lo que ves en el lienzo
+  es exactamente lo que se verá en la Neo Geo, el Amiga o donde sea. Y el
+  contador de arriba a la derecha dice **cuántos colores llevas de los que
+  caben**, en rojo si te pasas, antes de que te lo diga el compilador;
+- **la animación corre a la velocidad de verdad.** La vista previa de la derecha
+  reproduce la animación que elijas (`quieto`, `correr`, `saltar`...) con los
+  fotogramas y la velocidad que tiene ese actor en el `game.yaml`, mientras
+  dibujas.
+
+**Herramientas**: lápiz, borrador, línea, rectángulo (hueco o lleno), elipse
+(hueca o llena), relleno por zonas, cuentagotas y mover un trozo. Todo con
+deshacer y rehacer.
+
+**Del fotograma**: espejo, volteo, girar (si es cuadrado), limpiar, duplicar (se
+copia del anterior, que es como se animan las cosas) y quitar.
+
+**Para ver bien**: zoom, rejilla de píxel, marcas de fotograma —el activo va en
+amarillo— y **papel cebolla**, que enseña el fotograma anterior en fantasma
+debajo del que estás dibujando.
+
+Un sprite se abre a tamaño grande, para dibujar píxel a píxel; una capa de fondo
+entera se abre como quepa, para verla de un vistazo.
+
+**Guardar.** Con `ngplat probar` en marcha, «guardar» deja el PNG en su sitio
+dentro del proyecto y el preview lo usa al momento: dibujas, guardas y lo ves en
+el juego sin salir del navegador. Si has abierto el `preview.html` a pelo
+(`file://`) no hay con quien hablar y el botón lo descarga para que lo pongas a
+mano.
 
 ## Revisar
 

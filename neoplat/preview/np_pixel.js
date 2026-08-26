@@ -1,13 +1,23 @@
-/* np_pixel.js - editor de dibujos (sprites) dentro del editor de NeoPlat.
+/* np_pixel.js - el editor de dibujos de NeoPlat.
  *
- * Sirve para dibujar enemigos y objetos nuevos sin salir del navegador y sin
- * ningun programa aparte. Trabaja con las mismas reglas que la Neo Geo:
+ * Dibuja cualquier cosa del proyecto sin salir del navegador y sin ningun
+ * programa aparte: el jugador, los enemigos, los objetos, el escenario y las
+ * capas de fondo. Trabaja con las mismas reglas que las maquinas:
  *
  *   - una paleta de 15 colores mas el transparente (el indice 0)
- *   - fotogramas del tamano que use el actor (16x16, 16x32, 32x32...)
+ *   - fotogramas del tamano que use el dibujo (16x16, 16x32, 32x32...),
+ *     repartidos en filas de `porFila`, como en el PNG del proyecto
  *
- * El dibujo se guarda como una rejilla de indices de paleta, asi que la logica
- * se puede probar sin navegador; solo el volcado a PNG necesita un canvas.
+ * El dibujo se guarda como una rejilla de indices de paleta, asi que **toda la
+ * logica se puede probar sin navegador** (tests/editor.js lo hace); solo el
+ * volcado a PNG y la carga desde un PNG necesitan un canvas.
+ *
+ * Lo que sabe hacer, aparte de pintar pixeles sueltos: linea, rectangulo y
+ * elipse (huecos o rellenos), relleno por zonas, seleccionar un trozo para
+ * moverlo o copiarlo, espejo en los dos ejes, girar, desplazar con vuelta,
+ * cambiar un color por otro en todo el dibujo, y anadir, quitar, mover o
+ * duplicar fotogramas. Todo pasa por `empezarCambio()`, asi que todo se
+ * deshace.
  */
 (function (root) {
   "use strict";
@@ -21,12 +31,17 @@
     "#c058f8", "#f8b8a0"
   ];
 
+  var MAX_DESHACER = 64;
+
   function crear(opciones) {
     opciones = opciones || {};
     var lienzo = {
       ancho: opciones.ancho || 16,
       alto: opciones.alto || 16,
       frames: Math.max(1, opciones.frames || 1),
+      /* como se reparten los frames en el PNG: por defecto todos en una fila,
+         que es lo que hacen las hojas del kit, pero gfx.py admite varias */
+      porFila: 0,
       paleta: (opciones.paleta || PALETA_POR_DEFECTO).slice(0, 15),
       color: 1,
       herramienta: "lapiz",
@@ -34,6 +49,7 @@
       rehacerPila: []
     };
     while (lienzo.paleta.length < 15) lienzo.paleta.push("#000000");
+    if (!lienzo.porFila) lienzo.porFila = lienzo.frames;
 
     function tamanoFrame() { return lienzo.ancho * lienzo.alto; }
 
@@ -54,7 +70,7 @@
 
     lienzo.empezarCambio = function () {
       lienzo.historial.push(lienzo.pixeles.slice());
-      if (lienzo.historial.length > 40) lienzo.historial.shift();
+      if (lienzo.historial.length > MAX_DESHACER) lienzo.historial.shift();
       lienzo.rehacerPila.length = 0;
     };
 
@@ -141,6 +157,201 @@
       return Object.keys(vistos).length;
     };
 
+    /* ------------------------------------------------ formas y seleccion */
+
+    /* Bresenham: la linea de toda la vida, sin coma flotante ni huecos. */
+    lienzo.linea = function (frame, x0, y0, x1, y1, color) {
+      var dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+      var dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+      var error = dx + dy, cambio = false;
+      for (;;) {
+        if (lienzo.pintar(frame, x0, y0, color)) cambio = true;
+        if (x0 === x1 && y0 === y1) break;
+        var doble = 2 * error;
+        if (doble >= dy) { error += dy; x0 += sx; }
+        if (doble <= dx) { error += dx; y0 += sy; }
+      }
+      return cambio;
+    };
+
+    lienzo.rect = function (frame, x0, y0, x1, y1, color, relleno) {
+      var ax = Math.min(x0, x1), bx = Math.max(x0, x1);
+      var ay = Math.min(y0, y1), by = Math.max(y0, y1);
+      var cambio = false, x, y;
+      for (y = ay; y <= by; y++) {
+        for (x = ax; x <= bx; x++) {
+          var borde = (x === ax || x === bx || y === ay || y === by);
+          if (!relleno && !borde) continue;
+          if (lienzo.pintar(frame, x, y, color)) cambio = true;
+        }
+      }
+      return cambio;
+    };
+
+    /* Elipse por la ecuacion, mirando pixel a pixel: a estos tamanos (16, 32)
+       cuesta nada y sale bien centrada tanto en pares como en impares. */
+    lienzo.elipse = function (frame, x0, y0, x1, y1, color, relleno) {
+      var ax = Math.min(x0, x1), bx = Math.max(x0, x1);
+      var ay = Math.min(y0, y1), by = Math.max(y0, y1);
+      var cx = (ax + bx) / 2, cy = (ay + by) / 2;
+      var rx = (bx - ax) / 2 + 0.5, ry = (by - ay) / 2 + 0.5;
+      var cambio = false, x, y;
+      for (y = ay; y <= by; y++) {
+        for (x = ax; x <= bx; x++) {
+          var dx = (x + 0.5 - cx - 0.5) / rx, dy = (y + 0.5 - cy - 0.5) / ry;
+          var d = dx * dx + dy * dy;
+          if (d > 1) continue;
+          if (!relleno) {
+            /* el borde: dentro pero con algun vecino fuera */
+            var dentroVecinos = true;
+            var vecinos = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+            for (var v = 0; v < vecinos.length; v++) {
+              var vx = (x + vecinos[v][0] + 0.5 - cx - 0.5) / rx;
+              var vy = (y + vecinos[v][1] + 0.5 - cy - 0.5) / ry;
+              if (vx * vx + vy * vy > 1) { dentroVecinos = false; break; }
+            }
+            if (dentroVecinos) continue;
+          }
+          if (lienzo.pintar(frame, x, y, color)) cambio = true;
+        }
+      }
+      return cambio;
+    };
+
+    /* Un trozo suelto del dibujo, para moverlo o copiarlo. */
+    lienzo.recortar = function (frame, x0, y0, x1, y1) {
+      var ax = Math.max(0, Math.min(x0, x1)), bx = Math.min(lienzo.ancho - 1, Math.max(x0, x1));
+      var ay = Math.max(0, Math.min(y0, y1)), by = Math.min(lienzo.alto - 1, Math.max(y0, y1));
+      var ancho = bx - ax + 1, alto = by - ay + 1;
+      var trozo = { ancho: ancho, alto: alto, pixeles: new Uint8Array(ancho * alto) };
+      for (var y = 0; y < alto; y++) {
+        for (var x = 0; x < ancho; x++) {
+          trozo.pixeles[y * ancho + x] = lienzo.coger(frame, ax + x, ay + y);
+        }
+      }
+      return trozo;
+    };
+
+    /* Pega un trozo. `conTransparente` decide si el hueco del trozo borra lo
+       que hay debajo (mover) o lo respeta (sello). */
+    lienzo.pegar = function (frame, trozo, x0, y0, conTransparente) {
+      var cambio = false;
+      for (var y = 0; y < trozo.alto; y++) {
+        for (var x = 0; x < trozo.ancho; x++) {
+          var valor = trozo.pixeles[y * trozo.ancho + x];
+          if (!valor && !conTransparente) continue;
+          if (lienzo.pintar(frame, x0 + x, y0 + y, valor)) cambio = true;
+        }
+      }
+      return cambio;
+    };
+
+    lienzo.borrarZona = function (frame, x0, y0, x1, y1) {
+      return lienzo.rect(frame, x0, y0, x1, y1, 0, true);
+    };
+
+    /* ----------------------------------------------------- el frame entero */
+
+    lienzo.espejoV = function (frame) {
+      for (var x = 0; x < lienzo.ancho; x++) {
+        for (var y = 0; y < Math.floor(lienzo.alto / 2); y++) {
+          var a = indice(frame, x, y);
+          var b = indice(frame, x, lienzo.alto - 1 - y);
+          var tmp = lienzo.pixeles[a];
+          lienzo.pixeles[a] = lienzo.pixeles[b];
+          lienzo.pixeles[b] = tmp;
+        }
+      }
+    };
+
+    /* Gira noventa grados a la derecha. Solo tiene sentido si es cuadrado; si
+       no lo es, devuelve false y no toca nada. */
+    lienzo.rotar = function (frame) {
+      if (lienzo.ancho !== lienzo.alto) return false;
+      var n = lienzo.ancho;
+      var copia = lienzo.pixeles.slice(frame * tamanoFrame(),
+                                       (frame + 1) * tamanoFrame());
+      for (var y = 0; y < n; y++) {
+        for (var x = 0; x < n; x++) {
+          lienzo.pixeles[indice(frame, x, y)] = copia[(n - 1 - x) * n + y];
+        }
+      }
+      return true;
+    };
+
+    /* Desplaza dando la vuelta: util para centrar un dibujo sin redibujarlo. */
+    lienzo.desplazar = function (frame, dx, dy) {
+      var copia = lienzo.pixeles.slice(frame * tamanoFrame(),
+                                       (frame + 1) * tamanoFrame());
+      for (var y = 0; y < lienzo.alto; y++) {
+        for (var x = 0; x < lienzo.ancho; x++) {
+          var ox = ((x - dx) % lienzo.ancho + lienzo.ancho) % lienzo.ancho;
+          var oy = ((y - dy) % lienzo.alto + lienzo.alto) % lienzo.alto;
+          lienzo.pixeles[indice(frame, x, y)] = copia[oy * lienzo.ancho + ox];
+        }
+      }
+    };
+
+    /* Cambia un color por otro en todo el dibujo (o solo en un frame). */
+    lienzo.cambiarColor = function (viejo, nuevo, frame) {
+      var desde = frame === undefined ? 0 : frame * tamanoFrame();
+      var hasta = frame === undefined ? lienzo.pixeles.length : desde + tamanoFrame();
+      var cambio = false;
+      for (var i = desde; i < hasta; i++) {
+        if (lienzo.pixeles[i] === viejo) { lienzo.pixeles[i] = nuevo; cambio = true; }
+      }
+      return cambio;
+    };
+
+    /* --------------------------------------------------------- fotogramas */
+
+    lienzo.intercambiarFrames = function (a, b) {
+      if (a === b || a < 0 || b < 0 || a >= lienzo.frames || b >= lienzo.frames) return false;
+      var tam = tamanoFrame();
+      var copia = lienzo.pixeles.slice(a * tam, (a + 1) * tam);
+      lienzo.pixeles.copyWithin(a * tam, b * tam, (b + 1) * tam);
+      lienzo.pixeles.set(copia, b * tam);
+      return true;
+    };
+
+    lienzo.insertarFrame = function (donde, duplicar) {
+      if (lienzo.frames >= 16) return false;
+      var tam = tamanoFrame();
+      var nuevos = new Uint8Array(tam * (lienzo.frames + 1));
+      nuevos.set(lienzo.pixeles.subarray(0, donde * tam), 0);
+      if (duplicar && donde > 0) {
+        nuevos.set(lienzo.pixeles.subarray((donde - 1) * tam, donde * tam), donde * tam);
+      }
+      nuevos.set(lienzo.pixeles.subarray(donde * tam), (donde + 1) * tam);
+      lienzo.pixeles = nuevos;
+      lienzo.frames++;
+      if (lienzo.porFila < lienzo.frames) lienzo.porFila = lienzo.frames;
+      return true;
+    };
+
+    lienzo.borrarFrame = function (donde) {
+      if (lienzo.frames <= 1) return false;
+      var tam = tamanoFrame();
+      var nuevos = new Uint8Array(tam * (lienzo.frames - 1));
+      nuevos.set(lienzo.pixeles.subarray(0, donde * tam), 0);
+      nuevos.set(lienzo.pixeles.subarray((donde + 1) * tam), donde * tam);
+      lienzo.pixeles = nuevos;
+      lienzo.frames--;
+      if (lienzo.porFila > lienzo.frames) lienzo.porFila = lienzo.frames;
+      return true;
+    };
+
+    /* Que indices de paleta se usan de verdad, en orden. Con esto el editor
+       puede decirte cuantos colores llevas y cuales sobran. */
+    lienzo.indicesUsados = function () {
+      var vistos = {}, salida = [];
+      for (var i = 0; i < lienzo.pixeles.length; i++) {
+        var v = lienzo.pixeles[i];
+        if (v && !vistos[v]) { vistos[v] = 1; salida.push(v); }
+      }
+      return salida.sort(function (a, b) { return a - b; });
+    };
+
     /* ------------------------------------------------------- a imagen */
 
     function componentes(color) {
@@ -150,17 +361,33 @@
               parseInt(texto.substr(4, 2), 16)];
     }
 
-    /** Vuelca la hoja completa (los frames en fila) sobre un canvas. */
+    /* Donde cae cada frame dentro del PNG. Las hojas del kit suelen llevarlos
+       todos en una fila, pero gfx.py admite varias y hay que respetarlo o al
+       guardar se descolocarian. */
+    lienzo.filas = function () {
+      return Math.ceil(lienzo.frames / lienzo.porFila);
+    };
+
+    lienzo.anchoHoja = function () { return lienzo.ancho * lienzo.porFila; };
+    lienzo.altoHoja = function () { return lienzo.alto * lienzo.filas(); };
+
+    function sitioDeFrame(f) {
+      return [(f % lienzo.porFila) * lienzo.ancho,
+              Math.floor(f / lienzo.porFila) * lienzo.alto];
+    }
+
+    /** Vuelca la hoja completa sobre un canvas, con su reparto de filas. */
     lienzo.aCanvas = function (canvas) {
-      canvas.width = lienzo.ancho * lienzo.frames;
-      canvas.height = lienzo.alto;
+      canvas.width = lienzo.anchoHoja();
+      canvas.height = lienzo.altoHoja();
       var ctx = canvas.getContext("2d");
       var imagen = ctx.createImageData(canvas.width, canvas.height);
       for (var f = 0; f < lienzo.frames; f++) {
+        var sitio = sitioDeFrame(f);
         for (var y = 0; y < lienzo.alto; y++) {
           for (var x = 0; x < lienzo.ancho; x++) {
             var color = lienzo.coger(f, x, y);
-            var destino = (y * canvas.width + f * lienzo.ancho + x) * 4;
+            var destino = ((sitio[1] + y) * canvas.width + sitio[0] + x) * 4;
             if (!color) {
               imagen.data[destino + 3] = 0;
               continue;
@@ -183,11 +410,11 @@
       return canvas.toDataURL("image/png");
     };
 
-    /** Carga un dibujo existente para partir de el (se queda con 15 colores). */
+    /** Carga un dibujo existente (se queda con los 15 colores mas usados). */
     lienzo.desdeImagen = function (imagen, documento) {
       var canvas = documento.createElement("canvas");
-      canvas.width = lienzo.ancho * lienzo.frames;
-      canvas.height = lienzo.alto;
+      canvas.width = lienzo.anchoHoja();
+      canvas.height = lienzo.altoHoja();
       var ctx = canvas.getContext("2d");
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(imagen, 0, 0, canvas.width, canvas.height,
@@ -210,6 +437,7 @@
         }).join("");
       });
       while (lienzo.paleta.length < 15) lienzo.paleta.push("#000000");
+    if (!lienzo.porFila) lienzo.porFila = lienzo.frames;
 
       function masCercano(r, g, b) {
         var mejor = 1, distancia = Infinity;
@@ -226,9 +454,12 @@
       for (i = 0; i < datos.length; i += 4) {
         var pos = i / 4;
         var x = pos % canvas.width, y = Math.floor(pos / canvas.width);
-        var frame = Math.floor(x / lienzo.ancho);
-        var destino = frame * tamanoFrame() + y * lienzo.ancho + (x % lienzo.ancho);
-        if (destino >= lienzo.pixeles.length) continue;
+        var columna = Math.floor(x / lienzo.ancho);
+        var fila = Math.floor(y / lienzo.alto);
+        var frame = fila * lienzo.porFila + columna;
+        var destino = frame * tamanoFrame()
+                    + (y % lienzo.alto) * lienzo.ancho + (x % lienzo.ancho);
+        if (frame >= lienzo.frames || destino >= lienzo.pixeles.length) continue;
         if (datos[i + 3] < 128) { lienzo.pixeles[destino] = 0; continue; }
         clave = datos[i] + "," + datos[i + 1] + "," + datos[i + 2];
         lienzo.pixeles[destino] = mapa[clave] || masCercano(datos[i], datos[i + 1], datos[i + 2]);

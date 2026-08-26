@@ -123,6 +123,34 @@
   .tira canvas { image-rendering: pixelated; border: 1px solid #2b3245; border-radius: 4px;
                  cursor: pointer; background: #11141d; }
   .tira canvas.elegido { border-color: #f2b705; }
+  /* --- editor de dibujos --------------------------------------------- */
+  .dibujos { display: flex; gap: 12px; align-items: flex-start; }
+  .dibujos .lista { display: flex; flex-direction: column; gap: 2px; min-width: 170px;
+                    max-height: 460px; overflow: auto; }
+  .dibujos .lista button { text-align: left; background: #171b24; color: #cfd6e4;
+    border: 1px solid #2b3245; border-radius: 5px; padding: 5px 8px; cursor: pointer;
+    font: 11px/1.4 ui-monospace, monospace; }
+  .dibujos .lista button:hover { background: #272e42; }
+  .dibujos .lista button.elegido { border-color: #f2b705; color: #f2d98a;
+                                   background: #221d10; }
+  .dibujos .lista .grupo { color: #7d8799; font-size: 10px; text-transform: uppercase;
+                           letter-spacing: .08em; margin: 6px 0 2px; }
+  .dibujos .medio { display: flex; flex-direction: column; gap: 8px;
+                    flex: 1 1 0; min-width: 0; }
+  .dibujos .marco { max-width: 100%; max-height: 460px; overflow: auto;
+                    border: 1px solid #2b3245; border-radius: 6px; padding: 6px;
+                    background: #0f131c; }
+  .dibujos .derecha { display: flex; flex-direction: column; gap: 8px;
+                      width: 210px; flex: 0 0 210px; align-items: flex-start; }
+  .dibujos .lista { flex: 0 0 auto; }
+  #dib-canvas { image-rendering: pixelated; display: block; touch-action: none;
+                cursor: crosshair; background:
+    repeating-conic-gradient(#20242f 0% 25%, #171b24 0% 50%) 50% / 16px 16px; }
+  #dib-anim { image-rendering: pixelated; border: 1px solid #2b3245; border-radius: 4px;
+              background: #11141d; flex: 0 0 auto; }
+  .dibujos .aviso { color: #f2b705; }
+  .dibujos .mal { color: #f2705a; }
+
   .registro {
     width: 100%; max-height: 260px; overflow: auto; margin: 0;
     background: #0f131c; color: #cfd6e4; border: 1px solid #2b3245;
@@ -194,6 +222,7 @@
     <button type="button" data-panel="nivel">nivel</button>
     <button type="button" data-panel="juego">juego y fisica</button>
     <button type="button" data-panel="actores">enemigos y objetos</button>
+    <button type="button" data-panel="dibujos">dibujos</button>
     <button type="button" data-panel="revisar">revisar<span class="contador" id="es-problemas" hidden>0</span></button>
     <button type="button" data-panel="yaml">game.yaml</button>
     <button type="button" data-panel="rom">compilar</button>
@@ -282,6 +311,58 @@
       </div>
     </div>
     <div id="campos-actores"></div>
+  </div>
+
+  <div class="panel" id="panel-dibujos">
+    <div class="dibujos">
+      <div class="lista" id="dib-lista"></div>
+
+      <div class="medio">
+        <div class="barra" id="dib-herramientas"></div>
+        <div class="barra">
+          <span class="etiqueta">zoom</span>
+          <input type="range" id="dib-zoom" min="1" max="32" step="1" value="10">
+          <label class="campo"><input type="checkbox" id="dib-rejilla" checked>
+            <span>rejilla</span></label>
+          <label class="campo"><input type="checkbox" id="dib-marcos" checked>
+            <span>fotogramas</span></label>
+          <label class="campo"><input type="checkbox" id="dib-cebolla">
+            <span>papel cebolla</span></label>
+        </div>
+        <div class="marco"><canvas id="dib-canvas" width="16" height="16"></canvas></div>
+        <div class="barra">
+          <button type="button" id="dib-deshacer">deshacer</button>
+          <button type="button" id="dib-rehacer">rehacer</button>
+          <span class="etiqueta">fotograma</span>
+          <button type="button" id="dib-espejo">espejo</button>
+          <button type="button" id="dib-espejov">volteo</button>
+          <button type="button" id="dib-girar">girar</button>
+          <button type="button" id="dib-limpiar">limpiar</button>
+          <button type="button" id="dib-duplicar">duplicar</button>
+          <button type="button" id="dib-quitar">quitar</button>
+        </div>
+        <div class="nota" id="dib-nota"></div>
+      </div>
+
+      <div class="derecha">
+        <div class="barra">
+          <span class="etiqueta" id="dib-cuenta">colores</span>
+        </div>
+        <div class="colores" id="dib-colores"></div>
+        <label class="campo"><span>cambiar este color</span>
+          <input type="color" id="dib-color"></label>
+        <div class="barra" id="dib-caja-animacion">
+          <span class="etiqueta">animacion</span>
+          <select id="dib-animacion"></select>
+        </div>
+        <canvas id="dib-anim" width="64" height="64"></canvas>
+        <div class="barra">
+          <button type="button" id="dib-guardar">guardar</button>
+          <button type="button" id="dib-revertir">descartar</button>
+        </div>
+        <div class="nota" id="dib-guardado"></div>
+      </div>
+    </div>
   </div>
 
   <div class="panel" id="panel-revisar">
@@ -771,6 +852,7 @@
     requestAnimationFrame(loop);
     if (editor.activo) {                 /* en modo edicion el juego se pausa */
       editor.dibujar();
+      latirAnimacionDibujo();            /* menos la vista previa del dibujo */
       last = now;
       acc = 0;
       return;
@@ -1570,6 +1652,611 @@
     construirActores();
   }
 
+  /* --- editor de dibujos ----------------------------------------------
+   *
+   * Aqui se dibuja cualquier cosa del proyecto: el jugador, los enemigos, los
+   * objetos, el escenario y las capas de fondo. Dos cosas que no puede hacer
+   * un editor de pixeles normal, y que son la razon de que este viva aqui:
+   *
+   *   - los colores son **los de la maquina de destino**. Las hojas que llegan
+   *     al preview ya han pasado por el redondeo de la maquina (preview.py lo
+   *     hace con `color_visible`), asi que lo que ves es lo que se vera en la
+   *     Neo Geo, el Amiga o donde sea, y el contador te avisa antes de que lo
+   *     haga el compilador;
+   *   - la animacion se ve **a la velocidad de verdad**, la que tiene el actor
+   *     en el game.yaml, mientras dibujas.
+   */
+
+  var dib = {
+    hoja: null,          // nombre de la hoja abierta
+    lienzo: null,        // el NPPixel
+    zoom: 10,
+    frame: 0,            // fotograma activo (para espejo, girar, limpiar...)
+    herramienta: "lapiz",
+    color: 1,
+    pintando: false,
+    desde: null,         // punto de origen de linea/rect/elipse/seleccion
+    recorte: null,       // lo ultimo seleccionado, para moverlo
+    tocado: false,       // hay cambios sin guardar
+    animacion: 0,
+    animFrame: 0,
+    animReloj: 0
+  };
+
+  var HERRAMIENTAS_DIB = [
+    { id: "lapiz", nombre: "lapiz" },
+    { id: "borrador", nombre: "borrador" },
+    { id: "linea", nombre: "linea" },
+    { id: "rect", nombre: "rect" },
+    { id: "rectlleno", nombre: "rect lleno" },
+    { id: "elipse", nombre: "elipse" },
+    { id: "elipselleno", nombre: "elipse llena" },
+    { id: "relleno", nombre: "relleno" },
+    { id: "cuentagotas", nombre: "cuentagotas" },
+    { id: "mover", nombre: "mover trozo" }
+  ];
+
+  /** Todos los dibujos del proyecto, agrupados para la lista de la izquierda. */
+  function dibujosDelProyecto() {
+    var grupos = [];
+    var actores = [];
+    if (DATA.player && DATA.player.actor) {
+      actores.push({ hoja: DATA.player.actor.sheet, nombre: "jugador" });
+    }
+    (DATA.enemies || []).forEach(function (e, i) {
+      actores.push({ hoja: e.actor.sheet, nombre: e.name || ("enemigo " + i) });
+    });
+    (DATA.items || []).forEach(function (o, i) {
+      actores.push({ hoja: o.actor.sheet, nombre: o.name || ("objeto " + i) });
+    });
+    grupos.push({ titulo: "actores", dibujos: actores });
+    grupos.push({ titulo: "escenario",
+                  dibujos: [{ hoja: "__tiles__", nombre: "tiles" }] });
+    var capas = (DATA.layers || []).map(function (c) {
+      return { hoja: c.sheet, nombre: c.name };
+    });
+    if (capas.length) grupos.push({ titulo: "fondos", dibujos: capas });
+    return grupos;
+  }
+
+  function construirListaDibujos() {
+    var cont = document.getElementById("dib-lista");
+    if (!cont) return;
+    cont.innerHTML = "";
+    var vistas = {};
+    dibujosDelProyecto().forEach(function (grupo) {
+      var hayAlguno = grupo.dibujos.some(function (d) {
+        return DATA.sheets[d.hoja] && !vistas[d.hoja];
+      });
+      if (!hayAlguno) return;
+      crearElemento(cont, "div", "grupo").textContent = grupo.titulo;
+      grupo.dibujos.forEach(function (d) {
+        var hoja = DATA.sheets[d.hoja];
+        if (!hoja || vistas[d.hoja]) return;   // dos enemigos pueden compartir PNG
+        vistas[d.hoja] = 1;
+        var boton = crearElemento(cont, "button");
+        boton.type = "button";
+        boton.textContent = d.nombre + "  " + hoja.frame_w + "x" + hoja.frame_h +
+          (hoja.frames > 1 ? " x" + hoja.frames : "");
+        if (dib.hoja === d.hoja) boton.className = "elegido";
+        boton.addEventListener("click", function () { abrirDibujo(d.hoja); });
+      });
+    });
+  }
+
+  /** Carga una hoja del proyecto en el lienzo, con su paleta y su reparto. */
+  function abrirDibujo(nombre) {
+    var hoja = DATA.sheets[nombre];
+    if (!hoja) return;
+    if (dib.tocado && !window.confirm("hay cambios sin guardar, se pierden?")) return;
+    dib.hoja = nombre;
+    dib.frame = 0;
+    dib.tocado = false;
+    dib.recorte = null;
+    dib.lienzo = NPPixel.crear({
+      ancho: hoja.frame_w, alto: hoja.frame_h, frames: hoja.frames || 1
+    });
+    dib.lienzo.porFila = hoja.per_row || dib.lienzo.frames;
+    var imagen = images[nombre];
+    if (imagen && imagen.complete && imagen.naturalWidth) {
+      dib.lienzo.desdeImagen(imagen, document);
+    }
+    dib.color = 1;
+    construirListaDibujos();
+    construirPaletaDibujo();
+    construirAnimaciones();
+    ajustarZoomInicial();
+    pintarDibujo();
+    refrescarPreviewDibujo();
+    document.getElementById("dib-guardado").textContent = "";
+  }
+
+  /** Al abrir, un zoom que quepa en el hueco sin tener que tocar nada. */
+  function ajustarZoomInicial() {
+    var marco = document.querySelector("#panel-dibujos .marco");
+    var hueco = (marco && marco.clientWidth) || 640;
+    var ancho = dib.lienzo.anchoHoja();
+    var cabe = Math.floor((hueco - 16) / Math.max(1, ancho));
+    /* Un sprite pequeno se abre grande aunque sobre sitio, que es donde de
+       verdad se dibuja pixel a pixel; una capa de fondo entera se abre como
+       quepa, para verla de un vistazo. */
+    dib.zoom = Math.max(ancho <= 128 ? 8 : 1, Math.min(16, cabe));
+    document.getElementById("dib-zoom").value = String(dib.zoom);
+  }
+
+  function construirHerramientasDibujo() {
+    var barra = document.getElementById("dib-herramientas");
+    if (!barra) return;
+    barra.innerHTML = "";
+    HERRAMIENTAS_DIB.forEach(function (h) {
+      var boton = crearElemento(barra, "button");
+      boton.type = "button";
+      boton.textContent = h.nombre;
+      if (dib.herramienta === h.id) boton.className = "elegido";
+      boton.addEventListener("click", function () {
+        dib.herramienta = h.id;
+        construirHerramientasDibujo();
+      });
+    });
+  }
+
+  function construirPaletaDibujo() {
+    var cont = document.getElementById("dib-colores");
+    if (!cont || !dib.lienzo) return;
+    cont.innerHTML = "";
+    var transparente = crearElemento(cont, "button", "transparente");
+    transparente.type = "button";
+    transparente.title = "transparente";
+    if (dib.color === 0) transparente.className = "transparente elegido";
+    transparente.addEventListener("click", function () {
+      dib.color = 0;
+      construirPaletaDibujo();
+    });
+    dib.lienzo.paleta.forEach(function (color, i) {
+      var boton = crearElemento(cont, "button");
+      boton.type = "button";
+      boton.style.background = color;
+      boton.title = color + " (indice " + (i + 1) + ")";
+      if (dib.color === i + 1) boton.className = "elegido";
+      boton.addEventListener("click", function () {
+        dib.color = i + 1;
+        construirPaletaDibujo();
+      });
+    });
+    var selector = document.getElementById("dib-color");
+    selector.value = dib.lienzo.paleta[Math.max(0, dib.color - 1)] || "#ffffff";
+    actualizarCuentaColores();
+  }
+
+  function actualizarCuentaColores() {
+    var etiqueta = document.getElementById("dib-cuenta");
+    if (!etiqueta || !dib.lienzo) return;
+    var usados = dib.lienzo.indicesUsados().length;
+    var tope = (DATA.limites && DATA.limites.colores) || 15;
+    etiqueta.textContent = "colores: " + usados + " de " + tope;
+    etiqueta.className = usados > tope ? "etiqueta mal" : "etiqueta";
+  }
+
+  /* ------------------------------------------------------------ pintar */
+
+  function pintarDibujo() {
+    var canvas = document.getElementById("dib-canvas");
+    if (!canvas || !dib.lienzo) return;
+    var l = dib.lienzo, z = dib.zoom;
+    var ancho = l.anchoHoja(), alto = l.altoHoja();
+    canvas.width = ancho * z;
+    canvas.height = alto * z;
+    var ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    var cebolla = document.getElementById("dib-cebolla").checked;
+    var f, x, y, sitio;
+    for (f = 0; f < l.frames; f++) {
+      sitio = [(f % l.porFila) * l.ancho, Math.floor(f / l.porFila) * l.alto];
+      for (y = 0; y < l.alto; y++) {
+        for (x = 0; x < l.ancho; x++) {
+          var color = l.coger(f, x, y);
+          if (!color) continue;
+          ctx.fillStyle = l.paleta[color - 1] || "#ffffff";
+          ctx.fillRect((sitio[0] + x) * z, (sitio[1] + y) * z, z, z);
+        }
+      }
+    }
+
+    /* papel cebolla: el fotograma anterior, en fantasma, sobre el activo */
+    if (cebolla && dib.frame > 0) {
+      sitio = [(dib.frame % l.porFila) * l.ancho,
+               Math.floor(dib.frame / l.porFila) * l.alto];
+      ctx.globalAlpha = 0.35;
+      for (y = 0; y < l.alto; y++) {
+        for (x = 0; x < l.ancho; x++) {
+          var previo = l.coger(dib.frame - 1, x, y);
+          if (!previo) continue;
+          ctx.fillStyle = l.paleta[previo - 1] || "#ffffff";
+          ctx.fillRect((sitio[0] + x) * z, (sitio[1] + y) * z, z, z);
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    if (document.getElementById("dib-rejilla").checked && z >= 6) {
+      ctx.strokeStyle = "rgba(255,255,255,0.08)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (x = 1; x < ancho; x++) { ctx.moveTo(x * z, 0); ctx.lineTo(x * z, canvas.height); }
+      for (y = 1; y < alto; y++) { ctx.moveTo(0, y * z); ctx.lineTo(canvas.width, y * z); }
+      ctx.stroke();
+    }
+    if (document.getElementById("dib-marcos").checked && l.frames > 1) {
+      ctx.strokeStyle = "rgba(242,183,5,0.45)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (x = 0; x <= l.porFila; x++) {
+        ctx.moveTo(x * l.ancho * z, 0);
+        ctx.lineTo(x * l.ancho * z, canvas.height);
+      }
+      for (y = 0; y <= l.filas(); y++) {
+        ctx.moveTo(0, y * l.alto * z);
+        ctx.lineTo(canvas.width, y * l.alto * z);
+      }
+      ctx.stroke();
+      /* el fotograma activo, marcado */
+      sitio = [(dib.frame % l.porFila) * l.ancho,
+               Math.floor(dib.frame / l.porFila) * l.alto];
+      ctx.strokeStyle = "#f2b705";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(sitio[0] * z, sitio[1] * z, l.ancho * z, l.alto * z);
+    }
+    actualizarCuentaColores();
+    var nota = document.getElementById("dib-nota");
+    if (nota) {
+      nota.textContent = dib.hoja
+        ? (DATA.sheets[dib.hoja].ruta || dib.hoja) + " - " + ancho + "x" + alto +
+          " px, fotograma " + (dib.frame + 1) + " de " + l.frames +
+          (dib.tocado ? " - sin guardar" : "")
+        : "elige un dibujo de la lista";
+    }
+  }
+
+  /* ------------------------------------------------------------- raton */
+
+  function puntoDelDibujo(evento) {
+    var canvas = document.getElementById("dib-canvas");
+    var caja = canvas.getBoundingClientRect();
+    var x = Math.floor((evento.clientX - caja.left) / dib.zoom);
+    var y = Math.floor((evento.clientY - caja.top) / dib.zoom);
+    var l = dib.lienzo;
+    var columna = Math.floor(x / l.ancho), fila = Math.floor(y / l.alto);
+    var frame = fila * l.porFila + columna;
+    if (frame < 0 || frame >= l.frames) return null;
+    return { frame: frame, x: x % l.ancho, y: y % l.alto };
+  }
+
+  function herramientaDeUnPunto(punto) {
+    var l = dib.lienzo;
+    var color = dib.herramienta === "borrador" ? 0 : dib.color;
+    if (dib.herramienta === "cuentagotas") {
+      dib.color = l.coger(punto.frame, punto.x, punto.y);
+      construirPaletaDibujo();
+      return false;
+    }
+    if (dib.herramienta === "relleno") return l.relleno(punto.frame, punto.x, punto.y, color);
+    return l.pintar(punto.frame, punto.x, punto.y, color);
+  }
+
+  function herramientaDeDosPuntos(a, b, definitivo) {
+    var l = dib.lienzo;
+    var color = dib.herramienta === "borrador" ? 0 : dib.color;
+    switch (dib.herramienta) {
+    case "linea": return l.linea(a.frame, a.x, a.y, b.x, b.y, color);
+    case "rect": return l.rect(a.frame, a.x, a.y, b.x, b.y, color, false);
+    case "rectlleno": return l.rect(a.frame, a.x, a.y, b.x, b.y, color, true);
+    case "elipse": return l.elipse(a.frame, a.x, a.y, b.x, b.y, color, false);
+    case "elipselleno": return l.elipse(a.frame, a.x, a.y, b.x, b.y, color, true);
+    case "mover":
+      if (!definitivo) return false;
+      /* se recorta lo que hay bajo el rectangulo y se suelta donde acabe el
+         raton, dejando el hueco a transparente */
+      dib.recorte = l.recortar(a.frame, a.x, a.y, a.x, a.y);
+      return false;
+    default: return false;
+    }
+  }
+
+  function esDeDosPuntos() {
+    return ["linea", "rect", "rectlleno", "elipse", "elipselleno"]
+      .indexOf(dib.herramienta) >= 0;
+  }
+
+  function engancharLienzoDibujo() {
+    var canvas = document.getElementById("dib-canvas");
+    if (!canvas) return;
+    var antes = null;             // copia para previsualizar formas
+
+    canvas.addEventListener("pointerdown", function (evento) {
+      if (!dib.lienzo) return;
+      var punto = puntoDelDibujo(evento);
+      if (!punto) return;
+      canvas.setPointerCapture(evento.pointerId);
+      dib.frame = punto.frame;
+      dib.pintando = true;
+      dib.desde = punto;
+      dib.lienzo.empezarCambio();
+      antes = dib.lienzo.pixeles.slice();
+      if (dib.herramienta === "mover") {
+        dib.recorte = null;
+      } else if (!esDeDosPuntos()) {
+        if (herramientaDeUnPunto(punto)) dib.tocado = true;
+      }
+      pintarDibujo();
+    });
+
+    canvas.addEventListener("pointermove", function (evento) {
+      if (!dib.pintando || !dib.lienzo) return;
+      var punto = puntoDelDibujo(evento);
+      if (!punto) return;
+      if (esDeDosPuntos() || dib.herramienta === "mover") {
+        dib.lienzo.pixeles.set(antes);            // se repinta desde cero
+        if (dib.herramienta === "mover") {
+          var trozo = dib.lienzo.recortar(dib.desde.frame, dib.desde.x, dib.desde.y,
+                                          punto.x, punto.y);
+          dib.recorte = trozo;
+          dib.lienzo.rect(dib.desde.frame, dib.desde.x, dib.desde.y,
+                          punto.x, punto.y, dib.color, false);
+        } else {
+          herramientaDeDosPuntos(dib.desde, punto, false);
+        }
+      } else if (punto.frame === dib.desde.frame) {
+        /* trazo continuo: se unen los puntos para que no queden huecos */
+        if (dib.herramienta === "lapiz" || dib.herramienta === "borrador") {
+          dib.lienzo.linea(punto.frame, dib.desde.x, dib.desde.y, punto.x, punto.y,
+                           dib.herramienta === "borrador" ? 0 : dib.color);
+          dib.desde = punto;
+          dib.tocado = true;
+        }
+      }
+      pintarDibujo();
+    });
+
+    function soltar(evento) {
+      if (!dib.pintando || !dib.lienzo) return;
+      dib.pintando = false;
+      var punto = puntoDelDibujo(evento) || dib.desde;
+      if (esDeDosPuntos()) {
+        dib.lienzo.pixeles.set(antes);
+        if (herramientaDeDosPuntos(dib.desde, punto, true)) dib.tocado = true;
+      } else if (dib.herramienta === "mover") {
+        dib.lienzo.pixeles.set(antes);
+        if (dib.recorte) {
+          dib.lienzo.borrarZona(dib.desde.frame, dib.desde.x, dib.desde.y,
+                                dib.desde.x + dib.recorte.ancho - 1,
+                                dib.desde.y + dib.recorte.alto - 1);
+          dib.moviendo = { trozo: dib.recorte, frame: dib.desde.frame };
+          dib.tocado = true;
+        }
+      }
+      pintarDibujo();
+      refrescarPreviewDibujo();
+    }
+    canvas.addEventListener("pointerup", soltar);
+    canvas.addEventListener("pointercancel", soltar);
+
+    /* con un trozo cogido, el siguiente clic lo suelta donde se pinche */
+    canvas.addEventListener("click", function (evento) {
+      if (!dib.moviendo || dib.herramienta !== "mover") return;
+      var punto = puntoDelDibujo(evento);
+      if (!punto) return;
+      dib.lienzo.empezarCambio();
+      dib.lienzo.pegar(punto.frame, dib.moviendo.trozo, punto.x, punto.y, false);
+      dib.moviendo = null;
+      dib.tocado = true;
+      pintarDibujo();
+    });
+  }
+
+  /* -------------------------------------------------------- animacion */
+
+  function construirAnimaciones() {
+    var selector = document.getElementById("dib-animacion");
+    if (!selector) return;
+    selector.innerHTML = "";
+    var actor = actorDeHoja(dib.hoja);
+    var nombres = ["quieto", "correr", "saltar", "caer", "dolor"];
+    /* El escenario y las capas de fondo no se animan: ahi la vista previa no
+       dice nada y estorba. */
+    var caja = document.getElementById("dib-caja-animacion");
+    var vista = document.getElementById("dib-anim");
+    if (caja) caja.style.display = actor ? "" : "none";
+    if (vista) vista.style.display = actor ? "" : "none";
+    if (!actor) {
+      dib.animacion = -1;
+      return;
+    }
+    nombres.forEach(function (nombre, i) {
+      var opcion = document.createElement("option");
+      opcion.value = String(i);
+      opcion.textContent = nombre;
+      selector.appendChild(opcion);
+    });
+    dib.animacion = 0;
+    selector.value = "0";
+  }
+
+  function actorDeHoja(hoja) {
+    var todos = (DATA.enemies || []).concat(DATA.items || []);
+    if (DATA.player) todos.push(DATA.player);
+    for (var i = 0; i < todos.length; i++) {
+      if (todos[i] && todos[i].actor && todos[i].actor.sheet === hoja) return todos[i].actor;
+    }
+    return null;
+  }
+
+  /** El fotograma que toca ahora mismo en la animacion elegida. */
+  function fotogramaDeAnimacion() {
+    var l = dib.lienzo;
+    if (!l) return 0;
+    var actor = actorDeHoja(dib.hoja);
+    if (!actor || dib.animacion < 0) return dib.animFrame % l.frames;
+    var anim = actor.anims[dib.animacion];
+    if (!anim || !anim.count) return 0;
+    return anim.frames[dib.animFrame % anim.count] % l.frames;
+  }
+
+  function velocidadDeAnimacion() {
+    var actor = actorDeHoja(dib.hoja);
+    if (!actor || dib.animacion < 0) return 10;
+    var anim = actor.anims[dib.animacion];
+    return (anim && anim.speed) || 10;
+  }
+
+  function refrescarPreviewDibujo() {
+    var canvas = document.getElementById("dib-anim");
+    if (!canvas || !dib.lienzo) return;
+    var l = dib.lienzo;
+    var escala = Math.max(1, Math.floor(96 / Math.max(l.ancho, l.alto)));
+    canvas.width = l.ancho * escala;
+    canvas.height = l.alto * escala;
+    var ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    var f = fotogramaDeAnimacion();
+    for (var y = 0; y < l.alto; y++) {
+      for (var x = 0; x < l.ancho; x++) {
+        var color = l.coger(f, x, y);
+        if (!color) continue;
+        ctx.fillStyle = l.paleta[color - 1] || "#ffffff";
+        ctx.fillRect(x * escala, y * escala, escala, escala);
+      }
+    }
+  }
+
+  /** La animacion corre a la velocidad del game.yaml, en frames de juego. */
+  function latirAnimacionDibujo() {
+    if (!dib.lienzo) return;
+    dib.animReloj++;
+    if (dib.animReloj >= velocidadDeAnimacion()) {
+      dib.animReloj = 0;
+      dib.animFrame++;
+      refrescarPreviewDibujo();
+    }
+  }
+
+  /* ----------------------------------------------------------- guardar */
+
+  function pngDelDibujo() {
+    return dib.lienzo.aDataURL(document);
+  }
+
+  function guardarDibujo() {
+    var aviso = document.getElementById("dib-guardado");
+    if (!dib.lienzo || !dib.hoja) return;
+    var ruta = DATA.sheets[dib.hoja].ruta;
+    if (!ruta) { aviso.textContent = "este dibujo no tiene archivo en el proyecto"; return; }
+    var datos = pngDelDibujo();
+    images[dib.hoja] = null;
+    cargarHoja(dib.hoja, datos);            // el preview lo usa ya
+    DATA.sheets[dib.hoja].url = datos;
+    dib.tocado = false;
+    pintarDibujo();
+    aviso.textContent = "guardando " + ruta + "...";
+    guardarPngEnElProyecto(ruta, datos, aviso);
+  }
+
+  /* Con `ngplat probar` en marcha el dibujo se guarda solo en su sitio; si la
+     pagina se ha abierto a pelo (file://) no hay con quien hablar y lo unico
+     que queda es descargarlo para ponerlo a mano. */
+  function guardarPngEnElProyecto(ruta, datos, aviso) {
+    if (!rom.disponible) {
+      descargarImagen({ ruta: ruta, datos: datos });
+      aviso.textContent = "descargado; ponlo en " + ruta +
+        " (con 'ngplat probar' se guardaria solo)";
+      return;
+    }
+    fetch("/dibujo?t=" + encodeURIComponent(rom.clave), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-NeoPlat": rom.clave },
+      body: JSON.stringify({ ruta: ruta, datos: datos })
+    }).then(function (r) { return r.json(); }).then(function (respuesta) {
+      aviso.textContent = respuesta.ok
+        ? "guardado en " + ruta
+        : "no se ha podido guardar: " + (respuesta.error || "");
+    })["catch"](function (error) {
+      aviso.textContent = "sin respuesta del servidor: " + error;
+    });
+  }
+
+  function engancharBotonesDibujo() {
+    function tocar(fn) {
+      return function () {
+        if (!dib.lienzo) return;
+        dib.lienzo.empezarCambio();
+        if (fn(dib.lienzo, dib.frame) !== false) dib.tocado = true;
+        construirPaletaDibujo();
+        pintarDibujo();
+        refrescarPreviewDibujo();
+      };
+    }
+    conClic("dib-espejo", tocar(function (l, f) { l.espejo(f); }));
+    conClic("dib-espejov", tocar(function (l, f) { l.espejoV(f); }));
+    conClic("dib-girar", tocar(function (l, f) {
+      if (!l.rotar(f)) {
+        document.getElementById("dib-nota").textContent =
+          "solo se pueden girar los dibujos cuadrados";
+        return false;
+      }
+    }));
+    conClic("dib-limpiar", tocar(function (l, f) { l.limpiarFrame(f); }));
+    conClic("dib-duplicar", tocar(function (l, f) {
+      if (!l.insertarFrame(f + 1, false)) return false;
+      l.copiarFrame(f, f + 1);
+      dib.frame = f + 1;
+    }));
+    conClic("dib-quitar", tocar(function (l, f) {
+      if (!l.borrarFrame(f)) return false;
+      dib.frame = Math.max(0, f - 1);
+    }));
+    conClic("dib-deshacer", function () {
+      if (dib.lienzo && dib.lienzo.deshacer()) {
+        dib.tocado = true;
+        if (dib.frame >= dib.lienzo.frames) dib.frame = dib.lienzo.frames - 1;
+        pintarDibujo();
+      }
+    });
+    conClic("dib-rehacer", function () {
+      if (dib.lienzo && dib.lienzo.rehacer()) { dib.tocado = true; pintarDibujo(); }
+    });
+    conClic("dib-guardar", guardarDibujo);
+    conClic("dib-revertir", function () {
+      if (!dib.hoja) return;
+      dib.tocado = false;
+      abrirDibujo(dib.hoja);
+    });
+
+    var zoom = document.getElementById("dib-zoom");
+    if (zoom) zoom.addEventListener("input", function () {
+      dib.zoom = Math.max(1, parseInt(zoom.value, 10) || 1);
+      pintarDibujo();
+    });
+    ["dib-rejilla", "dib-marcos", "dib-cebolla"].forEach(function (id) {
+      var caja = document.getElementById(id);
+      if (caja) caja.addEventListener("change", pintarDibujo);
+    });
+    var selector = document.getElementById("dib-color");
+    if (selector) selector.addEventListener("input", function () {
+      if (!dib.lienzo || dib.color === 0) return;
+      dib.lienzo.paleta[dib.color - 1] = selector.value;
+      dib.tocado = true;
+      construirPaletaDibujo();
+      pintarDibujo();
+      refrescarPreviewDibujo();
+    });
+    var anim = document.getElementById("dib-animacion");
+    if (anim) anim.addEventListener("change", function () {
+      dib.animacion = parseInt(anim.value, 10);
+      dib.animFrame = 0;
+      refrescarPreviewDibujo();
+    });
+  }
+
   /* --- refrescos ------------------------------------------------------ */
 
   function refrescarValores() {
@@ -1994,6 +2681,12 @@
     audio: audio,
     editor: editor,
     pixel: function () { return lienzoPixel; },
+    dibujos: {
+      abrir: abrirDibujo,
+      estado: function () { return dib; },
+      guardar: guardarDibujo,
+      png: function () { return dib.lienzo ? pngDelDibujo() : ""; }
+    },
     modoEditor: modoEditor,
     modoJuego: modoJuego,
     rom: rom,
@@ -2004,6 +2697,10 @@
 
   loadImages(function () {
     construirPaleta();
+    construirHerramientasDibujo();
+    construirListaDibujos();
+    engancharLienzoDibujo();
+    engancharBotonesDibujo();
     requestAnimationFrame(loop);
   });
 })();

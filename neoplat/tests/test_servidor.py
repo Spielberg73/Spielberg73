@@ -6,6 +6,7 @@ importa tanto como lo otro: es un proceso que escribe en tu proyecto y lanza
 `make`, y los navegadores dejan que cualquier pagina hable con localhost.
 """
 
+import base64
 import json
 import os
 import shutil
@@ -18,6 +19,14 @@ import urllib.request
 import comun
 from ngplat import servidor
 from ngplat.scaffold import crear_proyecto
+
+
+def _png_de_prueba() -> str:
+    """Un PNG de 2x2 de verdad, hecho con el codificador del kit."""
+    from ngplat.png import Image, encode_png
+    imagen = Image(2, 2, [(255, 0, 0, 255), (0, 255, 0, 255),
+                          (0, 0, 255, 255), (0, 0, 0, 0)])
+    return "data:image/png;base64," + base64.b64encode(encode_png(imagen)).decode("ascii")
 
 
 class TestServidor(unittest.TestCase):
@@ -62,6 +71,17 @@ class TestServidor(unittest.TestCase):
             peticion.add_header(nombre, valor)
         with urllib.request.urlopen(peticion, timeout=300) as respuesta:
             return json.load(respuesta)
+
+    def _dibujo(self, cuerpo, clave=None):
+        datos = json.dumps(cuerpo).encode("utf-8")
+        peticion = urllib.request.Request(
+            self._url("/dibujo", clave), data=datos,
+            headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(peticion, timeout=60) as respuesta:
+                return respuesta.status, json.load(respuesta)
+        except urllib.error.HTTPError as error:
+            return error.code, json.load(error)
 
     def _codigo(self, hacer):
         try:
@@ -150,6 +170,42 @@ class TestServidor(unittest.TestCase):
             self.assertEqual(error.code, 400)
         else:
             self.fail("ha aceptado una maquina que no existe")
+
+    # --- el editor de dibujos -------------------------------------------
+
+    def test_guarda_un_dibujo_en_el_proyecto(self):
+        """Lo que dibujas en el navegador acaba en graficos/ sin tocar nada."""
+        codigo, respuesta = self._dibujo({"ruta": "graficos/heroe.png",
+                                          "datos": _png_de_prueba()})
+        self.assertEqual(codigo, 200)
+        self.assertTrue(respuesta["ok"], respuesta)
+        destino = os.path.join(self.raiz, "graficos", "heroe.png")
+        with open(destino, "rb") as fh:
+            guardado = fh.read()
+        self.assertEqual(guardado[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(len(guardado), respuesta["bytes"])
+
+    def test_un_dibujo_no_puede_salirse_del_proyecto(self):
+        """La ruta la manda el navegador, asi que no se da por buena."""
+        for ruta in ("../fuera.png", "/tmp/fuera.png", "graficos/../../fuera.png",
+                     "graficos/algo.txt", ""):
+            codigo, respuesta = self._dibujo({"ruta": ruta, "datos": _png_de_prueba()})
+            self.assertEqual(codigo, 400, "ha aceptado la ruta '%s'" % ruta)
+            self.assertFalse(respuesta["ok"])
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "fuera.png")))
+
+    def test_solo_se_guardan_pngs_de_verdad(self):
+        for datos in ("data:image/png;base64,bm8gc295IHVuIHBuZw==",
+                      "data:text/plain;base64,aG9sYQ==",
+                      "no soy un data uri"):
+            codigo, respuesta = self._dibujo({"ruta": "graficos/x.png", "datos": datos})
+            self.assertEqual(codigo, 400, datos[:40])
+            self.assertFalse(respuesta["ok"])
+
+    def test_sin_clave_no_se_guardan_dibujos(self):
+        codigo, _ = self._dibujo({"ruta": "graficos/x.png",
+                                  "datos": _png_de_prueba()}, clave="mentira")
+        self.assertEqual(codigo, 403)
 
     def test_no_hay_mas_rutas(self):
         self.assertEqual(self._codigo(lambda: self._pedir("/etc/passwd")), 404)

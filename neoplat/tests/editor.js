@@ -449,6 +449,141 @@ prueba("cambiar el numero de fotogramas conserva el dibujo", function () {
   assert.deepStrictEqual(Array.from(l.pixeles.slice(0, 256)), Array.from(antes));
 });
 
+prueba("la linea llega de punta a punta sin dejar huecos", function () {
+  var l = NPPixel.crear({ ancho: 16, alto: 16, frames: 1 });
+  l.linea(0, 0, 0, 15, 15, 4);
+  for (var i = 0; i < 16; i++) {
+    assert.strictEqual(l.coger(0, i, i), 4, "hueco en la diagonal, en " + i);
+  }
+  l.limpiarFrame(0);
+  l.linea(0, 2, 9, 13, 9, 4);          // horizontal
+  for (i = 2; i <= 13; i++) assert.strictEqual(l.coger(0, i, 9), 4, "hueco en " + i);
+  assert.strictEqual(l.coger(0, 1, 9), 0, "se ha salido por la izquierda");
+});
+
+prueba("el rectangulo sale hueco o relleno, como se pida", function () {
+  var l = NPPixel.crear({ ancho: 16, alto: 16, frames: 1 });
+  l.rect(0, 2, 2, 8, 8, 3, false);
+  assert.strictEqual(l.coger(0, 2, 2), 3, "falta la esquina");
+  assert.strictEqual(l.coger(0, 5, 2), 3, "falta el borde de arriba");
+  assert.strictEqual(l.coger(0, 5, 5), 0, "el hueco no esta hueco");
+  l.limpiarFrame(0);
+  l.rect(0, 8, 8, 2, 2, 3, true);      // al reves: da igual el orden
+  assert.strictEqual(l.coger(0, 5, 5), 3, "el relleno no ha llegado al centro");
+});
+
+prueba("la elipse queda dentro de su caja y centrada", function () {
+  var l = NPPixel.crear({ ancho: 16, alto: 16, frames: 1 });
+  l.elipse(0, 0, 0, 15, 15, 6, true);
+  assert.strictEqual(l.coger(0, 8, 8), 6, "el centro esta vacio");
+  assert.strictEqual(l.coger(0, 0, 0), 0, "la esquina deberia quedar fuera");
+  assert.strictEqual(l.coger(0, 8, 0), 6, "falta el punto de arriba");
+  assert.strictEqual(l.coger(0, 0, 8), 6, "falta el punto de la izquierda");
+  /* hueca: el centro se queda sin pintar y el borde no */
+  l.limpiarFrame(0);
+  l.elipse(0, 0, 0, 15, 15, 6, false);
+  assert.strictEqual(l.coger(0, 8, 8), 0, "la elipse hueca ha pintado el centro");
+  assert.strictEqual(l.coger(0, 8, 0), 6, "falta el borde");
+});
+
+prueba("se recorta un trozo, se mueve y se pega", function () {
+  var l = NPPixel.crear({ ancho: 16, alto: 16, frames: 1 });
+  l.rect(0, 1, 1, 3, 3, 5, true);
+  var trozo = l.recortar(0, 1, 1, 3, 3);
+  assert.strictEqual(trozo.ancho, 3);
+  assert.strictEqual(trozo.alto, 3);
+  l.borrarZona(0, 1, 1, 3, 3);
+  assert.strictEqual(l.coger(0, 2, 2), 0, "no se ha borrado el sitio de origen");
+  l.pegar(0, trozo, 10, 10, true);
+  assert.strictEqual(l.coger(0, 11, 11), 5, "el trozo no ha llegado");
+});
+
+prueba("pegar respeta lo de debajo si el trozo tiene huecos", function () {
+  var l = NPPixel.crear({ ancho: 16, alto: 16, frames: 1 });
+  l.pintar(0, 0, 0, 7);                 // un trozo con un pixel y el resto hueco
+  var trozo = l.recortar(0, 0, 0, 1, 1);
+  l.pintar(0, 9, 9, 4);
+  l.pegar(0, trozo, 8, 8, false);       // como sello: el hueco no borra
+  assert.strictEqual(l.coger(0, 8, 8), 7);
+  assert.strictEqual(l.coger(0, 9, 9), 4, "el hueco del trozo ha borrado");
+  l.pegar(0, trozo, 8, 8, true);        // moviendo: el hueco si borra
+  assert.strictEqual(l.coger(0, 9, 9), 0);
+});
+
+prueba("espejo vertical, giro y desplazamiento con vuelta", function () {
+  var l = NPPixel.crear({ ancho: 16, alto: 16, frames: 1 });
+  l.pintar(0, 3, 1, 8);
+  l.espejoV(0);
+  assert.strictEqual(l.coger(0, 3, 14), 8, "el espejo vertical no ha movido nada");
+
+  l.limpiarFrame(0);
+  l.pintar(0, 0, 0, 9);                 // esquina de arriba a la izquierda
+  assert.ok(l.rotar(0));
+  assert.strictEqual(l.coger(0, 15, 0), 9, "girar no lleva la esquina a su sitio");
+
+  l.limpiarFrame(0);
+  l.pintar(0, 15, 15, 2);
+  l.desplazar(0, 1, 1);                 // se sale por la esquina y vuelve por la otra
+  assert.strictEqual(l.coger(0, 0, 0), 2, "el desplazamiento no da la vuelta");
+});
+
+prueba("no se gira un dibujo que no es cuadrado", function () {
+  var l = NPPixel.crear({ ancho: 16, alto: 32, frames: 1 });
+  l.pintar(0, 1, 1, 3);
+  assert.strictEqual(l.rotar(0), false);
+  assert.strictEqual(l.coger(0, 1, 1), 3, "lo ha tocado igualmente");
+});
+
+prueba("cambiar un color lo cambia en todos los fotogramas", function () {
+  var l = NPPixel.crear({ ancho: 16, alto: 16, frames: 3 });
+  l.pintar(0, 1, 1, 4);
+  l.pintar(2, 5, 5, 4);
+  l.pintar(1, 2, 2, 9);
+  l.cambiarColor(4, 11);
+  assert.strictEqual(l.coger(0, 1, 1), 11);
+  assert.strictEqual(l.coger(2, 5, 5), 11);
+  assert.strictEqual(l.coger(1, 2, 2), 9, "ha tocado un color que no tenia que tocar");
+});
+
+prueba("los fotogramas se anaden, se quitan y se mueven", function () {
+  var l = NPPixel.crear({ ancho: 16, alto: 16, frames: 2 });
+  l.pintar(0, 1, 1, 3);
+  l.pintar(1, 2, 2, 4);
+
+  l.intercambiarFrames(0, 1);
+  assert.strictEqual(l.coger(0, 2, 2), 4, "no se han intercambiado");
+  assert.strictEqual(l.coger(1, 1, 1), 3);
+
+  assert.ok(l.insertarFrame(1, true), "no ha insertado");
+  assert.strictEqual(l.frames, 3);
+  assert.strictEqual(l.coger(1, 2, 2), 4, "el frame nuevo no es copia del anterior");
+  assert.strictEqual(l.coger(2, 1, 1), 3, "el que habia se ha descolocado");
+
+  assert.ok(l.borrarFrame(1));
+  assert.strictEqual(l.frames, 2);
+  assert.strictEqual(l.coger(1, 1, 1), 3, "borrar ha descolocado el resto");
+  l.borrarFrame(0);
+  assert.strictEqual(l.borrarFrame(0), false, "ha borrado el ultimo fotograma");
+});
+
+prueba("una hoja de varias filas sabe lo que mide", function () {
+  var l = NPPixel.crear({ ancho: 16, alto: 16, frames: 6 });
+  assert.strictEqual(l.anchoHoja(), 96, "por defecto van todos en una fila");
+  assert.strictEqual(l.altoHoja(), 16);
+  l.porFila = 3;
+  assert.strictEqual(l.anchoHoja(), 48);
+  assert.strictEqual(l.altoHoja(), 32);
+  assert.strictEqual(l.filas(), 2);
+});
+
+prueba("dice que colores esta usando de verdad", function () {
+  var l = NPPixel.crear({ ancho: 16, alto: 16, frames: 2 });
+  l.pintar(0, 1, 1, 7);
+  l.pintar(1, 2, 2, 3);
+  l.pintar(1, 3, 3, 7);
+  assert.deepStrictEqual(l.indicesUsados(), [3, 7]);
+});
+
 prueba("el dibujo de ejemplo no sale vacio", function () {
   var l = NPPixel.crear({ ancho: 16, alto: 16, frames: 2 });
   l.bicho();

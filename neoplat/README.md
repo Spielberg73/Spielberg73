@@ -265,7 +265,7 @@ neoplat/
 │   ├── np_core.js          la misma simulación, en JavaScript
 │   ├── np_editor.js        el editor (dibujo, propiedades, validación)
 │   ├── np_yaml.js          reescribe el game.yaml sin tocar lo demás
-│   ├── np_pixel.js         el lienzo para dibujar enemigos y objetos
+│   ├── np_pixel.js         el editor de dibujos (sprites, tiles y fondos)
 │   └── np_bot.js           el bot que comprueba si un nivel se puede terminar
 ├── examples/
 │   ├── bosque-magico/      juego de ejemplo listo para compilar
@@ -409,6 +409,9 @@ Verificado aquí:
 - El editor hace el viaje completo en las pruebas: edita mapas, física y
   niveles, exporta el `game.yaml`, se vuelve a compilar y se comprueba que no se
   pierde ni un comentario.
+- El editor de dibujos también: en Chromium se abre el PNG del jugador, se le
+  pinta una línea con el ratón, se deshace y se comprueba que el PNG que sale
+  mide exactamente lo que la hoja.
 - Los nombres que el editor escribe en el `game.yaml` se comprueban uno a uno
   contra el lector del kit.
 - El driver de sonido del Z80 se ejecuta en un emulador incluido en las pruebas:
