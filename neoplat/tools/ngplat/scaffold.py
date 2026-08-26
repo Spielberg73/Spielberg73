@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import List
 
-from . import art
+from . import art, art_hierro
 from .errors import ProjectError
 from .png import write_png
 
@@ -217,6 +217,122 @@ niveles:
 {niveles}"""
 
 
+# El segundo estilo: seis colores contados, para el modo de doble plano del
+# Amiga. Cambian los dibujos, los bichos y la musica; el motor es el mismo.
+GAME_YAML_HIERRO = """# Proyecto NeoPlat con la paleta corta: seis colores para todo el juego.
+#
+#   ngplat probar     -> abre el preview jugable en el navegador
+#   ngplat compilar   -> genera el proyecto en C y las ROMs graficas
+#
+# Los dibujos estan hechos para 'amiga: 8colores', el modo de doble plano del
+# OCS: el juego va delante con siete colores (uno se lo queda el marcador) y la
+# capa de fondo detras con otros siete, movida por hardware. En las demas
+# maquinas se ve igual, solo que les sobra sitio.
+
+juego:
+  titulo: "{titulo}"
+  autor: "{autor}"
+  vidas: 3
+  tiempo: 0            # segundos por nivel (0 = sin limite)
+  camara: scroll       # scroll (el escenario se desliza) o pantallas
+  amiga: 8colores      # doble plano: menos colores, pero parallax de verdad
+  fondo: "#14121e"
+
+jugador:
+  sprite: graficos/heroe.png
+  frame: [16, 16]
+  caja: [10, 15]
+  velocidad: 1.6
+  aceleracion: 0.30
+  friccion: 0.35
+  salto: 4.3
+  gravedad: 0.28
+  vida: 2
+  doble_salto: no
+  pisar_enemigos: si
+  animaciones:
+    quieto: {{frames: [0], velocidad: 30}}
+    correr: {{frames: [1, 2, 3, 2], velocidad: 6}}
+    saltar: {{frames: [4]}}
+    caer:   {{frames: [5]}}
+
+tiles:
+  imagen: graficos/tiles.png
+  leyenda:
+    '.': {{tile: 0, tipo: vacio}}
+    '#': {{tile: 1, tipo: solido}}
+    ',': {{tile: 5, tipo: solido}}
+    '=': {{tile: 2, tipo: plataforma}}
+    '^': {{tile: 3, tipo: peligro}}
+    'G': {{tile: 4, tipo: meta}}
+
+enemigos:
+  raton:
+    sprite: graficos/enemigo.png
+    caja: [12, 11]
+    comportamiento: patrulla
+    velocidad: 0.4
+    puntos: 100
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 14}}
+      correr: {{frames: [0, 1], velocidad: 10}}
+  murcielago:
+    sprite: graficos/enemigo.png
+    caja: [12, 11]
+    comportamiento: volador
+    velocidad: 0.6
+    amplitud: 28
+    periodo: 150
+    puntos: 200
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 6}}
+
+objetos:
+  gema:
+    sprite: graficos/gema.png
+    caja: [10, 10]
+    puntos: 10
+    animaciones:
+      quieto: {{frames: [0, 1, 2, 3], velocidad: 7}}
+
+# Una sola capa: en doble plano el Amiga solo puede mover una, y mide 256
+# pixeles de ancho para poder repetirse dentro del hueco que tiene para correr.
+fondos:
+  - nombre: cueva
+    imagen: graficos/cueva.png
+    velocidad: 0.3
+    y: 0
+
+sonido:
+  efectos:
+    empezar: {{notas: "la4 mi5", velocidad: 4}}
+    salto:   {{tipo: barrido, desde: 300, hasta: 820, duracion: 6}}
+    moneda:  {{notas: "mi6 la6", velocidad: 3}}
+    pisar:   {{tipo: barrido, desde: 760, hasta: 190, duracion: 6}}
+    golpe:   {{tipo: ruido, duracion: 10}}
+    muerte:  {{notas: "mi4 do4 la3 mi3", velocidad: 6}}
+    meta:    {{notas: "la4 do5 mi5 la5", velocidad: 6}}
+  musica:
+    galeria:
+      velocidad: 9
+      pistas:
+        - "la3 do4 mi4 do4 | si3 re4 fa4 re4 | do4 mi4 la4 mi4 | mi4 - re4 -"
+        - "la2 -   la2 -   | si2 -   si2 -   | do3 -   do3 -   | mi2 - -   -"
+    pozo:
+      velocidad: 11
+      pistas:
+        - "re4 fa4 la4 fa4 | do4 mi4 sol4 mi4 | si3 re4 fa4 re4 | la3 - - -"
+        - "re2 -   la2 -   | do3 -   sol2 -   | si2 -   fa2 -   | la2 - - -"
+
+spawns:
+  s: raton
+  m: murcielago
+  c: gema
+
+niveles:
+{niveles}"""
+
+
 def _nivel_yaml(nombre: str, filas: List[str], fondo: str, capas: str = "",
                 musica: str = "") -> str:
     cuerpo = "\n".join("      " + fila for fila in filas)
@@ -230,8 +346,22 @@ def _nivel_yaml(nombre: str, filas: List[str], fondo: str, capas: str = "",
     )
 
 
-def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "") -> List[str]:
-    """Crea la carpeta del proyecto con game.yaml y graficos de ejemplo."""
+ESTILOS = ("bosque", "hierro")
+
+
+def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
+                   estilo: str = "bosque") -> List[str]:
+    """Crea la carpeta del proyecto con game.yaml y graficos de ejemplo.
+
+    `estilo` elige con que dibujos empiezas: 'bosque' es el de siempre, y
+    'hierro' viene dibujado con seis colores y listo para el modo de doble
+    plano del Amiga.
+    """
+    if estilo not in ESTILOS:
+        raise ProjectError(
+            "no conozco el estilo '%s'" % estilo,
+            hint="los que hay son: %s" % ", ".join(ESTILOS),
+        )
     if os.path.exists(destino) and os.listdir(destino):
         raise ProjectError(
             "la carpeta '%s' ya existe y no esta vacia" % destino,
@@ -240,17 +370,27 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "") -> L
     os.makedirs(os.path.join(destino, "graficos"), exist_ok=True)
     creados: List[str] = []
 
-    for relativo, imagen in art.todos().items():
+    dibujos = art.todos() if estilo == "bosque" else art_hierro.todos()
+    for relativo, imagen in dibujos.items():
         ruta = os.path.join(destino, relativo)
         write_png(ruta, imagen)
         creados.append(relativo)
 
-    niveles = (
-        _nivel_yaml("BOSQUE", _nivel_1(), "#101830", musica="bosque")
-        # el segundo nivel usa solo la capa lejana: se puede elegir por nivel
-        + _nivel_yaml("CUEVA", _nivel_2(), "#180c20", capas="cielo", musica="cueva")
-    )
-    contenido = GAME_YAML.format(titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles)
+    if estilo == "bosque":
+        niveles = (
+            _nivel_yaml("BOSQUE", _nivel_1(), "#101830", musica="bosque")
+            # el segundo nivel usa solo la capa lejana: se puede elegir por nivel
+            + _nivel_yaml("CUEVA", _nivel_2(), "#180c20", capas="cielo", musica="cueva")
+        )
+        plantilla = GAME_YAML
+    else:
+        niveles = (
+            _nivel_yaml("GALERIA", _nivel_1(), "#14121e", musica="galeria")
+            + _nivel_yaml("EL POZO", _nivel_2(), "#0e1018", musica="pozo")
+        )
+        plantilla = GAME_YAML_HIERRO
+    contenido = plantilla.format(titulo=titulo.upper()[:24], autor=autor[:24],
+                                 niveles=niveles)
     with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8") as fh:
         fh.write(contenido)
     creados.append("game.yaml")

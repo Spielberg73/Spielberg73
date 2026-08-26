@@ -225,6 +225,18 @@ cuatro bits del fino. Cero blits por frame, cero líneas de presupuesto.
 El precio son los colores (7 y 7 en vez de 31) y **una sola capa**: si el nivel
 tiene varias, se dibuja la primera y `ngplat` avisa.
 
+Con dibujos hechos para otra cosa el compilador tiene que aproximar colores y se
+nota. Para ver el modo como debe verse hay un juego de dibujos pensado para él:
+
+```bash
+ngplat nuevo micueva --estilo hierro
+```
+
+Sale con `amiga: 8colores` puesto, seis colores contados en el plano de delante
+y una capa de fondo de 256 px de ancho (que es lo que cabe en el hueco de 384
+que tiene el plano de atras para correr antes de volver al principio). El
+ejemplo ya montado está en `examples/cueva-de-hierro/`.
+
 ### Cómo medirlo
 
 El reloj del Amiga para esto es el propio haz de la pantalla: `VPOSR` y

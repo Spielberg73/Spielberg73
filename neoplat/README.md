@@ -73,6 +73,13 @@ cd build/neogeo && make     # construye la ROM (necesita ngdevkit)
 make run                    # la arranca en el emulador
 ```
 
+Si vas a por el Amiga con parallax, empieza por el otro juego de dibujos, que
+ya viene con los seis colores contados que caben en el doble plano:
+
+```bash
+./ngplat nuevo micueva --estilo hierro
+```
+
 Para otra máquina, solo cambia una palabra:
 
 ```bash
@@ -201,6 +208,7 @@ tutorial paso a paso en [docs/tutorial.md](docs/tutorial.md).
 | Orden | Qué hace |
 |---|---|
 | `ngplat nuevo <carpeta>` | Crea un proyecto jugable con gráficos de ejemplo |
+| `ngplat nuevo <carpeta> --estilo hierro` | Lo mismo, pero dibujado con seis colores y listo para el doble plano del Amiga |
 | `ngplat comprobar [proyecto]` | Valida el `game.yaml` y dice cuánto ocupa el juego |
 | `ngplat probar [proyecto]` | Abre el preview y el editor, y se queda sirviéndolo |
 | `ngplat compilar [proyecto]` | Genera `build/<máquina>/` con el C, los gráficos y el Makefile |
@@ -258,7 +266,9 @@ neoplat/
 │   ├── np_yaml.js          reescribe el game.yaml sin tocar lo demás
 │   ├── np_pixel.js         el lienzo para dibujar enemigos y objetos
 │   └── np_bot.js           el bot que comprueba si un nivel se puede terminar
-├── examples/bosque-magico/ juego de ejemplo listo para compilar
+├── examples/
+│   ├── bosque-magico/      juego de ejemplo listo para compilar
+│   └── cueva-de-hierro/    el mismo motor con seis colores y parallax en Amiga
 └── tests/                  159 pruebas + 24 de jugabilidad + 49 del editor +
                             bot que se pasa los niveles + emuladores y navegador
 ```

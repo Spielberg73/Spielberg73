@@ -173,6 +173,20 @@ class TestGraficosAmiga(unittest.TestCase):
         self.assertEqual(len(banco.tiles), 96)
         self.assertEqual(len(banco.mascaras), 96)
 
+    def test_los_dibujos_del_estilo_hierro_caben_en_doble_plano(self):
+        """El estilo 'hierro' esta dibujado para el modo de 8 colores: tiene que
+        entrar sin que el compilador cambie ni un color."""
+        from ngplat import art_hierro
+        dibujos = art_hierro.todos()
+        juego, fondo = set(), set()
+        for nombre, imagen in dibujos.items():
+            colores = {c for c in imagen.colors() if c[3]}
+            (fondo if "cueva" in nombre else juego).update(colores)
+        self.assertLessEqual(len(juego), 6,
+                             "al plano de delante le quedan seis colores")
+        self.assertLessEqual(len(fondo), 7,
+                             "al plano de atras le quedan siete colores")
+
     def test_el_banco_comparte_los_dibujos_repetidos(self):
         banco = gfx_amiga.BancoAmiga()
         primero = banco.anadir(_tile16(3))
@@ -348,6 +362,20 @@ class TestProyectoGenerado(unittest.TestCase):
         # y el parallax se empaqueta de verdad: alguna casilla apunta a un dibujo
         self.assertTrue(any(any(c.tiles) for c in build.layers),
                         "el parallax no se ha metido en el banco")
+
+    def test_el_estilo_hierro_no_pierde_ningun_color(self):
+        """Compilar el estilo 'hierro' para Amiga no aproxima nada: para eso
+        esta dibujado con la paleta corta."""
+        otro = os.path.join(self.tmp, "hierro")
+        if not os.path.isdir(otro):
+            from ngplat.scaffold import crear_proyecto
+            crear_proyecto(otro, "HIERRO", "TEST", estilo="hierro")
+        build = cargar_demo(otro, "amiga")
+        self.assertTrue(build.project.amiga_modo == "8colores",
+                        "el estilo hierro viene con el doble plano puesto")
+        self.assertEqual(build.info["stats"]["aproximados"], 0)
+        self.assertIn("#define NP_PLANOS 3", build.info["cabecera"])
+        self.assertEqual(sistemas.obtener("amiga").comprobar(build), [])
 
     def test_jaguar_genera_todo(self):
         build, out = self._generar("jaguar")

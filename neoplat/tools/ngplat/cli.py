@@ -16,7 +16,7 @@ from .codegen import generar_para_sistema
 from .errors import ProjectError
 from .preview import write_preview
 from .project import load_project
-from .scaffold import crear_proyecto
+from .scaffold import ESTILOS, crear_proyecto
 
 VERDE = "\033[32m"
 AMARILLO = "\033[33m"
@@ -59,8 +59,9 @@ def _cargar(ruta: str, sistema_nombre: str = ""):
 # ------------------------------------------------------------------ ordenes
 
 def cmd_nuevo(args: argparse.Namespace) -> int:
-    creados = crear_proyecto(args.carpeta, args.titulo or os.path.basename(args.carpeta.rstrip("/")),
-                             args.autor or "")
+    creados = crear_proyecto(args.carpeta,
+                             args.titulo or os.path.basename(args.carpeta.rstrip("/")),
+                             args.autor or "", args.estilo)
     _ok("proyecto creado en '%s'" % args.carpeta)
     for nombre in creados:
         _info(nombre)
@@ -263,6 +264,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_nuevo.add_argument("carpeta")
     p_nuevo.add_argument("--titulo", help="titulo del juego")
     p_nuevo.add_argument("--autor", help="tu nombre")
+    p_nuevo.add_argument("--estilo", choices=ESTILOS, default="bosque",
+                         help="dibujos de partida: 'bosque' (colores libres) o "
+                              "'hierro' (seis colores, listo para el doble plano "
+                              "del Amiga)")
     p_nuevo.set_defaults(func=cmd_nuevo)
 
     p_check = sub.add_parser("comprobar", aliases=["check"],
