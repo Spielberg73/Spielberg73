@@ -47,17 +47,35 @@ void np_hud_number(uint8_t col, uint8_t fila, uint32_t valor, uint8_t digitos, u
     np_hud_print(col, fila, buffer, paleta);
 }
 
+/* Cada letra del marcador es una escritura al puerto del VDP, y casi ningun
+   frame cambia nada: solo se escribe lo que ha cambiado, como en las otras
+   tres maquinas. */
 void np_hud_draw(const NpWorld *w)
 {
     static uint16_t ultimo_estado = 0xFFFF;
+    static uint32_t ultimo_tanteo = 0xFFFFFFFFu;
+    static uint16_t ultimas_vidas = 0xFFFF;
+    static uint16_t ultimo_tiempo = 0xFFFF;
+    static uint8_t rotulos = 0;
+    uint16_t segundos = (uint16_t)(w->time_left / 60);
 
-    np_hud_print(2, 1, "SCORE", NP_HUD_PALETTE);
-    np_hud_number(8, 1, w->score, 6, NP_HUD_PALETTE);
-    np_hud_print(30, 1, "LIVES", NP_HUD_PALETTE);
-    np_hud_number(36, 1, w->lives, 1, NP_HUD_PALETTE);
-    if (np_time_limit) {
-        np_hud_print(18, 1, "TIME", NP_HUD_PALETTE);
-        np_hud_number(23, 1, w->time_left / 60, 3, NP_HUD_PALETTE);
+    if (!rotulos) {
+        np_hud_print(2, 1, "SCORE", NP_HUD_PALETTE);
+        np_hud_print(30, 1, "LIVES", NP_HUD_PALETTE);
+        if (np_time_limit) np_hud_print(18, 1, "TIME", NP_HUD_PALETTE);
+        rotulos = 1;
+    }
+    if (w->score != ultimo_tanteo) {
+        np_hud_number(8, 1, w->score, 6, NP_HUD_PALETTE);
+        ultimo_tanteo = w->score;
+    }
+    if (w->lives != ultimas_vidas) {
+        np_hud_number(36, 1, w->lives, 1, NP_HUD_PALETTE);
+        ultimas_vidas = (uint16_t)w->lives;
+    }
+    if (np_time_limit && segundos != ultimo_tiempo) {
+        np_hud_number(23, 1, segundos, 3, NP_HUD_PALETTE);
+        ultimo_tiempo = segundos;
     }
 
     if (w->state != ultimo_estado) {

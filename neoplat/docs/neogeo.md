@@ -239,11 +239,11 @@ banco de pruebas sobre el ejemplo `bosque-magico`, corriendo y saltando:
 
 | | ciclos por frame |
 |---|---|
-| frame normal | 148.000 |
-| frame en el que la cámara cruza un tile | 184.000 |
+| frame normal | 96.000 |
+| frame en el que la cámara cruza un tile en vertical | 162.000 |
 | presupuesto de la consola | 200.000 |
 
-Para llegar ahí hubo que arreglar tres cosas, y todas se vieron con el banco:
+Para llegar ahí hubo que arreglar cinco cosas, y todas se vieron con el banco:
 
 **El fondo se redibujaba entero.** La Neo Geo no tiene plano con scroll: el
 escenario son 21 columnas de sprites. Al cruzar un tile se rellenaban las 21
@@ -263,6 +263,23 @@ sumando el ancho del mapa.
 distancia, así que poniendo ese `0x200` como incremento el propio chip salta de
 la posición vertical a la horizontal y basta con dar la dirección una vez: tres
 escrituras. Es la función que más se llama de todo el motor.
+
+**Las capas de parallax se recolocaban aunque no se hubieran movido.** Una capa
+a velocidad 0,2 avanza un píxel cada cinco de cámara: los otros cuatro frames no
+hay nada que escribir, y son 21 posiciones de sprite por capa. Las dos capas del
+ejemplo costaban **40.000 de los 132.000 ciclos** del frame; ahora, si el scroll
+de la capa sale igual que el del frame anterior, no se toca nada.
+
+**El marcador se repintaba entero cada frame.** Cada letra es una escritura en la
+VRAM y casi ningún frame cambia nada: el tanteo sube al coger una moneda y las
+vidas casi nunca. Eran **14.000 ciclos** por frame. Ahora se escribe solo lo que
+ha cambiado (y las palabras fijas, una sola vez).
+
+Lo que queda por hacer es el pico: cuando la cámara cruza un tile **en vertical**
+hay que rehacer las 21 columnas enteras, porque la tira de tiles de un sprite no
+se puede rotar. Se podría dar a cada columna una tira más alta que la pantalla y
+su propia fila de origen, y así repartir el trabajo entre varios frames; no está
+hecho.
 
 Los sitios donde tener cuidado si amplías el motor son los mismos:
 multiplicaciones de 32 bits (lentas en 68000), divisiones (aún más) y

@@ -105,11 +105,15 @@ static void np_bg_column(const NpWorld *w, uint16_t column, int32_t tile_x, int3
  * rellena el tilemap de la que entra por el borde. */
 #define NP_SIN_CARGAR ((int32_t)-0x7FFFFFFF)
 
+/* lo pone np_draw_layers cuando cambia el nivel: hay que rehacerlo todo */
+static uint8_t np_capas_todas = 1;
+
 static void np_draw_layer(const NpWorld *w, uint8_t layer_index, uint8_t slot)
 {
 #if NP_LAYER_COUNT > 0
     static int32_t cargada[NP_LAYER_COUNT][NP_LAYER_COLUMNS];
     static uint8_t last_layer[NP_LAYER_COUNT];
+    static int32_t ultimo_x[NP_LAYER_COUNT], ultimo_y[NP_LAYER_COUNT];
     static uint8_t primera_vez = 1;
     const NpLayer *layer = &np_layers[layer_index];
     int32_t scroll_x = ((int32_t)w->cam_x * layer->speed_x) >> 8;
@@ -129,8 +133,17 @@ static void np_draw_layer(const NpWorld *w, uint8_t layer_index, uint8_t slot)
         }
         primera_vez = 0;
     }
-    todas = (layer_index != last_layer[slot]);   /* otra capa: no vale nada */
+    todas = np_capas_todas || (layer_index != last_layer[slot]);
     last_layer[slot] = layer_index;
+
+    /* Una capa lenta (velocidad 0.2) se mueve un pixel cada cinco de camara:
+       los otros cuatro frames no hay nada que escribir, y son veintiuna
+       posiciones de sprite por capa. Medido en el banco: las dos capas del
+       ejemplo costaban 40.000 de los 132.000 ciclos del frame. */
+    if (!todas && scroll_x == ultimo_x[slot] && scroll_y == ultimo_y[slot])
+        return;
+    ultimo_x[slot] = scroll_x;
+    ultimo_y[slot] = scroll_y;
 
     /* Una sola division por capa y frame: dentro del bucle basta con sumar. */
     resto = col0 % NP_LAYER_COLUMNS;
@@ -172,7 +185,14 @@ static void np_draw_layer(const NpWorld *w, uint8_t layer_index, uint8_t slot)
 static void np_draw_layers(const NpWorld *w)
 {
 #if NP_LAYER_COUNT > 0
+    static const NpLevel *ultimo_nivel = 0;
     uint8_t slot;
+    /* al cambiar de nivel las capas pueden ser otras, o ninguna: lo que
+       hubiera dibujado antes no vale */
+    if (w->level != ultimo_nivel) {
+        np_capas_todas = 1;
+        ultimo_nivel = w->level;
+    }
     for (slot = 0; slot < NP_LAYER_COUNT; slot++) {
         if (slot < w->level->layer_count) {
             np_draw_layer(w, w->level->layers[slot], slot);
@@ -183,6 +203,7 @@ static void np_draw_layers(const NpWorld *w)
                 np_sprite_hide((uint16_t)(base + i));
         }
     }
+    np_capas_todas = 0;
 #else
     (void)w;
 #endif
