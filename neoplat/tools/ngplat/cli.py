@@ -194,6 +194,7 @@ def _compilador_de(sistema) -> str:
         "megadrive": ["m68k-elf-gcc", "m68k-linux-gnu-gcc"],
         "amiga": ["m68k-amigaos-gcc", "vc", "m68k-elf-gcc", "m68k-linux-gnu-gcc"],
         "jaguar": ["m68k-linux-gnu-gcc", "m68k-elf-gcc"],
+        "atarist": ["m68k-atari-mint-gcc", "m68k-elf-gcc", "m68k-linux-gnu-gcc"],
     }
     for nombre in candidatos.get(sistema.nombre, ["m68k-elf-gcc"]):
         if shutil.which(nombre):
@@ -207,6 +208,7 @@ def _como_instalar(sistema) -> str:
         "megadrive": "apt install gcc-m68k-linux-gnu   (o el m68k-elf-gcc que uses)",
         "amiga": "apt install gcc-m68k-linux-gnu   (o vbcc / m68k-amigaos-gcc)",
         "jaguar": "apt install gcc-m68k-linux-gnu   (el GPU y el DSP no se usan)",
+        "atarist": "apt install gcc-m68k-linux-gnu   (o m68k-atari-mint-gcc)",
     }.get(sistema.nombre, "un gcc para 68000")
 
 

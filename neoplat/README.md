@@ -1,8 +1,8 @@
 # NeoPlat
 
 Kit para hacer juegos de plataformas 2D **sin programar** y compilarlos para
-cuatro máquinas de verdad: **Neo Geo** (AES/MVS), **Mega Drive** (Genesis),
-**Amiga** (OCS/ECS) y **Atari Jaguar**.
+cinco máquinas de verdad: **Neo Geo** (AES/MVS), **Mega Drive** (Genesis),
+**Amiga** (OCS/ECS), **Atari Jaguar** y **Atari ST**.
 
 Describes el juego en un archivo `game.yaml`, dibujas los gráficos en PNG y el
 compilador genera el proyecto en C, los gráficos ya convertidos al formato de
@@ -15,23 +15,31 @@ segundos.
 game.yaml + PNG  ──►  ngplat  ──┼──►  build/neogeo/         ROMs C1/C2/S1/M1
                                 ├──►  build/megadrive/      cartucho .bin
                                 ├──►  build/amiga/          disquete .adf
-                                └──►  build/jaguar/         cartucho .j64
+                                ├──►  build/jaguar/         cartucho .j64
+                                └──►  build/atarist/        disquete .st
 ```
 
 El juego lo describes una vez. Lo que cambia de una máquina a otra es cómo se
 dibuja y cómo suena, no lo que pasa: la simulación (`engine/core/np_world.c`)
-es la misma en las cuatro, así que un salto mide exactamente lo mismo en todas.
-Y las cuatro llevan un **68000**, que es lo que hace que el motor sea uno solo.
+es la misma en las cinco, así que un salto mide exactamente lo mismo en todas.
+Y las cinco llevan un **68000**, que es lo que hace que el motor sea uno solo.
 
-| | Neo Geo | Mega Drive | Amiga | Jaguar |
-|---|---|---|---|---|
-| CPU | 68000 a 12 MHz | 68000 a 7,6 MHz | 68000 a 7 MHz | 68000 a 13,3 MHz |
-| Escenario | columnas de sprites | plano A del VDP | mapa de bits + blitter | mapa de bits lineal |
-| Actores | sprites | sprites del VDP | blitter con máscara | objetos del chip |
-| Colores | 4096 en pantalla | 4 paletas de 16 | una de 32, o dos de 8 | una tabla de 256 |
-| Sonido | YM2610 (SSG) por Z80 | PSG SN76489 | Paula (4 canales) | los DAC, por el DSP de Jerry |
-| Parallax | sí | una capa | una capa (`amiga: 8colores`) | una capa |
-| Sale | ROMs de cartucho | `.bin` con cabecera y suma | disquete `.adf` arrancable | cartucho `.j64` |
+| | Neo Geo | Mega Drive | Amiga | Jaguar | Atari ST |
+|---|---|---|---|---|---|
+| CPU | 68000 a 12 MHz | 68000 a 7,6 MHz | 68000 a 7 MHz | 68000 a 13,3 MHz | 68000 a 8 MHz |
+| Escenario | columnas de sprites | plano A del VDP | mapa de bits + blitter | mapa de bits lineal | bitplanes, movidos por la CPU |
+| Actores | sprites | sprites del VDP | blitter con máscara | objetos del chip | dibujados a mano, con máscara |
+| Colores | 4096 en pantalla | 4 paletas de 16 | una de 32, o dos de 8 | una tabla de 256 | una de 16 |
+| Sonido | YM2610 (SSG) por Z80 | PSG SN76489 | Paula (4 canales) | los DAC, por el DSP de Jerry | YM2149 |
+| Parallax | sí | una capa | una capa (`amiga: 8colores`) | una capa | no |
+| Sale | ROMs de cartucho | `.bin` con cabecera y suma | disquete `.adf` arrancable | cartucho `.j64` | disquete `.st` arrancable |
+
+El Atari ST es el caso raro y por eso merece la pena: mismo 68000 que los
+demás y **nada** que le eche una mano —sin sprites, sin blitter y sin scroll
+por hardware—, así que todo lo que se mueve lo mueve la CPU. Enseña 200 líneas
+en vez de 224 (una ventana del mismo mundo) y dibuja a 25 frames por segundo
+simulando a 50, que es lo que da de sí la máquina;
+[docs/atarist.md](docs/atarist.md) cuenta cómo se midió.
 
 ## Instalación
 
@@ -56,11 +64,13 @@ depende de la máquina:
 | Mega Drive | `m68k-elf-gcc`, o el paquete `gcc-m68k-linux-gnu` de Debian/Ubuntu |
 | Amiga | lo mismo que la Mega Drive (o `m68k-amigaos-gcc` si lo tienes) |
 | Jaguar | lo mismo que la Mega Drive; el GPU y el DSP no se usan, así que no hace falta el SDK de Atari |
+| Atari ST | lo mismo que la Mega Drive (o `m68k-atari-mint-gcc` si lo tienes) |
 
-Para Mega Drive, Amiga y Jaguar no hace falta nada más: el resto (cabecera del
-cartucho, suma de control, hunks, relocalización, el disquete de 880 KB con su
-bootblock y su sistema de ficheros, y la cabecera del cartucho de Jaguar) lo
-hace el propio kit con Python.
+Para Mega Drive, Amiga, Jaguar y Atari ST no hace falta nada más: el resto
+(cabecera del cartucho, suma de control, hunks, relocalización, el disquete de
+880 KB con su bootblock y su sistema de ficheros, la cabecera del cartucho de
+Jaguar y el disquete de 720 KB con su FAT12 y su ejecutable de GEMDOS) lo hace
+el propio kit con Python.
 
 ## Empezar
 
@@ -118,7 +128,7 @@ edites; <kbd>Enter</kbd> y lo estás jugando otra vez.
   espejo y deshacer). El PNG se descarga listo para dejarlo en `graficos/`.
 - **Cámara a elegir**: `scroll` (el escenario se desliza, como en consola) o
   `pantallas` (la vista salta de una pantalla fija a la siguiente, como en los
-  ordenadores de 8 bits). Es la misma opción para las cuatro máquinas.
+  ordenadores de 8 bits). Es la misma opción para las cinco máquinas.
 - **Revisión en vivo**: te avisa de que falta la salida o la meta, de enemigos
   colgados en el aire o de un hueco más ancho de lo que cruza tu salto. Y un
   botón que **lanza un bot a terminarse el nivel** para comprobar que es posible.
@@ -239,15 +249,20 @@ neoplat/
 │   │   ├── base.py         qué tiene que saber hacer un sistema
 │   │   ├── neogeo.py       ROMs C1/C2/S1/M1 y Makefile de ngdevkit
 │   │   ├── megadrive.py    tiles del VDP, 4 paletas, PSG y cabecera del cartucho
-│   │   └── amiga.py        bitplanes, máscaras, Paula y ejecutable de AmigaDOS
+│   │   ├── amiga.py        bitplanes, máscaras, Paula y ejecutable de AmigaDOS
+│   │   ├── jaguar.py       un byte por píxel, lista de objetos y cartucho .j64
+│   │   └── atarist.py      4 bitplanes, YM2149 y disquete con carpeta AUTO
 │   ├── gfx.py              PNG → paletas y tiles de Neo Geo (C ROM / S ROM)
 │   ├── gfx_md.py           PNG → tiles de 8x8 del VDP y reparto de paletas
 │   ├── gfx_amiga.py        PNG → 5 bitplanes entrelazados y sus máscaras
 │   ├── gfx_jaguar.py       PNG → un byte por píxel y tabla de 256 colores
+│   ├── gfx_st.py           PNG → 4 bitplanes del ST y máscaras de una palabra
 │   ├── hunk.py             ELF → ejecutable de AmigaDOS (hunks + relocalización)
 │   ├── adf.py              disquete de 880 KB arrancable (bootblock + OFS)
+│   ├── prg.py              ELF → ejecutable de GEMDOS (.PRG + relocalización)
+│   ├── st_disk.py          disquete de 720 KB con FAT12 y carpeta AUTO
 │   ├── claves.py           nombres que acepta cada opción (los usa el editor)
-│   ├── sonido.py           notas -> periodos del SSG, del PSG o de Paula
+│   ├── sonido.py           notas -> periodos del SSG, del PSG, de Paula o del YM2149
 │   ├── m1.py / z80.py      driver de sonido del Z80 y su ensamblador
 │   ├── jerry.py / dsp.py   driver de sonido del DSP de la Jaguar, y el suyo
 │   ├── preview.py          genera el preview jugable
@@ -290,12 +305,14 @@ un sistema nuevo solo tiene que implementar `tools/ngplat/sistemas/base.py`:
 - `archivos_motor`: qué parte del motor se copia (vídeo, HUD, sonido, arranque).
 
 Y en `engine/<máquina>/`, las cuatro piezas de siempre: dibujar un frame, el
-marcador, el sonido y leer el mando. Todo lo demás (niveles, física, enemigos,
+marcador, el sonido y leer el mando. El Atari ST es el ejemplo de hasta dónde
+llega esa separación: no tiene sprites, ni blitter, ni scroll por hardware, y
+aun así el `np_world.c` que corre dentro es exactamente el mismo. Todo lo demás (niveles, física, enemigos,
 colisiones, editor, preview, pruebas) ya está hecho y no se toca.
 
-## La misma simulación en los cuatro sitios
+## La misma simulación en los seis sitios
 
-`engine/core/np_world.c` (las cuatro máquinas) y `preview/np_core.js` (navegador)
+`engine/core/np_world.c` (las cinco máquinas) y `preview/np_core.js` (navegador)
 son la misma simulación escrita dos veces: enteros y coma fija 24.8, sin
 decimales.
 `tests/test_paridad.py` ejecuta las dos con las mismas pulsaciones y compara
@@ -312,7 +329,7 @@ make test           # herramientas, validación, generación de C y paridad C/JS
 make test-emulador  # arranca la ROM y el disquete en emuladores de verdad
 make test-navegador # abre el preview y el editor en Chromium
 node tests/comportamiento.js   # 24 pruebas de jugabilidad
-make ejemplo-todos             # compila el ejemplo para las cuatro máquinas
+make ejemplo-todos             # compila el ejemplo para las cinco máquinas
 ```
 
 Las pruebas con emulador y navegador son opcionales: si no tienes
@@ -365,7 +382,7 @@ Verificado aquí:
   las cosas dos veces). Cómo funciona la máquina y las cuatro trampas que
   costaron encontrarla, en [docs/jaguar.md](docs/jaguar.md).
 - **El binario no lleva nada que el 68000 no entienda**: las pruebas revisan el
-  código máquina de las **cuatro** máquinas (la Neo Geo también, compilando sus
+  código máquina de las **cinco** máquinas (la Neo Geo también, compilando sus
   fuentes sin enlazar) y fallan si aparece una instrucción de 68020 o un acceso
   a una dirección impar. Así se encontró que la ROM de Neo Geo arrastraba el
   mismo fallo que colgaba la de Mega Drive.
@@ -385,25 +402,42 @@ Verificado aquí:
   **todas** las sumas de control cuadran (la del bootblock, con acarreo, y la de
   cada bloque del disco), que el bitmap marca exactamente lo ocupado y que el
   ejecutable sale del disco byte a byte igual que entró.
+- **El Atari ST arranca y se juega en un emulador**: las pruebas meten el
+  disquete en un ST emulado (Hatari con EmuTOS), esperan a que TOS ejecute el
+  juego de la carpeta `AUTO` y comprueban que sale el título con su marcador,
+  que el botón del joystick empieza la partida, que el YM2149 toca las notas
+  del `game.yaml` y que el escenario se mueve al correr. Encontró un fallo del
+  teclado que fallaba una vez de cada dos: si el ACIA se queda con un byte sin
+  leer antes de abrir las interrupciones, el MFP no vuelve a avisar nunca y el
+  mando se muere para siempre.
+- **El juego va a 25 de los 25 frames por segundo que da el ST** (10 antes de
+  optimizar), simulando a 50 como las demás máquinas: medido en líneas de
+  barrido dentro de un ST emulado, poniendo el borde de color mientras dibuja.
+  Lo que más subió no fue el dibujado sino el orden del bucle; está contado en
+  [docs/atarist.md](docs/atarist.md).
+- **Y su disquete también**: un `.st` de 737280 bytes con FAT12, el juego en la
+  carpeta `AUTO` y un `.PRG` de GEMDOS con su tabla de relocalización, que las
+  pruebas recorren corrección a corrección. El disquete lo lee además `mtools`
+  sin quejarse, que es una implementación de FAT que no es la nuestra.
 - Motor en C y preview en JavaScript dan resultados idénticos frame a frame.
 - Las mecánicas de plataformas funcionan (24 pruebas de jugabilidad).
 - Los niveles de ejemplo se pueden terminar: un bot los juega enteros en cada
   prueba, así que nunca se cuela un nivel imposible.
-- El mismo juego compilado para las cuatro máquinas describe exactamente los
+- El mismo juego compilado para las cinco máquinas describe exactamente los
   mismos niveles, enemigos y mapas: lo comprueban las pruebas.
-- Ida y vuelta de los cuatro formatos de gráficos (tiles de Neo Geo, tiles del
-  VDP, bitplanes y máscaras del Amiga, un byte por píxel de la Jaguar): codificar y decodificar devuelve la
-  imagen original.
-- **Las cuatro máquinas suenan, y suenan lo que pone el `game.yaml`**: las
+- Ida y vuelta de los cinco formatos de gráficos (tiles de Neo Geo, tiles del
+  VDP, bitplanes y máscaras del Amiga, un byte por píxel de la Jaguar, cuatro
+  bitplanes del ST): codificar y decodificar devuelve la imagen original.
+- **Las cinco máquinas suenan, y suenan lo que pone el `game.yaml`**: las
   pruebas capturan lo que sale del altavoz —del core de libretro en Mega Drive,
-  Amiga y Jaguar, y del circuito entero 68000 → Z80 → YM2610 en la Neo Geo— y
-  reconocen las notas una a una. En las cuatro salen **16 de 16** notas de la
+  Amiga, Jaguar y Atari ST, y del circuito entero 68000 → Z80 → YM2610 en la
+  Neo Geo— y reconocen las notas una a una. En las cinco salen **16 de 16** de la
   melodía, la pantalla de título está callada y al saltar se oye el efecto por
   encima de la música. Comprobado que la prueba sabe fallar: con una placa muda
   a propósito, fallan las tres comprobaciones. Cómo se hace, en
   [docs/sonido.md](docs/sonido.md).
-- Las cuatro tocan la misma nota: 440 Hz salen a 440 Hz en el SSG, en el PSG, en
-  Paula y en los DAC de la Jaguar (con el redondeo de cada uno).
+- Las cinco tocan la misma nota: 440 Hz salen a 440 Hz en el SSG, en el PSG, en
+  Paula, en los DAC de la Jaguar y en el YM2149 (con el redondeo de cada uno).
 - El preview se abre en Chromium durante las pruebas y se comprueba que dibuja
   lo que debe (capturas de pantalla revisadas a mano).
 - El editor hace el viaje completo en las pruebas: edita mapas, física y
@@ -418,14 +452,14 @@ Verificado aquí:
   se comprueba que recibe las órdenes del 68000 y escribe en el chip los
   periodos y volúmenes de las notas escritas en el `game.yaml`.
 
-**Sin probar en hardware real**: las cuatro se han visto funcionando en
+**Sin probar en hardware real**: las cinco se han visto funcionando en
 emuladores, pero no en máquinas de verdad. Y en la Neo Geo el emulador es el del
 propio kit, que da por buenas dos cosas porque las da por buenas también el
 motor: que el sprite 0 va delante de los demás y que la fila 0 del plano fix cae
 en la línea 0 de la pantalla. Si al probarla en un MVS ves el fondo tapando al
 jugador, se invierte con `NP_SPRITE_FRONT_FIRST` en `np_video.h`; si ves el
 marcador desplazado en vertical, es lo segundo. Las muestras digitales siguen
-sin usarse en ninguna de las cuatro.
+sin usarse en ninguna de las cinco.
 
 Lo que aún no hace:
 
@@ -435,8 +469,11 @@ Lo que aún no hace:
   está medido y **no cabe**: 1.311 líneas de barrido sobre las 313 que da un
   frame ([docs/amiga.md](docs/amiga.md)).
 - **Muestras digitales**: la música y los efectos usan ondas cuadradas en las
-  cuatro máquinas; las voces y percusiones sampleadas aún no (ni la ROM V1 de la
+  cinco máquinas; las voces y percusiones sampleadas aún no (ni la ROM V1 de la
   Neo Geo ni los samples de Paula ni el YM2612 ni los DAC de la Jaguar).
+- **Parallax en el Atari ST**: sin un segundo plano habría que repintar la capa
+  entera cada vez que se mueve la vista, y no cabe. El fondo se ve del color de
+  fondo del nivel ([docs/atarist.md](docs/atarist.md)).
 - **Eventos guionizados**: hay cinco comportamientos de enemigo fijos y un jefe
   por nivel (`jefe: si`); no hay forma de guionizar una secuencia.
 - **Dos jugadores**.

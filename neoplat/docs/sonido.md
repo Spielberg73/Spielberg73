@@ -8,16 +8,22 @@ altavoz y miran si las notas son las del `game.yaml`.
 ## Del game.yaml al altavoz
 
 Las notas se guardan en **hercios**, que es lo único que entienden por igual
-los tres chips. Cada sistema las traduce a lo que pide el suyo:
+todos los chips. Cada sistema las traduce a lo que pide el suyo:
 
 | | chip | período |
 |---|---|---|
 | Neo Geo | YM2610 (canales SSG) | `4.000.000 / (16 × Hz)` |
 | Mega Drive | SN76489 (PSG) | `3.579.545 / (32 × Hz)` |
 | Amiga | Paula | `3.546.895 / (Hz × muestras)` |
+| Atari ST | YM2149 | `2.000.000 / (16 × Hz)` |
 
-Se usan tres voces: melodía, acompañamiento y efectos. En la Mega Drive y en
-el Amiga el reproductor va en C dentro del propio juego (`np_sound.c`); en la
+El YM2149 del ST es el mismo chip que el SSG de la Neo Geo con la mitad de
+reloj: el mismo período da una nota una octava más baja, y de eso se encarga la
+tabla de arriba.
+
+Se usan tres voces: melodía, acompañamiento y efectos. En la Mega Drive, el
+Amiga y el Atari ST el reproductor va en C dentro del propio juego
+(`np_sound.c`); en la
 Neo Geo no puede, porque el chip de sonido no cuelga del 68000: hay un Z80 con
 su propia ROM (la M1) que genera `tools/ngplat/m1.py`, y el 68000 solo le manda
 órdenes de un byte por el puerto `$320000`.
@@ -77,10 +83,10 @@ diluye). Al saltar tiene que aparecer ahí algo que antes no estaba.
 ## Lo que se comprueba en cada máquina
 
 ```bash
-make test-emulador          # las cuatro
+make test-emulador          # las cinco
 ```
 
-En las cuatro: que la pantalla de título está **callada** (la música es solo de
+En las cinco: que la pantalla de título está **callada** (la música es solo de
 la partida), que al empezar el nivel suenan **las 16 notas** de la melodía del
 `game.yaml`, y que al saltar se oye el efecto por encima de la música.
 
@@ -93,11 +99,12 @@ un programa que corre en el DSP de Jerry y que también genera el kit
 
 ## Lo que aún no hace
 
-- **Muestras digitales.** Las cuatro máquinas pueden (la ROM V1 de la Neo Geo,
-  el YM2612 de la Mega Drive, Paula en el Amiga, los DAC de la Jaguar) y de
+- **Muestras digitales.** Cuatro de las cinco máquinas pueden (la ROM V1 de la
+  Neo Geo, el YM2612 de la Mega Drive, Paula en el Amiga, los DAC de la Jaguar;
+  el YM2149 del ST no, salvo moviendo el volumen a mano desde la CPU) y de
   momento solo se usan ondas cuadradas y ruido.
 - **FM.** La Mega Drive tiene el YM2612 y la Neo Geo cuatro canales FM del
   YM2610 sin tocar; el kit usa los de onda cuadrada de las dos, que es lo que
-  permite que suene igual en las tres.
+  permite que suene igual en todas.
 - **Envolventes.** El SSG y Paula pueden hacer que una nota decaiga sola; ahora
   el volumen es constante mientras dura.

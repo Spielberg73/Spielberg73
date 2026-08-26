@@ -20,7 +20,12 @@ comprobado byte a byte contra el IKBD: sin esas opciones no llega **nada**, ni
 teclas ni joystick, y el juego parece colgado cuando lo que pasa es que nadie
 le esta hablando.
 
-    python3 tests/emulador_st.py ruta/al/juego.st [carpeta_de_capturas]
+**Se ejecuta en su propio proceso, siempre.** Hatari guarda su estado en
+variables globales de la biblioteca y no se deja arrancar dos veces seguidas:
+la segunda se queda colgada. Por eso las pruebas del kit lo lanzan como un
+programa aparte en vez de llamar a `comprobar()` dos veces.
+
+    python3 tests/emulador_st.py juego.st [capturas] [--proyecto RUTA] [--pantallas]
 """
 
 from __future__ import annotations
@@ -39,7 +44,7 @@ from sonido import (banda_del_efecto, comprobar_melodia,  # noqa: E402
 
 CORE = "hatari"
 FPS = 50                       # el hardware; el juego dibuja uno de cada dos
-SEGUNDOS_DE_ARRANQUE = 8       # lo que tarda EmuTOS en llegar a la carpeta AUTO
+SEGUNDOS_DE_ARRANQUE = 25      # tope: TOS tarda lo que quiere en llegar a AUTO
 BORDE_ARRIBA = 24              # lineas de borde que ensena Hatari antes del ST
 
 # Lo que hay que decirle a Hatari. Los `mapper` no son un capricho: son lo que
@@ -79,6 +84,26 @@ def _buscar_tos():
     return ""
 
 
+def _esperar_al_juego(emu) -> bool:
+    """Espera a que TOS acabe de arrancar y ejecute el juego de la carpeta AUTO.
+
+    Cuanto tarda depende del TOS y de las opciones del emulador, asi que en vez
+    de contar segundos se mira el color que mas se repite: mientras manda TOS es
+    el gris de su escritorio, y en cuanto arranca el juego pasa a ser el fondo
+    del nivel. No hace falta saber cual es ninguno de los dos, solo que cambia.
+    """
+    emu.avanzar(50)
+    def fondo():
+        return max(colores(emu.frame).items(), key=lambda par: par[1])[0]
+    antes = fondo()
+    while emu.frames < SEGUNDOS_DE_ARRANQUE * FPS:
+        emu.avanzar(25)
+        if fondo() != antes:
+            emu.avanzar(25)                       # que acabe de pintarse
+            return True
+    return False
+
+
 def comprobar(disco: str, capturas: str = "capturas", musica=None,
               salto=None, pantallas: bool = False) -> int:
     core = buscar_core(CORE, "NEOPLAT_CORE_ST")
@@ -109,16 +134,15 @@ def comprobar(disco: str, capturas: str = "capturas", musica=None,
     emu.cargar(disco)
 
     # --- 1) el disquete arranca solo y sale el juego ---------------------
-    while emu.frames < SEGUNDOS_DE_ARRANQUE * FPS:
-        emu.avanzar(50)
+    arranco = _esperar_al_juego(emu)
     titulo = emu.frame
+    exigir(arranco,
+           "a los %d segundos sigue mandando TOS: el juego de la carpeta AUTO "
+           "no ha arrancado" % SEGUNDOS_DE_ARRANQUE)
     exigir(titulo is not None, "el emulador no ha dibujado ningun frame")
     guardar_png(titulo, os.path.join(capturas, "st_titulo.png"))
     cuantos = len(colores(titulo))
-    # si el juego no arrancase se veria el escritorio de EmuTOS, que es liso
-    exigir(cuantos > 5,
-           "a los %d segundos solo hay %d colores: el juego de la carpeta AUTO "
-           "no ha arrancado" % (SEGUNDOS_DE_ARRANQUE, cuantos))
+    exigir(cuantos > 5, "la pantalla de titulo solo tiene %d colores" % cuantos)
     # el marcador del ST es texto blanco sobre el fondo del nivel: con que la
     # franja de arriba tenga dos colores ya esta escrito algo
     exigir(len(set(franja(titulo, BORDE_ARRIBA + 16))) > 1,
@@ -183,10 +207,21 @@ def comprobar(disco: str, capturas: str = "capturas", musica=None,
         comprobar_salto(vigia, exigir)
 
     # --- 5) sigue vivo --------------------------------------------------
+    #
+    # Se mira si cambia algo en **algun** momento de los cien frames, y no solo
+    # entre el primero y el ultimo: con `camara: pantallas` el escenario se
+    # queda quieto a proposito, y si el jugador acaba pegado a una pared los dos
+    # extremos pueden salir identicos sin que nada este colgado. Ademas se le da
+    # al mando de un lado y de otro, para que haya algo que mover.
     ultimo = emu.frame
-    emu.pulsar("RIGHT")
-    emu.avanzar(100)
-    exigir(distintos(ultimo, emu.frame) > 0.0,
+    movida = 0.0
+    for i in range(100):
+        emu.pulsar("RIGHT", "B") if i % 20 == 0 else emu.pulsar(
+            "LEFT" if (i // 25) % 2 else "RIGHT")
+        emu.avanzar(1)
+        movida = max(movida, distintos(ultimo, emu.frame))
+        ultimo = emu.frame
+    exigir(movida > 0.0,
            "la imagen se ha quedado congelada: el juego se ha colgado")
     guardar_png(emu.frame, os.path.join(capturas, "st_final.png"))
     emu.cerrar()
@@ -200,15 +235,24 @@ def comprobar(disco: str, capturas: str = "capturas", musica=None,
 
 
 if __name__ == "__main__":
-    disco = (sys.argv[1] if len(sys.argv) > 1
+    argumentos = [a for a in sys.argv[1:] if not a.startswith("--")]
+    opciones = [a for a in sys.argv[1:] if a.startswith("--")]
+    disco = (argumentos[0] if argumentos
              else "examples/bosque-magico/build/atarist/disco/bosquema.st")
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
         os.path.abspath(__file__))), "tools"))
     from ngplat.project import load_project
     from sonido import buscar_proyecto, musica_al_empezar
-    proyecto = buscar_proyecto(disco)
+    # el game.yaml no siempre esta encima del disquete (las pruebas del kit lo
+    # dejan en otra carpeta), asi que se puede decir donde esta
+    proyecto = ""
+    for opcion in opciones:
+        if opcion.startswith("--proyecto="):
+            proyecto = opcion.split("=", 1)[1]
+    proyecto = proyecto or buscar_proyecto(disco)
     p = load_project(proyecto) if proyecto else None
-    sys.exit(comprobar(disco, sys.argv[2] if len(sys.argv) > 2 else "capturas",
+    sys.exit(comprobar(disco, argumentos[1] if len(argumentos) > 1 else "capturas",
                        musica_al_empezar(p) if p else None,
                        p.sound.efectos.get("salto") if p else None,
-                       pantallas=bool(p and p.camera == "pantallas")))
+                       pantallas="--pantallas" in opciones
+                                 or bool(p and p.camera == "pantallas")))

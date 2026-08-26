@@ -21,7 +21,7 @@ juego:
   camara: scroll            # scroll o pantallas
   amiga: 32colores          # solo en Amiga: 32colores o 8colores
   fondo: "#101830"          # color de fondo por defecto
-  sistema: neogeo           # neogeo, megadrive, amiga o jaguar
+  sistema: neogeo           # neogeo, megadrive, amiga, jaguar o atarist
 ```
 
 `camara` decide cómo se mueve la vista, y cambia bastante a qué se parece el
@@ -37,7 +37,7 @@ Con `pantallas` conviene que los niveles midan un número exacto de pantallas
 anterior y el compilador avisa.
 
 **Lo que cuesta el salto.** Cambiar de pantalla obliga a repintar las veinte
-columnas del escenario de una vez, y eso aprieta en las cuatro máquinas. Cada
+columnas del escenario de una vez, y eso aprieta en las cinco máquinas. Cada
 una lo lleva a su manera:
 
 | | |
@@ -46,8 +46,9 @@ una lo lleva a su manera:
 | Mega Drive | escribe las veinte columnas del plano en el frame del salto |
 | Amiga | repinta con el blitter las veinte columnas: unas 620 líneas de barrido sobre las 313 de un frame, o sea dos o tres frames perdidos en el cambio |
 | Jaguar | repinta el mapa de bits entero, como en cualquier otro frame |
+| Atari ST | repinta las veinte columnas con la CPU, que es lo que hace siempre; le cuesta un dibujado de los suyos, o sea dos frames de hardware |
 
-Las cuatro se comprueban en emulador (`tests/test_sistemas.py`,
+Las cinco se comprueban en emulador (`tests/test_sistemas.py`,
 `TestCamaraPorPantallas`): que la vista se quede quieta casi todos los frames y
 que de vez en cuando cambie de golpe.
 

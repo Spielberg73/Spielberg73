@@ -23,8 +23,11 @@ test-navegador: ejemplo
 #   Mega Drive:  apt-get install libretro-genesisplusgx
 #   Amiga:       puae_libretro.so del buildbot de libretro, en /usr/local/lib/libretro
 #   Jaguar:      virtualjaguar_libretro.so, del mismo buildbot
+#   Atari ST:    hatari_libretro.so, del mismo buildbot, mas una imagen de TOS
+#                (EmuTOS vale) en /usr/local/share/neoplat/tos.img
 # La Neo Geo va con el banco de pruebas del propio kit (pip3 install amitools).
-test-emulador: test-emulador-md test-emulador-amiga test-emulador-neogeo test-emulador-jaguar
+test-emulador: test-emulador-md test-emulador-amiga test-emulador-neogeo \
+               test-emulador-jaguar test-emulador-st
 
 test-emulador-md:
 	./ngplat compilar $(EJEMPLO) --sistema megadrive --make
@@ -47,21 +50,29 @@ test-emulador-jaguar:
 	$(PYTHON) tests/emulador_jaguar.py \
 		$(EJEMPLO)/build/jaguar/rom/BosqueMagico.j64 capturas
 
+test-emulador-st:
+	./ngplat compilar $(EJEMPLO) --sistema atarist --make
+	$(PYTHON) tests/emulador_st.py \
+		$(EJEMPLO)/build/atarist/disco/bosquema.st capturas
+
 ejemplo:
 	./ngplat comprobar $(EJEMPLO)
 	./ngplat probar $(EJEMPLO) --no-abrir
 	./ngplat compilar $(EJEMPLO)
 
-# Compila el ejemplo para las cuatro maquinas (necesita un compilador de 68000
-# para construir de verdad el cartucho, el disquete y la ROM).
+# Compila el ejemplo para las cinco maquinas (necesita un compilador de 68000
+# para construir de verdad el cartucho, los disquetes y la ROM).
 ejemplo-todos:
 	./ngplat compilar $(EJEMPLO) --sistema neogeo
 	./ngplat compilar $(EJEMPLO) --sistema megadrive --make
 	./ngplat compilar $(EJEMPLO) --sistema amiga --make
 	./ngplat compilar $(EJEMPLO) --sistema jaguar --make
+	./ngplat compilar $(EJEMPLO) --sistema atarist --make
 
 limpiar:
 	rm -rf $(EJEMPLO)/build $(EJEMPLO)/preview.html capturas
 	find . -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
 
-.PHONY: test test-rapido test-navegador test-emulador test-emulador-md test-emulador-amiga test-emulador-neogeo test-emulador-jaguar ejemplo ejemplo-todos limpiar
+.PHONY: test test-rapido test-navegador test-emulador test-emulador-md \
+	test-emulador-amiga test-emulador-neogeo test-emulador-jaguar \
+	test-emulador-st ejemplo ejemplo-todos limpiar

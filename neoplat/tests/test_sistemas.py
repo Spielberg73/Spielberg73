@@ -1,10 +1,10 @@
-"""Las tres maquinas: conversion de graficos, generacion y compilacion real.
+"""Las cinco maquinas: conversion de graficos, generacion y compilacion real.
 
 Lo que se comprueba aqui es que el mismo juego sale bien para Neo Geo, Mega
-Drive y Amiga: los graficos se convierten sin perder informacion, el proyecto
-generado trae lo que tiene que traer y, si hay un compilador de 68000 a mano,
-el cartucho y el ejecutable se construyen de verdad y tienen la pinta que
-espera cada maquina.
+Drive, Amiga, Jaguar y Atari ST: los graficos se convierten sin perder
+informacion, el proyecto generado trae lo que tiene que traer y, si hay un
+compilador de 68000 a mano, el cartucho y el ejecutable se construyen de verdad
+y tienen la pinta que espera cada maquina.
 """
 
 import os
@@ -12,11 +12,12 @@ import re
 import shutil
 import struct
 import subprocess
+import sys
 import tempfile
 import unittest
 
 import comun
-from comun import cargar_demo
+from comun import KIT, cargar_demo
 
 from ngplat import adf, gfx, gfx_amiga, gfx_md, hunk, prg, sistemas, st_disk
 from ngplat.codegen import generar_para_sistema
@@ -30,6 +31,31 @@ def _banderas_del_makefile(ruta):
     with open(ruta, encoding="utf-8") as fh:
         texto = fh.read()
     return [b for b in ("-fno-store-merging",) if b in texto]
+
+
+def _comprobar_st(prueba, disco, capturas, proyecto="", pantallas=False):
+    """Arranca el disquete del ST en Hatari, en un proceso aparte.
+
+    Aparte porque el core no se deja arrancar dos veces en el mismo proceso: la
+    segunda se queda colgada, y aqui hay dos pruebas que lo usan.
+    """
+    import emulador_st
+    from libretro import buscar_core
+    if not buscar_core(emulador_st.CORE, "NEOPLAT_CORE_ST"):
+        prueba.skipTest("no esta instalado el core de Hatari")
+    if not emulador_st._buscar_tos():
+        prueba.skipTest("no hay una imagen de TOS (tos.img)")
+    orden = [sys.executable, os.path.join(KIT, "tests", "emulador_st.py"),
+             disco, capturas]
+    if proyecto:
+        orden.append("--proyecto=" + proyecto)
+    if pantallas:
+        orden.append("--pantallas")
+    hecho = subprocess.run(orden, capture_output=True, text=True)
+    print(hecho.stdout.strip())
+    prueba.assertEqual(hecho.returncode, 0,
+                       "el disquete no arranca, no se juega o no suena en el "
+                       "emulador:\n" + hecho.stdout + hecho.stderr)
 
 
 def _compilador_68k():
@@ -61,7 +87,7 @@ class TestColores(unittest.TestCase):
             self.assertLessEqual(valor, 0x0FFF)
 
     def test_cada_maquina_ve_su_propio_color(self):
-        for nombre in ("neogeo", "megadrive", "amiga", "jaguar"):
+        for nombre in ("neogeo", "megadrive", "amiga", "jaguar", "atarist"):
             visible = sistemas.obtener(nombre).color_visible((200, 12, 90))
             self.assertEqual(len(visible), 3)
             for canal in visible:
@@ -199,7 +225,7 @@ class TestListado(unittest.TestCase):
     """Lo que cuenta `ngplat sistemas` tiene que seguir siendo verdad."""
 
     def test_cada_maquina_dice_como_suena_y_que_hace_con_el_parallax(self):
-        for nombre in ("neogeo", "megadrive", "amiga", "jaguar"):
+        for nombre in ("neogeo", "megadrive", "amiga", "jaguar", "atarist"):
             sistema = sistemas.obtener(nombre)
             texto = " ".join(sistema.notas).lower()
             self.assertTrue(sistema.notas, "%s no cuenta nada de si" % nombre)
@@ -493,10 +519,34 @@ class TestProyectoGenerado(unittest.TestCase):
                          "en la Jaguar no hacen falta mascaras: el color 0 es "
                          "transparente para el chip")
 
+    def test_atarist_genera_todo(self):
+        build, out = self._generar("atarist")
+        for archivo in ("src/gamedata.c", "src/graficos.c", "src/sonido.c",
+                        "src/np_video.c", "src/np_hud.c", "src/arranque.c",
+                        "st.ld", "Makefile", "hacer_prg.py", "hacer_st.py"):
+            self.assertTrue(os.path.isfile(os.path.join(out, archivo)), archivo)
+        with open(os.path.join(out, "src/graficos.c"), encoding="utf-8") as fh:
+            texto = fh.read()
+        self.assertIn("np_colores[16]", texto, "el ST ensena 16 colores")
+        self.assertIn("np_tile_mask", texto)
+        self.assertEqual(len(build.paletas), 1, "el ST tiene una sola paleta")
+
+    def test_el_st_recorta_la_pantalla_pero_no_el_mundo(self):
+        """El ST ensena 200 lineas y las demas 224. Lo que **no** puede cambiar
+        es el mundo: si el motor viera otra pantalla, el juego seria otro."""
+        self.assertEqual(sistemas.obtener("atarist").pantalla, (320, 200))
+        for nombre in ("neogeo", "megadrive", "amiga", "jaguar"):
+            self.assertEqual(sistemas.obtener(nombre).pantalla, (320, 224), nombre)
+        cabecera = os.path.join(KIT, "engine", "include", "np_types.h")
+        with open(cabecera, encoding="utf-8") as fh:
+            texto = fh.read()
+        self.assertIn("#define NP_SCREEN_H  224", texto,
+                      "la altura del mundo la comparten todas las maquinas")
+
     def test_los_sistemas_describen_el_mismo_juego(self):
         """Cambiar de maquina no cambia el juego: niveles, enemigos y mapas."""
         referencia = None
-        for nombre in ("neogeo", "megadrive", "amiga", "jaguar"):
+        for nombre in ("neogeo", "megadrive", "amiga", "jaguar", "atarist"):
             build = cargar_demo(self.proyecto, nombre)
             resumen = [(n.name, n.width, n.height, n.cells, n.spawns)
                        for n in build.levels]
@@ -514,6 +564,8 @@ class TestProyectoGenerado(unittest.TestCase):
                           "src/main.c", "src/graficos.c", "src/sonido.c"],
             "amiga": ["src/np_video.c", "src/np_hud.c", "src/np_sound.c",
                       "src/main.c", "src/graficos.c", "src/sonido.c"],
+            "atarist": ["src/np_video.c", "src/np_hud.c", "src/np_sound.c",
+                        "src/main.c", "src/graficos.c", "src/sonido.c"],
         }
         for sistema, archivos in fuentes.items():
             _, out = self._generar(sistema)
@@ -604,6 +656,53 @@ class TestCompilacionReal(unittest.TestCase):
             self.assertEqual(contenido["Prueba"], fh.read(),
                              "el ejecutable del disco no es el que se compilo")
 
+    def test_disquete_de_atari_st(self):
+        """El .st construido de verdad: FAT12 con el juego en la carpeta AUTO,
+        que es de donde lo arranca TOS al encender."""
+        out = self._construir("atarist")
+        ruta = os.path.join(out, "disco/prueba.st")
+        self.assertTrue(os.path.isfile(ruta), "no se ha creado el disquete")
+        with open(ruta, "rb") as fh:
+            imagen = fh.read()
+        self.assertEqual(len(imagen), 737280)
+        contenido = st_disk.leer(imagen)
+        self.assertIn("AUTO/PRUEBA.PRG", contenido,
+                      "el juego no esta donde TOS lo busca")
+        with open(os.path.join(out, "disco/PRUEBA.PRG"), "rb") as fh:
+            self.assertEqual(contenido["AUTO/PRUEBA.PRG"], fh.read(),
+                             "el ejecutable del disco no es el que se compilo")
+
+    def test_ejecutable_de_atari_st(self):
+        """La cabecera de GEMDOS y la tabla de relocalizacion, que es la parte
+        que se puede equivocar sin que salte nada hasta que el ST se cuelga."""
+        out = self._construir("atarist")
+        ruta = os.path.join(out, "disco/PRUEBA.PRG")
+        with open(ruta, "rb") as fh:
+            datos = fh.read()
+        (magia, ) = struct.unpack_from(">H", datos, 0)
+        self.assertEqual(magia, prg.MAGIA, "TOS no reconoceria esto como programa")
+        texto, dato, bss, simbolos = struct.unpack_from(">IIII", datos, 2)
+        self.assertEqual(dato, 0, "el enlazador lo mete todo en TEXT")
+        self.assertEqual(simbolos, 0)
+        self.assertEqual(texto % 4, 0, "el TEXT no acaba en palabra larga")
+        self.assertGreater(bss, 64 * 1024, "faltan las dos pantallas en la BSS")
+        self.assertEqual(struct.unpack_from(">H", datos, 26)[0], 0,
+                         "el ejecutable dice que no trae relocalizacion")
+        # la tabla: la primera correccion entera y luego un byte por cada una
+        tabla = datos[28 + texto:]
+        (primera, ) = struct.unpack_from(">I", tabla, 0)
+        self.assertLess(primera, texto)
+        sitio, correcciones = primera, 1
+        for paso in tabla[4:]:
+            if paso == 0:
+                break
+            sitio += prg.SALTO if paso == 1 else paso
+            if paso != 1:
+                correcciones += 1
+            self.assertLessEqual(sitio + 4, texto,
+                                 "una correccion cae fuera del programa")
+        self.assertGreater(correcciones, 10, "casi ninguna direccion se corrige")
+
     def test_ejecutable_de_amiga(self):
         out = self._construir("amiga")
         ruta = os.path.join(out, "disco/Prueba")
@@ -630,7 +729,7 @@ class TestCompilacionReal(unittest.TestCase):
         self.assertLess(bss + codigo_largo * 4, 512 * 1024)
 
     def test_ninguna_maquina_genera_accesos_impares(self):
-        """Lo mismo, pero sobre los fuentes de las cuatro maquinas y sin enlazar:
+        """Lo mismo, pero sobre los fuentes de las cinco maquinas y sin enlazar:
         asi tambien entra la Neo Geo, que se construye con ngdevkit y aqui no
         esta. El fallo lo comete el compilador, no el enlazador."""
         objdump = self.cc.replace("-gcc", "-objdump")
@@ -638,7 +737,7 @@ class TestCompilacionReal(unittest.TestCase):
             self.skipTest("no hay %s" % objdump)
         patron = re.compile(
             r"\b(?!lea|pea)[a-z]+[wl]\s+\S*%(?:a\d|sp|fp)@\((\d+)\)")
-        for sistema in ("neogeo", "megadrive", "amiga", "jaguar"):
+        for sistema in ("neogeo", "megadrive", "amiga", "jaguar", "atarist"):
             build = cargar_demo(self.proyecto, sistema)
             out = os.path.join(self.tmp, "estatico-" + sistema)
             generar_para_sistema(build, out, sistemas.obtener(sistema), "202")
@@ -678,7 +777,7 @@ class TestCompilacionReal(unittest.TestCase):
         # de direccion con desplazamiento: movew %d0,%a0@(2109)
         patron = re.compile(
             r"\b(?!lea|pea)[a-z]+[wl]\s+\S*%(?:a\d|sp|fp)@\((\d+)\)")
-        for sistema in ("megadrive", "amiga"):
+        for sistema in ("megadrive", "amiga", "atarist"):
             out = self._construir(sistema)
             hecho = subprocess.run([objdump, "-d", os.path.join(out, "juego.elf")],
                                    capture_output=True, text=True)
@@ -698,7 +797,7 @@ class TestCompilacionReal(unittest.TestCase):
         objdump = self.cc.replace("-gcc", "-objdump")
         if not shutil.which(objdump):
             self.skipTest("no hay %s" % objdump)
-        for sistema in ("megadrive", "amiga"):
+        for sistema in ("megadrive", "amiga", "atarist"):
             out = self._construir(sistema)
             hecho = subprocess.run([objdump, "-d", os.path.join(out, "juego.elf")],
                                    capture_output=True, text=True)
@@ -741,6 +840,13 @@ class TestCompilacionReal(unittest.TestCase):
             emulador_amiga.comprobar(os.path.join(out, "disco/Prueba.adf"),
                                      capturas, musica, salto), 0,
             "el disquete no arranca, no se juega o no suena en el emulador")
+
+    def test_el_disquete_de_st_arranca_en_un_emulador(self):
+        """Y encender el ST: el disquete entero, del FAT12 al ultimo bitplane,
+        pasando por la carpeta AUTO y el teclado por interrupcion."""
+        out = self._construir("atarist")
+        _comprobar_st(self, os.path.join(out, "disco/prueba.st"),
+                      os.path.join(self.tmp, "capturas-st"), self.proyecto)
 
     def test_la_neogeo_dibuja_el_juego(self):
         """La Neo Geo no se puede arrancar en un emulador normal sin la BIOS de
@@ -822,7 +928,7 @@ class TestCompilacionReal(unittest.TestCase):
 
 
 class TestCamaraPorPantallas(unittest.TestCase):
-    """La camara por pantallas, en las cuatro maquinas de verdad.
+    """La camara por pantallas, en las cinco maquinas de verdad.
 
     La paridad C/JS ya comprueba que el motor la calcula bien, pero eso es la
     simulacion. Lo que se mira aqui es el chip de video: cuando la vista salta
@@ -880,6 +986,11 @@ class TestCamaraPorPantallas(unittest.TestCase):
             emulador_amiga.comprobar(os.path.join(out, "disco/Pantallas.adf"),
                                      self._capturas("amiga"), pantallas=True), 0,
             "el Amiga no salta de pantalla como debe")
+
+    def test_el_atari_st_salta_de_pantalla(self):
+        out = self._construir("atarist")
+        _comprobar_st(self, os.path.join(out, "disco/pantalla.st"),
+                      self._capturas("st"), pantallas=True)
 
     def test_la_jaguar_salta_de_pantalla(self):
         import emulador_jaguar

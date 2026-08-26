@@ -50,6 +50,7 @@ static NpBuffer np_buffers[NP_PANTALLAS];
 static uint8_t np_cual;              /* la que se esta dibujando */
 
 void np_acia_isr(void);              /* el manejador del teclado (mas abajo) */
+void np_ikbd_atender(void);          /* y lo que hace por dentro */
 
 /* --- arranque ----------------------------------------------------------- */
 
@@ -125,9 +126,16 @@ void np_st_init(void)
     REG8(MFP_IERB) = MFP_ACIA;
     REG8(MFP_IMRA) = 0x00;
     REG8(MFP_IMRB) = MFP_ACIA;
+    *(volatile uint32_t *)(uintptr_t)ST_VECTOR_ACIA = (uint32_t)(uintptr_t)np_acia_isr;
     REG8(MFP_IPRA) = 0x00;                        /* un cero borra lo pendiente */
     REG8(MFP_IPRB) = 0x00;
-    *(volatile uint32_t *)(uintptr_t)ST_VECTOR_ACIA = (uint32_t)(uintptr_t)np_acia_isr;
+    /* Y **vaciar el ACIA antes de abrir las interrupciones**, que no es un
+       detalle: el MFP avisa cuando la linea del teclado *baja*, y esa linea se
+       queda abajo mientras haya un byte sin leer. Si TOS dejo uno ahi (o llego
+       uno mientras se le hablaba al IKBD), al borrar lo pendiente se pierde el
+       unico aviso que iba a haber: no vuelve a bajar nunca y el mando se queda
+       muerto para siempre. Costo una prueba que fallaba una vez de cada dos. */
+    np_ikbd_atender();
     __asm__ volatile ("move.w #0x2500,%sr");      /* pasa el nivel 6 y nada mas */
 }
 
@@ -192,7 +200,6 @@ static void np_tecla(uint8_t codigo, uint16_t pulsada)
 
 /* La parte en C de la interrupcion. Se llama desde np_acia_isr, que es quien
    guarda los registros y avisa al MFP de que ya esta atendida. */
-void np_ikbd_atender(void);
 void np_ikbd_atender(void)
 {
     while (REG8(ST_ACIA_ESTADO) & 0x01) {
@@ -237,6 +244,10 @@ __asm__(
 
 uint16_t np_input_read(void)
 {
+    /* Red de seguridad: si por lo que sea quedo un byte sin leer, la linea del
+       teclado se queda abajo y el MFP no vuelve a avisar. Mirarlo una vez por
+       frame cuesta una lectura y devuelve el mando a la vida. */
+    if (REG8(ST_ACIA_ESTADO) & 0x01) np_ikbd_atender();
     return (uint16_t)(np_teclas | np_joystick);
 }
 
