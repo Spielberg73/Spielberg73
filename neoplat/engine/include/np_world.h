@@ -43,6 +43,9 @@ typedef struct {
     uint16_t prev_input;
     uint16_t sfx;            /* eventos de sonido de este frame (NP_SFX_*) */
     uint8_t lives, keys, entity_count;
+    /* El jefe que hay en pantalla, para que el marcador pueda ensenarlo: los
+       golpes que le quedan y los que aguantaba entero. 0 = no hay jefe. */
+    uint8_t boss_health, boss_max;
 } NpWorld;
 
 void np_world_init(NpWorld *w);
@@ -57,5 +60,10 @@ void np_tile_gfx_column(const NpLevel *level, int32_t tx, int32_t ty,
 const NpActorDef *np_entity_def(const NpEntity *e);
 uint8_t np_actor_frame(const NpActorDef *def, uint8_t anim, uint8_t anim_frame);
 int np_player_visible(const NpWorld *w);
+
+/* Barra de vida del jefe para el marcador; hace falta un buffer de
+   NP_BOSS_BAR + 6 caracteres. */
+#define NP_BOSS_BAR 10
+void np_boss_bar(char *out, const NpWorld *w);
 
 #endif /* NP_WORLD_H */

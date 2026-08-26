@@ -74,6 +74,7 @@ static void np_hud_borrar_fila(uint8_t fila)
 
 void np_hud_draw(const NpWorld *w)
 {
+    static uint8_t ultimo_jefe = 0xFF;
     if (!np_hud_etiquetas) {
         np_hud_print(2, 0, "SCORE");
         np_hud_print(30, 0, "LIVES");
@@ -92,6 +93,16 @@ void np_hud_draw(const NpWorld *w)
         np_hud_tiempo = (uint16_t)(w->time_left / 60);
         np_hud_number(23, 0, np_hud_tiempo, 3);
     }
+
+    /* La barra del jefe. Solo se escribe cuando cambia: son quince letras y
+       casi ningun frame le quitas un golpe. */
+    if (w->boss_health != ultimo_jefe) {
+        char barra[NP_BOSS_BAR + 6];
+        np_boss_bar(barra, w);
+        np_hud_print(2, 1, barra);
+        ultimo_jefe = w->boss_health;
+    }
+
     if (w->state == np_hud_estado) return;
     np_hud_borrar_fila(2);
     np_hud_estado = w->state;

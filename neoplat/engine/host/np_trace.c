@@ -55,7 +55,7 @@ int main(int argc, char **argv)
     np_world_init(&world);
     while (fscanf(fh, "%d", &input) == 1) {
         np_world_step(&world, (uint16_t)input);
-        printf("%lu %ld %ld %ld %ld %u %u %u %lu %ld %ld %u %u %08x\n",
+        printf("%lu %ld %ld %ld %ld %u %u %u %lu %ld %ld %u %u %u %08x\n",
                (unsigned long)world.frame,
                (long)world.player.x, (long)world.player.y,
                (long)world.player.vx, (long)world.player.vy,
@@ -63,6 +63,7 @@ int main(int argc, char **argv)
                (unsigned)world.lives, (unsigned long)world.score,
                (long)world.cam_x, (long)world.cam_y,
                (unsigned)world.level_index, (unsigned)world.sfx,
+               (unsigned)world.boss_health,
                entity_hash(&world));
     }
     fclose(fh);

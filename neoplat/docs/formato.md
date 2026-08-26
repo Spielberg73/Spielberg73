@@ -161,6 +161,7 @@ enemigos:
     puntos: 100
     pisable: si
     girar_en_borde: si
+    jefe: no             # si -> matarlo termina el nivel
     animaciones:
       quieto: {frames: [0, 1], velocidad: 14}
 ```
@@ -174,6 +175,21 @@ Comportamientos:
 | `perseguidor` | va hacia el jugador si está cerca | `rango` |
 | `saltarin` | salta cada cierto tiempo | `salto`, `intervalo` |
 | `fijo` | no se mueve | — |
+
+**Jefes.** Un enemigo con `jefe: si` es el jefe del nivel: sube su `vida` para
+que aguante varios pisotones, el marcador enseña una barra con lo que le queda
+(`BOSS ######`) y **matarlo termina el nivel**, igual que llegar a la meta. Un
+nivel con jefe no necesita tile de `meta`.
+
+```yaml
+enemigos:
+  jefazo:
+    sprite: graficos/enemigo.png
+    comportamiento: perseguidor
+    vida: 5
+    puntos: 1000
+    jefe: si
+```
 
 ## `objetos`
 
@@ -302,7 +318,8 @@ Reglas del mapa:
 - Mínimo 20 columnas × 14 filas (lo que ocupa una pantalla), máximo 512 × 256.
 - Las filas más cortas se rellenan con vacío por la derecha.
 - Máximo 64 enemigos y objetos por nivel.
-- Si un nivel no tiene tile de `meta`, `ngplat` te avisa (no se podría terminar).
+- Si un nivel no tiene tile de `meta` ni jefe, `ngplat` te avisa (no se podría
+  terminar).
 
 Los niveles se juegan en orden; al terminar el último sale `YOU WIN!`.
 

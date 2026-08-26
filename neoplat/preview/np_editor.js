@@ -108,7 +108,8 @@
             amplitud: fijoAUsuario(e.amplitude),
             periodo: e.period, intervalo: e.interval, puntos: e.score,
             vida: e.health, dano: e.damage,
-            pisable: !!e.stompable, girar_en_borde: !!e.edge_turn
+            pisable: !!e.stompable, girar_en_borde: !!e.edge_turn,
+            jefe: !!e.boss
           };
         }),
         objetos: DATA.items.map(function (o, i) {
@@ -624,7 +625,8 @@
           score: props.puntos === undefined ? 100 : props.puntos,
           health: props.vida || 1, damage: props.dano === undefined ? 1 : props.dano,
           stompable: props.pisable === false ? 0 : 1,
-          edge_turn: props.girar_en_borde === false ? 0 : 1
+          edge_turn: props.girar_en_borde === false ? 0 : 1,
+          boss: props.jefe ? 1 : 0
         });
         DATA.nombres.enemigos.push(nombre);
         editor.modelo.enemigos.push({
@@ -640,7 +642,9 @@
           periodo: props.periodo || 120, intervalo: props.intervalo || 90,
           puntos: props.puntos === undefined ? 100 : props.puntos,
           vida: props.vida || 1, dano: props.dano === undefined ? 1 : props.dano,
-          pisable: props.pisable !== false, girar_en_borde: props.girar_en_borde !== false
+          pisable: props.pisable !== false,
+          girar_en_borde: props.girar_en_borde !== false,
+          jefe: !!props.jefe
         });
       } else {
         indice = DATA.items.length;
@@ -943,6 +947,7 @@
         e.damage = Math.round(m.dano);
         e.stompable = m.pisable ? 1 : 0;
         e.edge_turn = m.girar_en_borde ? 1 : 0;
+        e.boss = m.jefe ? 1 : 0;
       });
       editor.modelo.objetos.forEach(function (m, i) {
         var o = DATA.items[i];
@@ -1101,6 +1106,7 @@
         lineas.push(s2 + "puntos: " + Math.round(actor.puntos));
         if (!actor.pisable) lineas.push(s2 + "pisable: no");
         if (!actor.girar_en_borde) lineas.push(s2 + "girar_en_borde: no");
+        if (actor.jefe) lineas.push(s2 + "jefe: si");
         if (actor.comportamiento === "perseguidor") {
           lineas.push(s2 + "rango: " + Math.round(actor.rango));
         }

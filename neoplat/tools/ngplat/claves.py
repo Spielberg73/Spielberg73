@@ -52,6 +52,7 @@ CAMPOS: Dict[str, Dict[str, List[str]]] = {
         "puntos": ["puntos", "score"],
         "pisable": ["pisable", "stompable"],
         "girar_en_borde": ["girar_en_borde", "edge_turn"],
+        "jefe": ["jefe", "boss"],
         "rango": ["rango", "range"],
         "amplitud": ["amplitud", "amplitude"],
         "periodo": ["periodo", "period"],

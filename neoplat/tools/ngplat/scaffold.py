@@ -90,7 +90,7 @@ def _nivel_2() -> List[str]:
         _poner(a, {3: "=====", 47: "====="}),
         _fila("", a),
         _poner(a, {6: "c", 17: "c", 27: "c", 38: "c", 45: "c"}),
-        _poner(a, {0: "P", 8: "s", 18: "^", 30: "s", 42: "^", 53: "G"}),
+        _poner(a, {0: "P", 8: "s", 18: "^", 30: "s", 42: "^", 51: "J"}),
         _suelo(a, [(24, 2), (47, 2)]),
     ]
 
@@ -160,6 +160,20 @@ enemigos:
     puntos: 200
     animaciones:
       quieto: {{frames: [0, 1], velocidad: 6}}
+  # Un jefe es un enemigo con 'jefe: si': aguanta varios pisotones, el marcador
+  # ensena lo que le queda y al matarlo se acaba el nivel.
+  jefazo:
+    sprite: graficos/enemigo.png
+    caja: [12, 11]
+    comportamiento: perseguidor
+    velocidad: 0.5
+    rango: 160
+    vida: 5
+    puntos: 1000
+    jefe: si
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 8}}
+      correr: {{frames: [0, 1], velocidad: 5}}
 
 objetos:
   moneda:
@@ -212,6 +226,7 @@ spawns:
   s: seta
   m: mosca
   c: moneda
+  J: jefazo
 
 niveles:
 {niveles}"""
@@ -286,6 +301,20 @@ enemigos:
     puntos: 200
     animaciones:
       quieto: {{frames: [0, 1], velocidad: 6}}
+  # Un jefe es un enemigo con 'jefe: si': aguanta varios pisotones, el marcador
+  # ensena lo que le queda y al matarlo se acaba el nivel.
+  guardian:
+    sprite: graficos/enemigo.png
+    caja: [12, 11]
+    comportamiento: perseguidor
+    velocidad: 0.5
+    rango: 160
+    vida: 5
+    puntos: 1000
+    jefe: si
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 8}}
+      correr: {{frames: [0, 1], velocidad: 5}}
 
 objetos:
   gema:
@@ -328,6 +357,7 @@ spawns:
   s: raton
   m: murcielago
   c: gema
+  J: guardian
 
 niveles:
 {niveles}"""

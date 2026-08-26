@@ -358,11 +358,13 @@ FONT_3X5: Dict[str, Tuple[int, int, int, int, int]] = {
     "x": (0b000, 0b101, 0b010, 0b101, 0b000),
     "<": (0b001, 0b010, 0b100, 0b010, 0b001),
     ">": (0b100, 0b010, 0b001, 0b010, 0b100),
+    # bloque lleno: la barra de vida del jefe se dibuja repitiendolo
+    "#": (0b111, 0b111, 0b111, 0b111, 0b111),
 }
 
 # Orden de los caracteres dentro del ROM S; el indice del tile es la posicion
 # en esta cadena mas `FONT_FIRST_TILE`.
-FONT_CHARS = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-.:!?/x<>"
+FONT_CHARS = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-.:!?/x<>#"
 FONT_FIRST_TILE = 1     # el tile 0 del fix se deja en blanco
 
 

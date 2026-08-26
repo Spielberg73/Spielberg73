@@ -57,6 +57,7 @@ void np_hud_draw(const NpWorld *w)
     static uint16_t ultimas_vidas = 0xFFFF;
     static uint16_t ultimo_tiempo = 0xFFFF;
     static uint8_t rotulos = 0;
+    static uint8_t ultimo_jefe = 0xFF;
     uint16_t segundos = (uint16_t)(w->time_left / 60);
 
     if (!rotulos) {
@@ -76,6 +77,16 @@ void np_hud_draw(const NpWorld *w)
     if (np_time_limit && segundos != ultimo_tiempo) {
         np_hud_number(23, 1, segundos, 3, NP_HUD_PALETTE);
         ultimo_tiempo = segundos;
+    }
+
+
+    /* La barra del jefe. Solo se escribe cuando cambia: son quince letras y
+       casi ningun frame le quitas un golpe. */
+    if (w->boss_health != ultimo_jefe) {
+        char barra[NP_BOSS_BAR + 6];
+        np_boss_bar(barra, w);
+        np_hud_print(2, 2, barra, NP_HUD_PALETTE);
+        ultimo_jefe = w->boss_health;
     }
 
     if (w->state != ultimo_estado) {

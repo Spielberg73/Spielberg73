@@ -26,7 +26,7 @@ VALORES = {
     "coyote": "8", "buffer_salto": "7", "pisar_enemigos": "no",
     "rebote": "3.0", "vida": "3", "invulnerable": "120",
     "comportamiento": "volador", "dano": "2", "puntos": "250",
-    "pisable": "no", "girar_en_borde": "no", "rango": "120",
+    "pisable": "no", "girar_en_borde": "no", "jefe": "si", "rango": "120",
     "amplitud": "40", "periodo": "90", "intervalo": "60",
     "efecto": "vida", "cantidad": "2", "nombre": '"OTRO NIVEL"',
     "musica": "tema", "fondos": "[]",

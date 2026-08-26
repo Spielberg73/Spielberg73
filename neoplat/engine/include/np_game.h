@@ -37,6 +37,7 @@ typedef struct {
     np_fix speed, gravity, jump, range, amplitude;
     uint16_t period, interval, score;
     uint8_t behavior, health, damage, stompable, edge_turn;
+    uint8_t boss;            /* 1 = matarlo termina el nivel */
 } NpEnemyDef;
 
 typedef struct {

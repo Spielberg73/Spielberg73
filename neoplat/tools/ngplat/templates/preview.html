@@ -1529,6 +1529,7 @@
       campoNumero(campos, "intervalo", "enemigo", "intervalo", i, e.intervalo);
       campoBool(campos, "se puede pisar", "enemigo", "pisable", i, e.pisable);
       campoBool(campos, "gira en bordes", "enemigo", "girar_en_borde", i, e.girar_en_borde);
+      campoBool(campos, "es el jefe", "enemigo", "jefe", i, e.jefe);
     });
     editor.modelo.objetos.forEach(function (o, i) {
       var tituloObjeto = crearElemento(cont, "div", "grupo-titulo");

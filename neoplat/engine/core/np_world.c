@@ -315,6 +315,8 @@ void np_world_load_level(NpWorld *w, uint16_t index)
     p->anim_frame = 0;
     p->anim_timer = 0;
     w->keys = 0;
+    w->boss_health = 0;
+    w->boss_max = 0;
     w->time_left = (uint16_t)(np_time_limit * 60);
     w->state = NP_STATE_PLAY;
     w->state_timer = 0;
@@ -523,6 +525,15 @@ static void np_collect(NpWorld *w, NpEntity *e)
     e->active = 0;
 }
 
+/* Se acaba el nivel: por la meta o por matar al jefe, da igual. */
+static void np_finish_level(NpWorld *w)
+{
+    w->sfx |= NP_SFX_GOAL;
+    w->state = NP_STATE_LEVEL_END;
+    w->state_timer = NP_LEVEL_END_TIME;
+    w->score += 100 + (w->time_left / 60) * 10;
+}
+
 static void np_touch_entities(NpWorld *w)
 {
     const NpActorDef *pa = &np_player_def.actor;
@@ -555,6 +566,8 @@ static void np_touch_entities(NpWorld *w)
                 } else {
                     e->active = 0;
                     w->score += d->score;
+                    /* matar al jefe termina el nivel, como llegar a la meta */
+                    if (d->boss) np_finish_level(w);
                 }
                 p->vy = -np_player_def.bounce;
                 p->on_ground = 0;
@@ -633,6 +646,21 @@ static void np_play_step(NpWorld *w, uint16_t input)
 
     np_touch_entities(w);
 
+    /* Que jefe hay en pantalla, para el marcador. Se mira despues de las
+       colisiones para que el golpe de este frame ya se vea, y para que al
+       matarlo quede en cero. */
+    w->boss_health = 0;
+    w->boss_max = 0;
+    for (i = 0; i < w->entity_count; i++) {
+        const NpEntity *e = &w->entities[i];
+        if (e->active && e->kind == 0 && np_enemies[e->def].boss) {
+            w->boss_health = e->health;
+            w->boss_max = np_enemies[e->def].health;
+            break;
+        }
+    }
+
+
     if (w->state != NP_STATE_PLAY) return;
 
     if (np_box_touches(w->level,
@@ -645,10 +673,7 @@ static void np_play_step(NpWorld *w, uint16_t input)
         return;
     }
     if (np_box_touches(w->level, p->x, p->y, pa->box_w, pa->box_h, NP_TILE_GOAL)) {
-        w->sfx |= NP_SFX_GOAL;
-        w->state = NP_STATE_LEVEL_END;
-        w->state_timer = NP_LEVEL_END_TIME;
-        w->score += 100 + (w->time_left / 60) * 10;
+        np_finish_level(w);
         return;
     }
     if (NP_F2I(p->y) > (int32_t)(w->level->height + 2) * NP_TILE) {
@@ -659,6 +684,26 @@ static void np_play_step(NpWorld *w, uint16_t input)
         if (w->time_left) w->time_left--;
         else np_player_hurt(w, 99);
     }
+}
+
+/* La barra de vida del jefe, para el marcador: "BOSS ######    ".
+ *
+ * Siempre ocupa lo mismo y se rellena con espacios, asi que al escribirla borra
+ * lo que hubiera antes y no hace falta limpiar la fila aparte. Sin jefe en
+ * pantalla sale entera en blanco. Necesita NP_BOSS_BAR + 6 caracteres. */
+void np_boss_bar(char *out, const NpWorld *w)
+{
+    uint8_t i, llenos = 0;
+    const char *titulo = "     ";
+    if (w->boss_health && w->boss_max) {
+        int32_t partes = ((int32_t)w->boss_health * NP_BOSS_BAR
+                          + w->boss_max - 1) / w->boss_max;
+        llenos = (uint8_t)(partes > NP_BOSS_BAR ? NP_BOSS_BAR : partes);
+        titulo = "BOSS ";
+    }
+    for (i = 0; i < 5; i++) out[i] = titulo[i];
+    for (i = 0; i < NP_BOSS_BAR; i++) out[5 + i] = (i < llenos) ? '#' : ' ';
+    out[5 + NP_BOSS_BAR] = 0;
 }
 
 void np_world_step(NpWorld *w, uint16_t input)

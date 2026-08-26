@@ -44,7 +44,8 @@ inputs.forEach(function (input) {
   out.push([
     world.frame, world.player.x, world.player.y, world.player.vx, world.player.vy,
     world.state, world.player.health, world.lives, world.score,
-    world.camX, world.camY, world.levelIndex, world.sfx, hex8(entityHash(world))
+    world.camX, world.camY, world.levelIndex, world.sfx, world.bossHealth,
+    hex8(entityHash(world))
   ].join(" "));
 });
 process.stdout.write(out.join("\n") + "\n");

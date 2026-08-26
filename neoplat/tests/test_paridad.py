@@ -52,10 +52,11 @@ class TestParidad(unittest.TestCase):
         cls.variantes = {}
         for camara in ("scroll", "pantallas"):
             cls.variantes[camara] = cls._preparar(camara)
+        cls.variantes["jefe"] = cls._preparar("scroll", jefe=True)
 
     @classmethod
-    def _preparar(cls, camara):
-        proyecto_dir = os.path.join(cls.tmp, "juego-" + camara)
+    def _preparar(cls, camara, jefe=False):
+        proyecto_dir = os.path.join(cls.tmp, "juego-" + camara + ("-jefe" if jefe else ""))
         crear_proyecto(proyecto_dir, "PARIDAD", "TEST")
         yaml = os.path.join(proyecto_dir, "game.yaml")
         with open(yaml, encoding="utf-8") as fh:
@@ -63,11 +64,18 @@ class TestParidad(unittest.TestCase):
         # el andamiaje ya trae 'camara: scroll': hay que cambiar esa linea, no
         # anadir otra, o el lector se queda con la ultima
         assert "  camara: scroll" in texto, "el andamiaje ya no trae la camara"
+        texto = texto.replace("  camara: scroll", "  camara: " + camara, 1)
+        if jefe:
+            # el jefe del andamiaje vive en el segundo nivel y la traza no llega:
+            # se pone uno en el primero, cambiando el enemigo que hay a la salida
+            marca = "\n      P.......s"
+            assert marca in texto, "el primer nivel ya no empieza asi"
+            texto = texto.replace(marca, "\n      P.......J", 1)
         with open(yaml, "w", encoding="utf-8") as fh:
-            fh.write(texto.replace("  camara: scroll", "  camara: " + camara, 1))
+            fh.write(texto)
         build = cargar_demo(proyecto_dir)
 
-        out = os.path.join(cls.tmp, "build-" + camara)
+        out = os.path.join(cls.tmp, "build-" + os.path.basename(proyecto_dir))
         os.makedirs(os.path.join(out, "src"))
         for relativo, contenido in generate_gamedata(build).items():
             with open(os.path.join(out, relativo), "w", encoding="utf-8") as fh:
@@ -77,11 +85,13 @@ class TestParidad(unittest.TestCase):
         datos = build_data(build)
         for hoja in datos["sheets"].values():
             hoja["url"] = ""            # la traza no necesita los graficos
-        datos_json = os.path.join(cls.tmp, "datos-%s.json" % camara)
+        datos_json = os.path.join(cls.tmp, "datos-%s.json"
+                                  % os.path.basename(proyecto_dir))
         with open(datos_json, "w", encoding="utf-8") as fh:
             json.dump(datos, fh)
 
-        binario = os.path.join(cls.tmp, "np_trace-" + camara)
+        binario = os.path.join(cls.tmp,
+                               "np_trace-" + os.path.basename(proyecto_dir))
         compilacion = subprocess.run(
             ["gcc", "-std=c99", "-O2", "-Wall", "-Wextra", "-Werror",
              "-I", os.path.join(out, "src"), "-o", binario,
@@ -143,6 +153,15 @@ class TestParidad(unittest.TestCase):
             x = int(valor)
             self.assertTrue(x % 320 == 0 or x == max(int(v) for v in camaras_pantallas),
                             "la camara por pantallas se ha parado en %d" % x)
+
+    def test_el_jefe_hace_lo_mismo_en_las_dos(self):
+        """El jefe cambia el marcador y termina el nivel: si el C y el JS no
+        estuvieran de acuerdo en cuantos golpes le quedan, la traza lo dice."""
+        traza_c, traza_js = self._trazas(3, "jefe")
+        self.assertEqual(traza_c, traza_js)
+        vidas = {linea.split()[13] for linea in traza_c}
+        self.assertTrue(vidas - {"0"},
+                        "la traza no llega a ver al jefe: no comprueba nada")
 
     def test_la_traza_tiene_contenido(self):
         lineas_c, _ = self._trazas(1)

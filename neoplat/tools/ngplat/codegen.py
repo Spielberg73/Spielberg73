@@ -183,8 +183,10 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
         src.append("        %d, %d, %d, %d, %d," % (ev["speed"], ev["gravity"], ev["jump"],
                                                     ev["range"], ev["amplitude"]))
         src.append("        %d, %d, %d," % (ev["period"], ev["interval"], ev["score"]))
-        src.append("        %d, %d, %d, %d, %d" % (ev["behavior"], ev["health"], ev["damage"],
-                                                   ev["stompable"], ev["edge_turn"]))
+        src.append("        %d, %d, %d, %d, %d," % (ev["behavior"], ev["health"],
+                                                    ev["damage"], ev["stompable"],
+                                                    ev["edge_turn"]))
+        src.append("        %d" % ev["boss"])
         src.append("    }," if i + 1 < len(build.enemies) else "    }")
     src.append("};")
     src.append("const uint16_t np_enemy_count = %d;" % len(build.enemies))

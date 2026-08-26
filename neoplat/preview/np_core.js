@@ -56,6 +56,7 @@
     this.timeLeft = 0; this.prevInput = 0;
     this.sfx = 0;                 /* eventos de sonido de este frame */
     this.lives = data.lives; this.keys = 0; this.entityCount = 0;
+    this.bossHealth = 0; this.bossMax = 0;
     /* Igual que np_world_init en C: en el titulo ya se ve el principio del
        nivel, con el jugador colocado en su salida. */
     this.player.x = I2F(this.level.start[0]);
@@ -219,6 +220,7 @@
     p.jumpsLeft = d.double_jump ? 1 : 0;
     p.anim = ANIM_IDLE; p.animFrame = 0; p.animTimer = 0;
     this.keys = 0;
+    this.bossHealth = 0; this.bossMax = 0;
     this.timeLeft = this.data.time_limit * 60;
     this.state = STATE.PLAY;
     this.stateTimer = 0;
@@ -383,7 +385,12 @@
       if (this.data.player.stomp && d.stompable && fromAbove) {
         this.sfx |= SFX.STOMP;
         if (e.health > 1) { e.health--; e.hurt = 20; }
-        else { e.active = 0; this.score += d.score; }
+        else {
+          e.active = 0;
+          this.score += d.score;
+          /* matar al jefe termina el nivel, como llegar a la meta */
+          if (d.boss) this.finishLevel();
+        }
         p.vy = -this.data.player.bounce;
         p.onGround = 0;
       } else {
@@ -422,6 +429,14 @@
     return true;
   };
 
+  /* Se acaba el nivel: por la meta o por matar al jefe, da igual. */
+  World.prototype.finishLevel = function () {
+    this.sfx |= SFX.GOAL;
+    this.state = STATE.LEVEL_END;
+    this.stateTimer = LEVEL_END_TIME;
+    this.score += 100 + idiv(this.timeLeft, 60) * 10;
+  };
+
   World.prototype.playStep = function (input) {
     var pa = this.data.player.actor, p = this.player, i;
     this.playerUpdate(input);
@@ -439,6 +454,18 @@
     }
 
     this.touchEntities();
+
+    /* Que jefe hay en pantalla, para el marcador (igual que np_world.c). */
+    this.bossHealth = 0;
+    this.bossMax = 0;
+    for (i = 0; i < this.entityCount; i++) {
+      var b = this.entities[i];
+      if (b.active && b.kind === 0 && this.data.enemies[b.def].boss) {
+        this.bossHealth = b.health;
+        this.bossMax = this.data.enemies[b.def].health;
+        break;
+      }
+    }
     if (this.state !== STATE.PLAY) return;
 
     if (this.boxTouches(p.x + I2F(HAZARD_INSET_X), p.y + I2F(HAZARD_INSET_Y),
@@ -448,10 +475,7 @@
       return;
     }
     if (this.boxTouches(p.x, p.y, pa.box_w, pa.box_h, TILE_GOAL)) {
-      this.sfx |= SFX.GOAL;
-      this.state = STATE.LEVEL_END;
-      this.stateTimer = LEVEL_END_TIME;
-      this.score += 100 + idiv(this.timeLeft, 60) * 10;
+      this.finishLevel();
       return;
     }
     if (F2I(p.y) > (this.level.height + 2) * TILE) {

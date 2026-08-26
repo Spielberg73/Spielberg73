@@ -434,7 +434,8 @@ Lo que aún no hace:
 - **Muestras digitales**: la música y los efectos usan ondas cuadradas en las
   cuatro máquinas; las voces y percusiones sampleadas aún no (ni la ROM V1 de la
   Neo Geo ni los samples de Paula ni el YM2612 ni los DAC de la Jaguar).
-- **Jefes o eventos guionizados**: hay cinco comportamientos de enemigo fijos.
+- **Eventos guionizados**: hay cinco comportamientos de enemigo fijos y un jefe
+  por nivel (`jefe: si`); no hay forma de guionizar una secuencia.
 - **Dos jugadores**.
 - **Zoom de sprites** (la Neo Geo lo permite; el motor no lo usa).
 

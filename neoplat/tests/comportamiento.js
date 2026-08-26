@@ -44,6 +44,7 @@ function datos(filas, opciones) {
       else if (ch === "e") { spawns.push([x * 16 + 2, y * 16 + 16 - enemigo.box_h, 0, 0]); ch = "."; }
       else if (ch === "v") { spawns.push([x * 16 + 2, y * 16 + 16 - enemigo.box_h, 0, 1]); ch = "."; }
       else if (ch === "o") { spawns.push([x * 16 + 3, y * 16 + 16 - objeto.box_h, 1, 0]); ch = "."; }
+      else if (ch === "J") { spawns.push([x * 16 + 2, y * 16 + 16 - enemigo.box_h, 0, 2]); ch = "."; }
       assert.ok(ch in LEYENDA, "simbolo desconocido: " + ch);
       celdas.push(".#=^G".indexOf(ch));
     }
@@ -70,7 +71,11 @@ function datos(filas, opciones) {
         health: 1, damage: 1, stompable: 1, edge_turn: 1, name: "patrulla" },
       { actor: enemigo, speed: fx(0.5), gravity: 0, jump: 0, range: fx(96),
         amplitude: fx(24), period: 64, interval: 90, score: 200, behavior: 1,
-        health: 1, damage: 1, stompable: 1, edge_turn: 0, name: "volador" }
+        health: 1, damage: 1, stompable: 1, edge_turn: 0, name: "volador" },
+      { actor: enemigo, speed: 0, gravity: fx(0.28), jump: 0, range: fx(96),
+        amplitude: fx(24), period: 120, interval: 90, score: 1000, behavior: 4,
+        health: opciones.bossHealth || 3, damage: 1, stompable: 1, edge_turn: 1,
+        boss: 1, name: "jefe" }
     ],
     items: [{ actor: objeto, score: 10, effect: 0, amount: 1, name: "moneda" }],
     tiles: { kind: [0, 1, 2, 3, 4], gfx: [0, 1, 2, 3, 4] },
@@ -259,6 +264,38 @@ prueba("pisar a un enemigo lo elimina, da puntos y rebota", function () {
   assert.strictEqual(enemigo.active, 0, "el enemigo sigue vivo");
   assert.strictEqual(w.score, puntos + 100);
   assert.ok(reboto, "el jugador no ha rebotado");
+});
+
+prueba("al jefe hay que pisarlo varias veces y el marcador lo cuenta", function () {
+  /* El jefe es un enemigo con 'jefe: si': aguanta varios pisotones y matarlo
+     termina el nivel, como llegar a la meta. */
+  /* el jugador aguanta varios golpes: al rebotar del pisoton cae al lado del
+     jefe y se choca con el, que es justo lo que pasa en un juego */
+  var w = mundo(suelo([[13, 5, "J"], [8, 5, "P"]]), { bossHealth: 3, health: 9 });
+  var jefe = w.entities[0];
+  var i;
+  for (i = 0; i < 120 && w.bossHealth !== 3; i++) w.step(0);
+  assert.strictEqual(w.bossHealth, 3, "el marcador no ve al jefe");
+  assert.strictEqual(w.bossMax, 3);
+
+  /* con el salto pulsado el jugador rebota sobre el y lo pisa una y otra vez */
+  var golpes = 0;
+  for (i = 0; i < 900 && jefe.active; i++) {
+    var antes = jefe.health;
+    w.step(NP.IN.JUMP);
+    if (jefe.health < antes) golpes++;
+  }
+  assert.strictEqual(golpes, 2, "no se le han quitado dos golpes antes de morir");
+  assert.strictEqual(jefe.active, 0, "el jefe sigue vivo");
+  assert.strictEqual(w.state, NP.STATE.LEVEL_END,
+                     "matar al jefe no ha terminado el nivel");
+  assert.strictEqual(w.bossHealth, 0, "el marcador sigue ensenando al jefe muerto");
+});
+
+prueba("sin jefe en pantalla el marcador no ensena nada", function () {
+  var w = mundo(suelo([[13, 5, "e"], [8, 5, "P"]]));
+  for (var i = 0; i < 60; i++) w.step(0);
+  assert.strictEqual(w.bossHealth, 0);
 });
 
 prueba("chocar de lado con un enemigo hace dano", function () {

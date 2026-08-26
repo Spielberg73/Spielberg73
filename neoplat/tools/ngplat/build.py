@@ -313,6 +313,7 @@ def enemy_values(build: ActorBuild) -> Dict[str, object]:
         "period": e.period, "interval": e.interval, "score": e.score,
         "behavior": BEHAVIOR_ID[e.behavior], "health": e.health, "damage": e.damage,
         "stompable": 1 if e.stompable else 0, "edge_turn": 1 if e.edge_turn else 0,
+        "boss": 1 if e.boss else 0,
     }
 
 
