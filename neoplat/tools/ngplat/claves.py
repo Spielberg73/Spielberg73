@@ -23,6 +23,7 @@ CAMPOS: Dict[str, Dict[str, List[str]]] = {
         "hud": ["hud", "marcador"],
         "sistema": ["sistema", "system"],
         "fondo": ["fondo", "background"],
+        "camara": ["camara", "camera"],
     },
     "jugador": {
         "velocidad": ["velocidad", "speed"],
@@ -64,6 +65,7 @@ CAMPOS: Dict[str, Dict[str, List[str]]] = {
     "nivel": {
         "nombre": ["nombre", "name"],
         "fondo": ["fondo", "background"],
+        "camara": ["camara", "camera"],
         "musica": ["musica", "music"],
         "fondos": ["fondos", "layers"],
     },
@@ -73,6 +75,7 @@ CAMPOS: Dict[str, Dict[str, List[str]]] = {
 OPCIONES: Dict[str, List[str]] = {
     "comportamiento": ["patrulla", "volador", "perseguidor", "saltarin", "fijo"],
     "efecto": ["puntos", "vida", "salud", "llave"],
+    "camara": ["scroll", "pantallas"],
 }
 
 # Rangos y paso de cada numero, para poder ofrecer controles con sentido.

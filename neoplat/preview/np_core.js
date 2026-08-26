@@ -392,14 +392,28 @@
     }
   };
 
+  /* Dos modos de camara, igual que np_world.c: 'scroll' desliza el escenario y
+     'pantallas' salta de una pantalla fija a la siguiente. */
   World.prototype.cameraUpdate = function () {
     var a = this.data.player.actor;
     var maxX = this.level.width * TILE - SCREEN_W;
     var maxY = this.level.height * TILE - SCREEN_H;
+    var cx = F2I(this.player.x) + idiv(a.box_w, 2);
+    var cy = F2I(this.player.y) + idiv(a.box_h, 2);
+    var tx, ty;
     if (maxX < 0) maxX = 0;
     if (maxY < 0) maxY = 0;
-    this.camX = clamp(F2I(this.player.x) + idiv(a.box_w, 2) - idiv(SCREEN_W, 2), 0, maxX);
-    this.camY = clamp(F2I(this.player.y) + idiv(a.box_h, 2) - idiv(SCREEN_H, 2), 0, maxY);
+    if (this.data.camara_pantallas) {
+      if (cx < 0) cx = 0;
+      if (cy < 0) cy = 0;
+      tx = idiv(cx, SCREEN_W) * SCREEN_W;
+      ty = idiv(cy, SCREEN_H) * SCREEN_H;
+    } else {
+      tx = cx - idiv(SCREEN_W, 2);
+      ty = cy - idiv(SCREEN_H, 2);
+    }
+    this.camX = clamp(tx, 0, maxX);
+    this.camY = clamp(ty, 0, maxY);
   };
 
   World.prototype.playerVisible = function () {

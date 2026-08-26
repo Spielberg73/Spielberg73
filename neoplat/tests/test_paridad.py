@@ -46,63 +46,103 @@ class TestParidad(unittest.TestCase):
         if not shutil.which("node"):
             raise unittest.SkipTest("no hay node para ejecutar el preview")
         cls.tmp = tempfile.mkdtemp(prefix="neoplat-paridad-")
-        proyecto_dir = os.path.join(cls.tmp, "juego")
+        # Se comprueban los dos modos de camara: con scroll y pantalla a
+        # pantalla la simulacion es la misma, pero la camara no, y la camara va
+        # en la traza.
+        cls.variantes = {}
+        for camara in ("scroll", "pantallas"):
+            cls.variantes[camara] = cls._preparar(camara)
+
+    @classmethod
+    def _preparar(cls, camara):
+        proyecto_dir = os.path.join(cls.tmp, "juego-" + camara)
         crear_proyecto(proyecto_dir, "PARIDAD", "TEST")
+        yaml = os.path.join(proyecto_dir, "game.yaml")
+        with open(yaml, encoding="utf-8") as fh:
+            texto = fh.read()
+        # el andamiaje ya trae 'camara: scroll': hay que cambiar esa linea, no
+        # anadir otra, o el lector se queda con la ultima
+        assert "  camara: scroll" in texto, "el andamiaje ya no trae la camara"
+        with open(yaml, "w", encoding="utf-8") as fh:
+            fh.write(texto.replace("  camara: scroll", "  camara: " + camara, 1))
         build = cargar_demo(proyecto_dir)
 
-        cls.out = os.path.join(cls.tmp, "build")
-        os.makedirs(os.path.join(cls.out, "src"))
+        out = os.path.join(cls.tmp, "build-" + camara)
+        os.makedirs(os.path.join(out, "src"))
         for relativo, contenido in generate_gamedata(build).items():
-            with open(os.path.join(cls.out, relativo), "w", encoding="utf-8") as fh:
+            with open(os.path.join(out, relativo), "w", encoding="utf-8") as fh:
                 fh.write(contenido)
-        copy_engine(cls.out)
+        copy_engine(out)
 
         datos = build_data(build)
         for hoja in datos["sheets"].values():
             hoja["url"] = ""            # la traza no necesita los graficos
-        cls.datos_json = os.path.join(cls.tmp, "datos.json")
-        with open(cls.datos_json, "w", encoding="utf-8") as fh:
+        datos_json = os.path.join(cls.tmp, "datos-%s.json" % camara)
+        with open(datos_json, "w", encoding="utf-8") as fh:
             json.dump(datos, fh)
 
-        cls.binario = os.path.join(cls.tmp, "np_trace")
+        binario = os.path.join(cls.tmp, "np_trace-" + camara)
         compilacion = subprocess.run(
             ["gcc", "-std=c99", "-O2", "-Wall", "-Wextra", "-Werror",
-             "-I", os.path.join(cls.out, "src"), "-o", cls.binario,
+             "-I", os.path.join(out, "src"), "-o", binario,
              os.path.join(KIT, "engine", "host", "np_trace.c"),
-             os.path.join(cls.out, "src", "np_world.c"),
-             os.path.join(cls.out, "src", "gamedata.c")],
+             os.path.join(out, "src", "np_world.c"),
+             os.path.join(out, "src", "gamedata.c")],
             capture_output=True, text=True,
         )
         if compilacion.returncode != 0:
             raise AssertionError("el motor en C no compila:\n" + compilacion.stderr)
+        return (binario, datos_json)
 
     @classmethod
     def tearDownClass(cls):
         shutil.rmtree(getattr(cls, "tmp", ""), ignore_errors=True)
 
-    def _trazas(self, semilla):
+    def _trazas(self, semilla, camara="scroll"):
+        binario, datos_json = self.variantes[camara]
         entradas = _secuencia(semilla)
         ruta = os.path.join(self.tmp, "inputs-%d.txt" % semilla)
         with open(ruta, "w", encoding="utf-8") as fh:
             fh.write("\n".join(str(v) for v in entradas))
-        traza_c = subprocess.run([self.binario, ruta], capture_output=True, text=True, check=True)
+        traza_c = subprocess.run([binario, ruta], capture_output=True, text=True, check=True)
         traza_js = subprocess.run(
-            ["node", os.path.join(KIT, "tests", "trace.js"), self.datos_json, ruta],
+            ["node", os.path.join(KIT, "tests", "trace.js"), datos_json, ruta],
             capture_output=True, text=True, check=True,
         )
         return traza_c.stdout.strip().split("\n"), traza_js.stdout.strip().split("\n")
 
     def test_misma_traza(self):
-        for semilla in (1, 7, 99):
-            lineas_c, lineas_js = self._trazas(semilla)
+        for camara in ("scroll", "pantallas"):
+            for semilla in (1, 7, 99):
+                self._comparar(camara, semilla)
+
+    def _comparar(self, camara, semilla):
+        if True:
+            lineas_c, lineas_js = self._trazas(semilla, camara)
             self.assertEqual(len(lineas_c), len(lineas_js))
             for i, (a, b) in enumerate(zip(lineas_c, lineas_js)):
                 if a != b:
                     self.fail(
-                        "semilla %d, frame %d:\n  C : %s\n  JS: %s\n"
+                        "camara %s, semilla %d, frame %d:\n  C : %s\n  JS: %s\n"
                         "(columnas: frame x y vx vy estado salud vidas puntos camx camy nivel hash)"
-                        % (semilla, i + 1, a, b)
+                        % (camara, semilla, i + 1, a, b)
                     )
+
+    def test_las_dos_camaras_no_dan_lo_mismo(self):
+        """Si el modo de camara no llegara al motor, las dos trazas saldrian
+        identicas y la prueba de paridad pasaria sin comprobar nada."""
+        con_scroll, _ = self._trazas(1, "scroll")
+        con_pantallas, _ = self._trazas(1, "pantallas")
+        camaras_scroll = {l.split()[9] for l in con_scroll}
+        camaras_pantallas = {l.split()[9] for l in con_pantallas}
+        self.assertNotEqual(camaras_scroll, camaras_pantallas,
+                            "las dos camaras dan el mismo recorrido")
+        # con pantallas la camara solo se para en multiplos del ancho de pantalla
+        # (o pegada al final del nivel)
+        for valor in camaras_pantallas:
+            x = int(valor)
+            self.assertTrue(x % 320 == 0 or x == max(int(v) for v in camaras_pantallas),
+                            "la camara por pantallas se ha parado en %d" % x)
 
     def test_la_traza_tiene_contenido(self):
         lineas_c, _ = self._trazas(1)

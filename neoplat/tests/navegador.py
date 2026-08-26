@@ -282,7 +282,7 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
         print("rom:", json.dumps(panel))
         exigir(panel["solo"] == ["panel-rom"],
                "la pestana ROM deja otros paneles a la vista: %s" % panel["solo"])
-        exigir(len(panel["maquinas"]) == 3,
+        exigir(len(panel["maquinas"]) == 4,
                "faltan maquinas donde elegir: %s" % panel["maquinas"])
         # el boton dice lo que va a salir: no todas las maquinas hacen una ROM
         etiquetas = {}
@@ -295,8 +295,11 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
                "en Amiga el boton no dice disquete: %r" % etiquetas.get("amiga"))
         exigir(etiquetas.get("neogeo") == "generar la ROM",
                "en Neo Geo el boton no dice ROM: %r" % etiquetas.get("neogeo"))
+        exigir(etiquetas.get("jaguar") == "generar el cartucho",
+               "en Jaguar el boton no dice cartucho: %r" % etiquetas.get("jaguar"))
         exigir(len(set(etiquetas.values())) == 3,
-               "el boton dice lo mismo para las tres maquinas: %s" % etiquetas)
+               "el boton deberia decir tres cosas distintas (Mega Drive y Jaguar "
+               "hacen las dos un cartucho): %s" % etiquetas)
         # aqui el preview se abre como file://, asi que no hay ngplat con quien
         # hablar: el boton tiene que estar apagado y decir por que
         exigir(not panel["servidor"], "cree que hay servidor abriendo un archivo")

@@ -18,9 +18,22 @@ juego:
   vidas: 3                  # 1 a 9
   tiempo: 0                 # segundos por nivel; 0 = sin límite
   hud: si                   # marcador de puntos/vidas
+  camara: scroll            # scroll o pantallas
   fondo: "#101830"          # color de fondo por defecto
-  sistema: neogeo           # neogeo (por defecto), megadrive o amiga
+  sistema: neogeo           # neogeo, megadrive, amiga o jaguar
 ```
+
+`camara` decide cómo se mueve la vista, y cambia bastante a qué se parece el
+juego:
+
+| | |
+|---|---|
+| `scroll` | la cámara sigue al jugador y el escenario se desliza. Es lo que hacían las consolas de la época. |
+| `pantallas` | el nivel se reparte en pantallas fijas y la vista **salta** a la siguiente cuando el jugador cruza el borde. Es lo que hacían casi todos los juegos de ordenador de 8 bits. |
+
+Con `pantallas` conviene que los niveles midan un número exacto de pantallas
+(múltiplos de 20 tiles de ancho y 14 de alto); si no, la última se solapa con la
+anterior y el compilador avisa.
 
 `sistema` decide para qué máquina se compila y con qué colores se dibuja el
 preview. También se puede elegir sin tocar el archivo, con `--sistema` en

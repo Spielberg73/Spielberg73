@@ -108,6 +108,7 @@ juego:
   autor: "{autor}"
   vidas: 3
   tiempo: 0            # segundos por nivel (0 = sin limite)
+  camara: scroll       # scroll (el escenario se desliza) o pantallas
   fondo: "#101830"
 
 jugador:

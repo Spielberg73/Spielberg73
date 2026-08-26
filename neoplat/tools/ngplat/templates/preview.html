@@ -1034,6 +1034,10 @@
     campoTexto(cont, "autor", "juego", "autor", null, j.autor, true);
     campoNumero(cont, "vidas", "juego", "vidas", null, j.vidas);
     campoNumero(cont, "tiempo (s)", "juego", "tiempo", null, j.tiempo);
+    campoLista(cont, "camara", "juego", "camara", null, j.camara, [
+      { valor: "scroll", texto: "scroll (el escenario se desliza)" },
+      { valor: "pantallas", texto: "pantalla a pantalla (salta de una a otra)" }
+    ]);
     campoLista(cont, "maquina", "juego", "sistema", null, j.sistema,
                (DATA.sistemas || []).map(function (m) {
                  return { valor: m.id, texto: m.nombre };

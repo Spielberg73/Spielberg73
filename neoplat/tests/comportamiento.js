@@ -52,7 +52,7 @@ function datos(filas, opciones) {
   for (var i = 0; i < 64; i++) sin.push(Math.round(Math.sin(2 * Math.PI * i / 64) * F));
   return {
     title: "TEST", author: "", lives: opciones.lives || 3, time_limit: opciones.time || 0,
-    hud: true,
+    hud: true, camara_pantallas: opciones.pantallas ? 1 : 0,
     player: {
       actor: jugador,
       speed: fx(opciones.speed || 1.6), accel: fx(0.3), friction: fx(0.35),
@@ -370,6 +370,46 @@ prueba("la camara sigue al jugador sin salirse del nivel", function () {
 });
 
 /* ------------------------------------------------------------ ejecucion */
+
+/* --- camara ---------------------------------------------------------- */
+
+/* Un nivel ancho para que la camara tenga sitio donde moverse. */
+function nivelAncho() {
+  var filas = [];
+  for (var y = 0; y < 14; y++) filas.push(".".repeat(60));
+  filas.push("#".repeat(60));
+  var f = filas[13].split(""); f[2] = "P"; filas[13] = f.join("");
+  return filas;
+}
+
+prueba("con scroll, la camara sigue al jugador poco a poco", function () {
+  var w = mundo(nivelAncho());
+  var vistas = {};
+  for (var i = 0; i < 300; i++) { w.step(NP.IN.RIGHT); vistas[w.camX] = 1; }
+  assert.ok(Object.keys(vistas).length > 20,
+            "la camara deberia tomar muchos valores distintos, no " +
+            Object.keys(vistas).length);
+});
+
+prueba("con pantallas, la camara solo salta de pantalla en pantalla", function () {
+  var w = mundo(nivelAncho(), { pantallas: true });
+  var vistas = {};
+  for (var i = 0; i < 300; i++) { w.step(NP.IN.RIGHT); vistas[w.camX] = 1; }
+  Object.keys(vistas).forEach(function (x) {
+    var v = Number(x);
+    assert.ok(v % 320 === 0 || v === 60 * 16 - 320,
+              "la camara se ha parado en " + v + ", que no es el borde de una pantalla");
+  });
+  assert.ok(Object.keys(vistas).length > 1, "la camara no ha llegado a saltar");
+});
+
+prueba("con pantallas, la camara no se sale del nivel", function () {
+  var w = mundo(nivelAncho(), { pantallas: true });
+  for (var i = 0; i < 900; i++) {
+    w.step(NP.IN.RIGHT);
+    assert.ok(w.camX >= 0 && w.camX <= 60 * 16 - 320, "camara fuera: " + w.camX);
+  }
+});
 
 var fallos = 0;
 pruebas.forEach(function (par) {

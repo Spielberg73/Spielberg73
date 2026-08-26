@@ -100,6 +100,8 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("const char np_game_author[] = %s;" % _c_string(project.author))
     src.append("const uint8_t np_start_lives = %d;" % project.lives)
     src.append("const uint16_t np_time_limit = %d;" % project.time_limit)
+    src.append("const uint8_t np_camara_pantallas = %d;"
+               % (1 if project.camera == "pantallas" else 0))
     src.append("const uint16_t np_tileset_first_tile = %d;" % build.tileset.first_tile)
     src.append("const uint8_t np_tileset_palette = %d;" % build.tileset.palette_index)
     src.append("")

@@ -109,6 +109,9 @@ edites; <kbd>Enter</kbd> y lo estás jugando otra vez.
   comportamiento y caja, reaprovechando un dibujo del proyecto o **dibujándolo
   en el propio editor** (lienzo de 15 colores, varios fotogramas, relleno,
   espejo y deshacer). El PNG se descarga listo para dejarlo en `graficos/`.
+- **Cámara a elegir**: `scroll` (el escenario se desliza, como en consola) o
+  `pantallas` (la vista salta de una pantalla fija a la siguiente, como en los
+  ordenadores de 8 bits). Es la misma opción para las cuatro máquinas.
 - **Revisión en vivo**: te avisa de que falta la salida o la meta, de enemigos
   colgados en el aire o de un hueco más ancho de lo que cruza tu salto. Y un
   botón que **lanza un bot a terminarse el nivel** para comprobar que es posible.

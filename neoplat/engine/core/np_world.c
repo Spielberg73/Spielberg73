@@ -567,15 +567,36 @@ static void np_touch_entities(NpWorld *w)
 
 /* ---------------------------------------------------------------- camara */
 
+/* Hay dos formas de mover la camara, y se elige en el game.yaml:
+ *
+ *   scroll     la camara sigue al jugador y el escenario se desliza. Es lo
+ *              que hacen los juegos de consola de la epoca.
+ *   pantallas  el nivel se reparte en pantallas fijas y la camara salta de una
+ *              a la siguiente cuando el jugador cruza el borde, sin deslizarse.
+ *              Es lo que hacian casi todos los de ordenador de 8 bits.
+ *
+ * La ultima pantalla puede quedarse corta si el nivel no mide un numero exacto
+ * de pantallas: entonces se recorta contra el final del nivel y se solapa un
+ * poco con la anterior. El compilador avisa cuando pasa. */
 static void np_camera_update(NpWorld *w)
 {
     const NpActorDef *a = &np_player_def.actor;
     int32_t max_x = (int32_t)w->level->width * NP_TILE - NP_SCREEN_W;
     int32_t max_y = (int32_t)w->level->height * NP_TILE - NP_SCREEN_H;
-    int32_t target_x = NP_F2I(w->player.x) + a->box_w / 2 - NP_SCREEN_W / 2;
-    int32_t target_y = NP_F2I(w->player.y) + a->box_h / 2 - NP_SCREEN_H / 2;
+    int32_t centro_x = NP_F2I(w->player.x) + a->box_w / 2;
+    int32_t centro_y = NP_F2I(w->player.y) + a->box_h / 2;
+    int32_t target_x, target_y;
     if (max_x < 0) max_x = 0;
     if (max_y < 0) max_y = 0;
+    if (np_camara_pantallas) {
+        if (centro_x < 0) centro_x = 0;
+        if (centro_y < 0) centro_y = 0;
+        target_x = (centro_x / NP_SCREEN_W) * NP_SCREEN_W;
+        target_y = (centro_y / NP_SCREEN_H) * NP_SCREEN_H;
+    } else {
+        target_x = centro_x - NP_SCREEN_W / 2;
+        target_y = centro_y - NP_SCREEN_H / 2;
+    }
     w->cam_x = NP_CLAMP(target_x, 0, max_x);
     w->cam_y = NP_CLAMP(target_y, 0, max_y);
 }

@@ -307,6 +307,7 @@ class Project:
     lives: int
     time_limit: int
     hud: bool
+    camera: str            # "scroll" o "pantallas"
     player: Player
     tileset: Tileset
     tiles: Dict[str, TileDef]
@@ -400,6 +401,27 @@ def _actor_geometry(node: Node, where: str, default_frame: Tuple[int, int]
     else:
         bx, by = offset
     return fw, fh, bw, bh, bx, by
+
+
+CAMARAS = {
+    "scroll": "scroll", "desplazamiento": "scroll", "suave": "scroll",
+    "pantallas": "pantallas", "pantalla": "pantallas", "screens": "pantallas",
+    "flip": "pantallas", "pantalla_a_pantalla": "pantallas",
+}
+
+
+def _leer_camara(game: Node) -> str:
+    """Como se mueve la camara: siguiendo al jugador o de pantalla en pantalla."""
+    texto = (game.str_(["camara", "cámara", "camera"], "scroll") or "scroll")
+    clave = str(texto).strip().lower().replace(" ", "_").replace("-", "_")
+    if clave not in CAMARAS:
+        raise ProjectError(
+            "no entiendo la camara '%s'" % texto,
+            hint="pon 'scroll' (el escenario se desliza) o 'pantallas' "
+                 "(salta de pantalla en pantalla)",
+            where="juego",
+        )
+    return CAMARAS[clave]
 
 
 def _read_player(node: Node, root: str) -> Player:
@@ -868,6 +890,7 @@ def load_project(path: str) -> Project:
     lives = game.int_(["lives", "vidas"], 3, 1, 9)
     time_limit = game.int_(["time", "tiempo", "tiempo_limite"], 0, 0, 999)
     hud = game.bool_(["hud", "marcador"], True)
+    camera = _leer_camara(game)
     sistema = (game.str_(["system", "sistema", "maquina", "máquina"], "neogeo") or "neogeo")
     bg = game.raw("background", "fondo", "color_fondo")
     default_bg = parse_color(bg, "juego") if bg is not None else (16, 24, 48)
@@ -919,9 +942,19 @@ def load_project(path: str) -> Project:
             where=os.path.basename(path),
         )
 
+    if camera == "pantallas":
+        for nivel in levels:
+            ancho, alto = len(nivel.rows[0]) * 16, len(nivel.rows) * 16
+            if ancho % 320 or (alto > 224 and alto % 224):
+                warnings.append(
+                    "con la camara por pantallas, '%s' mide %dx%d pixeles y no son "
+                    "pantallas enteras (320x224): la ultima se solapara con la "
+                    "anterior" % (nivel.name, ancho, alto))
+                break
+
     return Project(
         root=root, title=title.upper()[:24], author=author[:24], system=sistema,
-        lives=lives,
+        lives=lives, camera=camera,
         time_limit=time_limit, hud=hud, player=player, tileset=tileset, tiles=tiles,
         enemies=enemies, items=items, layers=layers, sound=sound, levels=levels,
         warnings=warnings,
