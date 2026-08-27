@@ -7,26 +7,41 @@
  *
  * El reparto queda asi:
  *
- *   - el DSP genera las ondas: tres cuadradas y un ruido, sumadas. Su programa
- *     lo escribe y lo ensambla el compilador (tools/ngplat/jerry.py) y viene en
- *     sonido.c como una tabla de longs;
+ *   - el DSP genera las ondas: tres cuadradas, un ruido y una muestra digital,
+ *     sumados. Su programa lo escribe y lo ensambla el compilador
+ *     (tools/ngplat/jerry.py) y viene en sonido.c como una tabla de longs;
  *   - el 68000 hace lo de siempre, lo mismo que en el Amiga y la Mega Drive:
  *     lleva la cuenta de las secuencias del game.yaml y, cada frame, deja en la
  *     RAM del DSP que paso y que amplitud toca cada canal.
  *
- * El bloque compartido son siete palabras seguidas:
+ * El bloque compartido son diez palabras seguidas:
  *
  *     paso0 paso1 paso2 amplitud0 amplitud1 amplitud2 amplitud_ruido
+ *     pcm_puntero pcm_fin pcm_ganancia
  *
  * El paso es el incremento de fase de 32 bits; en la tabla de notas cabe en 16
  * (paso >> 14), asi que aqui se devuelve a su sitio.
+ *
+ * De la muestra digital el 68000 solo escribe donde empieza y donde acaba: el
+ * puntero **lo adelanta el DSP**, un byte por cada muestra de audio, y cuando
+ * llega al final lo pone a cero y se apaga sola. Por eso el WAV viene ya a la
+ * frecuencia del DSP y aqui no hay que llevar ninguna cuenta.
  */
 
 #include "np_jaguar.h"
 #include "np_sonido.h"
 
 #define NP_CANALES 3
-#define NP_PARAMETROS 7
+#define NP_PARAMETROS 10
+#define NP_PCM_PUNTERO 7
+#define NP_PCM_FIN 8
+#define NP_PCM_GANANCIA 9
+/* La muestra llega a +-128 y aqui todo se suma en el mismo DAC, asi que la
+   ganancia es cuanto pesa frente a la musica. Mientras suena una muestra el
+   canal de efectos esta callado, asi que lo mas que puede sumarse es la musica
+   a tope (2 * 15 * 400 = 12.000) mas 128 * 110 = 14.080: 26.080 de los 32.767
+   que caben. */
+#define NP_PCM_GAIN 110
 #define NP_DESPLAZAMIENTO 14        /* el que usa jerry.py al guardar el paso */
 /* Aqui los cuatro canales se suman en el mismo DAC, asi que el reparto de
    volumen lo decide el motor: los efectos y la percusion pesan casi el doble
@@ -69,6 +84,17 @@ static void np_callar(uint8_t canal)
 static void np_ruido(uint8_t volumen)
 {
     if (np_bloque) np_bloque[NP_CANALES * 2] = np_amplitud(2, volumen);
+}
+
+/* Arrancar una muestra: se le da al DSP donde empieza y donde acaba, y el
+   resto lo lleva el. El orden importa: primero el final y la ganancia y
+   despues el puntero, porque es el puntero lo que hace que empiece a sonar. */
+static void np_muestra(const NpSndMuestra *m)
+{
+    if (!np_bloque) return;
+    np_bloque[NP_PCM_FIN] = (uint32_t)(uintptr_t)m->datos + m->largo;
+    np_bloque[NP_PCM_GANANCIA] = NP_PCM_GAIN;
+    np_bloque[NP_PCM_PUNTERO] = (uint32_t)(uintptr_t)m->datos;
 }
 
 void np_sound_init(void)
@@ -161,8 +187,16 @@ void np_sound_update(const NpWorld *w)
         for (i = 0; i < NP_SFX_SLOTS; i++) {
             if ((w->sfx & (1 << i)) && np_sfx_command[i]) {
                 uint8_t indice = (uint8_t)(np_sfx_command[i] - 1);
-                if (indice < np_snd_efecto_count)
-                    np_arrancar(2, np_snd_efectos[indice], 0);
+                if (indice < np_snd_efecto_count) {
+                    const NpSndMuestra *m = &np_snd_muestras[indice];
+                    if (m->largo) {
+                        np_arrancar(2, 0, 0);      /* callar las notas */
+                        np_ruido(0);
+                        np_muestra(m);
+                    } else {
+                        np_arrancar(2, np_snd_efectos[indice], 0);
+                    }
+                }
                 break;
             }
         }

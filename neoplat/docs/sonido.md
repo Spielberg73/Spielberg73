@@ -117,19 +117,27 @@ llegan una vez por línea de barrido: por eso el driver espera **dos cambios de
 línea** antes de cambiar el puntero. Sin esa espera las muestras cortas se
 cortan por la mitad.
 
+**Jaguar.** Como no hay chip, la muestra es una voz más del programa del DSP:
+un byte del cartucho por cada muestra de audio, sumado a las tres cuadradas y
+al ruido antes de ir a los DAC. Por eso el WAV se remuestrea a los **20.774 Hz**
+exactos del DSP y no hay que interpolar. El puntero lo adelanta el propio DSP;
+el 68000 sólo dice dónde empieza y dónde acaba. Los detalles (y el registro que
+no se podía usar) en [jaguar.md](jaguar.md).
+
 **Cómo se comprueba.** Igual que la música: escuchando. El proyecto de prueba
 (`tests/comun.py`, `proyecto_con_muestra`) pone como efecto de salto un tono
 puro a **3.000 Hz y sin notas de recambio**; 3.000 Hz no es ninguna nota de la
 canción ni armónico impar de ninguna, así que ahí no llega nada más. Se mide la
 energía en esa frecuencia estando quieto y saltando: con la muestra suena 20
-veces más, y desactivando el camino de las muestras en el driver baja a 0,4.
-La prueba es `tests/test_sistemas.py`, `TestMuestras`.
+veces más en el Amiga y 8 en la Jaguar, y desactivando el camino de las
+muestras en el driver del Amiga baja a 0,4. La prueba es
+`tests/test_sistemas.py`, `TestMuestras`.
 
 ## Lo que aún no hace
 
-- **Muestras digitales en tres de las cinco máquinas.** El Amiga ya las toca;
-  la ROM V1 de la Neo Geo, el YM2612 de la Mega Drive y los DAC de la Jaguar
-  pueden y todavía no se usan. El YM2149 del Atari ST no puede, salvo moviendo
+- **Muestras digitales en dos de las cinco máquinas.** El Amiga y la Jaguar ya
+  las tocan; la ROM V1 de la Neo Geo y el YM2612 de la Mega Drive pueden y
+  todavía no se usan. El YM2149 del Atari ST no puede, salvo moviendo
   el volumen a mano desde la CPU, así que ahí no las habrá; el compilador avisa
   de los efectos que se quedarían mudos.
 - **FM.** La Mega Drive tiene el YM2612 y la Neo Geo cuatro canales FM del

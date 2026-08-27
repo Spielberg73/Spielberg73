@@ -237,7 +237,11 @@ def ruido(duracion: int, volumen: int, tono: int = 16) -> List[Paso]:
 # funcion con dos parametros: el ritmo y como se calcula el periodo.
 
 def _bytes_c(datos: bytes, por_linea: int = 16) -> List[str]:
-    valores = [str(b - 256 if b > 127 else b) for b in datos]
+    """Los bytes tal cual. En la tabla van como `uint8_t` porque lo que
+    importa es lo que queda en la ROM, no como se lea: el Amiga guarda la
+    muestra con signo (es lo que come Paula) y la Jaguar con el silencio en
+    128 (es lo que le conviene a `loadb` del DSP), y las dos son bytes."""
+    valores = [str(b) for b in datos]
     return ["    " + ", ".join(valores[i:i + por_linea]) + ","
             for i in range(0, len(valores), por_linea)]
 
@@ -252,11 +256,14 @@ def preparar_muestra(efecto: Efecto, ritmo: int, maximo: int) -> Optional[wav.Mu
 
 def tabla_de_muestras_c(efectos: List[Efecto], ritmo: int, fps: int,
                         periodo, maximo: int = 32768,
-                        par: bool = False) -> Tuple[List[str], int]:
+                        par: bool = False,
+                        sin_signo: bool = False) -> Tuple[List[str], int]:
     """Las lineas de C con las muestras y su tabla, y cuantos bytes ocupan.
 
     `periodo(ritmo)` es lo que hay que escribirle al chip; `par` rellena cada
-    muestra hasta un numero par de bytes (Paula lee palabras, no bytes).
+    muestra hasta un numero par de bytes (Paula lee palabras, no bytes), y
+    `sin_signo` las guarda con el silencio en 128 (que es lo que le conviene al
+    DSP de la Jaguar).
     """
     lineas: List[str] = []
     entradas: List[str] = []
@@ -267,10 +274,12 @@ def tabla_de_muestras_c(efectos: List[Efecto], ritmo: int, fps: int,
             entradas.append("    { 0, 0, 0, 0 },")
             continue
         datos = muestra.datos
+        if sin_signo:
+            datos = bytes((b + 128) & 0xFF for b in datos)
         if par and len(datos) % 2:
             datos += b"\x00"
         total += len(datos)
-        lineas.append("static const int8_t np_pcm%d[] = {" % i)
+        lineas.append("static const uint8_t np_pcm%d[] = {" % i)
         lineas.extend(_bytes_c(datos))
         lineas.append("};")
         lineas.append("")

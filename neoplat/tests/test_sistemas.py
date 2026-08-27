@@ -1169,13 +1169,21 @@ class TestMuestras(unittest.TestCase):
         self.assertEqual(muestras.comprobar_maquina(sistema, ruta), 0,
                          "la muestra digital no suena")
 
+    def _rom(self, sistema, carpeta, extension):
+        ruta = os.path.join(self._construir(sistema), carpeta)
+        salida = [f for f in os.listdir(ruta) if f.endswith(extension)]
+        self.assertTrue(salida, "no se ha construido nada en " + carpeta)
+        return os.path.join(ruta, salida[0])
+
+    def test_la_jaguar_toca_la_muestra(self):
+        """El DSP lee el sonido del cartucho, un byte por muestra de audio, y
+        lo suma a las ondas cuadradas antes de mandarlo a los DAC."""
+        self._escuchar("jaguar", self._rom("jaguar", "rom", ".j64"))
+
     def test_el_amiga_toca_la_muestra(self):
         """Paula lee el sonido de la RAM chip por DMA, igual que lee la onda
         cuadrada de las notas: para ella una muestra no es un caso aparte."""
-        disco = os.path.join(self._construir("amiga"), "disco")
-        adf = [f for f in os.listdir(disco) if f.endswith(".adf")]
-        self.assertTrue(adf, "no se ha creado el disquete")
-        self._escuchar("amiga", os.path.join(disco, adf[0]))
+        self._escuchar("amiga", self._rom("amiga", "disco", ".adf"))
 
 
 if __name__ == "__main__":

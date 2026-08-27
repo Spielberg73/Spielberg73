@@ -29,7 +29,10 @@ typedef struct {
  * `largo == 0` quiere decir que ese efecto no es digital y se toca con notas.
  */
 typedef struct {
-    const int8_t *datos;
+    /* Bytes, sin interpretar: cada maquina los guarda como le convienen (el
+       Amiga con signo, que es lo que come Paula; la Jaguar con el silencio en
+       128, que es lo que le conviene al `loadb` del DSP). */
+    const uint8_t *datos;
     uint16_t largo;              /* en bytes */
     uint16_t periodo;            /* lo que necesita el chip para su frecuencia */
     uint16_t frames;             /* cuanto dura, en frames de video */

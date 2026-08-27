@@ -333,7 +333,8 @@ Sólo hay una:
 | | |
 |---|---|
 | Amiga | sí: es lo que hace Paula de serie, leyendo el sonido de la RAM chip por DMA |
-| Neo Geo, Mega Drive, Atari Jaguar | todavía no (sus chips pueden; el kit aún no lo usa) y suenan las notas de al lado |
+| Atari Jaguar | sí: el DSP las lee del cartucho, byte a byte, y las mezcla con las ondas cuadradas |
+| Neo Geo, Mega Drive | todavía no (sus chips pueden; el kit aún no lo usa) y suenan las notas de al lado |
 | Atari ST | **nunca**: el YM2149 sólo hace ondas cuadradas |
 
 Donde no hay muestra suenan las notas, y si un efecto es sólo muestra el

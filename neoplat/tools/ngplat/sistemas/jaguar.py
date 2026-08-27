@@ -16,16 +16,18 @@ from typing import Dict, List
 from .. import gfx, gfx_jaguar, jerry
 from ..build import Build
 from ..errors import ProjectError
-from ..sonido import tabla_de_muestras_vacia
+from ..sonido import tabla_de_muestras_c
 from .base import Limites, Salida, Sistema, registrar
 
 COLOR_HUD = 255                       # el ultimo color, para el marcador
+PCM_MAXIMO = 128 * 1024               # por efecto; el cartucho da de sobra
 MAX_TILES = 4096
 MAPA_ANCHO, MAPA_ALTO = 704, 256      # el mapa de bits del escenario
 
 
 class Jaguar(Sistema):
     nombre = "jaguar"
+    toca_muestras = True          # el DSP las lee del cartucho, byte a byte
     titulo = "Atari Jaguar"
     cpu = "68000 a 13,3 MHz (+ GPU y DSP, sin usar)"
     pantalla = (320, 224)
@@ -147,7 +149,6 @@ class Jaguar(Sistema):
                     "la primera" % nivel.name)
                 break
 
-        avisos.extend(self.aviso_de_muestras(build, "el kit todavia no usa los DAC que maneja el DSP"))
         return avisos
 
     # --- generacion -----------------------------------------------------
@@ -236,7 +237,15 @@ def _sonido_c(build: Build) -> str:
     partes.append("const uint16_t np_snd_efecto_count = %d;" % len(efectos))
     partes.append("const uint16_t np_snd_musica_count = %d;" % len(build.music_order))
     partes.append("")
-    partes.extend(tabla_de_muestras_vacia())
+    # El DSP lee un byte por muestra de audio, asi que el WAV viene ya a su
+    # frecuencia exacta y no hay nada que interpolar. Sin signo, con el
+    # silencio en 128: `loadb` da 0..255 y restar sale mas barato que extender
+    # el signo (ver tools/ngplat/jerry.py).
+    lineas, bytes_pcm = tabla_de_muestras_c(
+        [sonido.efectos[n] for n in efectos], jerry.MUESTRAS, 60,
+        lambda ritmo: 0, maximo=PCM_MAXIMO, sin_signo=True)
+    partes.extend(lineas)
+    build.pcm_bytes = bytes_pcm
     partes.append("")
 
     palabras = [int.from_bytes(codigo[i:i + 4], "big")

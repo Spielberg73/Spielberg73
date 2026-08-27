@@ -119,6 +119,28 @@ escenario se veían negros (el color 0 de la tabla) en vez del color de fondo de
 nivel, que es lo que hacen las otras tres máquinas. Ahora por ahí se ve el
 `BG`, que es justo el `fondo:` del `game.yaml`.
 
+## Muestras digitales
+
+El mismo manejador de I2S que hace las ondas cuadradas toca también sonido
+grabado: un byte del cartucho por cada muestra de audio, sin interpolar nada
+(el WAV viene ya a los 20.774 Hz del DSP). Se suma a las cuadradas antes de ir
+a los DAC.
+
+El puntero **lo adelanta el DSP**, no el 68000: vive en el bloque compartido,
+el 68000 sólo escribe dónde empieza y dónde acaba, y cuando el DSP llega al
+final lo pone a cero y la muestra se apaga sola. Los bytes se guardan sin signo
+(el silencio en 128) porque `loadb` da 0..255 y restar 128 sale más barato que
+extender el signo.
+
+Dos cosas del DSP que costaron encontrar:
+
+- el bloque no cabe en un `jr` (el salto relativo llega a 15 palabras), así que
+  la salida va por registro, con la dirección puesta al arrancar;
+- **ese registro no puede ser `r30`**: con la dirección ahí el DSP se queda
+  mudo del todo, música incluida. Con `r15` funciona. Está medido en el
+  emulador, no supuesto: la prueba de sonido pasa de 16 de 16 notas a 2 de 16
+  sólo con cambiar el número de registro.
+
 ## El mando
 
 Es una matriz: se escribe una **palabra** con la fila que se quiere en

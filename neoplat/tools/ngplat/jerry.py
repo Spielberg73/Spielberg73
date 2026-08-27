@@ -12,6 +12,7 @@ El reparto es el mismo que en las otras tres maquinas:
     canal 1 -> segunda pista
     canal 2 -> efectos
     ruido   -> percusion y golpes
+    muestra -> sonido grabado (los efectos que traen un WAV)
 
 **Como suena cada canal.** Un acumulador de fase de 32 bits al que se le suma
 un `paso` por muestra; el bit de arriba de la fase dice si la onda cuadrada
@@ -24,10 +25,20 @@ Geo o el PSG de la Mega Drive:
 El ruido sale de un registro de desplazamiento realimentado (el mismo truco que
 el PSG), sin saltos: la realimentacion se aplica con una mascara.
 
-**Como hablan el 68000 y el DSP.** Un bloque de siete palabras en la RAM del
+**La muestra digital.** El DSP tambien sabe leer sonido grabado del cartucho:
+un byte por cada muestra de audio, con lo que el WAV tiene que venir ya a
+`MUESTRAS` hercios y no hay que interpolar nada. El puntero vive en el propio
+bloque compartido y **lo adelanta el DSP**, no el 68000: asi el 68000 solo tiene
+que escribir el principio y el final para que empiece a sonar, y cuando el DSP
+llega al final pone el puntero a cero y se apaga sola. Los bytes se guardan sin
+signo (con el silencio en 128) porque `loadb` da 0..255 y restar es mas barato
+que extender el signo.
+
+**Como hablan el 68000 y el DSP.** Un bloque de diez palabras en la RAM del
 DSP, que el 68000 escribe cada frame y el manejador lee en cada muestra:
 
-    paso0, paso1, paso2, amplitud0, amplitud1, amplitud2, amplitud_ruido
+    paso0, paso1, paso2, amplitud0, amplitud1, amplitud2, amplitud_ruido,
+    pcm_puntero, pcm_fin, pcm_ganancia
 
 **Lo que hay que saber del hardware** (todo comprobado contra el emulador, que
 es lo mismo que dice la documentacion de Atari):
@@ -52,6 +63,8 @@ MUESTRAS = RELOJ // (64 * (SCLK + 1))
 DESPLAZAMIENTO = 14              # el paso se guarda en 16 bits: paso32 = campo << 14
 CANALES = 3
 AMPLITUD = 400                   # por cada punto de volumen (0-15)
+PARAMETROS = 10                  # 3 pasos + 3 amplitudes + ruido + 3 de la muestra
+PCM_CENTRO = 128                 # el silencio de un byte sin signo
 
 # --- registros de Jerry ---------------------------------------------------
 LTXD = 0xF1A148
@@ -81,6 +94,46 @@ def _canal(fase: int, amplitud: int) -> List[str]:
         "        xor    r18,r19",
         "        sub    r18,r19",
         "        add    r19,r17",
+    ]
+
+
+def _pcm() -> List[str]:
+    """El trozo del manejador que toca la muestra digital.
+
+    El salto de salida va por registro (`jump eq,(r15)`) y no por `jr`, porque
+    el bloque mide mas de las 15 palabras que alcanza un salto relativo. El
+    registro es **r15 y no r30**: con la direccion en r30 el DSP se queda mudo,
+    y esta medido en el emulador, no supuesto (r15 esta libre y funciona).
+    """
+    return [
+        "; --- la muestra digital ---------------------------------------",
+        "; El puntero lo lleva el DSP: el 68000 solo escribe donde empieza y",
+        "; donde acaba, y cuando se acaba se pone a cero sola.",
+        "        movei  #parametros,r16",
+        "        addq   #28,r16             ; [7] el puntero de ahora",
+        "        load   (r16),r24",
+        "        or     r24,r24             ; 0 = no hay nada sonando",
+        "        jump   eq,(r15)            ; r15 = sin_pcm, puesto al arrancar",
+        "        nop",
+        "        move   r16,r26",
+        "        addq   #4,r26              ; [8] donde acaba",
+        "        load   (r26),r29",
+        "        cmp    r29,r24             ; puntero - fin",
+        "        jr     cs,pcm_suena        ; con acarreo = aun no ha llegado",
+        "        nop",
+        "        moveq  #0,r24              ; se acabo: se apaga sola",
+        "        jump   t,(r15)",
+        "        store  r24,(r16)           ; ranura de retardo",
+        "pcm_suena",
+        "        loadb  (r24),r18           ; 0..255, con el silencio en 128",
+        "        sub    r27,r18             ; -128..127",
+        "        addq   #4,r26              ; [9] la ganancia",
+        "        load   (r26),r19",
+        "        imult  r19,r18",
+        "        add    r18,r17",
+        "        addq   #1,r24",
+        "        store  r24,(r16)",
+        "sin_pcm",
     ]
 
 
@@ -134,6 +187,8 @@ def fuente() -> str:
         "        sub    r18,r19",
         "        add    r19,r17",
         "",
+    ] + _pcm() + [
+        "",
         "        store  r17,(r11)           ; los dos DAC, el mismo sonido",
         "        store  r17,(r12)",
         "",
@@ -155,6 +210,8 @@ def fuente() -> str:
         "        movei  #$%06X,r12" % RTXD,
         "        movei  #$%06X,r13" % D_FLAGS,
         "        movei  #$%X,r14" % VOLVER,
+        "        movei  #%d,r27             ; el centro de la muestra" % PCM_CENTRO,
+        "        movei  #sin_pcm,r15        ; el salto de salida, ya resuelto",
         "        store  r14,(r13)           ; y a esperar la interrupcion",
         "espera",
         "        jr     t,espera",
@@ -162,7 +219,7 @@ def fuente() -> str:
         "",
         "        alinea 4",
         "parametros",
-        "        dc.l   0,0,0,0,0,0,0",
+        "        dc.l   " + ",".join(["0"] * PARAMETROS),
         "        ds     64                  ; la pila crece hacia abajo",
         "pila",
     ])

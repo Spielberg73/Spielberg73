@@ -463,11 +463,11 @@ Verificado aquí:
   acaben distintas. Ahí se vio que en la Jaguar las filas de la matriz **no se
   piden con el mismo número** en un puerto que en el otro, que es lo que hacía
   que el segundo mando no llegase.
-- **La muestra digital del Amiga se oye**: el proyecto de prueba pone como
-  efecto de salto un tono puro a 3.000 Hz sin notas de recambio, y la prueba
-  mide esa frecuencia en lo que sale del emulador antes y después de saltar.
-  Suena 20 veces más al saltar; desactivando el camino de las muestras en el
-  driver, 0,4.
+- **Las muestras digitales se oyen**: el proyecto de prueba pone como efecto de
+  salto un tono puro a 3.000 Hz sin notas de recambio, y la prueba mide esa
+  frecuencia en lo que sale del emulador antes y después de saltar. Suena 20
+  veces más en el Amiga y 8 en la Jaguar; desactivando el camino de las
+  muestras en el driver del Amiga, 0,4.
 - El driver de sonido del Z80 se ejecuta en un emulador incluido en las pruebas:
   se comprueba que recibe las órdenes del 68000 y escribe en el chip los
   periodos y volúmenes de las notas escritas en el `game.yaml`.
@@ -487,11 +487,11 @@ Lo que aún no hace:
   las demás se ignoran. Dibujarlas con el blitter y quedarse con los 32 colores
   está medido y **no cabe**: 1.311 líneas de barrido sobre las 313 que da un
   frame ([docs/amiga.md](docs/amiga.md)).
-- **Muestras digitales en cuatro de las cinco máquinas**: en el Amiga un efecto
-  ya puede ser un WAV tuyo (`muestra: sonidos/x.wav`), que Paula toca desde la
-  RAM chip; en la Neo Geo (ROM V1), la Mega Drive (YM2612) y la Jaguar (los DAC)
-  todavía no, y suenan las notas de al lado. El Atari ST no puede: su YM2149
-  sólo hace ondas cuadradas.
+- **Muestras digitales en cuatro de las cinco máquinas**: un efecto ya puede ser
+  un WAV tuyo (`muestra: sonidos/x.wav`) en el Amiga, donde lo toca Paula desde
+  la RAM chip, y en la Jaguar, donde lo lee el DSP del cartucho; en la Neo Geo
+  (ROM V1) y la Mega Drive (YM2612) todavía no, y suenan las notas de al lado.
+  El Atari ST no puede: su YM2149 sólo hace ondas cuadradas.
 - **Parallax en el Atari ST con `camara: scroll`**: con `pantallas` sí se
   dibuja, y sale gratis porque la vista está quieta; deslizándose habría que
   repintar la pantalla entera cada pocos píxeles y no cabe
