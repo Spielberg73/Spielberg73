@@ -423,6 +423,70 @@ prueba("el lienzo de pixeles pinta, rellena y deshace", function () {
   assert.strictEqual(l.coger(0, 0, 0), 0, "deshacer no funciona");
 });
 
+prueba("deshacer devuelve tambien cuantos fotogramas habia", function () {
+  var l = NPPixel.crear({ ancho: 8, alto: 8, frames: 2 });
+  l.empezarCambio();
+  l.insertarFrame(2, false);
+  assert.strictEqual(l.frames, 3);
+  l.deshacer();
+  assert.strictEqual(l.frames, 2, "el lienzo dice que tiene fotogramas de mas");
+  assert.strictEqual(l.pixeles.length, 2 * 8 * 8,
+                     "la memoria y la cuenta de fotogramas no cuadran");
+  l.rehacer();
+  assert.strictEqual(l.frames, 3);
+  assert.strictEqual(l.pixeles.length, 3 * 8 * 8);
+});
+
+prueba("el color mas parecido dice si es clavado o solo se le acerca", function () {
+  var paleta = ["#00ff00", "#fe0000", "#0000ff"];
+  assert.deepStrictEqual(NPPixel.masParecido("#fe0000", paleta),
+                         { indice: 2, exacto: true });
+  var cerca = NPPixel.masParecido("#ff0000", paleta);
+  assert.strictEqual(cerca.indice, 2);
+  assert.strictEqual(cerca.exacto, false);
+});
+
+prueba("copiar un fotograma entero y pegarlo en otro dibujo", function () {
+  var origen = NPPixel.crear({ ancho: 4, alto: 4, frames: 1 });
+  origen.paleta[0] = "#00ff00";        // indice 1
+  origen.paleta[1] = "#ff0000";        // indice 2
+  origen.pintar(0, 0, 0, 1);
+  origen.pintar(0, 1, 0, 2);
+  var trozo = origen.frameEntero(0);
+  assert.strictEqual(trozo.ancho, 4);
+  assert.strictEqual(trozo.alto, 4);
+
+  /* el destino tiene los mismos colores en otro orden, y uno solo parecido */
+  var destino = NPPixel.crear({ ancho: 4, alto: 4, frames: 1 });
+  destino.paleta[0] = "#000080";
+  destino.paleta[1] = "#00ff00";       // clavado al 1 del origen
+  destino.paleta[2] = "#fe0000";       // parecido al 2 del origen
+  var hecho = destino.pegarDeOtro(0, trozo, origen.paleta, 0, 0, true);
+  assert.strictEqual(destino.coger(0, 0, 0), 2, "el verde no ha caido en su sitio");
+  assert.strictEqual(destino.coger(0, 1, 0), 3, "el rojo no ha ido al mas parecido");
+  assert.strictEqual(hecho.aproximados, 1,
+                     "deberia avisar de que un color no estaba en la paleta");
+});
+
+prueba("pegar entre dibujos con la misma paleta no aproxima nada", function () {
+  var a = NPPixel.crear({ ancho: 4, alto: 4, frames: 1 });
+  a.pintar(0, 2, 2, 5);
+  var b = NPPixel.crear({ ancho: 4, alto: 4, frames: 1 });
+  var hecho = b.pegarDeOtro(0, a.frameEntero(0), a.paleta, 0, 0, false);
+  assert.strictEqual(b.coger(0, 2, 2), 5);
+  assert.strictEqual(hecho.aproximados, 0);
+});
+
+prueba("pegar sin transparente respeta lo que ya habia debajo", function () {
+  var a = NPPixel.crear({ ancho: 4, alto: 4, frames: 1 });
+  a.pintar(0, 0, 0, 3);                                  // el resto, transparente
+  var b = NPPixel.crear({ ancho: 4, alto: 4, frames: 1 });
+  b.pintar(0, 3, 3, 7);
+  b.pegarDeOtro(0, a.frameEntero(0), a.paleta, 0, 0, false);
+  assert.strictEqual(b.coger(0, 0, 0), 3);
+  assert.strictEqual(b.coger(0, 3, 3), 7, "el hueco del trozo ha borrado el fondo");
+});
+
 prueba("el lienzo respeta el limite de 15 colores", function () {
   var l = NPPixel.crear({ ancho: 16, alto: 16, frames: 1 });
   assert.strictEqual(l.paleta.length, 15);

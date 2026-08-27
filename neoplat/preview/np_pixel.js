@@ -33,6 +33,28 @@
 
   var MAX_DESHACER = 64;
 
+  function aRgb(hex) {
+    var t = String(hex || "#000000").replace("#", "");
+    return [parseInt(t.substr(0, 2), 16) || 0,
+            parseInt(t.substr(2, 2), 16) || 0,
+            parseInt(t.substr(4, 2), 16) || 0];
+  }
+
+  /* Que color de `paleta` se parece mas a `hex`. Devuelve el indice tal como lo
+     usan los pixeles (1 a 15; el 0 es el transparente) y si es clavado o solo
+     parecido, que es lo que hace falta para poder avisar al pegar entre dos
+     dibujos con paletas distintas. */
+  function masParecido(hex, paleta) {
+    var a = aRgb(hex), mejor = 1, distancia = Infinity;
+    for (var i = 0; i < paleta.length; i++) {
+      var b = aRgb(paleta[i]);
+      var d = (a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]) +
+              (a[2] - b[2]) * (a[2] - b[2]);
+      if (d < distancia) { distancia = d; mejor = i + 1; }
+    }
+    return { indice: mejor, exacto: distancia === 0 };
+  }
+
   function crear(opciones) {
     opciones = opciones || {};
     var lienzo = {
@@ -68,8 +90,23 @@
       return lienzo.pixeles[indice(frame, x, y)];
     };
 
+    /* Un punto al que volver. Se guardan los pixeles **y cuantos fotogramas
+       habia**: si no, deshacer un "duplicar fotograma" dejaba el lienzo
+       diciendo que tiene mas de los que caben en la memoria que le queda, y a
+       partir de ahi el ultimo se leia fuera del array. */
+    function instantanea() {
+      return { pixeles: lienzo.pixeles.slice(), frames: lienzo.frames,
+               porFila: lienzo.porFila };
+    }
+
+    function volver(a) {
+      lienzo.pixeles = a.pixeles;
+      lienzo.frames = a.frames;
+      lienzo.porFila = a.porFila;
+    }
+
     lienzo.empezarCambio = function () {
-      lienzo.historial.push(lienzo.pixeles.slice());
+      lienzo.historial.push(instantanea());
       if (lienzo.historial.length > MAX_DESHACER) lienzo.historial.shift();
       lienzo.rehacerPila.length = 0;
     };
@@ -77,16 +114,16 @@
     lienzo.deshacer = function () {
       var previo = lienzo.historial.pop();
       if (!previo) return false;
-      lienzo.rehacerPila.push(lienzo.pixeles.slice());
-      lienzo.pixeles = previo;
+      lienzo.rehacerPila.push(instantanea());
+      volver(previo);
       return true;
     };
 
     lienzo.rehacer = function () {
       var siguiente = lienzo.rehacerPila.pop();
       if (!siguiente) return false;
-      lienzo.historial.push(lienzo.pixeles.slice());
-      lienzo.pixeles = siguiente;
+      lienzo.historial.push(instantanea());
+      volver(siguiente);
       return true;
     };
 
@@ -246,11 +283,51 @@
       return cambio;
     };
 
+    /* Pega un trozo que viene de **otro dibujo**, que tendra otra paleta.
+     *
+     * Los pixeles son indices, no colores: pegarlos tal cual cambiaria los
+     * colores del dibujo sin avisar. Asi que se traduce color a color, se usa
+     * el clavado si esta y el mas parecido si no, y se devuelve cuantos han
+     * tenido que aproximarse para poder decirlo. Es la misma cuenta que hace
+     * el compilador cuando un dibujo no cabe en la paleta de la maquina.
+     */
+    lienzo.pegarDeOtro = function (frame, trozo, paletaOrigen, x0, y0,
+                                   conTransparente) {
+      var mapa = [0], aproximados = 0, i;
+      paletaOrigen = paletaOrigen || lienzo.paleta;
+      for (i = 0; i < paletaOrigen.length; i++) {
+        var cerca = masParecido(paletaOrigen[i], lienzo.paleta);
+        if (!cerca.exacto) aproximados++;
+        mapa.push(cerca.indice);
+      }
+      var traducido = { ancho: trozo.ancho, alto: trozo.alto,
+                        pixeles: new Uint8Array(trozo.pixeles.length) };
+      var usados = {};
+      for (i = 0; i < trozo.pixeles.length; i++) {
+        var valor = trozo.pixeles[i];
+        traducido.pixeles[i] = valor ? (mapa[valor] || 1) : 0;
+        if (valor) usados[valor] = 1;
+      }
+      /* solo cuentan los colores que de verdad aparecen en el trozo */
+      aproximados = 0;
+      Object.keys(usados).forEach(function (clave) {
+        var n = Number(clave);
+        if (n && paletaOrigen[n - 1] &&
+            !masParecido(paletaOrigen[n - 1], lienzo.paleta).exacto) aproximados++;
+      });
+      return { cambio: lienzo.pegar(frame, traducido, x0, y0, conTransparente),
+               aproximados: aproximados };
+    };
+
     lienzo.borrarZona = function (frame, x0, y0, x1, y1) {
       return lienzo.rect(frame, x0, y0, x1, y1, 0, true);
     };
 
     /* ----------------------------------------------------- el frame entero */
+
+    lienzo.frameEntero = function (frame) {
+      return lienzo.recortar(frame, 0, 0, lienzo.ancho - 1, lienzo.alto - 1);
+    };
 
     lienzo.espejoV = function (frame) {
       for (var x = 0; x < lienzo.ancho; x++) {
@@ -493,7 +570,8 @@
     return lienzo;
   }
 
-  var api = { crear: crear, PALETA: PALETA_POR_DEFECTO };
+  var api = { crear: crear, PALETA: PALETA_POR_DEFECTO,
+              masParecido: masParecido };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.NPPixel = api;
 })(typeof window !== "undefined" ? window : this);

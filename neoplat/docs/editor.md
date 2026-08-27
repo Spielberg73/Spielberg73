@@ -122,7 +122,29 @@ que este viva dentro del kit:
 deshacer y rehacer.
 
 **Del fotograma**: espejo, volteo, girar (si es cuadrado), limpiar, duplicar (se
-copia del anterior, que es como se animan las cosas) y quitar.
+copia del anterior, que es como se animan las cosas), quitar, **copiar** y
+**pegar**.
+
+**Copiar y pegar van de un dibujo a otro.** Se copia el fotograma entero, o el
+trozo que hayas seleccionado con «mover trozo», y se puede pegar en cualquier
+otro dibujo aunque tenga otra paleta. Eso último importa: los píxeles son
+índices, no colores, y pegarlos tal cual cambiaría los colores sin avisar. El
+editor traduce color a color —el clavado si está, el más parecido si no— y te
+dice cuántos ha tenido que aproximar. Es la misma cuenta que hace el compilador
+cuando un dibujo no cabe en la paleta de la máquina.
+
+**Nuevo** crea un dibujo que todavía no está en el `game.yaml`: le pones nombre
+y tamaño (ancho, alto y cuántos fotogramas) y sale en blanco, en la lista, bajo
+«nuevos». Al guardarlo aparece en `graficos/<nombre>.png`; para que salga en el
+juego hay que apuntarlo en el `game.yaml` —o crear el enemigo u objeto desde la
+pestaña **juego**, que ya lo hace por ti.
+
+**Importar** trae un PNG de fuera al dibujo abierto: lo que dibujaste en
+Aseprite, en GIMP o donde sea. Si mide exactamente lo que la hoja, entra tal
+cual; si es una tira de la misma altura con un número exacto de fotogramas, la
+hoja se adapta sola. Si no cuadra, te dice cuánto mide y cuánto hacía falta en
+vez de tragárselo. En cualquier caso el dibujo se queda con **los 15 colores más
+usados** del PNG, que es lo que cabe.
 
 **Para ver bien**: zoom, rejilla de píxel, marcas de fotograma —el activo va en
 amarillo— y **papel cebolla**, que enseña el fotograma anterior en fantasma

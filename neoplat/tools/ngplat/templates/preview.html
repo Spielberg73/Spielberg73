@@ -125,8 +125,14 @@
   .tira canvas.elegido { border-color: #f2b705; }
   /* --- editor de dibujos --------------------------------------------- */
   .dibujos { display: flex; gap: 12px; align-items: flex-start; }
-  .dibujos .lista { display: flex; flex-direction: column; gap: 2px; min-width: 170px;
-                    max-height: 460px; overflow: auto; }
+  .dibujos .izquierda { display: flex; flex-direction: column; gap: 6px;
+                        flex: 0 0 auto; width: 178px; }
+  .dibujos .lista { display: flex; flex-direction: column; gap: 2px;
+                    max-height: 400px; overflow: auto; }
+  .dibujos .nuevo { display: flex; flex-direction: column; gap: 4px;
+                    border: 1px solid #2b3245; border-radius: 6px; padding: 6px;
+                    background: #11141d; }
+  .dibujos .nuevo input[type=number] { width: 56px; }
   .dibujos .lista button { text-align: left; background: #171b24; color: #cfd6e4;
     border: 1px solid #2b3245; border-radius: 5px; padding: 5px 8px; cursor: pointer;
     font: 11px/1.4 ui-monospace, monospace; }
@@ -142,7 +148,6 @@
                     background: #0f131c; }
   .dibujos .derecha { display: flex; flex-direction: column; gap: 8px;
                       width: 210px; flex: 0 0 210px; align-items: flex-start; }
-  .dibujos .lista { flex: 0 0 auto; }
   #dib-canvas { image-rendering: pixelated; display: block; touch-action: none;
                 cursor: crosshair; background:
     repeating-conic-gradient(#20242f 0% 25%, #171b24 0% 50%) 50% / 16px 16px; }
@@ -315,7 +320,28 @@
 
   <div class="panel" id="panel-dibujos">
     <div class="dibujos">
-      <div class="lista" id="dib-lista"></div>
+      <div class="izquierda">
+        <div class="barra">
+          <button type="button" id="dib-nuevo">nuevo</button>
+          <button type="button" id="dib-importar">importar</button>
+          <input type="file" id="dib-archivo" accept="image/png,image/*"
+                 style="display:none">
+        </div>
+        <div class="nuevo" id="dib-nuevo-caja" hidden>
+          <label class="campo"><span>nombre</span>
+            <input type="text" id="dib-nuevo-nombre" value="dibujo" size="10"></label>
+          <label class="campo"><span>ancho</span>
+            <input type="number" id="dib-nuevo-ancho" value="16" min="8" max="64"
+                   step="8"></label>
+          <label class="campo"><span>alto</span>
+            <input type="number" id="dib-nuevo-alto" value="16" min="8" max="64"
+                   step="8"></label>
+          <label class="campo"><span>fotogramas</span>
+            <input type="number" id="dib-nuevo-frames" value="2" min="1" max="8"></label>
+          <button type="button" id="dib-nuevo-crear">crear</button>
+        </div>
+        <div class="lista" id="dib-lista"></div>
+      </div>
 
       <div class="medio">
         <div class="barra" id="dib-herramientas"></div>
@@ -340,8 +366,11 @@
           <button type="button" id="dib-limpiar">limpiar</button>
           <button type="button" id="dib-duplicar">duplicar</button>
           <button type="button" id="dib-quitar">quitar</button>
+          <button type="button" id="dib-copiar">copiar</button>
+          <button type="button" id="dib-pegar">pegar</button>
         </div>
         <div class="nota" id="dib-nota"></div>
+        <div class="nota aviso" id="dib-aviso"></div>
       </div>
 
       <div class="derecha">
@@ -1677,6 +1706,9 @@
     pintando: false,
     desde: null,         // punto de origen de linea/rect/elipse/seleccion
     recorte: null,       // lo ultimo seleccionado, para moverlo
+    portapapeles: null,  // trozo copiado, **con su paleta**: sobrevive al cambiar
+                         // de dibujo, que es para lo que sirve
+    nuevas: [],          // hojas creadas en esta sesion, que no estan en el yaml
     tocado: false,       // hay cambios sin guardar
     animacion: 0,
     animFrame: 0,
@@ -1716,6 +1748,7 @@
       return { hoja: c.sheet, nombre: c.name };
     });
     if (capas.length) grupos.push({ titulo: "fondos", dibujos: capas });
+    if (dib.nuevas.length) grupos.push({ titulo: "nuevos", dibujos: dib.nuevas });
     return grupos;
   }
 
@@ -1769,6 +1802,7 @@
     pintarDibujo();
     refrescarPreviewDibujo();
     document.getElementById("dib-guardado").textContent = "";
+    document.getElementById("dib-aviso").textContent = "";
   }
 
   /** Al abrir, un zoom que quepa en el hueco sin tener que tocar nada. */
@@ -2184,6 +2218,84 @@
     });
   }
 
+  /* ------------------------------------ crear, importar, copiar y pegar */
+
+  /** Un dibujo que todavia no esta en el game.yaml.
+   *
+   * No lo mete en el juego -para eso hay que apuntarlo en el yaml- pero si crea
+   * el archivo al guardarlo, que es la parte que no se puede hacer desde el
+   * navegador. Aparece en la lista bajo "nuevos" hasta que se recarga.
+   */
+  function crearDibujoNuevo() {
+    var nota = document.getElementById("dib-aviso");
+    function valor(id, porDefecto) {
+      return parseInt(document.getElementById(id).value, 10) || porDefecto;
+    }
+    var nombre = (document.getElementById("dib-nuevo-nombre").value || "")
+                   .toLowerCase().replace(/[^a-z0-9_-]/g, "");
+    if (!nombre) { nota.textContent = "ponle un nombre (letras, numeros, - y _)"; return; }
+    var clave = "nuevo:" + nombre;
+    if (DATA.sheets[clave]) { nota.textContent = "ya hay un dibujo con ese nombre"; return; }
+    var ancho = Math.max(8, Math.min(64, valor("dib-nuevo-ancho", 16)));
+    var alto = Math.max(8, Math.min(64, valor("dib-nuevo-alto", 16)));
+    var frames = Math.max(1, Math.min(8, valor("dib-nuevo-frames", 1)));
+    DATA.sheets[clave] = { url: "", frame_w: ancho, frame_h: alto,
+                           per_row: frames, frames: frames,
+                           ruta: "graficos/" + nombre + ".png" };
+    dib.nuevas.push({ hoja: clave, nombre: nombre });
+    document.getElementById("dib-nuevo-caja").hidden = true;
+    dib.tocado = false;
+    abrirDibujo(clave);
+    dib.tocado = true;                 // hasta que se guarde, el PNG no existe
+    nota.textContent = "dibujo nuevo de " + ancho + "x" + alto + " x" + frames +
+      "; al guardar sale en graficos/" + nombre + ".png, y para que salga en el " +
+      "juego hay que apuntarlo en el game.yaml";
+  }
+
+  /** Trae un PNG de fuera al dibujo abierto. */
+  function importarDibujo(archivo) {
+    var nota = document.getElementById("dib-aviso");
+    if (!archivo || !dib.lienzo) return;
+    var lector = new FileReader();
+    lector.onload = function () {
+      var imagen = new Image();
+      imagen.onerror = function () { nota.textContent = "no he podido leer ese archivo"; };
+      imagen.onload = function () {
+        var l = dib.lienzo;
+        var cabe = imagen.width === l.anchoHoja() && imagen.height === l.altoHoja();
+        /* misma altura y un numero exacto de fotogramas: la hoja se adapta, que
+           es lo normal al traer una tira de sprites de otro programa */
+        if (!cabe && imagen.height === l.alto && imagen.width % l.ancho === 0) {
+          var cuantos = imagen.width / l.ancho;
+          if (cuantos >= 1 && cuantos <= 8) {
+            l.ponerFrames(cuantos);
+            l.porFila = cuantos;
+            dib.frame = 0;
+            cabe = true;
+          }
+        }
+        if (!cabe) {
+          nota.textContent = "ese PNG mide " + imagen.width + "x" + imagen.height +
+            " y aqui hacen falta " + l.anchoHoja() + "x" + l.altoHoja() +
+            " (o una tira de " + l.ancho + "x" + l.alto + " en una sola fila)";
+          return;
+        }
+        l.empezarCambio();
+        l.desdeImagen(imagen, document);
+        dib.tocado = true;
+        construirPaletaDibujo();
+        construirAnimaciones();
+        ajustarZoomInicial();
+        pintarDibujo();
+        refrescarPreviewDibujo();
+        nota.textContent = "importado; el dibujo se queda con los 15 colores mas " +
+          "usados del PNG. Con 'guardar' entra en el proyecto";
+      };
+      imagen.src = lector.result;
+    };
+    lector.readAsDataURL(archivo);
+  }
+
   function engancharBotonesDibujo() {
     function tocar(fn) {
       return function () {
@@ -2199,7 +2311,7 @@
     conClic("dib-espejov", tocar(function (l, f) { l.espejoV(f); }));
     conClic("dib-girar", tocar(function (l, f) {
       if (!l.rotar(f)) {
-        document.getElementById("dib-nota").textContent =
+        document.getElementById("dib-aviso").textContent =
           "solo se pueden girar los dibujos cuadrados";
         return false;
       }
@@ -2224,6 +2336,51 @@
     conClic("dib-rehacer", function () {
       if (dib.lienzo && dib.lienzo.rehacer()) { dib.tocado = true; pintarDibujo(); }
     });
+    /* Copiar y pegar **entre dibujos**: el trozo se guarda con su paleta,
+       porque los pixeles son indices y en otro dibujo los indices son otros
+       colores. Al pegar se traduce color a color. */
+    conClic("dib-copiar", function () {
+      if (!dib.lienzo) return;
+      var trozo = dib.recorte || dib.lienzo.frameEntero(dib.frame);
+      dib.portapapeles = { ancho: trozo.ancho, alto: trozo.alto,
+                           pixeles: trozo.pixeles.slice(0),
+                           paleta: dib.lienzo.paleta.slice(0) };
+      document.getElementById("dib-aviso").textContent =
+        "copiado un trozo de " + trozo.ancho + "x" + trozo.alto +
+        "; se puede pegar en cualquier otro dibujo";
+    });
+    conClic("dib-pegar", tocar(function (l, f) {
+      var nota = document.getElementById("dib-aviso");
+      if (!dib.portapapeles) { nota.textContent = "no hay nada copiado"; return false; }
+      var donde = (dib.recorte && dib.desde) ? dib.desde : { x: 0, y: 0 };
+      var hecho = l.pegarDeOtro(f, dib.portapapeles, dib.portapapeles.paleta,
+                                donde.x, donde.y, false);
+      nota.textContent = hecho.aproximados
+        ? ("pegado, pero " + hecho.aproximados + " color(es) no estaban en esta " +
+           "paleta y se han cambiado por el mas parecido")
+        : "pegado";
+    }));
+
+    conClic("dib-nuevo", function () {
+      var caja = document.getElementById("dib-nuevo-caja");
+      caja.hidden = !caja.hidden;
+    });
+    conClic("dib-nuevo-crear", crearDibujoNuevo);
+    conClic("dib-importar", function () {
+      var archivo = document.getElementById("dib-archivo");
+      if (!dib.lienzo) {
+        document.getElementById("dib-aviso").textContent =
+          "abre primero un dibujo (o crea uno nuevo) donde meterlo";
+        return;
+      }
+      archivo.value = "";
+      archivo.click();
+    });
+    var entrada = document.getElementById("dib-archivo");
+    if (entrada) entrada.addEventListener("change", function () {
+      importarDibujo(entrada.files && entrada.files[0]);
+    });
+
     conClic("dib-guardar", guardarDibujo);
     conClic("dib-revertir", function () {
       if (!dib.hoja) return;
@@ -2685,6 +2842,9 @@
       abrir: abrirDibujo,
       estado: function () { return dib; },
       guardar: guardarDibujo,
+      crear: crearDibujoNuevo,
+      importar: importarDibujo,
+      lista: dibujosDelProyecto,
       png: function () { return dib.lienzo ? pngDelDibujo() : ""; }
     },
     modoEditor: modoEditor,

@@ -22,6 +22,26 @@ CHROMIUM_POSIBLES = [
 ]
 
 
+def _png_de_prueba(ancho, alto):
+    """Un PNG de colores planos, para probar la importacion desde el disco."""
+    import struct
+    import zlib
+    filas = b""
+    for y in range(alto):
+        filas += b"\0"
+        for x in range(ancho):
+            filas += bytes((255 if (x // 8) % 2 else 40, (y * 8) % 256, 90, 255))
+
+    def trozo(tipo, cuerpo):
+        return (struct.pack(">I", len(cuerpo)) + tipo + cuerpo +
+                struct.pack(">I", zlib.crc32(tipo + cuerpo) & 0xFFFFFFFF))
+
+    return (b"\x89PNG\r\n\x1a\n"
+            + trozo(b"IHDR", struct.pack(">IIBBBBB", ancho, alto, 8, 6, 0, 0, 0))
+            + trozo(b"IDAT", zlib.compress(filas))
+            + trozo(b"IEND", b""))
+
+
 def _lanzar(pw):
     for ruta in CHROMIUM_POSIBLES:
         if ruta and os.path.isfile(ruta):
@@ -294,6 +314,102 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
             i.src = window.NeoPlat.dibujos.png(); })""")
         print("png del jugador:", json.dumps(medidas))
         exigir(medidas == [96, 16], "el PNG no mide lo que la hoja: %s" % medidas)
+
+        # --- copiar de un dibujo y pegarlo en otro ------------------------
+        #
+        # Los pixeles son indices de paleta, asi que pegarlos tal cual en otro
+        # dibujo cambiaria los colores sin avisar: lo que se comprueba es que
+        # el trozo llega **y** que el editor dice cuantos colores ha tenido que
+        # aproximar.
+        pagina.click("#dib-copiar")
+        pagina.wait_for_timeout(120)
+        copiado = pagina.evaluate("""() => { const p = window.NeoPlat.dibujos.estado().portapapeles;
+            return p ? { ancho: p.ancho, alto: p.alto, paleta: p.paleta.length } : null; }""")
+        print("copiado:", json.dumps(copiado))
+        exigir(copiado and copiado["ancho"] == 16 and copiado["alto"] == 16,
+               "copiar no ha guardado el fotograma: %s" % copiado)
+        exigir(copiado and copiado["paleta"] == 15,
+               "el trozo copiado no se lleva su paleta")
+
+        pagina.evaluate("""() => { const d = window.NeoPlat.dibujos.estado();
+            d.tocado = false; window.NeoPlat.dibujos.abrir('item0'); }""")
+        pagina.wait_for_timeout(250)
+        antes_pegar = pagina.evaluate(
+            "() => window.NeoPlat.dibujos.estado().lienzo.indicesUsados().length")
+        pagina.click("#dib-pegar")
+        pagina.wait_for_timeout(200)
+        pegado = pagina.evaluate("""() => { const d = window.NeoPlat.dibujos.estado();
+            let n = 0;
+            for (let y = 0; y < 16; y++)
+              for (let x = 0; x < 16; x++) if (d.lienzo.coger(0, x, y)) n++;
+            return { hoja: d.hoja, pintados: n, tocado: d.tocado,
+                     aviso: document.getElementById('dib-aviso').textContent }; }""")
+        print("pegado:", json.dumps(pegado))
+        exigir(pegado["hoja"] == "item0", "no se ha cambiado de dibujo")
+        exigir(pegado["pintados"] > 20,
+               "el trozo pegado no ha llegado: %s" % pegado)
+        exigir("pegado" in pegado["aviso"], "no dice que ha pegado: %r" % pegado["aviso"])
+        exigir(antes_pegar >= 1, "la moneda estaba vacia y la prueba no vale")
+
+        # --- un dibujo nuevo, que todavia no esta en el game.yaml ---------
+        pagina.evaluate("() => { window.NeoPlat.dibujos.estado().tocado = false; }")
+        pagina.click("#dib-nuevo")
+        pagina.fill("#dib-nuevo-nombre", "chispa")
+        pagina.fill("#dib-nuevo-ancho", "16")
+        pagina.fill("#dib-nuevo-alto", "32")
+        pagina.fill("#dib-nuevo-frames", "3")
+        pagina.click("#dib-nuevo-crear")
+        pagina.wait_for_timeout(300)
+        nuevo = pagina.evaluate("""() => { const d = window.NeoPlat.dibujos.estado();
+            return { hoja: d.hoja, ancho: d.lienzo.ancho, alto: d.lienzo.alto,
+                     frames: d.lienzo.frames, vacio: d.lienzo.vacio(),
+                     ruta: (window.NeoPlat.data.sheets[d.hoja] || {}).ruta,
+                     enLista: Array.from(document.querySelectorAll('#dib-lista button'))
+                        .some(b => b.textContent.indexOf('chispa') >= 0) }; }""")
+        print("dibujo nuevo:", json.dumps(nuevo))
+        exigir(nuevo["ancho"] == 16 and nuevo["alto"] == 32 and nuevo["frames"] == 3,
+               "el dibujo nuevo no tiene el tamano pedido: %s" % nuevo)
+        exigir(nuevo["vacio"], "el dibujo nuevo no empieza en blanco")
+        exigir(nuevo["ruta"] == "graficos/chispa.png",
+               "el dibujo nuevo no sabe donde se guarda: %s" % nuevo)
+        exigir(nuevo["enLista"], "el dibujo nuevo no sale en la lista")
+
+        # --- importar un PNG de fuera -------------------------------------
+        #
+        # Se importa el propio PNG del jugador (96x16, seis fotogramas de 16x16)
+        # sobre un dibujo de 16x32: no cuadra por altura, asi que el editor
+        # tiene que decirlo en vez de tragarselo.
+        fuera = os.path.join(capturas, "importado.png")
+        with open(fuera, "wb") as fh:
+            fh.write(_png_de_prueba(64, 16))
+        # dos copias con nombres distintos: el navegador no vuelve a avisar si
+        # se le da dos veces el mismo archivo
+        otra_vez = os.path.join(capturas, "importado2.png")
+        with open(otra_vez, "wb") as fh:
+            fh.write(_png_de_prueba(64, 16))
+        pagina.set_input_files("#dib-archivo", fuera)
+        pagina.wait_for_timeout(400)
+        malo = pagina.evaluate("() => document.getElementById('dib-aviso').textContent")
+        print("importar que no cuadra:", json.dumps(malo))
+        exigir("hacen falta" in malo,
+               "no avisa de que el PNG no cuadra: %r" % malo)
+
+        # y ahora uno que si: 64x16 sobre el jugador, que son cuatro fotogramas
+        pagina.evaluate("""() => { const d = window.NeoPlat.dibujos.estado();
+            d.tocado = false; window.NeoPlat.dibujos.abrir('player'); }""")
+        pagina.wait_for_timeout(250)
+        pagina.set_input_files("#dib-archivo", otra_vez)
+        pagina.wait_for_timeout(500)
+        traido = pagina.evaluate("""() => { const d = window.NeoPlat.dibujos.estado();
+            return { frames: d.lienzo.frames, porFila: d.lienzo.porFila,
+                     ancho: d.lienzo.anchoHoja(), tocado: d.tocado,
+                     usados: d.lienzo.indicesUsados().length,
+                     aviso: document.getElementById('dib-aviso').textContent }; }""")
+        print("importado:", json.dumps(traido))
+        exigir(traido["frames"] == 4 and traido["ancho"] == 64,
+               "la hoja no se ha adaptado a los cuatro fotogramas: %s" % traido)
+        exigir(traido["usados"] >= 2, "el PNG importado no ha traido dibujo")
+        exigir(traido["tocado"], "importar no marca el dibujo como sin guardar")
 
         # se pinta en el mapa y aparece al jugar
         pagina.click("#pestanas button[data-panel=mapa]")
