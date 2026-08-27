@@ -186,6 +186,11 @@ class MegaDrive(Sistema):
         salida.resumen.append("graficos: %d tiles de 8x8 (%d KB en la ROM)"
                               % (vram.cuantos, len(vram.tiles) // 1024))
         salida.resumen.append("paletas:  4 de 16 colores (las del juego se han fusionado)")
+        if build.pcm_bytes:
+            salida.resumen.append(
+                "muestras: %d efectos digitales a %d Hz por el Z80 (%d KB en la ROM)"
+                % (sum(1 for e in build.project.sound.efectos.values() if e.digital),
+                   md_pcm.RITMO, (build.pcm_bytes + 1023) // 1024))
         return salida
 
 

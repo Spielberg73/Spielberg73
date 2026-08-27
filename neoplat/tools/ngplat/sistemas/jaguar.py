@@ -172,6 +172,11 @@ class Jaguar(Sistema):
         salida.resumen.append(
             "sonido:   %d muestras por segundo, con un driver de %d bytes para el DSP"
             % (jerry.MUESTRAS, len(build.info["dsp"])))
+        if build.pcm_bytes:
+            salida.resumen.append(
+                "muestras: %d efectos digitales a %d Hz (%d KB en el cartucho)"
+                % (sum(1 for e in build.project.sound.efectos.values() if e.digital),
+                   jerry.MUESTRAS, (build.pcm_bytes + 1023) // 1024))
         salida.resumen.append("cartucho: rom/%s.j64 (2 MB)" % nombre)
         return salida
 
