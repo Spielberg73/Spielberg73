@@ -463,12 +463,19 @@ for _nombre, _funcion in list(globals().items()):
 
 
 class YM2610Falso:
-    """YM2610 de mentira: apunta lo que le escriben y simula el temporizador."""
+    """YM2610 de mentira: apunta lo que le escriben y simula el temporizador.
+
+    El chip tiene dos mitades con sus propios puertos: la A ($04 direccion,
+    $05 dato) con el SSG y los temporizadores, y la B ($06 y $07) con los seis
+    canales de muestras en ADPCM-A. Cada una lleva sus registros aparte."""
 
     def __init__(self):
         self.registros: Dict[int, int] = {}
+        self.registros_b: Dict[int, int] = {}
         self.escrituras: List[tuple] = []
+        self.escrituras_b: List[tuple] = []
         self.direccion = 0
+        self.direccion_b = 0
         self.timer_listo = False
         self.comando = 0
 
@@ -487,3 +494,8 @@ class YM2610Falso:
             self.escrituras.append((self.direccion, valor))
             if self.direccion == 0x27 and (valor & 0x20):
                 self.timer_listo = False     # se ha limpiado el aviso
+        elif puerto == 0x06:
+            self.direccion_b = valor
+        elif puerto == 0x07:
+            self.registros_b[self.direccion_b] = valor
+            self.escrituras_b.append((self.direccion_b, valor))

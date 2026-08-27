@@ -466,8 +466,11 @@ Verificado aquí:
 - **Las muestras digitales se oyen**: el proyecto de prueba pone como efecto de
   salto un tono puro a 3.000 Hz sin notas de recambio, y la prueba mide esa
   frecuencia en lo que sale del emulador antes y después de saltar. Suena 20
-  veces más en el Amiga y 8 en la Jaguar; desactivando el camino de las
-  muestras en el driver del Amiga, 0,4.
+  veces más en el Amiga, 19 en la Mega Drive, 13 en la Neo Geo y 8 en la
+  Jaguar; desactivando el camino de las muestras en el driver del Amiga, 0,4.
+  El driver de Z80 de la Mega Drive se ejecuta byte a byte en el emulador del
+  kit, cruce de banco incluido, y en la Neo Geo el banco descifra el ADPCM-A
+  para poder oírlo.
 - El driver de sonido del Z80 se ejecuta en un emulador incluido en las pruebas:
   se comprueba que recibe las órdenes del 68000 y escribe en el chip los
   periodos y volúmenes de las notas escritas en el `game.yaml`.
@@ -488,10 +491,12 @@ Lo que aún no hace:
   está medido y **no cabe**: 1.311 líneas de barrido sobre las 313 que da un
   frame ([docs/amiga.md](docs/amiga.md)).
 - **Muestras digitales en cuatro de las cinco máquinas**: un efecto ya puede ser
-  un WAV tuyo (`muestra: sonidos/x.wav`) en el Amiga, donde lo toca Paula desde
-  la RAM chip, y en la Jaguar, donde lo lee el DSP del cartucho; en la Neo Geo
-  (ROM V1) y la Mega Drive (YM2612) todavía no, y suenan las notas de al lado.
-  El Atari ST no puede: su YM2149 sólo hace ondas cuadradas.
+  un WAV tuyo (`muestra: sonidos/x.wav`). Lo toca Paula desde la RAM chip en el
+  Amiga; en la Mega Drive se lo da al DAC del YM2612 un driver de Z80 que genera
+  el propio compilador; en la Jaguar lo lee el DSP del cartucho; y en la Neo Geo
+  van por los canales ADPCM-A del YM2610, con la ROM V1 que también monta el
+  compilador (con su códec, en Python puro). El Atari ST no puede: su YM2149
+  sólo hace ondas cuadradas, y ahí suenan las notas que le pongas al lado.
 - **Parallax en el Atari ST con `camara: scroll`**: con `pantallas` sí se
   dibuja, y sale gratis porque la vista está quieta; deslizándose habría que
   repintar la pantalla entera cada pocos píxeles y no cabe

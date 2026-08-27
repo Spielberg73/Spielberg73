@@ -60,7 +60,9 @@ void np_md_init(void)
      * tocar el VDP. En las de primera no hace dano. */
     if (*MD_VERSION & 0x0F) *MD_TMSS = 0x53454741UL;   /* "SEGA" */
 
-    /* el Z80 se queda parado: NeoPlat hace el sonido desde el 68000 */
+    /* El Z80 lo arranca np_sound_init: las notas las toca el 68000 por el PSG,
+     * pero las muestras digitales las lleva el Z80 (ver np_sound.c). Aqui se
+     * deja quieto, con el bus pedido y sin reset. */
     *MD_Z80_BUS = 0x0100;
     *MD_Z80_RESET = 0x0100;
 

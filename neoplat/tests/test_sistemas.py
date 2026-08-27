@@ -1164,16 +1164,33 @@ class TestMuestras(unittest.TestCase):
         self.assertEqual(hecho.returncode, 0, hecho.stdout + hecho.stderr)
         return out
 
-    def _escuchar(self, sistema, ruta):
+    def _escuchar(self, sistema, ruta, sonido=False):
         import muestras
-        self.assertEqual(muestras.comprobar_maquina(sistema, ruta), 0,
+        self.assertEqual(muestras.comprobar_maquina(sistema, ruta, sonido), 0,
                          "la muestra digital no suena")
+
+    def test_la_neogeo_toca_la_muestra(self):
+        """El YM2610 lee las muestras el solo de la ROM V1, en ADPCM-A. El
+        banco del kit las descifra para poder oirlas."""
+        try:
+            import machine68k  # noqa: F401
+        except ImportError:
+            self.skipTest("falta machine68k (pip3 install amitools)")
+        from ngplat.project import load_project
+        sonido = load_project(os.path.join(self.proyecto, "game.yaml")).sound
+        self._escuchar("neogeo", self._generar("neogeo"), sonido)
 
     def _rom(self, sistema, carpeta, extension):
         ruta = os.path.join(self._construir(sistema), carpeta)
         salida = [f for f in os.listdir(ruta) if f.endswith(extension)]
         self.assertTrue(salida, "no se ha construido nada en " + carpeta)
         return os.path.join(ruta, salida[0])
+
+    def test_la_megadrive_toca_la_muestra(self):
+        """El DAC esta en el YM2612 y hay que darle un byte cada 125
+        microsegundos: eso lo hace el Z80, con su propio driver."""
+        self._escuchar("megadrive",
+                       os.path.join(self._construir("megadrive"), "rom/juego.bin"))
 
     def test_la_jaguar_toca_la_muestra(self):
         """El DSP lee el sonido del cartucho, un byte por muestra de audio, y

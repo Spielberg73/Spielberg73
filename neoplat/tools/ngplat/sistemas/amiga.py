@@ -69,7 +69,7 @@ class Amiga(Sistema):
         "colores:  'amiga: 32colores' da 31 colores y ningun parallax;",
         "          'amiga: 8colores' parte los bitplanes en dos planos de 7 y 7",
         "          colores, y ahi si hay una capa de parallax por hardware",
-        "sonido:   Paula, cuatro canales",
+        "sonido:   Paula, cuatro canales; toca muestras digitales",
     ]
 
     # --- colores -------------------------------------------------------

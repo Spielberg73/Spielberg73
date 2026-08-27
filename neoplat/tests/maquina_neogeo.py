@@ -369,7 +369,12 @@ def buscar_proyecto(ruta):
     return ""
 
 
-def montar_sonido(sonido_del_proyecto, m1_en_rom):
+def adpcm_ritmo():
+    from ngplat import adpcm
+    return adpcm.RITMO
+
+
+def montar_sonido(sonido_del_proyecto, m1_en_rom, v1=None):
     """El Z80 con la ROM M1 del juego.
 
     La ROM M1 esta en build/rom, pero para ejecutarla hace falta ademas saber
@@ -381,7 +386,9 @@ def montar_sonido(sonido_del_proyecto, m1_en_rom):
     m1, info = generar_m1(sonido_del_proyecto, list(sonido_del_proyecto.musica))
     if m1_en_rom is not None and m1 != m1_en_rom:
         raise RuntimeError("la ROM M1 regenerada no coincide con la de build/rom")
-    return Sonido(m1, info["etiquetas"])
+    if v1 is not None and info["v1"] != v1:
+        raise RuntimeError("la ROM V1 regenerada no coincide con la de build/rom")
+    return Sonido(m1, info["etiquetas"], info["v1"])
 
 
 def _sonido_del_build(carpeta):
@@ -413,7 +420,9 @@ def cargar(carpeta, rom_id="202", trabajo=None, sonido=True):
                                  "%s-%s.%s" % (rom_id, sufijo, sufijo)))
 
     del_proyecto = _sonido_del_build(carpeta) if sonido is True else sonido
-    chip = montar_sonido(del_proyecto, rom("m1")) if del_proyecto else None
+    v1 = rom("v1") if os.path.isfile(
+        os.path.join(carpeta, "rom", "%s-v1.v1" % rom_id)) else None
+    chip = montar_sonido(del_proyecto, rom("m1"), v1) if del_proyecto else None
     return Maquina(leer(p1), rom("c1"), rom("c2"), rom("s1"), chip)
 
 
@@ -441,19 +450,27 @@ SONIDO_RITMO = 44100            # muestras por segundo de lo que se genera aqui
 
 
 class Sonido:
-    """El Z80 con la ROM M1, su YM2610 y el altavoz."""
+    """El Z80 con la ROM M1, su YM2610 y el altavoz.
 
-    def __init__(self, m1, etiquetas):
+    Con la ROM V1 tambien se oyen las **muestras digitales**: el chip las lee
+    el solo, en ADPCM-A y a 18.500 muestras por segundo, en cuanto el driver le
+    dice donde empiezan y donde acaban."""
+
+    def __init__(self, m1, etiquetas, v1=None):
         import z80sim
 
         self.chip = z80sim.YM2610Falso()
         self.cpu = z80sim.Z80(m1, leer_puerto=self.chip.leer,
                               escribir_puerto=self.chip.escribir)
         self.etiquetas = etiquetas
+        self.v1 = v1 or b""
         self.fases = [0.0, 0.0, 0.0]
         self.ruido = 0.0
         self.muestras = []          # int16, mono
         self.colgado = 0
+        self.pcm = []               # la muestra que esta sonando, ya descifrada
+        self.pcm_donde = 0.0
+        self._visto_b = 0
         self._arrancar()
 
     def _arrancar(self):
@@ -480,6 +497,33 @@ class Sonido:
             self.colgado += 1
         self._generar(int(round(SONIDO_RITMO / fps)))
 
+    def _mirar_adpcm(self):
+        """Busca en lo que le han escrito al chip un 'arranca el canal 0'.
+
+        El registro $00 de la parte B es el de marcha: con el bit 7 a cero,
+        arrancan los canales cuyos bits esten puestos. Los limites vienen de
+        $10/$18 (principio) y $20/$28 (final), en bloques de 256 bytes."""
+        from ngplat import adpcm
+        escrituras = self.chip.escrituras_b
+        while self._visto_b < len(escrituras):
+            registro, valor = escrituras[self._visto_b]
+            self._visto_b += 1
+            if registro != 0x00:
+                continue
+            if valor & 0x80:                     # parar
+                self.pcm = []
+                continue
+            if not (valor & 0x01) or not self.v1:
+                continue
+            reg = self.chip.registros_b
+            primero = ((reg.get(0x18, 0) << 8) | reg.get(0x10, 0)) * adpcm.BLOQUE
+            ultimo = ((reg.get(0x28, 0) << 8) | reg.get(0x20, 0)) * adpcm.BLOQUE
+            ultimo += adpcm.BLOQUE - 1
+            if ultimo <= primero or ultimo >= len(self.v1):
+                continue
+            self.pcm = adpcm.descifrar(self.v1[primero:ultimo + 1])
+            self.pcm_donde = 0.0
+
     def _generar(self, cuantas):
         """La onda de los tres canales durante ese frame.
 
@@ -502,9 +546,21 @@ class Sonido:
                        for i in range(3))
         amp_ruido = 4000.0 if ruido_on else 0.0
 
+        self._mirar_adpcm()
+        paso_pcm = adpcm_ritmo() / float(SONIDO_RITMO)
+
         import random
         for _ in range(cuantas):
             total = 0.0
+            if self.pcm:
+                indice = int(self.pcm_donde)
+                if indice >= len(self.pcm):
+                    self.pcm = []
+                else:
+                    # el acumulador del chip son 12 bits; se sube a la escala
+                    # de los canales de onda cuadrada para poder mezclarlos
+                    total += self.pcm[indice] * 4.0
+                    self.pcm_donde += paso_pcm
             for i, (hz, amplitud) in enumerate(canales):
                 if amplitud <= 0.0 or hz <= 0.0:
                     continue

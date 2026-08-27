@@ -24,6 +24,7 @@ M1_ROM = "m1"
 
 class NeoGeo(Sistema):
     nombre = "neogeo"
+    toca_muestras = True          # los canales ADPCM-A del YM2610, con la ROM V1
     titulo = "Neo Geo (AES / MVS)"
     cpu = "68000 a 12 MHz"
     pantalla = (320, 224)
@@ -31,7 +32,7 @@ class NeoGeo(Sistema):
                       colores_en_pantalla=4096)
     notas = [
         "parallax: todas las capas del proyecto, cada una con su paleta",
-        "sonido:   YM2610, tres canales de onda cuadrada por un Z80",
+        "sonido:   YM2610 por un Z80: tres cuadradas y muestras en ADPCM-A",
     ]
     archivos_motor = [
         ("include/np_types.h", "src/np_types.h"),
@@ -100,7 +101,6 @@ class NeoGeo(Sistema):
         if len(build.paletas) > self.limites.paletas:
             self.error("el juego usa %d paletas y la Neo Geo tiene %d"
                        % (len(build.paletas), self.limites.paletas))
-        avisos.extend(self.aviso_de_muestras(build, "el kit todavia no usa los canales ADPCM-A del YM2610"))
         return avisos
 
     # --- generacion -----------------------------------------------------
@@ -126,6 +126,15 @@ class NeoGeo(Sistema):
         salida.binarios[nombre_m1] = m1_rom
         salida.archivos["src/sonido.z80"] = info["fuente"]
         salida.resumen.append("sonido:   %s (%d KB)" % (nombre_m1, len(m1_rom) // 1024))
+
+        # ROM de muestras: el YM2610 lee de ella por su cuenta, en ADPCM-A
+        nombre_v1 = "rom/%s-v1.v1" % rom_id
+        salida.binarios[nombre_v1] = info["v1"]
+        digitales = sum(1 for primero, _ in info["muestras"] if primero)
+        if digitales:
+            salida.resumen.append(
+                "muestras: %s (%d KB, %d efectos en ADPCM-A a %d Hz)"
+                % (nombre_v1, len(info["v1"]) // 1024, digitales, 18500))
 
         salida.archivos["Makefile"] = _makefile(build, rom_id)
         return salida

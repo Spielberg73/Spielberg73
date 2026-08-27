@@ -19,14 +19,17 @@ from typing import Dict, List
 from .. import gfx, gfx_md
 from ..build import Build
 from ..errors import ProjectError
-from ..sonido import periodo_psg, tabla_de_muestras_vacia
+from .. import md_pcm
+from ..sonido import periodo_psg, tabla_de_muestras_c
 from .base import Limites, Salida, Sistema, registrar
 
 MAX_TILES = 1344          # lo que cabe en la VRAM antes de la tabla de sprites
+PCM_MAXIMO = 64 * 1024    # por efecto; la ROM crece sola hasta la potencia de dos
 
 
 class MegaDrive(Sistema):
     nombre = "megadrive"
+    toca_muestras = True          # el Z80 se las da al DAC del YM2612
     titulo = "Sega Mega Drive / Genesis"
     cpu = "68000 a 7,6 MHz"
     pantalla = (320, 224)
@@ -51,7 +54,7 @@ class MegaDrive(Sistema):
     nombre_binario = "el cartucho"
     notas = [
         "parallax: una capa, en el plano B del VDP",
-        "sonido:   PSG SN76489, tres canales de onda cuadrada",
+        "sonido:   PSG SN76489, tres cuadradas; muestras por el DAC del YM2612",
     ]
 
     # --- colores -------------------------------------------------------
@@ -168,7 +171,6 @@ class MegaDrive(Sistema):
                 "hay niveles con %d enemigos y objetos; en Mega Drive caben 80 sprites "
                 "en pantalla y cada actor gasta uno o dos" % entidades
             )
-        avisos.extend(self.aviso_de_muestras(build, "el kit todavia no usa el DAC del YM2612"))
         return avisos
 
     # --- generacion ----------------------------------------------------
@@ -268,9 +270,29 @@ def _sonido_c(build: Build) -> str:
     partes.append("const uint16_t np_snd_efecto_count = %d;" % len(efectos))
     partes.append("const uint16_t np_snd_musica_count = %d;" % len(build.music_order))
     partes.append("")
-    partes.extend(tabla_de_muestras_vacia())
+    # Las muestras las toca el Z80 (tools/ngplat/md_pcm.py), que no interpola
+    # nada: el WAV viene ya a la frecuencia que da su bucle.
+    lineas, bytes_pcm = tabla_de_muestras_c(
+        [sonido.efectos[n] for n in efectos], md_pcm.RITMO, 60,
+        lambda ritmo: 0, maximo=PCM_MAXIMO, sin_signo=True)
+    partes.extend(lineas)
+    build.pcm_bytes = bytes_pcm
+
+    partes.append("")
+    partes.append("/* El driver del Z80 que toca las muestras. El 68000 lo copia")
+    partes.append("   a la RAM del Z80 al arrancar. */")
+    codigo, _etiquetas = md_pcm.generar()
+    partes.append("const uint8_t np_z80_pcm[] = {")
+    partes.extend(_c_bytes_z80(codigo))
+    partes.append("};")
+    partes.append("const uint16_t np_z80_pcm_largo = %d;" % len(codigo))
     partes.append("")
     return "\n".join(partes)
+
+
+def _c_bytes_z80(datos: bytes, por_linea: int = 16):
+    return ["    " + ", ".join("0x%02x" % b for b in datos[i:i + por_linea]) + ","
+            for i in range(0, len(datos), por_linea)]
 
 
 def _makefile(build: Build) -> str:

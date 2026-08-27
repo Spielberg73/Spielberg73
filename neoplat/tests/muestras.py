@@ -69,12 +69,12 @@ def comprobar(emu, empezar, saltar, esperar=None, arranque=200, fps=60):
 SALTAR = {"neogeo": "A", "megadrive": "B", "amiga": "B", "jaguar": "A"}
 
 
-def comprobar_maquina(sistema, ruta) -> int:
+def comprobar_maquina(sistema, ruta, sonido=False) -> int:
     """Monta el emulador de esa maquina y escucha. 0 = todo bien."""
     if sistema not in SALTAR:
         print("%s no toca muestras digitales: no hay nada que escuchar" % sistema)
         return 0
-    emu, empezar, esperar = montar(sistema, ruta)
+    emu, empezar, esperar = montar(sistema, ruta, sonido)
     if emu is None:
         print("falta el emulador de %s: se salta la prueba" % sistema)
         return 0
@@ -88,4 +88,10 @@ if __name__ == "__main__":
     if len(sys.argv) < 3:
         print(__doc__)
         raise SystemExit(1)
+    if sys.argv[1] == "neogeo":
+        from ngplat.project import load_project
+        raiz = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[2])))
+        raise SystemExit(comprobar_maquina(
+            sys.argv[1], sys.argv[2],
+            load_project(os.path.join(raiz, "game.yaml")).sound))
     raise SystemExit(comprobar_maquina(sys.argv[1], sys.argv[2]))

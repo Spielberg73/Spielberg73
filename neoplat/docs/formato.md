@@ -327,18 +327,19 @@ mono de 8 bits y lo remuestrea a lo que use cada máquina. `ngplat nuevo` ya te
 deja dos de ejemplo en `sonidos/`.
 
 `muestra:` **no sustituye a `tipo:`**: puedes poner las dos cosas, y entonces
-las notas son el recambio para las máquinas que no saben tocar sonido grabado.
-Sólo hay una:
+las notas son el recambio para la máquina que no sabe tocar sonido grabado,
+que es una sola:
 
 | | |
 |---|---|
 | Amiga | sí: es lo que hace Paula de serie, leyendo el sonido de la RAM chip por DMA |
 | Atari Jaguar | sí: el DSP las lee del cartucho, byte a byte, y las mezcla con las ondas cuadradas |
-| Neo Geo, Mega Drive | todavía no (sus chips pueden; el kit aún no lo usa) y suenan las notas de al lado |
+| Mega Drive | sí: el DAC está en el YM2612 y se lo da el Z80, con un driver que también genera el compilador |
+| Neo Geo | sí: los canales ADPCM-A del YM2610, que leen solos de la ROM V1 |
 | Atari ST | **nunca**: el YM2149 sólo hace ondas cuadradas |
 
-Donde no hay muestra suenan las notas, y si un efecto es sólo muestra el
-compilador te avisa de en qué máquinas se quedará mudo.
+En el Atari ST suenan las notas, y si un efecto es sólo muestra el compilador
+te avisa de que ahí se quedará mudo.
 
 La música sigue siendo siempre de notas: las muestras son para los efectos.
 

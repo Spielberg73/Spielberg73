@@ -150,6 +150,40 @@ El periodo de una nota es `4.000.000 / (16 * frecuencia)` y el compas lo marca
 el temporizador B del YM2610, programado a unos 60 Hz para que la musica avance
 al ritmo del juego.
 
+### Muestras digitales: los canales ADPCM-A y la ROM V1
+
+El YM2610 tiene además **seis canales de muestras**, que leen por su cuenta de
+una ROM aparte (la V1) a 18.500 muestras por segundo fijos y en un ADPCM de 4
+bits: media el tamaño, que es lo que permitía meter voces en un cartucho de
+1990. `tools/ngplat/adpcm.py` es ese códec, y la ROM V1 la monta el mismo
+archivo que genera la M1, porque los dos tienen que estar de acuerdo en las
+direcciones.
+
+El chip direcciona la V1 **en bloques de 256 bytes**, así que cada muestra
+empieza en uno. El primer bloque se deja libre a propósito: así el driver puede
+usar «principio = 0» para decir que ese efecto no tiene muestra, sin
+confundirlo con una que empezara en el byte cero.
+
+El driver usa el canal 0 y le da cinco cosas por la **parte B** del chip
+(puertos `$06` y `$07`, no `$04` y `$05` como el SSG):
+
+```
+$00 = $81          parar lo que hubiera sonando
+$10/$18            donde empieza, en bloques de 256 bytes
+$20/$28            donde acaba
+$01 = $3F          volumen general de los ADPCM-A, a tope
+$08 = $DF          canal 0: los dos altavoces y volumen a tope
+$00 = $01          y a sonar
+```
+
+Cifrar es una búsqueda: para cada muestra se prueban los dieciséis nibbles y se
+elige el que deja el predictor más cerca. Son dieciséis restas por muestra, se
+hace una vez al compilar, y sale mejor que cualquier fórmula aproximada: unos
+27 dB de relación señal/ruido con una onda normal.
+
+El banco de pruebas **descifra el ADPCM-A** para poder oírlo, así que el
+circuito se comprueba entero, del WAV al altavoz.
+
 Las pruebas ejecutan este driver en un emulador de Z80 (`tests/z80sim.py`) y,
 desde el banco de pruebas, el circuito entero: el 68000 escribe en `$320000`,
 eso dispara la NMI del Z80, el Z80 ejecuta la ROM M1 de verdad y de los
@@ -165,7 +199,7 @@ build/rom/202-c1.c1   gráficos, planos 0 y 1
 build/rom/202-c2.c2   gráficos, planos 2 y 3
 build/rom/202-s1.s1   plano fix (la fuente del marcador)
 build/rom/202-m1.m1   driver de sonido del Z80, con tu musica y tus efectos
-build/rom/202-v1.v1   muestras digitales (aun sin usar)
+build/rom/202-v1.v1   muestras digitales, ya en ADPCM-A
 ```
 
 El identificador `202` es el del romset `puzzledp`, que es el que usa el

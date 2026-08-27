@@ -124,22 +124,47 @@ exactos del DSP y no hay que interpolar. El puntero lo adelanta el propio DSP;
 el 68000 sólo dice dónde empieza y dónde acaba. Los detalles (y el registro que
 no se podía usar) en [jaguar.md](jaguar.md).
 
+**Mega Drive.** Aquí el 68000 no puede: el DAC está en el YM2612 y hay que
+darle un byte cada 125 microsegundos. Lo toca el **Z80**, con un driver de 132
+bytes que también escribe el compilador (`tools/ngplat/md_pcm.py`) y que el
+68000 le copia a su RAM al arrancar. El ritmo no lo marca ningún temporizador
+sino la cuenta de ciclos del propio bucle: 449 de los 3.579.545 por segundo del
+Z80, o sea **7.972 Hz**, y a esa frecuencia se remuestrea el WAV. Como el PSG y
+el YM2612 son chips distintos, la música y la muestra suenan a la vez. Los
+detalles (arrancar el Z80, pedirle una muestra, la ventana de 32 KB) en
+[megadrive.md](megadrive.md).
+
+Ese driver se **ejecuta** en las pruebas (`tests/test_md_pcm.py`): el emulador
+de Z80 del kit con la memoria de la Mega Drive imitada por encima, comprobando
+que al DAC llegan exactamente los bytes de la muestra y en orden, incluso
+cuando cruza el borde de los 32 KB. La cuenta de ciclos se vuelve a sumar sobre
+el código ya ensamblado, así que tocar el bucle y olvidarse de la cuenta falla.
+
+**Neo Geo.** La única de las cinco con hardware pensado para esto: el YM2610
+lleva seis canales de **ADPCM-A** que leen solos de una ROM aparte (la V1) a
+18.500 Hz y con 4 bits por muestra. El driver del Z80 sólo tiene que decirle
+dónde empieza y dónde acaba, en bloques de 256 bytes. El códec es del kit
+(`tools/ngplat/adpcm.py`) y cifra buscando: para cada muestra prueba los
+dieciséis nibbles y se queda con el que deja el predictor más cerca. Detalles
+en [neogeo.md](neogeo.md).
+
 **Cómo se comprueba.** Igual que la música: escuchando. El proyecto de prueba
 (`tests/comun.py`, `proyecto_con_muestra`) pone como efecto de salto un tono
 puro a **3.000 Hz y sin notas de recambio**; 3.000 Hz no es ninguna nota de la
 canción ni armónico impar de ninguna, así que ahí no llega nada más. Se mide la
 energía en esa frecuencia estando quieto y saltando: con la muestra suena 20
-veces más en el Amiga y 8 en la Jaguar, y desactivando el camino de las
-muestras en el driver del Amiga baja a 0,4. La prueba es
+veces más en el Amiga, 19 en la Mega Drive, 13 en la Neo Geo y 8 en la Jaguar,
+y desactivando el camino de las muestras en el driver del Amiga baja a 0,4. En
+la Neo Geo el banco del kit **descifra el ADPCM-A** para poder oírlo, así que
+ahí también se cierra el círculo entero, del WAV al altavoz. La prueba es
 `tests/test_sistemas.py`, `TestMuestras`.
 
 ## Lo que aún no hace
 
-- **Muestras digitales en dos de las cinco máquinas.** El Amiga y la Jaguar ya
-  las tocan; la ROM V1 de la Neo Geo y el YM2612 de la Mega Drive pueden y
-  todavía no se usan. El YM2149 del Atari ST no puede, salvo moviendo
-  el volumen a mano desde la CPU, así que ahí no las habrá; el compilador avisa
-  de los efectos que se quedarían mudos.
+- **Muestras digitales en el Atari ST.** Las otras cuatro ya las tocan; el
+  YM2149 del ST no puede, salvo moviendo el volumen a mano desde la CPU, así
+  que ahí no las habrá. El compilador avisa de los efectos que se quedarían
+  mudos por no llevar notas al lado.
 - **FM.** La Mega Drive tiene el YM2612 y la Neo Geo cuatro canales FM del
   YM2610 sin tocar; el kit usa los de onda cuadrada de las dos, que es lo que
   permite que suene igual en todas.

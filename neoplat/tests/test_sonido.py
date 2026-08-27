@@ -129,26 +129,40 @@ class TestDriver(unittest.TestCase):
         cls.proyecto = load_project(EJEMPLO)
         cls.orden_musica = list(cls.proyecto.sound.musica)
         cls.rom, cls.info = m1_mod.generar_m1(cls.proyecto.sound, cls.orden_musica)
+        # Un efecto de notas y uno de muestra, elegidos por lo que son y no por
+        # su nombre: el ejemplo puede cambiar de banda sonora y estas pruebas
+        # tienen que seguir mirando lo que miran.
+        efectos = cls.proyecto.sound.efectos
+        cls.de_notas = next(n for n in cls.info["efectos"]
+                            if efectos[n].pasos and not efectos[n].digital)
+        cls.de_muestra = next((n for n in cls.info["efectos"] if efectos[n].digital),
+                              "")
 
-    def _arrancar(self):
+    def _pasos(self, nombre):
+        return self.proyecto.sound.efectos[nombre].pasos
+
+    def _arrancar(self, rom=None, info=None):
+        rom = self.rom if rom is None else rom
+        info = self.info if info is None else info
         chip = z80sim.YM2610Falso()
-        cpu = z80sim.Z80(self.rom, leer_puerto=chip.leer, escribir_puerto=chip.escribir)
+        cpu = z80sim.Z80(rom, leer_puerto=chip.leer, escribir_puerto=chip.escribir)
         # dejar que termine la inicializacion (hasta que espere el temporizador)
         for _ in range(4000):
             cpu.paso()
-            if cpu.pc == self.info["etiquetas"]["esperar_tick"]:
+            if cpu.pc == info["etiquetas"]["esperar_tick"]:
                 break
         else:
             self.fail("el driver no llega a esperar el temporizador")
         return cpu, chip
 
-    def _tick(self, cpu, chip, veces=1):
+    def _tick(self, cpu, chip, veces=1, info=None):
         """Simula `veces` avisos del temporizador (un frame cada uno)."""
+        info = self.info if info is None else info
         for _ in range(veces):
             chip.timer_listo = True
             for _ in range(20000):
                 cpu.paso()
-                if not chip.timer_listo and cpu.pc == self.info["etiquetas"]["esperar_tick"]:
+                if not chip.timer_listo and cpu.pc == info["etiquetas"]["esperar_tick"]:
                     break
             else:
                 self.fail("el driver se ha quedado colgado en un tick")
@@ -167,8 +181,8 @@ class TestDriver(unittest.TestCase):
 
     def test_un_efecto_suena_con_su_periodo(self):
         cpu, chip = self._arrancar()
-        indice = self.info["efectos"].index("moneda")
-        pasos = self.proyecto.sound.efectos["moneda"].pasos
+        indice = self.info["efectos"].index(self.de_notas)
+        pasos = self._pasos(self.de_notas)
         chip.comando = m1_mod.comando_efecto(indice)
         cpu.nmi_pendiente = True
         self._tick(cpu, chip, 2)
@@ -180,8 +194,8 @@ class TestDriver(unittest.TestCase):
 
     def test_el_efecto_avanza_de_nota(self):
         cpu, chip = self._arrancar()
-        indice = self.info["efectos"].index("moneda")
-        pasos = self.proyecto.sound.efectos["moneda"].pasos
+        indice = self.info["efectos"].index(self.de_notas)
+        pasos = self._pasos(self.de_notas)
         chip.comando = m1_mod.comando_efecto(indice)
         cpu.nmi_pendiente = True
         self._tick(cpu, chip, 1 + pasos[0].duracion + 1)
@@ -190,8 +204,8 @@ class TestDriver(unittest.TestCase):
 
     def test_el_efecto_se_calla_al_acabar(self):
         cpu, chip = self._arrancar()
-        indice = self.info["efectos"].index("moneda")
-        total = sum(p.duracion for p in self.proyecto.sound.efectos["moneda"].pasos)
+        indice = self.info["efectos"].index(self.de_notas)
+        total = sum(p.duracion for p in self._pasos(self.de_notas))
         chip.comando = m1_mod.comando_efecto(indice)
         cpu.nmi_pendiente = True
         self._tick(cpu, chip, total + 4)
@@ -235,8 +249,8 @@ class TestDriver(unittest.TestCase):
     def test_el_mismo_efecto_dos_veces_seguidas(self):
         """El bit de alternancia permite repetir sonido (saltar dos veces)."""
         cpu, chip = self._arrancar()
-        indice = self.info["efectos"].index("salto")
-        pasos = self.proyecto.sound.efectos["salto"].pasos
+        indice = self.info["efectos"].index(self.de_notas)
+        pasos = self._pasos(self.de_notas)
         chip.comando = m1_mod.comando_efecto(indice)
         cpu.nmi_pendiente = True
         self._tick(cpu, chip, 3)
@@ -248,13 +262,71 @@ class TestDriver(unittest.TestCase):
                          "el segundo disparo deberia reiniciar el efecto")
 
     def test_el_ruido_usa_el_mezclador(self):
+        """Con su propio proyecto, para no depender de como suene el ejemplo:
+        un unico efecto y de ruido."""
+        sonido = sonido_mod.Sonido()
+        sonido.efectos["golpe"] = sonido_mod.Efecto(
+            nombre="golpe", pasos=sonido_mod.ruido(8, 12))
+        rom, info = m1_mod.generar_m1(sonido, [])
+        cpu, chip = self._arrancar(rom, info)
+        chip.comando = m1_mod.comando_efecto(0)
+        cpu.nmi_pendiente = True
+        self._tick(cpu, chip, 2, info)
+        self.assertEqual(chip.registros.get(0x07), 0b00011100,
+                         "el golpe deberia sonar por el generador de ruido")
+
+    # --- muestras digitales (ADPCM-A) --------------------------------------
+
+    def test_una_muestra_arranca_el_adpcm(self):
+        """Un efecto con WAV no suena por el SSG: el driver le da al YM2610 los
+        limites en la ROM V1 y le dice que arranque el canal 0."""
+        if not self.de_muestra:
+            self.skipTest("el ejemplo no trae ningun efecto con muestra")
         cpu, chip = self._arrancar()
-        indice = self.info["efectos"].index("golpe")
+        indice = self.info["efectos"].index(self.de_muestra)
         chip.comando = m1_mod.comando_efecto(indice)
         cpu.nmi_pendiente = True
         self._tick(cpu, chip, 2)
-        self.assertEqual(chip.registros.get(0x07), 0b00011100,
-                         "el golpe deberia sonar por el generador de ruido")
+        reg = chip.registros_b
+        self.assertEqual(reg.get(0x00), 0x01, "no ha arrancado el canal 0")
+        self.assertEqual(reg.get(0x01), 0x3F, "el volumen general no esta a tope")
+        self.assertEqual(reg.get(0x08), 0xDF,
+                         "el canal 0 no suena por los dos altavoces y a tope")
+        primero = (reg.get(0x18, 0) << 8) | reg.get(0x10, 0)
+        ultimo = (reg.get(0x28, 0) << 8) | reg.get(0x20, 0)
+        esperado = self.info["muestras"][indice]
+        self.assertEqual((primero, ultimo), esperado,
+                         "los limites no son los de la tabla de muestras")
+        self.assertGreater(primero, 0,
+                           "una muestra no puede empezar en el bloque 0: es el "
+                           "que marca 'este efecto no tiene muestra'")
+        # y el canal C del SSG se queda como estaba: no suena dos veces
+        self.assertFalse(chip.registros.get(0x0A),
+                         "el efecto tambien esta sonando por el SSG")
+
+    def test_la_muestra_de_la_v1_no_es_silencio(self):
+        """Las direcciones tienen que apuntar al sonido de verdad, no a la
+        parte vacia de la ROM."""
+        if not self.de_muestra:
+            self.skipTest("el ejemplo no trae ningun efecto con muestra")
+        from ngplat import adpcm
+        indice = self.info["efectos"].index(self.de_muestra)
+        primero, ultimo = self.info["muestras"][indice]
+        trozo = self.info["v1"][primero * adpcm.BLOQUE:
+                                (ultimo + 1) * adpcm.BLOQUE]
+        self.assertTrue(trozo, "la muestra cae fuera de la ROM V1")
+        onda = adpcm.descifrar(trozo)
+        self.assertGreater(max(abs(v) for v in onda), 200,
+                           "lo que hay en la V1 no suena")
+
+    def test_un_efecto_sin_muestra_no_toca_el_adpcm(self):
+        cpu, chip = self._arrancar()
+        indice = self.info["efectos"].index(self.de_notas)
+        chip.comando = m1_mod.comando_efecto(indice)
+        cpu.nmi_pendiente = True
+        self._tick(cpu, chip, 2)
+        self.assertEqual(chip.escrituras_b, [],
+                         "un efecto de notas no deberia tocar los ADPCM-A")
 
     def test_un_comando_fuera_de_rango_no_rompe_nada(self):
         cpu, chip = self._arrancar()

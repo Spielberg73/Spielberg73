@@ -77,7 +77,7 @@ class AtariSt(Sistema):
         "camara:   el escenario se mueve de 16 en 16 pixeles (no hay scroll",
         "          por hardware), y los actores al pixel",
         "parallax: una capa, y solo con 'camara: pantallas'; con scroll no cabe",
-        "sonido:   YM2149, tres cuadradas y un ruido",
+        "sonido:   YM2149, tres cuadradas y un ruido; sin muestras digitales",
     ]
 
     # --- colores -------------------------------------------------------

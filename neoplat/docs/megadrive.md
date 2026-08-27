@@ -113,6 +113,32 @@ el compilador con `periodo_psg()`: `3579545 / (32 · hercios)`, en 10 bits.
 Las pruebas escuchan lo que sale del PSG emulado y comprueban que son las notas
 del `game.yaml`, una a una: ver [docs/sonido.md](sonido.md).
 
+## Muestras digitales: las toca el Z80
+
+Las **muestras digitales** no puede tocarlas el 68000. El DAC está en el
+YM2612 (canal 6 en modo DAC, registro `$2A`) y hay que darle un byte cada 125
+microsegundos: 8.000 interrupciones por segundo dejarían el juego tirado. Lo
+hace el **Z80**, que para eso está.
+
+El driver lo escribe el compilador (`tools/ngplat/md_pcm.py`), ocupa 132 bytes
+y se copia a la RAM del Z80 al arrancar. Detalles que hay que hacer bien:
+
+| | |
+|---|---|
+| arrancar el Z80 | pedir el bus **con el reset ya quitado** (en reset no lo da, y el 68000 se queda esperando para siempre: el juego ni llega a dibujar), copiar el driver byte a byte, darle un reset corto para que empiece en `$0000` y soltar el bus |
+| pedirle una muestra | el 68000 pide el bus, escribe banco, dirección y largo en un bloque de su RAM y por último cambia un byte de `tick`. Mientras tiene el bus el Z80 está parado, así que no hay nada más que sincronizar |
+| el reloj | no hay temporizador: el ritmo lo marca la cuenta de ciclos del propio bucle. Son 449 de los 3.579.545 por segundo del Z80, o sea **7.972 muestras por segundo**, y a esa frecuencia exacta se remuestrea el WAV al compilar |
+| la ventana de 32 KB | el Z80 no ve el cartucho entero, sino 32 KB elegidos con el registro de `$6000` (nueve bits, uno por escritura). Si la muestra cruza el borde, el bucle lo nota (HL pasa de `$FFFF` a `$0000`) y cambia de banco sobre la marcha |
+
+Como el PSG y el YM2612 son chips distintos, la música y la muestra suenan a la
+vez sin estorbarse.
+
+El driver se **ejecuta** en las pruebas (`tests/test_md_pcm.py`): el emulador
+de Z80 del kit con la memoria de la Mega Drive imitada por encima, y se
+comprueba que al DAC llegan exactamente los bytes de la muestra y en orden,
+incluso cruzando el borde de los 32 KB. La cuenta de ciclos también se
+comprueba, volviendo a sumarla sobre el código ya ensamblado.
+
 ## Cómo arranca un cartucho
 
 Un cartucho empieza con dos cosas en direcciones fijas:

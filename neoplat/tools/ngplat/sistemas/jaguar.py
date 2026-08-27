@@ -53,7 +53,7 @@ class Jaguar(Sistema):
     notas = [
         "parallax: una capa, en un objeto por detras del escenario",
         "sonido:   dos DAC de 16 bits alimentados por el DSP de Jerry;",
-        "          tres ondas cuadradas y un ruido, las mismas notas que las otras",
+        "          tres ondas cuadradas, un ruido y muestras digitales",
     ]
 
     # --- colores -------------------------------------------------------

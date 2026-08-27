@@ -33,15 +33,16 @@ class _BancoNeoGeo:
     La placa no tiene boton de reset, asi que reiniciar es montarla otra vez
     desde las mismas ROMs."""
 
-    def __init__(self, carpeta):
+    def __init__(self, carpeta, sonido=False):
         import maquina_neogeo
         self._ng = maquina_neogeo
         self.carpeta = carpeta
+        self.sonido = sonido
         self.maquina = None
         self.reiniciar()
 
     def reiniciar(self):
-        self.maquina = self._ng.cargar(self.carpeta, sonido=False)
+        self.maquina = self._ng.cargar(self.carpeta, sonido=self.sonido)
         if self.maquina is None:
             raise RuntimeError("el banco no ha podido montar la ROM")
 
@@ -55,11 +56,22 @@ class _BancoNeoGeo:
     def frame(self):
         return self.maquina.dibujar()
 
+    @property
+    def ritmo(self):
+        return self.maquina.ritmo
 
-def montar(sistema, ruta):
-    """Devuelve (emulador, boton de start, como esperar al titulo)."""
+    def escuchar(self, cuantos=1):
+        return self.maquina.escuchar(cuantos)
+
+
+def montar(sistema, ruta, sonido=False):
+    """Devuelve (emulador, boton de start, como esperar al titulo).
+
+    `sonido` solo lo mira la Neo Geo, que no usa libretro sino el banco del
+    kit: hay que darle el `Sonido` del proyecto para que monte el Z80 con su
+    ROM M1 y la ROM V1 de las muestras."""
     if sistema == "neogeo":
-        return _BancoNeoGeo(ruta), "START", lambda emu: emu.avanzar(15)
+        return _BancoNeoGeo(ruta, sonido), "START", lambda emu: emu.avanzar(15)
 
     if sistema == "megadrive":
         import emulador_md as maq

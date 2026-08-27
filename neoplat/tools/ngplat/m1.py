@@ -10,6 +10,11 @@ El driver usa los tres canales de onda cuadrada (SSG) del YM2610:
     canal B -> segunda pista de la musica
     canal C -> efectos (y ruido para los golpes)
 
+Y, para los efectos que traen un WAV, el **canal 0 de ADPCM-A**: el YM2610 lee
+esas muestras por su cuenta de una ROM aparte (la V1) a 18.500 muestras por
+segundo, asi que al driver le basta con darle donde empieza y donde acaba. La
+ROM V1 la genera tambien este archivo, con el codec de tools/ngplat/adpcm.py.
+
 Formato de las secuencias (4 bytes por paso):
 
     periodo_bajo, periodo_alto, duracion_en_frames, volumen
@@ -30,11 +35,14 @@ from __future__ import annotations
 
 from typing import Dict, List, Tuple
 
+from . import adpcm, wav
 from .errors import ProjectError
 from .sonido import EVENTOS, Sonido, periodo_ssg
 from .z80 import ensamblar
 
 M1_SIZE = 0x20000              # 128 KB, el tamano habitual de una ROM M1
+V1_MINIMO = 0x20000            # la ROM de muestras, tambien de 128 KB para arriba
+V1_MAXIMO = 0x400000           # 4 MB: lo que direccionan los registros del chip
 
 # --- protocolo con el 68000 ---------------------------------------------
 # El comando es un byte:  bit 6 = alternancia (para repetir el mismo sonido),
@@ -103,6 +111,55 @@ escribir_ym:
         nop
         ret
 
+; --- escribir un registro del YM2610 (parte B: los canales ADPCM-A) -------
+; b = registro, c = valor
+escribir_ym_b:
+        ld a,b
+        out ($06),a
+        nop
+        nop
+        nop
+        ld a,c
+        out ($07),a
+        nop
+        nop
+        nop
+        nop
+        ret
+
+; --- tocar una muestra digital -------------------------------------------
+; hl = entrada de cuatro bytes de tabla_muestras (principio y final, en
+; bloques de 256 bytes de la ROM V1). Se usa siempre el canal 0.
+tocar_muestra:
+        ld b,$00                ; parar lo que hubiera sonando
+        ld c,$81
+        call escribir_ym_b
+        ld b,$10                ; principio, byte bajo
+        ld c,(hl)
+        call escribir_ym_b
+        inc hl
+        ld b,$18                ; principio, byte alto
+        ld c,(hl)
+        call escribir_ym_b
+        inc hl
+        ld b,$20                ; final, byte bajo
+        ld c,(hl)
+        call escribir_ym_b
+        inc hl
+        ld b,$28                ; final, byte alto
+        ld c,(hl)
+        call escribir_ym_b
+        ld b,$01                ; volumen general de los ADPCM-A, a tope
+        ld c,$3f
+        call escribir_ym_b
+        ld b,$08                ; canal 0: los dos altavoces y volumen a tope
+        ld c,$df
+        call escribir_ym_b
+        ld b,$00                ; y a sonar
+        ld c,$01
+        call escribir_ym_b
+        ret
+
 init_ym:
         ld b,$07                ; mezclador: tono en A, B y C; ruido apagado
         ld c,%%00111000
@@ -162,6 +219,25 @@ procesar_comando:
         dec a                   ; los efectos empiezan en 1
         cp %d
         ret nc                  ; indice fuera de rango: se ignora
+; Si el efecto trae una muestra digital, suena por ADPCM-A y no por el SSG. La
+; entrada de tabla_muestras son cuatro bytes; principio a cero = no hay
+; muestra (el primer bloque de la ROM V1 se deja libre justo para esto).
+        push af
+        add a,a
+        add a,a
+        ld l,a
+        ld h,0
+        ld de,tabla_muestras
+        add hl,de
+        ld a,(hl)
+        inc hl
+        or (hl)
+        dec hl
+        jr z,efecto_con_notas
+        pop af
+        jp tocar_muestra
+efecto_con_notas:
+        pop af
         add a,a
         ld l,a
         ld h,0
@@ -369,6 +445,41 @@ def _secuencia_bytes(pasos, nombre: str) -> List[str]:
     return lineas
 
 
+def construir_v1(sonido: Sonido, orden_efectos: List[str]):
+    """La ROM V1 con las muestras ya en ADPCM-A, y donde ha quedado cada una.
+
+    El chip direcciona la V1 en bloques de 256 bytes, asi que cada muestra
+    empieza en uno. El **primer bloque se deja libre** a proposito: asi el
+    driver puede usar "principio = 0" para decir que ese efecto no tiene
+    muestra, sin confundirlo con una que empezara en el byte cero.
+    """
+    rom = bytearray(adpcm.BLOQUE)          # el bloque 0, libre
+    sitios = []
+    for nombre in orden_efectos:
+        efecto = sonido.efectos[nombre]
+        if efecto.muestra is None:
+            sitios.append((0, 0))
+            continue
+        remuestreada = wav.remuestrear(efecto.muestra, adpcm.RITMO)
+        datos = adpcm.cifrar_muestra(remuestreada.datos)
+        primero = len(rom) // adpcm.BLOQUE
+        rom.extend(datos)
+        if len(rom) % adpcm.BLOQUE:        # no deberia pasar, pero por si acaso
+            rom.extend(b"\x00" * (adpcm.BLOQUE - len(rom) % adpcm.BLOQUE))
+        ultimo = len(rom) // adpcm.BLOQUE - 1
+        sitios.append((primero, ultimo))
+    if len(rom) > V1_MAXIMO:
+        raise ProjectError(
+            "las muestras ocupan %d KB y la ROM V1 llega a %d KB"
+            % (len(rom) // 1024, V1_MAXIMO // 1024),
+            hint="acorta los WAV o usa menos efectos con muestra")
+    tamano = V1_MINIMO
+    while tamano < len(rom):
+        tamano <<= 1
+    rom.extend(b"\x00" * (tamano - len(rom)))
+    return bytes(rom), sitios
+
+
 def generar_asm(sonido: Sonido, orden_musica: List[str]) -> Tuple[str, List[str]]:
     """Devuelve el fuente completo del driver y el orden de los efectos."""
     orden_efectos = [nombre for nombre in EVENTOS if nombre in sonido.efectos]
@@ -382,7 +493,19 @@ def generar_asm(sonido: Sonido, orden_musica: List[str]) -> Tuple[str, List[str]
     for i in range(3):
         partes.append(_canal_asm(i))
 
+    _v1, sitios = construir_v1(sonido, orden_efectos)
+
     datos = ["", "; ---------------------------------------------------- datos"]
+    datos.append("; Donde vive la muestra de cada efecto en la ROM V1, en bloques de")
+    datos.append("; 256 bytes: principio y final. Principio a cero = no tiene.")
+    datos.append("tabla_muestras:")
+    if orden_efectos:
+        for (primero, ultimo) in sitios:
+            datos.append("        db $%02x, $%02x, $%02x, $%02x"
+                         % (primero & 0xFF, primero >> 8,
+                            ultimo & 0xFF, ultimo >> 8))
+    else:
+        datos.append("        db 0, 0, 0, 0")
     datos.append("tabla_efectos:")
     if orden_efectos:
         datos.append("        dw " + ", ".join("efecto_%s" % n for n in orden_efectos))
@@ -411,7 +534,10 @@ def generar_asm(sonido: Sonido, orden_musica: List[str]) -> Tuple[str, List[str]
 
 
 def generar_m1(sonido: Sonido, orden_musica: List[str]) -> Tuple[bytes, Dict[str, object]]:
-    """Ensambla el driver y devuelve la ROM M1 lista para grabar."""
+    """Ensambla el driver y devuelve la ROM M1 lista para grabar.
+
+    En `info["v1"]` va tambien la ROM de muestras, que sale del mismo sitio
+    porque el driver y ella tienen que estar de acuerdo en las direcciones."""
     fuente, orden_efectos = generar_asm(sonido, orden_musica)
     codigo, etiquetas = ensamblar(fuente)
     if len(codigo) > M1_SIZE:
@@ -421,8 +547,11 @@ def generar_m1(sonido: Sonido, orden_musica: List[str]) -> Tuple[bytes, Dict[str
         )
     rom = bytearray(codigo)
     rom.extend(b"\x00" * (M1_SIZE - len(rom)))
+    v1, sitios = construir_v1(sonido, orden_efectos)
     info = {
         "bytes": len(codigo),
+        "v1": v1,
+        "muestras": sitios,
         "efectos": orden_efectos,
         "musica": list(orden_musica),
         "etiquetas": etiquetas,

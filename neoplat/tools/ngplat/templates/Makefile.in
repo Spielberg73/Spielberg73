@@ -40,8 +40,10 @@ $(PROM): game.elf
 	@mkdir -p rom
 	$(OBJCOPY) -O binary $< $@
 
-# La ROM M1 (driver de sonido del Z80, con tu musica y tus efectos) la genera
-# 'ngplat compilar'. La V1 son muestras digitales: aun no se usan.
+# La M1 (driver de sonido del Z80, con tu musica y tus efectos) y la V1 (las
+# muestras digitales, ya en ADPCM-A) las genera 'ngplat compilar'. Esta regla
+# solo salta si la V1 no estuviera: un juego sin muestras la necesita igual,
+# vacia, porque la placa la lee de todas formas.
 $(VROM):
 	@mkdir -p rom
 	dd if=/dev/zero of=$@ bs=1024 count=128 2>/dev/null

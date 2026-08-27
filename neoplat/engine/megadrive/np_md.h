@@ -30,6 +30,7 @@
 #define MD_PAD2_CTRL   ((volatile uint8_t *)0xA1000B)
 #define MD_Z80_BUS     ((volatile uint16_t *)0xA11100)
 #define MD_Z80_RESET   ((volatile uint16_t *)0xA11200)
+#define MD_Z80_RAM     ((volatile uint8_t *)0xA00000)   /* 8 KB, byte a byte */
 #define MD_TMSS        ((volatile uint32_t *)0xA14000)
 #define MD_VERSION     ((volatile uint8_t *)0xA10001)
 
@@ -87,8 +88,12 @@ void np_hud_print(uint8_t col, uint8_t fila, const char *texto, uint8_t paleta);
 void np_hud_number(uint8_t col, uint8_t fila, uint32_t valor, uint8_t digitos, uint8_t paleta);
 void np_hud_draw(const NpWorld *w);
 
-/* sonido por PSG (np_sound.c) */
+/* sonido: notas por el PSG y muestras por el Z80 (np_sound.c) */
 void np_sound_init(void);
 void np_sound_update(const NpWorld *w);
+
+/* El driver de muestras del Z80, generado por el compilador en sonido.c */
+extern const uint8_t np_z80_pcm[];
+extern const uint16_t np_z80_pcm_largo;
 
 #endif /* NP_MD_H */
