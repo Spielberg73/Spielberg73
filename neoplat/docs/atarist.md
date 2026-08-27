@@ -121,10 +121,12 @@ nueva: **se pone el borde de un color chillón mientras se dibuja** y se
 devuelve al del nivel al acabar. Como el haz no espera a nadie, la franja de
 ese color que sale en pantalla mide exactamente lo que ha tardado.
 
-Está en el propio motor, detrás de un `#define`:
+Está en el propio motor, detrás de un `#define`, y el número dice **qué** trozo
+se mide (así la franja cabe entera en la pantalla y la cuenta sale exacta):
 
 ```
-make CFLAGS='... -DNP_MEDIR=1'
+make CFLAGS='... -DNP_MEDIR=2'      # 1 frame entero   2 mover la pantalla
+                                    # 3 repintar        4 actores    5 simular
 ```
 
 Y para contar frames dibujados sin tocar nada: las dos pantallas se alternan y
@@ -139,6 +141,7 @@ cuántas veces cambia el mapa de píxeles se sabe a qué ritmo va.
 | tiles copiados de palabra larga en palabra larga | 15 |
 | lo que no depende del plano, fuera del bucle | 17 |
 | **una sola espera al retrazo por vuelta** | **25** |
+| mover la pantalla con `movem.l` | 25, y sin caerse a 16 al avanzar |
 
 Lo que más subió no fue el dibujado: fue el orden del bucle. La primera versión
 esperaba al retrazo después de cada paso de simulación, y eso tiraba un frame
@@ -146,9 +149,42 @@ entero por vuelta. El trabajo de verdad —simular dos veces y dibujar— cabe d
 sobra en los dos frames, pero repartido en trozos que no llegaban a tiempo al
 siguiente retrazo se comía tres.
 
-Medido con el borde, dibujar un frame cuesta unas **280 líneas de barrido**
-(143.000 ciclos, el 89% de un frame de hardware). Lo que más pesa es repintar
-el fondo por donde pasaron los actores, y después dibujarlos.
+Medido con el borde, esto es lo que cuesta cada cosa (mediana, en líneas de
+barrido; un frame de hardware son 313):
+
+| | líneas | |
+|---|---|---|
+| simular dos pasos | 31 | y no 200, como parecía |
+| repintar el fondo de los actores | 84 | |
+| dibujar los actores | 124 | |
+| **un frame normal, entero** | **280** | el 89% de un frame de hardware |
+| mover la pantalla al avanzar la vista | 242 | solo cuando el escenario avanza |
+
+### Los 27 KB que se mueven, y por qué van en ensamblador
+
+Mover el área de juego es lo único del ST escrito a mano, y está medido antes
+de decidirlo. En C, gcc genera `move.l (a1),(a0)` **con desplazamiento** —dos
+palabras de extensión por instrucción— y sale a 8,5 ciclos por byte: 27 KB son
+449 líneas, frame y medio. Con `movem.l`, que mueve doce registros de una
+tacada, son 4,8 ciclos por byte y 242 líneas medidas.
+
+```
+movem.l (a0)+,d0/d2-d7/a2-a6     12 + 8×12 = 108 ciclos
+movem.l d0/d2-d7/a2-a6,(a1)       8 + 8×12 = 104
+lea     48(a1),a1                            8
+dbra    d1,bucle                            10
+                                 ─────────────
+                                 230 por 48 bytes
+```
+
+Esa diferencia es justo la que separa dibujar en dos frames de necesitar tres:
+280 + 449 + 31 se pasa de los 626 que dan dos frames, y 280 + 242 + 31 no. Con
+la versión en C el juego **caía a 16 frames por segundo cada vez que el
+escenario avanzaba**; con `movem` se queda en 23-25.
+
+Hacia atrás hay que ir del final al principio, porque origen y destino se
+solapan. Dentro de cada bloque da igual: `movem` lee los 48 bytes enteros antes
+de escribir ninguno.
 
 ### Sin interrupciones, ¿cómo se sabe dónde está el haz?
 

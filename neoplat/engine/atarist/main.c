@@ -17,6 +17,12 @@
 
 #include "np_st.h"
 
+/* Medir lo que cuesta simular, con el mismo truco del borde que np_video.c:
+ * -DNP_MEDIR=5 pone el color 0 en rojo mientras corren los pasos del motor. */
+#ifndef NP_MEDIR
+#define NP_MEDIR 0
+#endif
+
 static NpWorld world;        /* ~3 KB: en memoria, no en la pila */
 
 int main(void)
@@ -30,11 +36,17 @@ int main(void)
 
     for (;;) {
         np_wait_vblank();
+#if NP_MEDIR == 5
+        REG16(ST_PALETA) = 0x0700;
+#endif
         for (paso = 0; paso < NP_PASOS_POR_DIBUJO; paso++) {
             uint16_t input = np_input_read();
             np_world_step(&world, input);
             np_sound_update(&world);
         }
+#if NP_MEDIR == 5
+        REG16(ST_PALETA) = world.level->background;
+#endif
         np_video_frame(&world);
     }
     return 0;

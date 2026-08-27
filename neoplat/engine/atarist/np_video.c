@@ -388,54 +388,108 @@ static void np_redibujar_todo(NpBuffer *b, const NpWorld *w)
 /* Corre el area de juego `grupos` grupos de 16 pixeles hacia un lado.
  *
  * Es lo mas caro que hace el ST en todo el frame y no hay forma de evitarlo en
- * un 520: son 176 lineas de 152 bytes, casi 27 KB. Se mueve de cuatro en
- * cuatro bytes (lo mas ancho que lee el 68000 de una vez) y de cuatro en
- * cuatro palabras largas por vuelta: `move.l (a0)+,(a1)+` cuesta 20 ciclos y
- * la vuelta del bucle otros 18, asi que hacer cuatro por vuelta en vez de una
- * baja de 9 ciclos por byte a 6. Son 80.000 ciclos menos, medio frame.
+ * un 520: son 176 lineas de 152 bytes, casi 27 KB. Aqui si merece la pena el
+ * ensamblador, y esta medido: escrito en C, gcc genera `move.l (a1),(a0)` con
+ * desplazamiento y sale a 8,5 ciclos por byte, o sea **449 lineas de barrido**,
+ * frame y medio. Con `movem.l`, que mueve doce registros de una tacada, son 4,8
+ * y bajan a 253. Esa diferencia es justo la que separa dibujar en dos frames de
+ * necesitar tres: con la version en C el juego caia a 16 frames por segundo
+ * cada vez que el escenario avanzaba.
+ *
+ * Doce registros son 48 bytes por vuelta:
+ *
+ *     movem.l (a0)+,d0/d2-d7/a2-a6     12 + 8x12 = 108 ciclos
+ *     movem.l d0/d2-d7/a2-a6,(a1)       8 + 8x12 = 104
+ *     lea     48(a1),a1                            8
+ *     dbra    d1,bucle                            10
+ *
+ * Y hacia atras hay que ir del final al principio, porque origen y destino se
+ * solapan; `movem` lee los 48 bytes enteros antes de escribir ninguno, asi que
+ * dentro de cada bloque el solape da igual.
  */
-static void np_mover_bloque(uint32_t *destino, const uint32_t *origen, int32_t largos)
+#define NP_LARGOS_BLOQUE 12              /* palabras largas por vuelta */
+
+void np_mover_bloques(uint32_t *destino, const uint32_t *origen, int32_t bloques);
+void np_mover_bloques_atras(uint32_t *destino, const uint32_t *origen,
+                            int32_t bloques);
+
+#ifdef __mc68000__
+__asm__(
+"    .text\n"
+"    .globl np_mover_bloques\n"
+"np_mover_bloques:\n"
+"    movem.l %d2-%d7/%a2-%a6,-(%sp)\n"     /* once registros: 44 bytes de pila */
+"    move.l  48(%sp),%a1\n"                /* destino */
+"    move.l  52(%sp),%a0\n"                /* origen  */
+"    move.w  58(%sp),%d1\n"                /* bloques (la palabra baja) */
+"    subq.w  #1,%d1\n"
+"    bmi.s   9f\n"
+"1:  movem.l (%a0)+,%d0/%d2-%d7/%a2-%a6\n"
+"    movem.l %d0/%d2-%d7/%a2-%a6,(%a1)\n"
+"    lea     48(%a1),%a1\n"
+"    dbra    %d1,1b\n"
+"9:  movem.l (%sp)+,%d2-%d7/%a2-%a6\n"
+"    rts\n"
+"\n"
+"    .globl np_mover_bloques_atras\n"
+"np_mover_bloques_atras:\n"                /* destino y origen apuntan al final */
+"    movem.l %d2-%d7/%a2-%a6,-(%sp)\n"
+"    move.l  48(%sp),%a1\n"
+"    move.l  52(%sp),%a0\n"
+"    move.w  58(%sp),%d1\n"
+"    subq.w  #1,%d1\n"
+"    bmi.s   9f\n"
+"1:  lea     -48(%a0),%a0\n"
+"    movem.l (%a0),%d0/%d2-%d7/%a2-%a6\n"
+"    lea     -48(%a1),%a1\n"
+"    movem.l %d0/%d2-%d7/%a2-%a6,(%a1)\n"
+"    dbra    %d1,1b\n"
+"9:  movem.l (%sp)+,%d2-%d7/%a2-%a6\n"
+"    rts\n");
+#else
+/* En el ordenador no hay movem: las pruebas compilan este archivo para
+   comprobar la sintaxis y los tipos, y ahi basta con que copie lo mismo. */
+void np_mover_bloques(uint32_t *destino, const uint32_t *origen, int32_t bloques)
 {
-    int32_t n = largos >> 2;
-    while (n--) {
-        *destino++ = *origen++;
-        *destino++ = *origen++;
-        *destino++ = *origen++;
-        *destino++ = *origen++;
-    }
-    n = largos & 3;
-    while (n--) *destino++ = *origen++;
+    int32_t i, n = bloques * NP_LARGOS_BLOQUE;
+    for (i = 0; i < n; i++) destino[i] = origen[i];
 }
 
-static void np_mover_bloque_atras(uint32_t *destino, const uint32_t *origen,
-                                  int32_t largos)
+void np_mover_bloques_atras(uint32_t *destino, const uint32_t *origen,
+                            int32_t bloques)
 {
-    int32_t n = largos >> 2;
-    while (n--) {
-        *--destino = *--origen;
-        *--destino = *--origen;
-        *--destino = *--origen;
-        *--destino = *--origen;
-    }
-    n = largos & 3;
-    while (n--) *--destino = *--origen;
+    int32_t i, n = bloques * NP_LARGOS_BLOQUE;
+    for (i = 1; i <= n; i++) destino[-i] = origen[-i];
 }
+#endif
 
 static void np_correr(uint8_t *pantalla, int32_t grupos)
 {
     int32_t bytes = grupos * 8;
-    int32_t linea;
+    int32_t largos = (bytes > 0 ? NP_PASO_FILA - bytes : NP_PASO_FILA + bytes) / 4;
+    /* la division va una sola vez y no una por linea: el 68000 no divide */
+    int32_t bloques = largos / NP_LARGOS_BLOQUE;
+    int32_t resto = largos - bloques * NP_LARGOS_BLOQUE;
+    int32_t linea, i;
+
     for (linea = NP_HUD_ALTO; linea < NP_ALTO; linea++) {
         uint8_t *fila = pantalla + (uint32_t)linea * NP_PASO_FILA;
-        if (bytes > 0)                            /* la vista va a la derecha */
-            np_mover_bloque((uint32_t *)(void *)fila,
-                            (const uint32_t *)(const void *)(fila + bytes),
-                            (NP_PASO_FILA - bytes) / 4);
-        else
-            np_mover_bloque_atras(
-                (uint32_t *)(void *)(fila + NP_PASO_FILA),
-                (const uint32_t *)(const void *)(fila + NP_PASO_FILA + bytes),
-                (NP_PASO_FILA + bytes) / 4);
+        if (bytes > 0) {                          /* la vista va a la derecha */
+            uint32_t *destino = (uint32_t *)(void *)fila;
+            const uint32_t *origen = (const uint32_t *)(const void *)(fila + bytes);
+            np_mover_bloques(destino, origen, bloques);
+            destino += bloques * NP_LARGOS_BLOQUE;
+            origen += bloques * NP_LARGOS_BLOQUE;
+            for (i = 0; i < resto; i++) destino[i] = origen[i];
+        } else {
+            uint32_t *destino = (uint32_t *)(void *)(fila + NP_PASO_FILA);
+            const uint32_t *origen =
+                (const uint32_t *)(const void *)(fila + NP_PASO_FILA + bytes);
+            np_mover_bloques_atras(destino, origen, bloques);
+            destino -= bloques * NP_LARGOS_BLOQUE;
+            origen -= bloques * NP_LARGOS_BLOQUE;
+            for (i = 1; i <= resto; i++) destino[-i] = origen[-i];
+        }
     }
 }
 
@@ -520,18 +574,32 @@ static void np_dibujar_actor(NpBuffer *b, const NpActorDef *def,
  * tardado: una linea de barrido son 512 ciclos del 68000. Es como se median
  * estas cosas cuando la maquina era nueva.
  *
- * Se compila con -DNP_MEDIR=1; en el juego de verdad no esta. */
+ * Se compila con -DNP_MEDIR=n, y `n` dice **que** trozo se mide:
+ *
+ *     1  el frame entero
+ *     2  solo mover la pantalla al avanzar la vista (np_correr)
+ *     3  solo repintar el fondo por donde pasaron los actores
+ *     4  solo dibujar los actores
+ *     5  solo simular (esta en main.c)
+ *
+ * Midiendo un trozo cada vez la franja cabe entera en la pantalla y la cuenta
+ * sale exacta. En el juego de verdad nada de esto esta. */
 #ifndef NP_MEDIR
 #define NP_MEDIR 0
 #endif
 #define NP_COLOR_MEDIDA 0x0700                   /* rojo del ST */
 
+#if NP_MEDIR
+#define NP_MARCA(trozo, fondo) \
+    do { if ((trozo) == NP_MEDIR) REG16(ST_PALETA) = (fondo); } while (0)
+#else
+#define NP_MARCA(trozo, fondo) do { } while (0)
+#endif
+
 void np_video_frame(const NpWorld *w)
 {
     NpBuffer *b = &np_buffers[np_cual];
-#if NP_MEDIR
-    REG16(ST_PALETA) = NP_COLOR_MEDIDA;
-#endif
+    NP_MARCA(1, NP_COLOR_MEDIDA);
     int32_t vista_x = w->cam_x & ~(int32_t)15;
     int32_t vista_y = w->cam_y + NP_RECORTE_Y;
     int32_t grupos = (vista_x - b->vista_x) >> 4;
@@ -546,17 +614,24 @@ void np_video_frame(const NpWorld *w)
     } else if (grupos) {
         int32_t primera = b->vista_x >> 4;
         int32_t c;
+        NP_MARCA(3, NP_COLOR_MEDIDA);
         np_repintar_rastros(b, w);
+        NP_MARCA(3, w->level->background);
+        NP_MARCA(2, NP_COLOR_MEDIDA);
         np_correr(b->pixeles, grupos);
+        NP_MARCA(2, w->level->background);
         b->vista_x = vista_x;
         /* las columnas que entran por el lado hacia el que se mueve la vista */
         for (c = 0; c < (grupos > 0 ? grupos : -grupos); c++)
             np_columna(b, w, grupos > 0 ? primera + NP_COLUMNAS + c
                                         : primera - 1 - c);
     } else {
+        NP_MARCA(3, NP_COLOR_MEDIDA);
         np_repintar_rastros(b, w);
+        NP_MARCA(3, w->level->background);
     }
 
+    NP_MARCA(4, NP_COLOR_MEDIDA);
     for (i = 0; i < w->entity_count; i++) {
         const NpEntity *e = &w->entities[i];
         const NpActorDef *def;
@@ -572,6 +647,8 @@ void np_video_frame(const NpWorld *w)
                          NP_F2I(w->player.y) - def->box_y,
                          np_actor_frame(def, w->player.anim, w->player.anim_frame));
     }
+
+    NP_MARCA(4, w->level->background);
 
 #if NP_HUD_ENABLED
     np_hud_draw(w);
