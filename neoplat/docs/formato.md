@@ -46,7 +46,7 @@ una lo lleva a su manera:
 | Mega Drive | escribe las veinte columnas del plano en el frame del salto |
 | Amiga | repinta con el blitter las veinte columnas: unas 620 líneas de barrido sobre las 313 de un frame, o sea dos o tres frames perdidos en el cambio |
 | Jaguar | repinta el mapa de bits entero, como en cualquier otro frame |
-| Atari ST | repinta las veinte columnas con la CPU, que es lo que hace siempre; le cuesta un dibujado de los suyos, o sea dos frames de hardware |
+| Atari ST | repinta las veinte columnas con la CPU, que es lo que hace siempre; le cuesta un dibujado de los suyos, o sea dos frames de hardware. Y es el único sitio donde el ST dibuja parallax: con la vista quieta, pintarlo sale gratis |
 
 Las cinco se comprueban en emulador (`tests/test_sistemas.py`,
 `TestCamaraPorPantallas`): que la vista se quede quieta casi todos los frames y

@@ -531,6 +531,33 @@ class TestProyectoGenerado(unittest.TestCase):
         self.assertIn("np_tile_mask", texto)
         self.assertEqual(len(build.paletas), 1, "el ST tiene una sola paleta")
 
+    def test_el_st_dibuja_el_parallax_solo_por_pantallas(self):
+        """En el ST el fondo sale gratis si la vista esta quieta, y no cabe si
+        se desliza: por eso depende de la camara y no de un modo aparte."""
+        con_scroll = cargar_demo(self.proyecto, "atarist")
+        self.assertEqual(con_scroll.project.camera, "scroll",
+                         "el andamiaje ya no viene con scroll")
+        self.assertFalse(con_scroll.info["fondo"])
+        self.assertIn("#define NP_FONDO_ST 0", con_scroll.info["cabecera"])
+        self.assertTrue(all(not any(c.tiles) for c in con_scroll.layers),
+                        "con scroll el parallax deberia quedarse a cero")
+
+        otro = os.path.join(self.tmp, "st-pantallas")
+        if not os.path.isdir(otro):
+            from comun import proyecto_por_pantallas
+            proyecto_por_pantallas(otro)
+        por_pantallas = cargar_demo(otro, "atarist")
+        self.assertTrue(por_pantallas.info["fondo"])
+        self.assertIn("#define NP_FONDO_ST 1", por_pantallas.info["cabecera"])
+        self.assertTrue(any(any(c.tiles) for c in por_pantallas.layers),
+                        "el parallax no se ha metido en el banco")
+        # y la tabla de opacos: el escenario tiene tiles que tapan la casilla
+        banco = por_pantallas.info["banco"]
+        self.assertEqual(len(banco.opacos), banco.cuantos)
+        self.assertTrue(any(banco.opacos),
+                        "ningun dibujo tapa la casilla entera: el fondo se "
+                        "pintaria debajo de todos y costaria el doble")
+
     def test_el_st_recorta_la_pantalla_pero_no_el_mundo(self):
         """El ST ensena 200 lineas y las demas 224. Lo que **no** puede cambiar
         es el mundo: si el motor viera otra pantalla, el juego seria otro."""

@@ -88,6 +88,10 @@ class BancoSt:
     tiles: bytearray = field(default_factory=bytearray)
     mascaras: bytearray = field(default_factory=bytearray)
     planos: int = PLANOS
+    # 1 si el dibujo no tiene ni un pixel transparente. Un tile asi tapa la
+    # casilla entera, asi que se copia tal cual y no hay que mirar la mascara
+    # ni pintar el fondo debajo: es lo que hace que el parallax salga gratis.
+    opacos: List[int] = field(default_factory=list)
     _cache: Dict[Tuple[int, ...], int] = field(default_factory=dict)
 
     @property
@@ -105,11 +109,21 @@ class BancoSt:
         indice = self.cuantos
         self.tiles.extend(codificar_tile(pixeles, self.planos))
         self.mascaras.extend(codificar_mascara(pixeles))
+        self.opacos.append(1 if all(pixeles) else 0)
         if compartir:
             self._cache[clave] = indice
         return indice
 
 
-__all__ = ["PLANOS", "COLORES", "TILE_PX", "BYTES_POR_TILE", "BYTES_MASCARA",
+def bits_de(banderas: List[int]) -> bytes:
+    """Una lista de ceros y unos -> un bit por dibujo, ocho por byte."""
+    salida = bytearray((len(banderas) + 7) // 8)
+    for i, valor in enumerate(banderas):
+        if valor:
+            salida[i >> 3] |= 1 << (i & 7)
+    return bytes(salida)
+
+
+__all__ = ["PLANOS", "COLORES", "TILE_PX", "BYTES_POR_TILE", "BYTES_MASCARA", "bits_de",
            "st_color", "st_color_a_rgb", "codificar_tile", "decodificar_tile",
            "codificar_mascara", "decodificar_mascara", "BancoSt"]

@@ -15,8 +15,14 @@ Lo que eso obliga a hacer:
   - el escenario se mueve de **16 en 16 pixeles**: dibujar un tile en una x
     cualquiera cuesta cuatro veces mas, y con la vista pegada a la rejilla se
     copia tal cual. Los actores si van al pixel;
-  - el ST ensena **200 lineas** y las demas maquinas 224: se ve una ventana de
-    200 del mismo mundo, doce lineas menos arriba y doce menos abajo;
+  - el ST ensena **200 lineas** y las demas maquinas 224: se ve una ventana del
+    mismo mundo con 24 lineas menos por arriba (por arriba y no repartidas, que
+    abajo esta el suelo);
+  - hay una capa de parallax, pero solo con `camara: pantallas`: ahi la vista se
+    queda quieta entre salto y salto y pintarla sale gratis, porque donde no hay
+    escenario ya se pintaba un tile en blanco. Con scroll, fondo y escenario van
+    a velocidades distintas y sin un segundo plano por hardware habria que
+    repintar la pantalla entera cada pocos pixeles;
   - el sonido sale por el YM2149, que es el mismo chip que el SSG de la Neo
     Geo con la mitad de reloj;
   - el resultado no es un cartucho sino un **disquete** (.st): el ejecutable lo
@@ -65,11 +71,12 @@ class AtariSt(Sistema):
     extension_ejecutable = ""
     carpeta_salida = "disco"
     nombre_binario = "el disquete"
+    dibujo_actores = "actores dibujados a mano por la CPU"
     notas = [
         "pantalla: 200 lineas en vez de 224; se ve una ventana del mismo mundo",
         "camara:   el escenario se mueve de 16 en 16 pixeles (no hay scroll",
         "          por hardware), y los actores al pixel",
-        "parallax: no se dibuja; el fondo se ve del color de fondo",
+        "parallax: una capa, y solo con 'camara: pantallas'; con scroll no cabe",
         "sonido:   YM2149, tres cuadradas y un ruido",
     ]
 
@@ -86,21 +93,33 @@ class AtariSt(Sistema):
     def preparar(self, build: Build) -> None:
         build.sistema = self
         banco = gfx_st.BancoSt()
+        # El fondo solo se dibuja con la camara por pantallas: ahi la vista se
+        # queda quieta entre salto y salto y pintarlo no cuesta nada. Con
+        # scroll, escenario y fondo van a velocidades distintas y sin un
+        # segundo plano por hardware habria que repintar la pantalla entera
+        # cada pocos pixeles. Ver docs/atarist.md.
+        fondo = bool(build.layers) and build.project.camera == "pantallas"
 
         # 1) las paletas: los 16 colores del ST menos el del marcador. No hay
         #    dibujo que quepa tal cual, asi que los que sobran se cambian por el
         #    mas parecido, pesando cuanto se usa cada uno.
-        paletas = [build.tileset.palette]
-        paletas += [a.sheet.palette for a in build.actor_builds()]
-        pesos = _pesos([(build.tileset.palette, build.tileset.tiles)]
-                       + [(a.sheet.palette, a.sheet.tiles)
-                          for a in build.actor_builds()])
+        partes = [(build.tileset.palette, build.tileset.tiles)]
+        partes += [(a.sheet.palette, a.sheet.tiles) for a in build.actor_builds()]
+        if fondo:
+            partes += [(c.palette, [c.dibujos[i] for i in c.tiles]) for c in build.layers]
+        paletas = [p for p, _ in partes]
+        pesos = _pesos(partes)
         unica = gfx_amiga.fusionar_paletas(paletas, tope=COLOR_HUD, pesos=pesos,
                                            aproximar=True)
 
         def remapear(tile, nombre):
             mapa = unica.asignacion[nombre]
             return [mapa.get(v, 0) for v in tile]
+
+        def sin_transparente(tile):
+            """El fondo no tiene nada detras: sus huecos se pintan del color 0
+            del nivel igual que antes, asi que se dejan como estan."""
+            return tile
 
         # 2) los dibujos, entrelazados y con su mascara. Sin compartir: el motor
         #    cuenta con que los fotogramas de un actor van seguidos.
@@ -115,12 +134,19 @@ class AtariSt(Sistema):
                 banco.anadir(remapear(tile, actor.sheet.palette.name), compartir=False)
             actor.sheet.palette_index = 0
 
-        # 3) las capas de parallax no se dibujan: sin un segundo plano habria
-        #    que repintarlas con la CPU y no caben en un frame.
-        for capa in build.layers:
-            capa.tiles = [0] * len(capa.tiles)
-            capa.palette_index = 0
-            capa.dibujos = []
+        # 3) las capas de parallax, si se van a dibujar
+        if fondo:
+            for capa in build.layers:
+                nuevos = [banco.anadir(remapear(sin_transparente(d), capa.palette.name))
+                          for d in capa.dibujos]
+                capa.tiles = [nuevos[i] for i in capa.tiles]
+                capa.palette_index = 0
+                capa.dibujos = []
+        else:
+            for capa in build.layers:
+                capa.tiles = [0] * len(capa.tiles)
+                capa.palette_index = 0
+                capa.dibujos = []
 
         if banco.cuantos > MAX_TILES:
             raise ProjectError(
@@ -158,10 +184,12 @@ class AtariSt(Sistema):
                 "colores": len(unica.colores),
                 "aproximados": unica.perdidos,
             },
+            "fondo": fondo,
             "cabecera": [
                 "#define NP_TILE_COUNT %d" % banco.cuantos,
                 "#define NP_FONT_COUNT %d" % len(glifos),
                 "#define NP_PASOS_POR_DIBUJO %d" % PASOS_POR_DIBUJO,
+                "#define NP_FONDO_ST %d" % (1 if fondo else 0),
             ],
         }
 
@@ -173,13 +201,24 @@ class AtariSt(Sistema):
                 "de los tuyos se han cambiado por el mas parecido de los que "
                 "caben. Si quieres mandar tu en los colores, dibuja con quince"
                 % build.info["stats"]["aproximados"])
-        for nivel in build.levels:
-            if nivel.layers:
-                avisos.append(
-                    "en el Atari ST no se dibujan las capas de parallax: el fondo "
-                    "de '%s' se vera del color de fondo. Repintarlas cada frame "
-                    "sin blitter no cabe en la maquina" % nivel.name)
-                break
+        if not build.info.get("fondo"):
+            for nivel in build.levels:
+                if nivel.layers:
+                    avisos.append(
+                        "en el Atari ST el parallax solo se dibuja con "
+                        "'camara: pantallas': el fondo de '%s' se vera del color "
+                        "de fondo. Con scroll, el fondo y el escenario van a "
+                        "velocidades distintas y sin un segundo plano por hardware "
+                        "habria que repintar la pantalla entera cada pocos pixeles"
+                        % nivel.name)
+                    break
+        else:
+            for nivel in build.levels:
+                if len(nivel.layers) > 1:
+                    avisos.append(
+                        "el Atari ST dibuja una sola capa de fondo: en '%s' se "
+                        "usara la primera" % nivel.name)
+                    break
         return avisos
 
     # --- generacion ----------------------------------------------------
@@ -201,6 +240,9 @@ class AtariSt(Sistema):
         salida.resumen.append(
             "colores:  %d de los 16 del ST (el 15 es el del marcador)"
             % build.info["stats"]["colores"])
+        if build.info.get("fondo"):
+            salida.resumen.append(
+                "fondo:    una capa de parallax, dibujada debajo del escenario")
         salida.resumen.append(
             "disquete: disco/%s.st (720 KB, arranca solo desde la carpeta AUTO)"
             % nombre.lower())
@@ -279,6 +321,15 @@ def _graficos_c(build: Build, banco: gfx_st.BancoSt) -> str:
         "const uint8_t np_tile_mask[NP_TILE_COUNT * %d] = {" % gfx_st.BYTES_MASCARA,
         _c_bytes(bytes(banco.mascaras)),
         "};",
+        "",
+        "#if NP_FONDO_ST",
+        "/* Un bit por dibujo: 1 si no tiene ni un pixel transparente. Con eso el",
+        " * escenario que tapa la casilla entera se copia tal cual y el parallax",
+        " * solo cuesta algo en las casillas que dejan huecos. */",
+        "const uint8_t np_tile_opaco[(NP_TILE_COUNT + 7) / 8] = {",
+        _c_bytes(gfx_st.bits_de(banco.opacos)),
+        "};",
+        "#endif",
         "",
         "/* Los 16 colores de la pantalla, en formato del ST (3 bits por canal). */",
         "const uint16_t np_colores[16] = {",

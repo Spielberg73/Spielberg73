@@ -140,8 +140,9 @@ cuántas veces cambia el mapa de píxeles se sabe a qué ritmo va.
 | primera versión | 10 |
 | tiles copiados de palabra larga en palabra larga | 15 |
 | lo que no depende del plano, fuera del bucle | 17 |
-| **una sola espera al retrazo por vuelta** | **25** |
+| **esperar al retrazo una vez por paso, no una por dibujado** | **25** |
 | mover la pantalla con `movem.l` | 25, y sin caerse a 16 al avanzar |
+| dibujar repartido entre los dos pasos | 25, y 17 en lo más cargado |
 
 Lo que más subió no fue el dibujado: fue el orden del bucle. La primera versión
 esperaba al retrazo después de cada paso de simulación, y eso tiraba un frame
@@ -159,6 +160,24 @@ barrido; un frame de hardware son 313):
 | dibujar los actores | 124 | |
 | **un frame normal, entero** | **280** | el 89% de un frame de hardware |
 | mover la pantalla al avanzar la vista | 242 | solo cuando el escenario avanza |
+
+Un frame de dibujado no cabe en un frame de hardware, pero **caben los dos en
+los dos**: el juego simula dos veces por cada vez que dibuja, así que de todas
+formas hay que esperar dos retrazos. Por eso el dibujado va partido en dos
+mitades, una por paso: el escenario en la primera y los actores en la segunda.
+Haciéndolo todo de una vez el trabajo se salía por poco de un frame y costaba
+otro entero.
+
+**Lo que sale de verdad**: 25 frames por segundo en la mayoría de las pantallas,
+y unos 17 en las que juntan scroll y muchos actores a la vez (el nivel del
+ejemplo con nueve monedas y dos enemigos en pantalla). La simulación va a 50
+pasos por segundo en las dos, que es lo que hace que sea el mismo juego que en
+las otras cuatro máquinas.
+
+Y ojo con el reloj del juego: **una espera por paso, no una por vuelta**. Con
+una sola espera, en una pantalla con poco que dibujar la vuelta entera cabía en
+un frame y el juego corría al doble de velocidad. El reloj no puede depender de
+cuánto haya que pintar.
 
 ### Los 27 KB que se mueven, y por qué van en ensamblador
 
@@ -240,9 +259,30 @@ colores que sobran se cambian por el más parecido, pesando cuánto se usa cada
 uno: es el mismo corte por la mediana que usa el modo de doble plano del Amiga.
 Si quieres mandar tú en los colores, dibuja con quince.
 
-**El parallax no se dibuja.** Sin un segundo plano habría que repintar la capa
-entera cada vez que se mueve la vista, y eso no cabe. El fondo se ve del color
-de fondo del nivel, que es también el del borde de la pantalla.
+## El parallax, y por qué depende de la cámara
+
+El ST dibuja **una capa de fondo, y solo con `camara: pantallas`**. No es una
+opción que haya que elegir: sale de lo que cuesta cada cosa.
+
+Con la cámara por pantallas la vista se queda quieta entre salto y salto, así
+que el fondo también, y pintarlo **no cuesta nada**: donde no hay escenario ya
+se pintaba un tile en blanco, y ahora se pinta el del fondo. Solo hay tres
+casos, y dos son gratis:
+
+| la casilla | qué se hace | qué cuesta |
+|---|---|---|
+| el tile tapa la casilla entera | se copia y ya está | lo mismo que antes |
+| está vacía | se copia el tile del fondo | lo mismo que antes |
+| el tile deja huecos | fondo debajo y el tile encima con su máscara | el doble, y son cuatro casillas |
+
+Para saber cuál es cada una, el compilador emite un bit por dibujo
+(`np_tile_opaco`): 1 si no tiene ni un píxel transparente. En un escenario
+normal casi todos los tiles son de esos o están vacíos.
+
+Con `camara: scroll` no se dibuja, y aquí sí es por lo que cuesta: el fondo
+tiene que ir a otra velocidad que el escenario, y correr la memoria solo puede
+mover los dos a la vez. Habría que repintar la pantalla entera cada pocos
+píxeles —322.000 ciclos, dos frames— y no cabe. El compilador lo avisa.
 
 ## Cómo suena
 
@@ -324,6 +364,8 @@ sitio correcto y la ejecución sigue como si nada.
 | el mando no responde | el ACIA se quedó con un byte sin leer y el MFP no vuelve a avisar |
 | el escenario da saltos raros al andar | `np_correr` y las columnas que entran: la vista y la memoria no cuadran |
 | colores cambiados | son 15: mira el aviso de `ngplat compilar`, que dice cuántos se han aproximado |
+| el fondo no sale | solo se dibuja con `camara: pantallas`; con scroll no cabe |
+| el juego va al doble de velocidad | falta una espera al retrazo por cada paso de simulación |
 
 ## Comprobarlo en un emulador
 

@@ -245,7 +245,7 @@ def cmd_sistemas(args: argparse.Namespace) -> int:
             colores = "%d colores a la vez, en una sola paleta" % (
                 limites.colores_en_pantalla)
         actores = ("%d sprites" % limites.sprites) if limites.sprites else \
-            "actores dibujados con el blitter"
+            sistema.dibujo_actores
         print("  %-11s %s" % (sistema.nombre, sistema.titulo))
         print("  %-11s %s, pantalla %dx%d" % ("", sistema.cpu, *sistema.pantalla))
         print("  %-11s %s, %s" % ("", colores, actores))

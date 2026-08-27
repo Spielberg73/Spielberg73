@@ -111,7 +111,9 @@
 #endif
 
 void np_st_init(void);
-void np_video_frame(const NpWorld *w);
+void np_video_frame(const NpWorld *w);      /* las dos mitades, seguidas */
+void np_video_escenario(const NpWorld *w);  /* y cada una por su cuenta: ver */
+void np_video_actores(const NpWorld *w);    /* el reparto en np_video.c      */
 void np_wait_vblank(void);
 uint16_t np_input_read(void);
 
@@ -125,10 +127,27 @@ void np_hud_number(uint8_t col, uint8_t fila, uint32_t valor, uint8_t digitos);
 uint8_t np_hud_cambiado(void);           /* y lo pone a cero */
 extern uint8_t np_hud_bitmap[];          /* 320x24: lo que va arriba del todo */
 
+/* El fondo (parallax). Solo se dibuja con `camara: pantallas`: ahi la vista se
+ * queda quieta entre salto y salto, asi que el fondo tambien, y pintarlo sale
+ * **gratis** (donde no hay escenario ya se pintaba un tile en blanco). Con
+ * `camara: scroll` el fondo tendria que ir a otra velocidad que el escenario, y
+ * sin un segundo plano por hardware eso obliga a repintar la pantalla entera
+ * cada pocos pixeles: no cabe. Lo pone gamedata.h. */
+#ifndef NP_FONDO_ST
+#define NP_FONDO_ST 0
+#endif
+
 /* datos que genera el compilador (graficos.c) */
 extern uint8_t np_pantallas[];                   /* las dos, sin alinear */
 extern const uint8_t np_tile_data[];             /* 128 bytes por dibujo */
 extern const uint8_t np_tile_mask[];             /*  32 bytes por dibujo */
+#if NP_FONDO_ST
+/* Un bit por dibujo: 1 si no tiene ni un pixel transparente. Un tile asi tapa
+   el fondo entero, asi que se copia tal cual y no hay que mirar la mascara ni
+   pintar el fondo debajo. En un escenario normal casi todos son de estos o
+   estan vacios, y por eso el parallax no cuesta nada. */
+extern const uint8_t np_tile_opaco[];
+#endif
 extern const uint16_t np_colores[16];
 extern const uint8_t np_font_data[];             /* fuente de 8x8, un bit por pixel */
 

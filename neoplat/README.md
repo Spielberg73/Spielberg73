@@ -31,7 +31,7 @@ Y las cinco llevan un **68000**, que es lo que hace que el motor sea uno solo.
 | Actores | sprites | sprites del VDP | blitter con máscara | objetos del chip | dibujados a mano, con máscara |
 | Colores | 4096 en pantalla | 4 paletas de 16 | una de 32, o dos de 8 | una tabla de 256 | una de 16 |
 | Sonido | YM2610 (SSG) por Z80 | PSG SN76489 | Paula (4 canales) | los DAC, por el DSP de Jerry | YM2149 |
-| Parallax | sí | una capa | una capa (`amiga: 8colores`) | una capa | no |
+| Parallax | sí | una capa | una capa (`amiga: 8colores`) | una capa | una capa (`camara: pantallas`) |
 | Sale | ROMs de cartucho | `.bin` con cabecera y suma | disquete `.adf` arrancable | cartucho `.j64` | disquete `.st` arrancable |
 
 El Atari ST es el caso raro y por eso merece la pena: mismo 68000 que los
@@ -410,11 +410,14 @@ Verificado aquí:
   teclado que fallaba una vez de cada dos: si el ACIA se queda con un byte sin
   leer antes de abrir las interrupciones, el MFP no vuelve a avisar nunca y el
   mando se muere para siempre.
-- **El juego va a 25 de los 25 frames por segundo que da el ST** (10 antes de
-  optimizar), simulando a 50 como las demás máquinas: medido en líneas de
-  barrido dentro de un ST emulado, poniendo el borde de color mientras dibuja.
-  Lo que más subió no fue el dibujado sino el orden del bucle; está contado en
-  [docs/atarist.md](docs/atarist.md).
+- **El juego va a 25 frames por segundo en el ST** (10 antes de optimizar), y a
+  unos 17 en las pantallas que juntan scroll y muchos actores; la simulación va
+  a 50 pasos por segundo en las dos, como en las demás máquinas. Medido en
+  líneas de barrido dentro de un ST emulado, poniendo el borde de color mientras
+  dibuja. Lo que más subió no fue el dibujado sino el orden del bucle, y de paso
+  salió un fallo de los feos: con una sola espera al retrazo por vuelta, una
+  pantalla con poco que dibujar hacía que el juego corriese **al doble de
+  velocidad**. Está contado en [docs/atarist.md](docs/atarist.md).
 - **Y su disquete también**: un `.st` de 737280 bytes con FAT12, el juego en la
   carpeta `AUTO` y un `.PRG` de GEMDOS con su tabla de relocalización, que las
   pruebas recorren corrección a corrección. El disquete lo lee además `mtools`
@@ -471,9 +474,10 @@ Lo que aún no hace:
 - **Muestras digitales**: la música y los efectos usan ondas cuadradas en las
   cinco máquinas; las voces y percusiones sampleadas aún no (ni la ROM V1 de la
   Neo Geo ni los samples de Paula ni el YM2612 ni los DAC de la Jaguar).
-- **Parallax en el Atari ST**: sin un segundo plano habría que repintar la capa
-  entera cada vez que se mueve la vista, y no cabe. El fondo se ve del color de
-  fondo del nivel ([docs/atarist.md](docs/atarist.md)).
+- **Parallax en el Atari ST con `camara: scroll`**: con `pantallas` sí se
+  dibuja, y sale gratis porque la vista está quieta; deslizándose habría que
+  repintar la pantalla entera cada pocos píxeles y no cabe
+  ([docs/atarist.md](docs/atarist.md)).
 - **Eventos guionizados**: hay cinco comportamientos de enemigo fijos y un jefe
   por nivel (`jefe: si`); no hay forma de guionizar una secuencia.
 - **Dos jugadores**.

@@ -7,12 +7,17 @@
  * lo que da de si un 68000 a 8 MHz sin blitter. Esta medido, no supuesto: ver
  * docs/atarist.md.
  *
- * Y ojo con el orden, que no es un detalle: **una sola espera por vuelta, y al
- * principio**. La primera version esperaba al retrazo despues de cada paso, y
- * eso tiraba un frame entero por vuelta: el trabajo de verdad (simular dos
- * veces y dibujar) cabe de sobra en los dos frames, pero repartido en trozos
- * que no llegaban a tiempo al siguiente retrazo se comia tres. De 16 frames por
- * segundo a 25 sin tocar una sola linea del dibujado.
+ * Y ojo con el orden, que no es un detalle y costo dos intentos:
+ *
+ *   - **una espera por paso**, y no una por vuelta. Con una sola espera, en una
+ *     pantalla con poco que dibujar la vuelta entera cabia en un frame y el
+ *     juego corria **al doble de velocidad**: el reloj del juego no puede
+ *     depender de cuanto haya que pintar;
+ *   - y **dibujar dentro del bucle y repartido**: el escenario en el primer
+ *     paso y los actores en el segundo. Asi cada mitad cabe de sobra en el
+ *     frame que de todas formas hay que esperar. Haciendolo todo de una vez el
+ *     trabajo se salia por poco de un frame y costaba otro entero: 16 frames
+ *     por segundo en vez de 25.
  */
 
 #include "np_st.h"
@@ -35,19 +40,21 @@ int main(void)
     np_world_init(&world);
 
     for (;;) {
-        np_wait_vblank();
-#if NP_MEDIR == 5
-        REG16(ST_PALETA) = 0x0700;
-#endif
         for (paso = 0; paso < NP_PASOS_POR_DIBUJO; paso++) {
             uint16_t input = np_input_read();
+#if NP_MEDIR == 5
+            REG16(ST_PALETA) = 0x0700;
+#endif
             np_world_step(&world, input);
             np_sound_update(&world);
-        }
 #if NP_MEDIR == 5
-        REG16(ST_PALETA) = world.level->background;
+            REG16(ST_PALETA) = world.level->background;
 #endif
-        np_video_frame(&world);
+            /* el dibujado, repartido entre los pasos: ver np_video.c */
+            if (paso == 0) np_video_escenario(&world);
+            if (paso == NP_PASOS_POR_DIBUJO - 1) np_video_actores(&world);
+            np_wait_vblank();
+        }
     }
     return 0;
 }

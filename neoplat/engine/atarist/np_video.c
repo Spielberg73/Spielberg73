@@ -362,7 +362,110 @@ static void np_sprite_en(uint8_t *pantalla, uint16_t tile, int32_t x, int32_t y)
     }
 }
 
-/* --- el escenario -------------------------------------------------------- */
+/* --- el escenario --------------------------------------------------------
+ *
+ * Una casilla del escenario puede llevar fondo debajo. Los tres casos, de mas
+ * frecuente a menos:
+ *
+ *   - el tile tapa la casilla entera: se copia y ya esta, como si no hubiera
+ *     fondo (es lo que pasa con el suelo y las plataformas);
+ *   - la casilla esta vacia: se copia el tile del fondo, que cuesta lo mismo
+ *     que copiar el tile en blanco que se copiaba antes;
+ *   - el tile deja huecos: fondo debajo y el tile encima recortado por su
+ *     mascara. Es el unico caso que cuesta mas, y son cuatro casillas.
+ */
+
+/* Copia un tile dejando ver lo que hay debajo por donde es transparente. Como
+   `x` va en multiplos de 16 no hay que desplazar nada: basta con `(destino y
+   no_mascara) o dibujo`, y las filas transparentes enteras se saltan. */
+#if NP_FONDO_ST
+static void np_tile_mascara_en(uint8_t *pantalla, uint16_t tile, int32_t x, int32_t y)
+{
+    const uint16_t *dib;
+    const uint16_t *msk;
+    uint16_t *destino;
+    int32_t f, desde = 0, hasta = NP_TILE;
+
+    if (x < 0 || x >= NP_ANCHO) return;
+    if (y < NP_HUD_ALTO) desde = NP_HUD_ALTO - y;
+    if (y + NP_TILE > NP_ALTO) hasta = NP_ALTO - y;
+    if (desde >= hasta) return;
+
+    dib = (const uint16_t *)(const void *)(np_tile_data
+          + (uint32_t)tile * (NP_TILE * NP_PLANOS * 2));
+    msk = (const uint16_t *)(const void *)(np_tile_mask + (uint32_t)tile * (NP_TILE * 2));
+    destino = (uint16_t *)(void *)(pantalla + (uint32_t)(y + desde) * NP_PASO_FILA
+                                   + (uint32_t)(x >> 1));
+    for (f = desde; f < hasta; f++, destino += NP_PASO_FILA / 2) {
+        uint16_t hueco = (uint16_t)~msk[f];
+        const uint16_t *fuente;
+        uint8_t p;
+        if (hueco == 0xFFFF) continue;            /* fila transparente entera */
+        fuente = dib + f * NP_PLANOS;
+        for (p = 0; p < NP_PLANOS; p++)
+            destino[p] = (uint16_t)((destino[p] & hueco) | fuente[p]);
+    }
+}
+
+/* Donde esta el fondo este frame. Se calcula una vez por frame porque lleva una
+   multiplicacion de 32 bits, que en un 68000 es una rutina. Se redondea a
+   multiplos de 16 para poder copiar los tiles sin desplazar: el fondo queda
+   hasta 15 pixeles corrido de donde tocaria, y en un decorado que salta de
+   pantalla en pantalla no lo nota nadie. */
+static const NpLayer *np_capa;
+static int32_t np_fondo_x, np_fondo_y;
+
+static void np_situar_fondo(const NpWorld *w)
+{
+    np_capa = 0;
+    np_fondo_x = np_fondo_y = 0;
+#if NP_LAYER_COUNT > 0
+    if (w->level->layer_count) {
+        np_capa = &np_layers[w->level->layers[0]];
+        np_fondo_x = (((int32_t)w->cam_x * np_capa->speed_x) >> 8) & ~(int32_t)15;
+        np_fondo_y = (((int32_t)w->cam_y * np_capa->speed_y) >> 8) & ~(int32_t)15;
+    }
+#else
+    (void)w;
+#endif
+}
+
+/* Que dibujo del fondo va detras de la casilla (tile_x, fila). */
+static uint16_t np_tile_del_fondo(NpBuffer *b, int32_t tile_x, int32_t fila)
+{
+    int32_t columna, r;
+    if (!np_capa || !np_capa->cols) return 0;
+    columna = (np_fondo_x + tile_x * NP_TILE - b->vista_x) >> 4;
+    r = fila - (np_capa->offset_y >> 4) + (np_fondo_y >> 4);
+    if (r < 0 || r >= np_capa->rows) return 0;
+    if (np_capa->repeat) {
+        columna %= np_capa->cols;
+        if (columna < 0) columna += np_capa->cols;
+    } else if (columna < 0 || columna >= np_capa->cols) {
+        return 0;
+    }
+    return np_capa->tiles[r * np_capa->cols + columna];
+}
+#endif /* NP_FONDO_ST */
+
+/* Una casilla entera: el fondo si hace falta y el escenario encima. */
+static void np_celda(NpBuffer *b, uint16_t gfx, int32_t tile_x, int32_t fila,
+                     int32_t x, int32_t y)
+{
+#if NP_FONDO_ST
+    uint16_t fondo;
+    if (gfx && (np_tile_opaco[gfx >> 3] >> (gfx & 7)) & 1) {
+        np_tile_en(b->pixeles, gfx, x, y);        /* tapa la casilla entera */
+        return;
+    }
+    fondo = np_tile_del_fondo(b, tile_x, fila);
+    np_tile_en(b->pixeles, fondo, x, y);
+    if (gfx) np_tile_mascara_en(b->pixeles, gfx, x, y);
+#else
+    (void)tile_x; (void)fila;
+    np_tile_en(b->pixeles, gfx, x, y);
+#endif
+}
 
 /* Una columna de tiles del mundo, en la pantalla `b`. */
 static void np_columna(NpBuffer *b, const NpWorld *w, int32_t tile_x)
@@ -374,7 +477,7 @@ static void np_columna(NpBuffer *b, const NpWorld *w, int32_t tile_x)
     if (x < 0 || x >= NP_ANCHO) return;
     np_tile_gfx_column(w->level, tile_x, primera, NP_FILAS, tiles);
     for (f = 0; f < NP_FILAS; f++)
-        np_tile_en(b->pixeles, tiles[f], x, (primera + f) * NP_TILE - b->vista_y);
+        np_celda(b, tiles[f], tile_x, f, x, (primera + f) * NP_TILE - b->vista_y);
 }
 
 static void np_redibujar_todo(NpBuffer *b, const NpWorld *w)
@@ -530,8 +633,8 @@ static void np_repintar_rastros(NpBuffer *b, const NpWorld *w)
                 indice = (uint16_t)(fila * NP_COLUMNAS + columna);
                 if (np_ya_repintado[indice >> 3] & (1 << (indice & 7))) continue;
                 np_ya_repintado[indice >> 3] |= (uint8_t)(1 << (indice & 7));
-                np_tile_en(b->pixeles, tiles[ty - ty0],
-                           tx * NP_TILE - b->vista_x, ty * NP_TILE - b->vista_y);
+                np_celda(b, tiles[ty - ty0], tx, fila,
+                         tx * NP_TILE - b->vista_x, ty * NP_TILE - b->vista_y);
             }
         }
     }
@@ -596,14 +699,37 @@ static void np_dibujar_actor(NpBuffer *b, const NpActorDef *def,
 #define NP_MARCA(trozo, fondo) do { } while (0)
 #endif
 
-void np_video_frame(const NpWorld *w)
+/* El dibujado va **partido en dos mitades**, una por cada paso de simulacion.
+ *
+ * No es un capricho: el juego simula dos veces por cada vez que dibuja, asi que
+ * de todas formas hay que esperar dos retrazos. Haciendolo todo de una vez el
+ * trabajo caia en un solo frame -unas 300 lineas de barrido de las 313 que
+ * tiene- y cualquier cosa de mas se salia por el borde y costaba un frame
+ * entero: el juego bajaba de 25 a 16 frames por segundo en las pantallas con
+ * muchos actores. Repartido, cada mitad va sobrada:
+ *
+ *     paso 1   el escenario: borrar por donde pasaron los actores y, si la
+ *              vista se ha movido, correr la pantalla y pintar la columna que
+ *              entra
+ *     paso 2   los actores, el marcador y el cambio de pantalla
+ *
+ * El escenario va un paso por detras de los actores, y no se nota: la vista se
+ * mueve de 16 en 16 pixeles y casi nunca cambia justo entre los dos pasos.
+ */
+void np_video_escenario(const NpWorld *w)
 {
     NpBuffer *b = &np_buffers[np_cual];
     NP_MARCA(1, NP_COLOR_MEDIDA);
     int32_t vista_x = w->cam_x & ~(int32_t)15;
     int32_t vista_y = w->cam_y + NP_RECORTE_Y;
     int32_t grupos = (vista_x - b->vista_x) >> 4;
-    uint8_t i;
+
+#if NP_FONDO_ST
+    np_situar_fondo(w);
+    /* con fondo no vale correr la memoria: el escenario y el fondo van a
+       velocidades distintas y una sola copia no puede mover los dos */
+    if (grupos) grupos = NP_COLUMNAS;
+#endif
 
     if (w->level != b->nivel || vista_y != b->vista_y
         || grupos <= -NP_COLUMNAS || grupos >= NP_COLUMNAS) {
@@ -630,6 +756,13 @@ void np_video_frame(const NpWorld *w)
         np_repintar_rastros(b, w);
         NP_MARCA(3, w->level->background);
     }
+    NP_MARCA(1, w->level->background);
+}
+
+void np_video_actores(const NpWorld *w)
+{
+    NpBuffer *b = &np_buffers[np_cual];
+    uint8_t i;
 
     NP_MARCA(4, NP_COLOR_MEDIDA);
     for (i = 0; i < w->entity_count; i++) {
@@ -667,4 +800,10 @@ void np_video_frame(const NpWorld *w)
     REG16(ST_PALETA) = w->level->background;
     np_ver(b->pixeles);
     np_cual = (uint8_t)((np_cual + 1) % NP_PANTALLAS);
+}
+
+void np_video_frame(const NpWorld *w)
+{
+    np_video_escenario(w);
+    np_video_actores(w);
 }
