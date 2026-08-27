@@ -176,6 +176,14 @@ def build_data(build: Build) -> Dict[str, object]:
         # bit del evento -> nombre del efecto que suena
         "eventos": {str(bit): nombre
                     for nombre, bit in project.sound.evento_bits().items()},
+        # Las muestras digitales, en base64 y a su frecuencia. Van aparte de
+        # los pasos porque no son notas: el navegador las toca tal cual.
+        "muestras": {
+            nombre: {"ritmo": efecto.muestra.ritmo,
+                     "datos": base64.b64encode(efecto.muestra.datos).decode()}
+            for nombre, efecto in project.sound.efectos.items()
+            if efecto.muestra is not None
+        },
     }
 
     return {

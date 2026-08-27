@@ -82,6 +82,7 @@ class Build:
     paletas: List[List[int]] = field(default_factory=list)   # colores ya en su formato
     tile_gfx: List[int] = field(default_factory=list)        # numero grafico por tile
     info: Dict[str, object] = field(default_factory=dict)    # datos sueltos del sistema
+    pcm_bytes: int = 0                                       # lo que ocupan las muestras
 
     def actor_builds(self) -> List[ActorBuild]:
         return [self.player] + self.enemies + self.items

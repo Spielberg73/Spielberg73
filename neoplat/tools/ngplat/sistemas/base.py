@@ -68,9 +68,29 @@ class Sistema:
     # imprime `ngplat sistemas`.
     notas: List[str] = []
 
+    # si esta maquina toca sonido grabado. Las que no, avisan de los efectos
+    # que se quedarian mudos por no llevar notas al lado.
+    toca_muestras = False
+
     def comprobar(self, build: Build) -> List[str]:
         """Avisos propios del sistema (o ProjectError si algo no cabe)."""
         return []
+
+    def aviso_de_muestras(self, build: Build, porque: str) -> List[str]:
+        """El aviso de los efectos que en esta maquina no van a sonar.
+
+        Solo los que son **solo** muestra: si el efecto trae tambien notas,
+        esas notas son el recambio y se oye eso."""
+        if self.toca_muestras:
+            return []
+        mudos = [n for n, e in build.project.sound.efectos.items()
+                 if e.digital and not e.pasos]
+        if not mudos:
+            return []
+        return ["%s no toca muestras digitales (%s), asi que %s no sonara. "
+                "Ponle notas al lado de la muestra ('notas:', 'tipo: barrido' o "
+                "'tipo: ruido') y sonaran esas"
+                % (self.titulo, porque, ", ".join("'%s'" % n for n in mudos))]
 
     def generar(self, build: Build, rom_id: str) -> Salida:
         raise NotImplementedError

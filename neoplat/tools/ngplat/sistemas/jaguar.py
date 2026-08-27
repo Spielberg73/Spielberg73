@@ -16,6 +16,7 @@ from typing import Dict, List
 from .. import gfx, gfx_jaguar, jerry
 from ..build import Build
 from ..errors import ProjectError
+from ..sonido import tabla_de_muestras_vacia
 from .base import Limites, Salida, Sistema, registrar
 
 COLOR_HUD = 255                       # el ultimo color, para el marcador
@@ -146,6 +147,7 @@ class Jaguar(Sistema):
                     "la primera" % nivel.name)
                 break
 
+        avisos.extend(self.aviso_de_muestras(build, "el kit todavia no usa los DAC que maneja el DSP"))
         return avisos
 
     # --- generacion -----------------------------------------------------
@@ -233,6 +235,8 @@ def _sonido_c(build: Build) -> str:
     partes.append("};")
     partes.append("const uint16_t np_snd_efecto_count = %d;" % len(efectos))
     partes.append("const uint16_t np_snd_musica_count = %d;" % len(build.music_order))
+    partes.append("")
+    partes.extend(tabla_de_muestras_vacia())
     partes.append("")
 
     palabras = [int.from_bytes(codigo[i:i + 4], "big")

@@ -19,7 +19,7 @@ from typing import Dict, List
 from .. import gfx, gfx_md
 from ..build import Build
 from ..errors import ProjectError
-from ..sonido import periodo_psg
+from ..sonido import periodo_psg, tabla_de_muestras_vacia
 from .base import Limites, Salida, Sistema, registrar
 
 MAX_TILES = 1344          # lo que cabe en la VRAM antes de la tabla de sprites
@@ -168,6 +168,7 @@ class MegaDrive(Sistema):
                 "hay niveles con %d enemigos y objetos; en Mega Drive caben 80 sprites "
                 "en pantalla y cada actor gasta uno o dos" % entidades
             )
+        avisos.extend(self.aviso_de_muestras(build, "el kit todavia no usa el DAC del YM2612"))
         return avisos
 
     # --- generacion ----------------------------------------------------
@@ -266,6 +267,8 @@ def _sonido_c(build: Build) -> str:
     partes.append("};")
     partes.append("const uint16_t np_snd_efecto_count = %d;" % len(efectos))
     partes.append("const uint16_t np_snd_musica_count = %d;" % len(build.music_order))
+    partes.append("")
+    partes.extend(tabla_de_muestras_vacia())
     partes.append("")
     return "\n".join(partes)
 

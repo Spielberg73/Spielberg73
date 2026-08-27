@@ -309,6 +309,38 @@ sonido:
 | `barrido` | saltos y disparos: la frecuencia sube o baja | `desde`, `hasta`, `duracion` |
 | `ruido` | golpes y explosiones | `duracion`, `tono` |
 
+### Muestras digitales (`muestra:`)
+
+Un efecto puede ser **sonido grabado** en vez de notas: una voz, una batería,
+un golpe de verdad. Se apunta a un WAV del proyecto:
+
+```yaml
+sonido:
+  efectos:
+    moneda:  {muestra: sonidos/moneda.wav, notas: "mi6 sol6", velocidad: 3}
+    golpe:   {muestra: sonidos/golpe.wav, tipo: ruido, duracion: 10}
+```
+
+El WAV tiene que ser **PCM sin comprimir**, mono o estéreo, de 8 o 16 bits, a
+cualquier frecuencia, y durar como mucho 4 segundos; el compilador lo pasa a
+mono de 8 bits y lo remuestrea a lo que use cada máquina. `ngplat nuevo` ya te
+deja dos de ejemplo en `sonidos/`.
+
+`muestra:` **no sustituye a `tipo:`**: puedes poner las dos cosas, y entonces
+las notas son el recambio para las máquinas que no saben tocar sonido grabado.
+Sólo hay una:
+
+| | |
+|---|---|
+| Amiga | sí: es lo que hace Paula de serie, leyendo el sonido de la RAM chip por DMA |
+| Neo Geo, Mega Drive, Atari Jaguar | todavía no (sus chips pueden; el kit aún no lo usa) y suenan las notas de al lado |
+| Atari ST | **nunca**: el YM2149 sólo hace ondas cuadradas |
+
+Donde no hay muestra suenan las notas, y si un efecto es sólo muestra el
+compilador te avisa de en qué máquinas se quedará mudo.
+
+La música sigue siendo siempre de notas: las muestras son para los efectos.
+
 Cada nivel elige su música:
 
 ```yaml

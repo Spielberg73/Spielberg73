@@ -614,6 +614,41 @@
       var datos = buffer.getChannelData(0);
       for (var n = 0; n < largo; n++) datos[n] = Math.random() * 2 - 1;
       this.ruidoBuffer = buffer;
+      this.prepararMuestras();
+    },
+
+    /* --- muestras digitales ---------------------------------------------
+     * Cuatro de las cinco maquinas saben tocar sonido digital (todas menos el
+     * Atari ST, cuyo YM2149 solo hace ondas cuadradas). Aqui se descodifica
+     * el base64 que trae DATA -mono de 8 bits con signo, igual que en las
+     * ROMs- y se deja listo un AudioBuffer por efecto. */
+    muestras: {},
+
+    prepararMuestras: function () {
+      if (!this.ctx || !DATA.sonido || !DATA.sonido.muestras) return;
+      for (var nombre in DATA.sonido.muestras) {
+        var m = DATA.sonido.muestras[nombre];
+        var crudo = atob(m.datos);
+        var buffer = this.ctx.createBuffer(1, crudo.length, m.ritmo);
+        var canal = buffer.getChannelData(0);
+        for (var i = 0; i < crudo.length; i++) {
+          var b = crudo.charCodeAt(i);
+          canal[i] = (b > 127 ? b - 256 : b) / 128;
+        }
+        this.muestras[nombre] = buffer;
+      }
+    },
+
+    tocarMuestra: function (nombre) {
+      var buffer = this.muestras[nombre];
+      if (!this.ctx || !buffer) return false;
+      var fuente = this.ctx.createBufferSource();
+      var gain = this.ctx.createGain();
+      fuente.buffer = buffer;
+      gain.gain.value = 0.5;
+      fuente.connect(gain).connect(this.ctx.destination);
+      fuente.start();
+      return true;
     },
 
     voz: function (canal, hercios, volumen) {
@@ -665,7 +700,9 @@
       for (var clave in eventos) {
         var bit = parseInt(clave, 10);
         if (!(bits & bit)) continue;
-        var pasos = DATA.sonido.efectos[eventos[clave]];
+        var nombre = eventos[clave];
+        if (this.tocarMuestra(nombre)) continue;   // el efecto es digital
+        var pasos = DATA.sonido.efectos[nombre];
         if (pasos && pasos.length) this.efecto = { pasos: pasos, i: 0, resto: 0 };
       }
     },

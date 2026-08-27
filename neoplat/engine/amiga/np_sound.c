@@ -11,6 +11,10 @@
  *
  * El periodo lo calcula el compilador: periodo = 3546895 / (2 * hercios).
  * El volumen de Paula va de 0 a 64; el del kit, de 0 a 15.
+ *
+ * Y como Paula lee de la RAM, tocar una **muestra digital** no es un caso
+ * aparte: es lo mismo cambiando la onda de dos bytes por el sonido grabado y
+ * el periodo por el de su frecuencia. Va por el canal de efectos.
  */
 
 #include "np_amiga.h"
@@ -39,6 +43,10 @@ typedef struct {
 
 static NpCanal np_canales[NP_CANALES];
 static uint8_t np_musica_actual;
+static uint16_t np_pcm_restan;      /* frames que le quedan a la muestra */
+
+/* Silencio de dos bytes: es a donde salta Paula al acabar una muestra. */
+static const int8_t np_silencio[2] = { 0, 0 };
 
 static void np_paula_onda(uint8_t canal, const int8_t *datos, uint16_t palabras)
 {
@@ -59,6 +67,40 @@ static void np_paula_callar(uint8_t canal)
 {
     AUDVOL(canal) = 0;
     DMACON = (uint16_t)(0x0001 << canal);
+}
+
+/* Tocar una muestra una sola vez.
+ *
+ * Paula no sabe de "una sola vez": al acabar el bloque vuelve a empezar por
+ * donde diga AUDLC, y punto. El truco de siempre es arrancar el DMA y, en
+ * cuanto el chip ha leido el puntero, dejar en AUDLC dos bytes de silencio:
+ * asi la muestra suena entera y lo que se repite despues no se oye.
+ *
+ * El "en cuanto lo ha leido" son dos accesos de DMA de audio, que llegan una
+ * vez por linea de barrido. Por eso se esperan dos cambios de linea antes de
+ * cambiar el puntero: sin esa espera, las muestras cortas se cortan por la
+ * mitad. Son unos 128 microsegundos, y solo al empezar un efecto.
+ */
+static void np_paula_muestra(uint8_t canal, const NpSndMuestra *m, uint8_t volumen)
+{
+    uint16_t bit = (uint16_t)(0x0001 << canal);
+    uint8_t linea;
+    uint8_t esperas = 2;
+
+    DMACON = bit;                                   /* parar el canal */
+    AUDLC(canal) = NP_DIR(m->datos);
+    AUDLEN(canal) = (uint16_t)(m->largo / 2);
+    AUDPER(canal) = m->periodo;
+    AUDVOL(canal) = (uint16_t)((volumen > 15 ? 15 : volumen) * 64 / 15);
+    DMACON = (uint16_t)(0x8000 | bit);              /* y a sonar */
+
+    linea = (uint8_t)(VHPOSR >> 8);
+    while (esperas) {
+        uint8_t ahora = (uint8_t)(VHPOSR >> 8);
+        if (ahora != linea) { linea = ahora; esperas--; }
+    }
+    AUDLC(canal) = NP_DIR(np_silencio);             /* al acabar, callado */
+    AUDLEN(canal) = 1;
 }
 
 void np_sound_init(void)
@@ -141,13 +183,29 @@ void np_sound_update(const NpWorld *w)
         for (i = 0; i < NP_SFX_SLOTS; i++) {
             if ((w->sfx & (1 << i)) && np_sfx_command[i]) {
                 uint8_t indice = (uint8_t)(np_sfx_command[i] - 1);
-                if (indice < np_snd_efecto_count)
-                    np_arrancar(2, np_snd_efectos[indice], 0);
+                if (indice < np_snd_efecto_count) {
+                    const NpSndMuestra *m = &np_snd_muestras[indice];
+                    if (m->largo) {
+                        np_arrancar(2, 0, 0);       /* callar las notas */
+                        np_paula_muestra(2, m, 15);
+                        np_pcm_restan = m->frames;
+                    } else {
+                        np_arrancar(2, np_snd_efectos[indice], 0);
+                        np_pcm_restan = 0;
+                    }
+                }
                 break;
             }
         }
     }
-    for (i = 0; i < NP_CANALES; i++) np_avanzar(i);
+    /* Mientras suena una muestra, el canal de efectos es suyo. */
+    if (np_pcm_restan) {
+        if (--np_pcm_restan == 0) np_paula_callar(2);
+        np_avanzar(0);
+        np_avanzar(1);
+    } else {
+        for (i = 0; i < NP_CANALES; i++) np_avanzar(i);
+    }
 #else
     (void)w;
 #endif

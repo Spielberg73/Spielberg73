@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from . import sonido as sonido_mod
+from . import wav
 from .errors import ProjectError
 
 # ---------------------------------------------------------------- utilidades
@@ -601,7 +602,27 @@ def _read_tiles(node: Node, root: str) -> Tuple[Tileset, Dict[str, TileDef]]:
     return Tileset(image=image, size=size), tiles
 
 
-def _read_sound(raw: Any, where: str = "sonido") -> "sonido_mod.Sonido":
+MUESTRA_MAX_SEGUNDOS = 4.0
+
+
+def _leer_muestra(root: str, relative: str, where: str) -> "wav.Muestra":
+    """Lee un WAV del proyecto y lo deja en mono de 8 bits."""
+    ruta = _require_file(root, relative, where)
+    try:
+        muestra = wav.leer(ruta)
+    except wav.WavError as error:
+        raise ProjectError(str(error), where=where,
+                           hint="guardalo como WAV PCM, mono, de 8 o 16 bits")
+    if muestra.segundos > MUESTRA_MAX_SEGUNDOS:
+        raise ProjectError(
+            "la muestra '%s' dura %.1f segundos" % (relative, muestra.segundos),
+            hint="los efectos son cortos: recortala a %g segundos o menos"
+                 % MUESTRA_MAX_SEGUNDOS,
+            where=where)
+    return muestra
+
+
+def _read_sound(raw: Any, root: str = ".", where: str = "sonido") -> "sonido_mod.Sonido":
     """Lee los efectos y la musica. Todo es opcional: sin seccion, hay silencio."""
     resultado = sonido_mod.Sonido()
     if raw is None:
@@ -621,13 +642,32 @@ def _read_sound(raw: Any, where: str = "sonido") -> "sonido_mod.Sonido":
             )
         sub = Node(valor, sub_where)
         volumen = sub.int_(["volume", "volumen"], 12, 0, 15)
+        # `muestra:` es un eje aparte de `tipo:`, no otro valor suyo: un efecto
+        # puede ser una muestra digital **y ademas** llevar notas o ruido, que
+        # es lo que suena en las maquinas que no tocan muestras (el Atari ST).
+        muestra = None
+        ruta_muestra = (sub.str_(["muestra", "sample", "wav"], "")
+                        if sub.has("muestra", "sample", "wav") else "")
+        tiene_notas = sub.has("notas", "notes", "melodia")
+        tiene_ruido = sub.has("ruido", "noise")
+        tiene_barrido = sub.has("desde", "from")
         tipo = sub.choice(["type", "tipo"], {
             "notas": "notas", "notes": "notas", "melodia": "notas", "melodía": "notas",
             "barrido": "barrido", "sweep": "barrido",
             "ruido": "ruido", "noise": "ruido",
-        }, "notas" if sub.has("notas", "notes") else
-           ("ruido" if sub.has("ruido", "noise") else
-            ("barrido" if sub.has("desde", "from") else "notas")))
+            "muestra": "", "sample": "", "wav": "",
+        }, "notas" if tiene_notas else
+           ("ruido" if tiene_ruido else
+            ("barrido" if tiene_barrido else ("" if ruta_muestra else "notas"))))
+        if not tipo and (tiene_notas or tiene_ruido or tiene_barrido):
+            # 'tipo: muestra' escrito a mano, pero con recambio al lado
+            tipo = ("notas" if tiene_notas else
+                    ("ruido" if tiene_ruido else "barrido"))
+        if not tipo and not ruta_muestra:
+            raise ProjectError(
+                "el efecto '%s' no dice que tiene que sonar" % clave,
+                hint="pon 'notas:', 'tipo: barrido', 'tipo: ruido' o 'muestra:'",
+                where=sub_where)
         if tipo == "notas":
             texto = sub.str_(["notas", "notes", "melodia"], required=True)
             velocidad = sub.int_(["speed", "velocidad", "duracion", "duración"], 4, 1, 60)
@@ -637,11 +677,16 @@ def _read_sound(raw: Any, where: str = "sonido") -> "sonido_mod.Sonido":
             hasta = sub.num(["to", "hasta"], 900.0, 30.0, 4000.0)
             duracion = sub.int_(["duration", "duracion", "duración", "pasos"], 8, 2, 60)
             pasos = sonido_mod.barrido(desde, hasta, duracion, volumen, sub_where)
-        else:
+        elif tipo == "ruido":
             duracion = sub.int_(["duration", "duracion", "duración"], 8, 1, 60)
             pasos = sonido_mod.ruido(duracion, volumen,
                                      sub.int_(["tono", "tone"], 16, 1, 31))
-        resultado.efectos[nombre] = sonido_mod.Efecto(nombre=nombre, pasos=pasos)
+        else:
+            pasos = []                       # solo muestra, sin recambio
+        if ruta_muestra:
+            muestra = _leer_muestra(root, ruta_muestra, sub_where)
+        resultado.efectos[nombre] = sonido_mod.Efecto(
+            nombre=nombre, pasos=pasos, muestra=muestra, ruta=ruta_muestra or "")
 
     musicas = node.child("music", "musica", "música", "canciones")
     for clave, valor in (musicas.data or {}).items():
@@ -964,7 +1009,7 @@ def load_project(path: str) -> Project:
     }
     jefes = {name for name, enemy in enemies.items() if enemy.boss}
     layers = _read_layers(top.raw("backgrounds", "fondos", "capas"), root)
-    sound = _read_sound(top.raw("sound", "sonido", "audio"))
+    sound = _read_sound(top.raw("sound", "sonido", "audio"), root)
     levels = _read_levels(
         top.raw("levels", "niveles"), tiles, list(enemies) + list(items),
         global_spawns, default_bg, warnings, necesitan_suelo, list(layers),

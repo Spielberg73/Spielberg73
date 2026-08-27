@@ -18,6 +18,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
+from . import wav
 from .errors import ProjectError
 
 SSG_CLOCK = 4000000                  # Hz del SSG del YM2610 (Neo Geo)
@@ -142,8 +143,19 @@ class Paso:
 
 @dataclass
 class Efecto:
+    """Un efecto: o una secuencia de pasos para el chip, o una muestra digital.
+
+    Las dos cosas a la vez no: `muestra` manda cuando esta puesta, y `pasos`
+    queda como recambio para las maquinas que no saben tocar muestras (el Atari
+    ST) y para el preview mientras carga."""
     nombre: str
     pasos: List[Paso] = field(default_factory=list)
+    muestra: Optional[wav.Muestra] = None
+    ruta: str = ""                    # el archivo del que salio, para avisos
+
+    @property
+    def digital(self) -> bool:
+        return self.muestra is not None
 
 
 @dataclass
@@ -215,3 +227,65 @@ def ruido(duracion: int, volumen: int, tono: int = 16) -> List[Paso]:
     """
     duracion = max(1, min(60, duracion))
     return [Paso(SSG_CLOCK / (16.0 * max(1, tono)), duracion, volumen, ruido=1)]
+
+
+# --- muestras digitales: del WAV a la tabla en C -----------------------
+#
+# El dato es el mismo en las cuatro maquinas que las tocan (mono, 8 bits con
+# signo); lo que cambia es a que frecuencia se guardan y que numero hay que
+# meterle al chip para que salgan a esa frecuencia. Por eso esto es una sola
+# funcion con dos parametros: el ritmo y como se calcula el periodo.
+
+def _bytes_c(datos: bytes, por_linea: int = 16) -> List[str]:
+    valores = [str(b - 256 if b > 127 else b) for b in datos]
+    return ["    " + ", ".join(valores[i:i + por_linea]) + ","
+            for i in range(0, len(valores), por_linea)]
+
+
+def preparar_muestra(efecto: Efecto, ritmo: int, maximo: int) -> Optional[wav.Muestra]:
+    """La muestra de un efecto, ya a la frecuencia de esa maquina y recortada."""
+    if efecto.muestra is None:
+        return None
+    muestra = wav.remuestrear(efecto.muestra, ritmo)
+    return wav.recortar(muestra, maximo)
+
+
+def tabla_de_muestras_c(efectos: List[Efecto], ritmo: int, fps: int,
+                        periodo, maximo: int = 32768,
+                        par: bool = False) -> Tuple[List[str], int]:
+    """Las lineas de C con las muestras y su tabla, y cuantos bytes ocupan.
+
+    `periodo(ritmo)` es lo que hay que escribirle al chip; `par` rellena cada
+    muestra hasta un numero par de bytes (Paula lee palabras, no bytes).
+    """
+    lineas: List[str] = []
+    entradas: List[str] = []
+    total = 0
+    for i, efecto in enumerate(efectos):
+        muestra = preparar_muestra(efecto, ritmo, maximo)
+        if muestra is None or not len(muestra):
+            entradas.append("    { 0, 0, 0, 0 },")
+            continue
+        datos = muestra.datos
+        if par and len(datos) % 2:
+            datos += b"\x00"
+        total += len(datos)
+        lineas.append("static const int8_t np_pcm%d[] = {" % i)
+        lineas.extend(_bytes_c(datos))
+        lineas.append("};")
+        lineas.append("")
+        frames = max(1, int(round(len(datos) * fps / float(ritmo) + 0.5)))
+        entradas.append("    { np_pcm%d, %d, %d, %d },"
+                        % (i, len(datos), periodo(ritmo), frames))
+    lineas.append("const NpSndMuestra np_snd_muestras[] = {")
+    lineas.extend(entradas if entradas else ["    { 0, 0, 0, 0 },"])
+    lineas.append("    { 0, 0, 0, 0 }")
+    lineas.append("};")
+    return lineas, total
+
+
+def tabla_de_muestras_vacia() -> List[str]:
+    """La tabla, pero sin nada: para las maquinas que no tocan muestras."""
+    return ["const NpSndMuestra np_snd_muestras[] = {",
+            "    { 0, 0, 0, 0 }",
+            "};"]

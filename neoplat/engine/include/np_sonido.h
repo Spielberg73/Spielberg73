@@ -22,8 +22,22 @@ typedef struct {
     uint8_t volumen;             /* 0-15, mas NP_SND_RUIDO si toca */
 } NpSndPaso;
 
+/* Una muestra digital: sonido grabado, no notas. Cuatro de las cinco maquinas
+ * saben tocarlo (todas menos el Atari ST, cuyo YM2149 solo hace ondas
+ * cuadradas), cada una a su manera, pero el dato es el mismo: mono, 8 bits con
+ * signo. Hay una entrada por efecto, en el mismo orden que np_snd_efectos;
+ * `largo == 0` quiere decir que ese efecto no es digital y se toca con notas.
+ */
+typedef struct {
+    const int8_t *datos;
+    uint16_t largo;              /* en bytes */
+    uint16_t periodo;            /* lo que necesita el chip para su frecuencia */
+    uint16_t frames;             /* cuanto dura, en frames de video */
+} NpSndMuestra;
+
 /* Las genera el compilador en sonido.c */
 extern const NpSndPaso *const np_snd_efectos[];
+extern const NpSndMuestra np_snd_muestras[];
 extern const NpSndPaso *const np_snd_musica[];   /* dos pistas por cancion */
 extern const uint16_t np_snd_efecto_count;
 extern const uint16_t np_snd_musica_count;

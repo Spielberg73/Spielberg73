@@ -100,6 +100,7 @@ class NeoGeo(Sistema):
         if len(build.paletas) > self.limites.paletas:
             self.error("el juego usa %d paletas y la Neo Geo tiene %d"
                        % (len(build.paletas), self.limites.paletas))
+        avisos.extend(self.aviso_de_muestras(build, "el kit todavia no usa los canales ADPCM-A del YM2610"))
         return avisos
 
     # --- generacion -----------------------------------------------------

@@ -24,7 +24,7 @@ from typing import Dict, List
 from .. import gfx, gfx_amiga
 from ..build import Build
 from ..errors import ProjectError
-from ..sonido import periodo_paula
+from ..sonido import PAULA_CLOCK, periodo_paula, tabla_de_muestras_c
 from .base import Limites, Salida, Sistema, registrar
 
 ALTO_MAX_TILES = gfx_amiga.TILE_PX          # el mapa de bits son 256 lineas
@@ -41,6 +41,7 @@ MAX_TILES = 1024                            # 160 KB de dibujos: de sobra en chi
 
 class Amiga(Sistema):
     nombre = "amiga"
+    toca_muestras = True          # Paula las lee de la RAM chip por DMA
     titulo = "Commodore Amiga (OCS/ECS)"
     cpu = "68000 a 7 MHz"
     pantalla = (320, 224)
@@ -250,6 +251,11 @@ class Amiga(Sistema):
              if build.info["doble"] else
              "colores:  %d de los 32 del Amiga (el 31 es el del marcador)")
             % build.info["stats"]["colores"])
+        if build.pcm_bytes:
+            salida.resumen.append(
+                "muestras: %d efectos digitales a %d Hz (%d KB en RAM chip)"
+                % (sum(1 for e in build.project.sound.efectos.values() if e.digital),
+                   PCM_RITMO, (build.pcm_bytes + 1023) // 1024))
         salida.resumen.append(
             "disquete: disco/%s.adf (880 KB, arranca solo en cualquier Amiga)" % nombre)
         return salida
@@ -362,6 +368,13 @@ def _secuencia_c(nombre: str, pasos) -> List[str]:
     return lineas
 
 
+# Las muestras digitales van en RAM chip (que es donde se carga el ejecutable
+# entero) y Paula las lee por DMA. 11025 Hz es el punto medio razonable: se
+# oyen bien y no se comen el disquete.
+PCM_RITMO = 11025
+PCM_MAXIMO = 48 * 1024        # por efecto; el aviso salta mucho antes
+
+
 def _sonido_c(build: Build) -> str:
     from ..sonido import EVENTOS
     sonido = build.project.sound
@@ -398,6 +411,13 @@ def _sonido_c(build: Build) -> str:
     partes.append("};")
     partes.append("const uint16_t np_snd_efecto_count = %d;" % len(efectos))
     partes.append("const uint16_t np_snd_musica_count = %d;" % len(build.music_order))
+    partes.append("")
+    lineas, bytes_pcm = tabla_de_muestras_c(
+        [sonido.efectos[n] for n in efectos], PCM_RITMO, 50,
+        lambda ritmo: int(round(PAULA_CLOCK / float(ritmo))),
+        maximo=PCM_MAXIMO, par=True)
+    partes.extend(lineas)
+    build.pcm_bytes = bytes_pcm
     partes.append("")
     return "\n".join(partes)
 

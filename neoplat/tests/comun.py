@@ -110,6 +110,49 @@ def proyecto_a_dos(destino: str, titulo: str = "DOS") -> str:
     return destino
 
 
+# El tono de la muestra de prueba. Se elige **fuera** de lo que puede sonar la
+# musica del andamiaje: su nota mas aguda es sol6 (1568 Hz), y 3000 Hz no es
+# armonico de ninguna de las notas de la cancion (las ondas cuadradas tienen
+# armonicos impares, y 3000 no cae en ninguno). Asi, si se oye algo ahi, es la
+# muestra y no otra cosa.
+MUESTRA_HZ = 3000
+MUESTRA_SEGUNDOS = 0.25
+
+
+def proyecto_con_muestra(destino: str, titulo: str = "MUESTRA") -> str:
+    """Proyecto de ejemplo en el que el salto es una **muestra digital**.
+
+    Un tono puro a 3000 Hz, sin notas de recambio: si la maquina no tocara la
+    muestra, al saltar no sonaria nada en esa frecuencia y la prueba lo ve.
+    """
+    import math
+
+    from ngplat.wav import Muestra, escribir
+
+    crear_proyecto(destino, titulo, "TEST")
+    os.makedirs(os.path.join(destino, "sonidos"), exist_ok=True)
+    ritmo = 11025
+    valores = []
+    for i in range(int(ritmo * MUESTRA_SEGUNDOS)):
+        t = i / float(ritmo)
+        # se abre y se cierra despacito para que no chasquee en los extremos
+        sobre = min(1.0, t / 0.01, (MUESTRA_SEGUNDOS - t) / 0.01)
+        valores.append(int(round(120 * sobre
+                                 * math.sin(2 * math.pi * MUESTRA_HZ * t))))
+    escribir(os.path.join(destino, "sonidos", "tono.wav"),
+             Muestra(bytes(v & 0xFF for v in valores), ritmo))
+
+    yaml = os.path.join(destino, "game.yaml")
+    with open(yaml, encoding="utf-8") as fh:
+        texto = fh.read()
+    marca = "    salto:   {tipo: barrido, desde: 320, hasta: 900, duracion: 6}"
+    assert marca in texto, "el andamiaje ya no trae el efecto de salto asi"
+    texto = texto.replace(marca, "    salto:   {muestra: sonidos/tono.wav}", 1)
+    with open(yaml, "w", encoding="utf-8") as fh:
+        fh.write(texto)
+    return destino
+
+
 def cargar_demo(path: str, sistema: str = ""):
     """Carga un proyecto y lo deja listo para el sistema que se pida.
 

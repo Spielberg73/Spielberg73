@@ -97,12 +97,41 @@ La Jaguar es el caso raro: no tiene chip de sonido, así que las ondas las hace
 un programa que corre en el DSP de Jerry y que también genera el kit
 ([docs/jaguar.md](jaguar.md)).
 
+## Muestras digitales
+
+Un efecto puede ser sonido grabado en vez de notas (`muestra: sonidos/x.wav`,
+ver [formato.md](formato.md)). El compilador lee el WAV sin ninguna biblioteca
+(`tools/ngplat/wav.py`), lo pasa a **mono de 8 bits con signo** —que es lo que
+dan estos chips— y lo remuestrea a lo que use cada máquina.
+
+**Amiga.** Es la que menos trabajo cuesta, porque Paula ya toca sonido de la
+RAM: una nota no es más que una onda cuadrada de dos bytes repitiéndose, así
+que una muestra es lo mismo cambiando el bloque y el período. Va a 11.025 Hz
+por el canal de efectos.
+
+Lo único que Paula no sabe hacer es "tocar esto una vez": al acabar el bloque
+vuelve a empezar por donde diga `AUDLC`. El truco de siempre es arrancar el DMA
+y, en cuanto el chip ha leído el puntero, dejar en `AUDLC` dos bytes de
+silencio. El "en cuanto lo ha leído" son dos accesos de DMA de audio, que
+llegan una vez por línea de barrido: por eso el driver espera **dos cambios de
+línea** antes de cambiar el puntero. Sin esa espera las muestras cortas se
+cortan por la mitad.
+
+**Cómo se comprueba.** Igual que la música: escuchando. El proyecto de prueba
+(`tests/comun.py`, `proyecto_con_muestra`) pone como efecto de salto un tono
+puro a **3.000 Hz y sin notas de recambio**; 3.000 Hz no es ninguna nota de la
+canción ni armónico impar de ninguna, así que ahí no llega nada más. Se mide la
+energía en esa frecuencia estando quieto y saltando: con la muestra suena 20
+veces más, y desactivando el camino de las muestras en el driver baja a 0,4.
+La prueba es `tests/test_sistemas.py`, `TestMuestras`.
+
 ## Lo que aún no hace
 
-- **Muestras digitales.** Cuatro de las cinco máquinas pueden (la ROM V1 de la
-  Neo Geo, el YM2612 de la Mega Drive, Paula en el Amiga, los DAC de la Jaguar;
-  el YM2149 del ST no, salvo moviendo el volumen a mano desde la CPU) y de
-  momento solo se usan ondas cuadradas y ruido.
+- **Muestras digitales en tres de las cinco máquinas.** El Amiga ya las toca;
+  la ROM V1 de la Neo Geo, el YM2612 de la Mega Drive y los DAC de la Jaguar
+  pueden y todavía no se usan. El YM2149 del Atari ST no puede, salvo moviendo
+  el volumen a mano desde la CPU, así que ahí no las habrá; el compilador avisa
+  de los efectos que se quedarían mudos.
 - **FM.** La Mega Drive tiene el YM2612 y la Neo Geo cuatro canales FM del
   YM2610 sin tocar; el kit usa los de onda cuadrada de las dos, que es lo que
   permite que suene igual en todas.

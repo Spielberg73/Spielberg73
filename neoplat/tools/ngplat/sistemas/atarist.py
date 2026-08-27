@@ -38,7 +38,7 @@ from typing import Dict, List
 from .. import gfx, gfx_amiga, gfx_st
 from ..build import Build
 from ..errors import ProjectError
-from ..sonido import periodo_ym2149
+from ..sonido import periodo_ym2149, tabla_de_muestras_vacia
 from .base import Limites, Salida, Sistema, registrar
 
 COLOR_HUD = 15                              # el ultimo color, reservado
@@ -219,6 +219,8 @@ class AtariSt(Sistema):
                         "el Atari ST dibuja una sola capa de fondo: en '%s' se "
                         "usara la primera" % nivel.name)
                     break
+        avisos.extend(self.aviso_de_muestras(
+            build, "su YM2149 solo hace ondas cuadradas"))
         return avisos
 
     # --- generacion ----------------------------------------------------
@@ -396,6 +398,8 @@ def _sonido_c(build: Build) -> str:
     partes.append("};")
     partes.append("const uint16_t np_snd_efecto_count = %d;" % len(efectos))
     partes.append("const uint16_t np_snd_musica_count = %d;" % len(build.music_order))
+    partes.append("")
+    partes.extend(tabla_de_muestras_vacia())
     partes.append("")
     return "\n".join(partes)
 

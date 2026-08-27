@@ -1130,5 +1130,53 @@ class TestDosJugadores(unittest.TestCase):
                          + hecho.stdout + hecho.stderr)
 
 
+class TestMuestras(unittest.TestCase):
+    """Las muestras digitales, oidas en un emulador de verdad.
+
+    El proyecto de prueba pone como efecto de salto un tono puro a 3000 Hz y
+    **sin notas de recambio**: si la maquina no tocara la muestra, al saltar no
+    sonaria nada ahi. Como se mide, en muestras.py.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cc = _compilador_68k()
+        if not cls.cc:
+            raise unittest.SkipTest("no hay un compilador de 68000 instalado")
+        cls.tmp = tempfile.mkdtemp(prefix="neoplat-pcm-")
+        from comun import proyecto_con_muestra
+        cls.proyecto = proyecto_con_muestra(os.path.join(cls.tmp, "juego"))
+
+    @classmethod
+    def tearDownClass(cls):
+        if getattr(cls, "tmp", ""):
+            shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def _generar(self, nombre):
+        build = cargar_demo(self.proyecto, nombre)
+        out = os.path.join(self.tmp, nombre)
+        generar_para_sistema(build, out, sistemas.obtener(nombre), "202")
+        return out
+
+    def _construir(self, nombre):
+        out = self._generar(nombre)
+        hecho = subprocess.run(["make", "-C", out], capture_output=True, text=True)
+        self.assertEqual(hecho.returncode, 0, hecho.stdout + hecho.stderr)
+        return out
+
+    def _escuchar(self, sistema, ruta):
+        import muestras
+        self.assertEqual(muestras.comprobar_maquina(sistema, ruta), 0,
+                         "la muestra digital no suena")
+
+    def test_el_amiga_toca_la_muestra(self):
+        """Paula lee el sonido de la RAM chip por DMA, igual que lee la onda
+        cuadrada de las notas: para ella una muestra no es un caso aparte."""
+        disco = os.path.join(self._construir("amiga"), "disco")
+        adf = [f for f in os.listdir(disco) if f.endswith(".adf")]
+        self.assertTrue(adf, "no se ha creado el disquete")
+        self._escuchar("amiga", os.path.join(disco, adf[0]))
+
+
 if __name__ == "__main__":
     unittest.main()

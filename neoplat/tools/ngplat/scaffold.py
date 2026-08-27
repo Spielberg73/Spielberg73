@@ -5,9 +5,10 @@ from __future__ import annotations
 import os
 from typing import List
 
-from . import art, art_hierro
+from . import art, art_hierro, art_sonido
 from .errors import ProjectError
 from .png import write_png
+from .wav import escribir as escribir_wav
 
 ANCHO_1 = 48
 ANCHO_2 = 56
@@ -205,9 +206,11 @@ sonido:
   efectos:
     empezar: {{notas: "do5 sol5", velocidad: 4}}
     salto:   {{tipo: barrido, desde: 320, hasta: 900, duracion: 6}}
-    moneda:  {{notas: "mi6 sol6", velocidad: 3}}
+    # muestra: sonido grabado (un WAV tuyo). Lo tocan cuatro de las cinco
+    # maquinas; el Atari ST no puede, y toca lo que digan las notas de al lado
+    moneda:  {{muestra: sonidos/moneda.wav, notas: "mi6 sol6", velocidad: 3}}
     pisar:   {{tipo: barrido, desde: 800, hasta: 200, duracion: 6}}
-    golpe:   {{tipo: ruido, duracion: 10}}
+    golpe:   {{muestra: sonidos/golpe.wav, tipo: ruido, duracion: 10}}
     muerte:  {{notas: "sol4 mi4 do4 sol3", velocidad: 6}}
     meta:    {{notas: "do5 mi5 sol5 do6", velocidad: 6}}
   musica:
@@ -407,6 +410,12 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
         ruta = os.path.join(destino, relativo)
         write_png(ruta, imagen)
         creados.append(relativo)
+
+    if estilo == "bosque":
+        os.makedirs(os.path.join(destino, "sonidos"), exist_ok=True)
+        for relativo, muestra in art_sonido.todos().items():
+            escribir_wav(os.path.join(destino, relativo), muestra)
+            creados.append(relativo)
 
     if estilo == "bosque":
         niveles = (

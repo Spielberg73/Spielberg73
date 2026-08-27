@@ -117,6 +117,26 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
           })""")
         print("audio:", json.dumps(audio))
         exigir(audio["contexto"] and audio["canales"] == 3, "el audio no ha arrancado")
+
+        # Las muestras digitales: el navegador las toca tal cual, descodificando
+        # el base64 que trae DATA. Si no llegaran, el efecto sonaria con notas y
+        # no habria forma de notarlo mirando la pantalla.
+        pcm = pagina.evaluate("""() => {
+            const a = window.NeoPlat.audio;
+            const d = window.NeoPlat.data.sonido.muestras || {};
+            const nombres = Object.keys(d);
+            const buffers = nombres.filter(n => a.muestras[n]);
+            const primera = nombres.length ? a.muestras[nombres[0]] : null;
+            return { nombres: nombres, listas: buffers.length,
+                     ritmo: primera ? primera.sampleRate : 0,
+                     largo: primera ? primera.length : 0 }; }""")
+        print("muestras:", json.dumps(pcm))
+        exigir(len(pcm["nombres"]) >= 2,
+               "el preview no trae las muestras del proyecto: %s" % pcm["nombres"])
+        exigir(pcm["listas"] == len(pcm["nombres"]),
+               "hay muestras que no se han podido descodificar")
+        exigir(pcm["ritmo"] == 11025 and pcm["largo"] > 500,
+               "la muestra no tiene la pinta que deberia: %s" % json.dumps(pcm))
         exigir(audio["ganancia"] > 0, "los osciladores no estan sonando al jugar")
 
         # --------------------------------------------------------- editor
