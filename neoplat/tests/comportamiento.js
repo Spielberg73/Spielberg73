@@ -119,33 +119,33 @@ function prueba(nombre, fn) { pruebas.push([nombre, fn]); }
 prueba("el jugador cae y aterriza en el suelo", function () {
   var w = mundo(suelo([[10, 3, "P"]]));
   correr(w, 60);
-  assert.strictEqual(w.player.onGround, 1);
-  assert.strictEqual(w.player.vy, 0);
-  assert.strictEqual(NP.F2I(w.player.y) + w.data.player.actor.box_h, 14 * 16);
+  assert.strictEqual(w.players[0].onGround, 1);
+  assert.strictEqual(w.players[0].vy, 0);
+  assert.strictEqual(NP.F2I(w.players[0].y) + w.data.player.actor.box_h, 14 * 16);
 });
 
 prueba("andar acelera hasta la velocidad maxima y no la pasa", function () {
   var w = mundo(suelo([[13, 2, "P"]]));
   correr(w, 120, NP.IN.RIGHT);
-  assert.strictEqual(w.player.vx, w.data.player.speed);
-  assert.strictEqual(w.player.facing, 1);
+  assert.strictEqual(w.players[0].vx, w.data.player.speed);
+  assert.strictEqual(w.players[0].facing, 1);
 });
 
 prueba("soltar el mando frena al jugador", function () {
   var w = mundo(suelo([[13, 2, "P"]]));
   correr(w, 60, NP.IN.RIGHT);
   correr(w, 30);
-  assert.strictEqual(w.player.vx, 0);
+  assert.strictEqual(w.players[0].vx, 0);
 });
 
 prueba("el salto mantenido llega mas alto que el toque corto", function () {
   function altura(mantener) {
     var w = mundo(suelo([[13, 2, "P"]]));
     correr(w, 30);
-    var y0 = NP.F2I(w.player.y), min = y0;
+    var y0 = NP.F2I(w.players[0].y), min = y0;
     for (var i = 0; i < 90; i++) {
       w.step(mantener || i < 2 ? NP.IN.JUMP : 0);
-      min = Math.min(min, NP.F2I(w.player.y));
+      min = Math.min(min, NP.F2I(w.players[0].y));
     }
     return y0 - min;
   }
@@ -159,8 +159,8 @@ prueba("no atraviesa paredes ni a la maxima velocidad", function () {
   filas[13] = filas[13].substring(0, 10) + "#" + filas[13].substring(11);
   var w = mundo(filas, { speed: 7.9 });
   correr(w, 200, NP.IN.RIGHT);
-  assert.ok(NP.F2I(w.player.x) + w.data.player.actor.box_w <= 10 * 16,
-    "se ha colado en la pared: x=" + NP.F2I(w.player.x));
+  assert.ok(NP.F2I(w.players[0].x) + w.data.player.actor.box_w <= 10 * 16,
+    "se ha colado en la pared: x=" + NP.F2I(w.players[0].x));
 });
 
 prueba("el techo corta el salto", function () {
@@ -169,7 +169,7 @@ prueba("el techo corta el salto", function () {
   var w = mundo(filas);
   correr(w, 30);
   correr(w, 20, NP.IN.JUMP);
-  assert.ok(w.player.vy >= 0, "deberia estar cayendo tras chocar con el techo");
+  assert.ok(w.players[0].vy >= 0, "deberia estar cayendo tras chocar con el techo");
 });
 
 /* -------------------------------------------------------- ayudas de salto */
@@ -180,24 +180,24 @@ prueba("coyote time: se puede saltar justo despues del borde", function () {
   var w = mundo(filas);
   correr(w, 20);
   correr(w, 30, NP.IN.RIGHT);                  // se cae por el borde
-  assert.strictEqual(w.player.onGround, 0);
-  var yAntes = NP.F2I(w.player.y);
-  w.player.coyote = 3;                         // dentro del margen
+  assert.strictEqual(w.players[0].onGround, 0);
+  var yAntes = NP.F2I(w.players[0].y);
+  w.players[0].coyote = 3;                         // dentro del margen
   w.step(NP.IN.RIGHT | NP.IN.JUMP);
-  assert.ok(w.player.vy < 0, "no ha saltado en el margen de coyote");
-  assert.ok(NP.F2I(w.player.y) <= yAntes);
+  assert.ok(w.players[0].vy < 0, "no ha saltado en el margen de coyote");
+  assert.ok(NP.F2I(w.players[0].y) <= yAntes);
 });
 
 prueba("buffer de salto: pulsar antes de aterrizar cuenta", function () {
   var w = mundo(suelo([[8, 3, "P"]]));
-  while (!w.player.onGround) w.step(0);
+  while (!w.players[0].onGround) w.step(0);
   var w2 = mundo(suelo([[8, 3, "P"]]));
   var saltoRegistrado = false;
   for (var i = 0; i < 200 && !saltoRegistrado; i++) {
-    var cerca = !w2.player.onGround && w2.player.vy > 0 &&
-      (13 * 16 - (NP.F2I(w2.player.y) + w2.data.player.actor.box_h)) < 8;
+    var cerca = !w2.players[0].onGround && w2.players[0].vy > 0 &&
+      (13 * 16 - (NP.F2I(w2.players[0].y) + w2.data.player.actor.box_h)) < 8;
     w2.step(cerca ? NP.IN.JUMP : 0);           // se pulsa en el aire, antes de tocar
-    if (w2.player.vy < 0) saltoRegistrado = true;
+    if (w2.players[0].vy < 0) saltoRegistrado = true;
   }
   assert.ok(saltoRegistrado, "el buffer de salto no ha funcionado");
 });
@@ -206,12 +206,12 @@ prueba("doble salto solo cuando esta activado", function () {
   function alturaDoble(activado) {
     var w = mundo(suelo([[13, 2, "P"]]), { doubleJump: activado });
     correr(w, 20);
-    var y0 = NP.F2I(w.player.y), min = y0;
+    var y0 = NP.F2I(w.players[0].y), min = y0;
     w.step(NP.IN.JUMP);
     correr(w, 12, NP.IN.JUMP);
     w.step(0);
     w.step(NP.IN.JUMP);                        // segundo salto
-    for (var i = 0; i < 60; i++) { w.step(NP.IN.JUMP); min = Math.min(min, NP.F2I(w.player.y)); }
+    for (var i = 0; i < 60; i++) { w.step(NP.IN.JUMP); min = Math.min(min, NP.F2I(w.players[0].y)); }
     return y0 - min;
   }
   assert.ok(alturaDoble(true) > alturaDoble(false) + 10, "el doble salto no sube mas");
@@ -224,8 +224,8 @@ prueba("las plataformas frenan desde arriba", function () {
   filas[9] = "..====" + ".".repeat(18);
   var w = mundo(filas);
   correr(w, 60);
-  assert.strictEqual(w.player.onGround, 1);
-  assert.strictEqual(NP.F2I(w.player.y) + w.data.player.actor.box_h, 9 * 16);
+  assert.strictEqual(w.players[0].onGround, 1);
+  assert.strictEqual(NP.F2I(w.players[0].y) + w.data.player.actor.box_h, 9 * 16);
 });
 
 prueba("las plataformas se atraviesan desde abajo", function () {
@@ -236,7 +236,7 @@ prueba("las plataformas se atraviesan desde abajo", function () {
   var subio = false;
   for (var i = 0; i < 60; i++) {
     w.step(NP.IN.JUMP);
-    if (NP.F2I(w.player.y) + w.data.player.actor.box_h < 11 * 16) subio = true;
+    if (NP.F2I(w.players[0].y) + w.data.player.actor.box_h < 11 * 16) subio = true;
   }
   assert.ok(subio, "no ha podido atravesar la plataforma saltando");
 });
@@ -246,9 +246,9 @@ prueba("pulsar abajo deja caer desde la plataforma", function () {
   filas[9] = "..====" + ".".repeat(18);
   var w = mundo(filas);
   correr(w, 60);
-  assert.strictEqual(w.player.onGround, 1);
+  assert.strictEqual(w.players[0].onGround, 1);
   correr(w, 20, NP.IN.DOWN);
-  assert.ok(NP.F2I(w.player.y) + w.data.player.actor.box_h > 9 * 16,
+  assert.ok(NP.F2I(w.players[0].y) + w.data.player.actor.box_h > 9 * 16,
     "sigue encima de la plataforma");
 });
 
@@ -260,7 +260,7 @@ prueba("pisar a un enemigo lo elimina, da puntos y rebota", function () {
   var puntos = w.score;
   var reboto = false;
   for (var i = 0; i < 120 && enemigo.active; i++) w.step(0);
-  for (var j = 0; j < 5; j++) { if (w.player.vy < 0) reboto = true; w.step(0); }
+  for (var j = 0; j < 5; j++) { if (w.players[0].vy < 0) reboto = true; w.step(0); }
   assert.strictEqual(enemigo.active, 0, "el enemigo sigue vivo");
   assert.strictEqual(w.score, puntos + 100);
   assert.ok(reboto, "el jugador no ha rebotado");
@@ -310,9 +310,9 @@ prueba("chocar de lado con un enemigo hace dano", function () {
 
 prueba("con varias vidas de salud solo se pierde una por golpe", function () {
   var w = mundo(suelo([[13, 8, "e"], [13, 2, "P"]]), { health: 3, stomp: false });
-  for (var i = 0; i < 200 && w.player.health === 3; i++) w.step(NP.IN.RIGHT);
-  assert.strictEqual(w.player.health, 2, "un solo golpe deberia quitar una vida");
-  assert.ok(w.player.invuln > 0, "no hay invulnerabilidad tras el golpe");
+  for (var i = 0; i < 200 && w.players[0].health === 3; i++) w.step(NP.IN.RIGHT);
+  assert.strictEqual(w.players[0].health, 2, "un solo golpe deberia quitar una vida");
+  assert.ok(w.players[0].invuln > 0, "no hay invulnerabilidad tras el golpe");
 });
 
 prueba("el enemigo que patrulla gira en el borde", function () {
@@ -381,15 +381,15 @@ prueba("perder todas las vidas lleva a game over y luego al titulo", function ()
   assert.strictEqual(w.state, NP.STATE.GAME_OVER);
   correr(w, 300);
   assert.strictEqual(w.state, NP.STATE.TITLE);
-  assert.strictEqual(w.lives, 0);
+  assert.strictEqual(w.players[0].lives, 0);
 });
 
 prueba("morir con vidas de sobra reinicia el nivel", function () {
   var w = mundo(suelo([[13, 4, "^"], [13, 2, "P"]]), { lives: 3 });
   var inicio = w.level.start[0];
-  for (var i = 0; i < 400 && w.lives === 3; i++) w.step(NP.IN.RIGHT);
-  assert.strictEqual(w.lives, 2);
-  assert.strictEqual(NP.F2I(w.player.x), inicio);
+  for (var i = 0; i < 400 && w.players[0].lives === 3; i++) w.step(NP.IN.RIGHT);
+  assert.strictEqual(w.players[0].lives, 2);
+  assert.strictEqual(NP.F2I(w.players[0].x), inicio);
   assert.strictEqual(w.state, NP.STATE.PLAY);
 });
 

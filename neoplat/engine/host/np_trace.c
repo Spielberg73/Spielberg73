@@ -38,10 +38,14 @@ static uint32_t entity_hash(const NpWorld *w)
     return hash;
 }
 
+/* El archivo de pulsaciones lleva **dos numeros por linea**, uno por mando.
+ * Las quince primeras columnas de la traza son las de siempre (el primer
+ * jugador) y detras van las del segundo: asi las pruebas que miran una columna
+ * por su numero siguen valiendo. */
 int main(int argc, char **argv)
 {
     FILE *fh;
-    int input;
+    int input, input2;
     if (argc < 2) {
         fprintf(stderr, "uso: np_trace <archivo-de-pulsaciones>\n");
         return 1;
@@ -53,18 +57,24 @@ int main(int argc, char **argv)
     }
 
     np_world_init(&world);
-    while (fscanf(fh, "%d", &input) == 1) {
-        np_world_step(&world, (uint16_t)input);
-        printf("%lu %ld %ld %ld %ld %u %u %u %lu %ld %ld %u %u %u %08x\n",
+    while (fscanf(fh, "%d %d", &input, &input2) == 2) {
+        const NpPlayer *p0 = &world.players[0];
+        const NpPlayer *p1 = &world.players[1];
+        np_world_step(&world, (uint16_t)input, (uint16_t)input2);
+        printf("%lu %ld %ld %ld %ld %u %u %u %lu %ld %ld %u %u %u %08x"
+               " %ld %ld %ld %ld %u %u %u %u %u %u\n",
                (unsigned long)world.frame,
-               (long)world.player.x, (long)world.player.y,
-               (long)world.player.vx, (long)world.player.vy,
-               (unsigned)world.state, (unsigned)world.player.health,
-               (unsigned)world.lives, (unsigned long)world.score,
+               (long)p0->x, (long)p0->y, (long)p0->vx, (long)p0->vy,
+               (unsigned)world.state, (unsigned)p0->health,
+               (unsigned)p0->lives, (unsigned long)world.score,
                (long)world.cam_x, (long)world.cam_y,
                (unsigned)world.level_index, (unsigned)world.sfx,
                (unsigned)world.boss_health,
-               entity_hash(&world));
+               entity_hash(&world),
+               (long)p1->x, (long)p1->y, (long)p1->vx, (long)p1->vy,
+               (unsigned)p1->health, (unsigned)p1->lives,
+               (unsigned)p0->playing, (unsigned)p0->dying,
+               (unsigned)p1->playing, (unsigned)p1->dying);
     }
     fclose(fh);
     return 0;

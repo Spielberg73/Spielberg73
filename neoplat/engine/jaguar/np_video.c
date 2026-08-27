@@ -340,12 +340,14 @@ void np_video_frame(const NpWorld *w)
         np_actor(def, sx, sy, np_actor_frame(def, e->anim, e->anim_frame),
                  (uint8_t)!e->facing);
     }
-    if (np_player_visible(w)) {
+    for (i = 0; i < NP_MAX_PLAYERS; i++) {
         const NpActorDef *def = &np_player_def.actor;
-        np_actor(def, NP_F2I(w->player.x) - def->box_x - w->cam_x,
-                 NP_F2I(w->player.y) - def->box_y - w->cam_y,
-                 np_actor_frame(def, w->player.anim, w->player.anim_frame),
-                 (uint8_t)!w->player.facing);
+        const NpPlayer *p = &w->players[i];
+        if (!np_player_visible(w, i)) continue;
+        np_actor(def, NP_F2I(p->x) - def->box_x - w->cam_x,
+                 NP_F2I(p->y) - def->box_y - w->cam_y,
+                 np_actor_frame(def, p->anim, p->anim_frame),
+                 (uint8_t)!p->facing);
     }
 
 #if NP_HUD_ENABLED
@@ -376,6 +378,21 @@ void np_wait_vblank(void)
  *   fila $81FE   bit 24 arriba, 25 abajo, 26 izquierda, 27 derecha,
  *                bit 1 boton A, bit 0 PAUSE
  *   fila $81FD   bit 1 boton B
+ *
+ * El segundo mando esta en la otra mitad de la misma matriz, y las filas **no
+ * se piden con el mismo numero**: el puerto 1 mira el nibble bajo del byte que
+ * se escribe y el puerto 2 el alto, y ademas la tabla del puerto 2 es la del 1
+ * con los bits del reves. Sale asi:
+ *
+ *   puerto 1   fila 0 -> nibble $E   fila 1 -> $D   ($81FE y $81FD)
+ *   puerto 2   fila 0 -> nibble $7   fila 1 -> $B   ($817F y $81BF)
+ *
+ * (los nibbles que sobran se dejan a $F, que no apunta a ningun mando). Las
+ * direcciones del segundo salen cuatro bits mas arriba (28-31) y los botones
+ * dos (2 y 3), asi que la lectura es la misma rutina con los numeros cambiados.
+ * Esto esta comprobado en Virtual Jaguar: la tabla de filas sale del manual
+ * tecnico (el adaptador de cuatro jugadores) y por eso no es la que se
+ * esperaria.
  */
 #define NP_JOY_MASCARA (*(volatile uint16_t *)(uintptr_t)(TOM + 0x14000))
 
@@ -385,17 +402,28 @@ static uint32_t np_fila_mando(uint16_t fila)
     return ~JOYSTICK;
 }
 
+static uint16_t np_input_de(uint16_t fila_a, uint16_t fila_b,
+                            uint8_t cruz, uint8_t boton)
+{
+    uint32_t f0 = np_fila_mando(fila_a);
+    uint32_t f1 = np_fila_mando(fila_b);
+    uint16_t salida = 0;
+    if (f0 & (1UL << (cruz + 0))) salida |= NP_IN_UP;
+    if (f0 & (1UL << (cruz + 1))) salida |= NP_IN_DOWN;
+    if (f0 & (1UL << (cruz + 2))) salida |= NP_IN_LEFT;
+    if (f0 & (1UL << (cruz + 3))) salida |= NP_IN_RIGHT;
+    if (f0 & (1UL << (boton + 1))) salida |= NP_IN_JUMP;      /* boton A */
+    if (f1 & (1UL << (boton + 1))) salida |= NP_IN_ACTION;    /* boton B */
+    if (f0 & (1UL << (boton + 0))) salida |= NP_IN_START;     /* PAUSE   */
+    return salida;
+}
+
 uint16_t np_input_read(void)
 {
-    uint32_t f0 = np_fila_mando(0x81FE);
-    uint32_t f1 = np_fila_mando(0x81FD);
-    uint16_t salida = 0;
-    if (f0 & (1UL << 24)) salida |= NP_IN_UP;
-    if (f0 & (1UL << 25)) salida |= NP_IN_DOWN;
-    if (f0 & (1UL << 26)) salida |= NP_IN_LEFT;
-    if (f0 & (1UL << 27)) salida |= NP_IN_RIGHT;
-    if (f0 & (1UL << 1))  salida |= NP_IN_JUMP;      /* boton A */
-    if (f1 & (1UL << 1))  salida |= NP_IN_ACTION;    /* boton B */
-    if (f0 & (1UL << 0))  salida |= NP_IN_START;     /* PAUSE   */
-    return salida;
+    return np_input_de(0x81FE, 0x81FD, 24, 0);
+}
+
+uint16_t np_input_read2(void)
+{
+    return np_input_de(0x817F, 0x81BF, 28, 2);
 }

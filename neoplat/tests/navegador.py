@@ -85,11 +85,20 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
         pagina.wait_for_timeout(1500)
         pagina.keyboard.up("ArrowRight")
         estado = pagina.evaluate("""() => { const w = window.NeoPlat.world;
-            return { estado: w.state, x: w.player.x >> 8, musica: w.level.music }; }""")
+            return { estado: w.state, x: w.players[0].x >> 8, musica: w.level.music }; }""")
         print("jugando:", json.dumps(estado))
         exigir(estado["estado"] in (1, 2, 3), "el juego no llega a estado de partida")
         exigir(estado["x"] > 10, "el jugador no avanza")
         pagina.locator("#pantalla").screenshot(path=os.path.join(capturas, "juego.png"))
+
+        # A un jugador, WASD tiene que seguir valiendo como las flechas: a dos
+        # pasa a ser el mando del segundo, y es facil llevarselo por delante.
+        pagina.keyboard.down("a")
+        pagina.wait_for_timeout(600)
+        pagina.keyboard.up("a")
+        conWasd = pagina.evaluate("() => window.NeoPlat.world.players[0].x >> 8")
+        exigir(conWasd < estado["x"],
+               "con un jugador, la A ya no mueve: %d -> %d" % (estado["x"], conWasd))
 
         # La ganancia se mira durante medio segundo y se coge la mayor: en un
         # instante suelto se puede caer justo en un silencio de la melodia, y
@@ -512,7 +521,106 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
     return 0
 
 
+def _preview_a_dos(carpeta: str) -> str:
+    """Genera el preview de un proyecto con `jugadores: 2` y devuelve la ruta."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from comun import cargar_demo, proyecto_a_dos
+    from ngplat.preview import write_preview
+    proyecto = proyecto_a_dos(os.path.join(carpeta, "juego"))
+    return write_preview(cargar_demo(proyecto),
+                         os.path.join(carpeta, "preview.html"))
+
+
+def comprobar_dos(capturas: str = "capturas") -> int:
+    """El preview a dos jugadores: dos teclados, dos jugadores, dos marcadores.
+
+    Es lo que no puede comprobar la paridad con el motor en C (que solo mira la
+    simulacion) ni la prueba de emulador (que mira las maquinas): que las
+    teclas del segundo llegan al segundo y las del primero al primero.
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        print("Playwright no esta instalado: se salta la prueba de navegador")
+        return 0
+    import tempfile
+
+    os.makedirs(capturas, exist_ok=True)
+    fallos = []
+
+    def exigir(condicion, mensaje):
+        if not condicion:
+            fallos.append(mensaje)
+
+    carpeta = tempfile.mkdtemp(prefix="neoplat-dos-web-")
+    preview = _preview_a_dos(carpeta)
+    with sync_playwright() as pw:
+        navegador = _lanzar(pw)
+        pagina = navegador.new_page(viewport={"width": 1280, "height": 900})
+        errores = []
+        pagina.on("pageerror", lambda e: errores.append(str(e)))
+        pagina.goto("file://" + os.path.abspath(preview))
+        pagina.wait_for_timeout(700)
+
+        exigir(pagina.is_visible("#teclas-2p"),
+               "no dice por ningun sitio con que teclas va el segundo jugador")
+
+        pagina.locator("#pantalla").click()
+        pagina.keyboard.press("Enter")
+        pagina.wait_for_timeout(200)
+
+        def donde():
+            return pagina.evaluate("""() => {
+                const w = window.NeoPlat.world;
+                return [w.players[0].x >> 8, w.players[1].x >> 8,
+                        w.players[0].playing, w.players[1].playing]; }""")
+
+        salida = donde()
+        exigir(salida[2] == 1 and salida[3] == 1,
+               "los dos jugadores no entran en juego: %s" % salida)
+
+        # Al soltar, el jugador no se para en seco: sigue frenando unos
+        # frames. Se le deja acabar antes de mirar donde esta, o el arrastre
+        # se contaria como si lo hubiera movido la otra tecla.
+        def correr(tecla):
+            pagina.keyboard.down(tecla)
+            pagina.wait_for_timeout(700)
+            pagina.keyboard.up(tecla)
+            pagina.wait_for_timeout(400)
+            return donde()
+
+        # las flechas mueven al primero y no tocan al segundo
+        con_flechas = correr("ArrowRight")
+        print("con las flechas:", json.dumps(con_flechas))
+        exigir(con_flechas[0] > salida[0] + 20, "las flechas no mueven al primero")
+        exigir(con_flechas[1] == salida[1],
+               "las flechas mueven tambien al segundo: los dos mandos son el mismo")
+
+        # y la D mueve al segundo y no toca al primero
+        con_wasd = correr("d")
+        print("con WASD:", json.dumps(con_wasd))
+        exigir(con_wasd[1] > con_flechas[1] + 20, "la D no mueve al segundo")
+        exigir(con_wasd[0] == con_flechas[0],
+               "la D mueve tambien al primero: los dos mandos son el mismo")
+
+        pagina.locator("#pantalla").screenshot(
+            path=os.path.join(capturas, "juego-dos.png"))
+        if errores:
+            fallos.append("errores de JavaScript: %s" % errores[:3])
+        navegador.close()
+
+    if fallos:
+        for fallo in fallos:
+            print("FALLO:", fallo)
+        return 1
+    print("el preview a dos jugadores lleva bien los dos teclados")
+    return 0
+
+
 if __name__ == "__main__":
-    preview = sys.argv[1] if len(sys.argv) > 1 else "examples/bosque-magico/preview.html"
-    destino = sys.argv[2] if len(sys.argv) > 2 else "capturas"
-    raise SystemExit(comprobar(preview, destino))
+    destino = [a for a in sys.argv[1:] if not a.startswith("--")]
+    capturas = destino[1] if len(destino) > 1 else "capturas"
+    if "--dos" in sys.argv[1:]:
+        raise SystemExit(comprobar_dos(capturas))
+    preview = destino[0] if destino else "examples/bosque-magico/preview.html"
+    raise SystemExit(comprobar(preview, capturas))

@@ -182,6 +182,7 @@ def build_data(build: Build) -> Dict[str, object]:
         "title": project.title,
         "author": project.author,
         "lives": project.lives,
+        "players": project.players,
         "time_limit": project.time_limit,
         "hud": project.hud,
         "player": player,

@@ -256,12 +256,14 @@ void np_video_frame(const NpWorld *w)
                          (uint8_t)!e->facing);
     }
 
-    if (np_player_visible(w)) {
+    for (i = 0; i < NP_MAX_PLAYERS; i++) {
         const NpActorDef *def = &np_player_def.actor;
-        np_dibujar_actor(def, NP_F2I(w->player.x) - def->box_x - w->cam_x,
-                         NP_F2I(w->player.y) - def->box_y - w->cam_y,
-                         np_actor_frame(def, w->player.anim, w->player.anim_frame),
-                         (uint8_t)!w->player.facing);
+        const NpPlayer *p = &w->players[i];
+        if (!np_player_visible(w, i)) continue;
+        np_dibujar_actor(def, NP_F2I(p->x) - def->box_x - w->cam_x,
+                         NP_F2I(p->y) - def->box_y - w->cam_y,
+                         np_actor_frame(def, p->anim, p->anim_frame),
+                         (uint8_t)!p->facing);
     }
 
     np_volcar_sprites();
@@ -279,19 +281,21 @@ void np_wait_vblank(void)
     while (!(*MD_VDP_CTRL & 0x0008)) ;   /* y entrar en el siguiente */
 }
 
-uint16_t np_input_read(void)
+/* Los dos mandos se leen igual: se sube TH para la cruceta, B y C, se baja
+   para start y A, y se vuelve a subir. Solo cambian los puertos. */
+static uint16_t np_input_de(volatile uint8_t *datos, volatile uint8_t *control)
 {
     uint8_t primera, segunda;
     uint16_t salida = 0;
 
-    *MD_PAD1_CTRL = 0x40;
-    *MD_PAD1_DATA = 0x40;                /* TH alto: C, B y la cruceta */
+    *control = 0x40;
+    *datos = 0x40;                       /* TH alto: C, B y la cruceta */
     __asm__ volatile ("nop\n\tnop");
-    primera = (uint8_t)~(*MD_PAD1_DATA);
-    *MD_PAD1_DATA = 0x00;                /* TH bajo: start y A */
+    primera = (uint8_t)~(*datos);
+    *datos = 0x00;                       /* TH bajo: start y A */
     __asm__ volatile ("nop\n\tnop");
-    segunda = (uint8_t)~(*MD_PAD1_DATA);
-    *MD_PAD1_DATA = 0x40;
+    segunda = (uint8_t)~(*datos);
+    *datos = 0x40;
 
     if (primera & 0x01) salida |= NP_IN_UP;
     if (primera & 0x02) salida |= NP_IN_DOWN;
@@ -302,4 +306,14 @@ uint16_t np_input_read(void)
     if (segunda & 0x10) salida |= NP_IN_JUMP;      /* boton A tambien salta */
     if (segunda & 0x20) salida |= NP_IN_START;
     return salida;
+}
+
+uint16_t np_input_read(void)
+{
+    return np_input_de(MD_PAD1_DATA, MD_PAD1_CTRL);
+}
+
+uint16_t np_input_read2(void)
+{
+    return np_input_de(MD_PAD2_DATA, MD_PAD2_CTRL);
 }

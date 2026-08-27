@@ -85,6 +85,31 @@ def proyecto_por_pantallas(destino: str, titulo: str = "PANTALLAS") -> str:
     return destino
 
 
+def proyecto_a_dos(destino: str, titulo: str = "DOS") -> str:
+    """Proyecto de ejemplo con `jugadores: 2`.
+
+    Se le pone el nivel de tres pantallas (que no tiene ni pinchos ni agujeros)
+    porque las pruebas de emulador dejan a los dos corriendo a la derecha un
+    buen rato: con el nivel del andamiaje uno de los dos se mataria y la
+    comparacion entre partidas dejaria de medir los mandos."""
+    crear_proyecto(destino, titulo, "TEST")
+    yaml = os.path.join(destino, "game.yaml")
+    with open(yaml, encoding="utf-8") as fh:
+        texto = fh.read()
+    assert "  jugadores: 1" in texto, "el andamiaje ya no trae los jugadores"
+    texto = texto.replace("  jugadores: 1", "  jugadores: 2", 1)
+    cabeza, _, _ = texto.partition("niveles:")
+    mapa = "\n".join("      " + fila for fila in _MAPA_PANTALLAS)
+    texto = cabeza + ("niveles:\n"
+                      '  - nombre: "UNA"\n'
+                      '    fondo: "#101830"\n'
+                      "    musica: bosque\n"
+                      "    mapa: |\n%s\n" % mapa)
+    with open(yaml, "w", encoding="utf-8") as fh:
+        fh.write(texto)
+    return destino
+
+
 def cargar_demo(path: str, sistema: str = ""):
     """Carga un proyecto y lo deja listo para el sistema que se pida.
 

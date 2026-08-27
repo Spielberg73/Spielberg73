@@ -1045,5 +1045,90 @@ class TestCamaraPorPantallas(unittest.TestCase):
             "la Neo Geo no salta de pantalla, o no le cabe en un frame")
 
 
+class TestDosJugadores(unittest.TestCase):
+    """Con `jugadores: 2`, el segundo mando en las cinco maquinas de verdad.
+
+    La paridad C/JS ya comprueba que el motor lleva bien a los dos jugadores,
+    pero eso es la simulacion. Lo que se mira aqui es el otro extremo: que el
+    segundo mando de cada maquina (el puerto 2 de la Neo Geo, el otro conector
+    de la Mega Drive, el puerto del raton en el Amiga y en el ST, la otra
+    mitad de la matriz en la Jaguar) llega de verdad al segundo jugador y no
+    es el primero leido dos veces. Como se comprueba, en dos_jugadores.py.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cc = _compilador_68k()
+        if not cls.cc:
+            raise unittest.SkipTest("no hay un compilador de 68000 instalado")
+        cls.tmp = tempfile.mkdtemp(prefix="neoplat-dos-")
+        from comun import proyecto_a_dos
+        cls.proyecto = proyecto_a_dos(os.path.join(cls.tmp, "juego"))
+
+    @classmethod
+    def tearDownClass(cls):
+        if getattr(cls, "tmp", ""):
+            shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def _generar(self, nombre):
+        build = cargar_demo(self.proyecto, nombre)
+        out = os.path.join(self.tmp, nombre)
+        generar_para_sistema(build, out, sistemas.obtener(nombre), "202")
+        return out
+
+    def _construir(self, nombre):
+        out = self._generar(nombre)
+        hecho = subprocess.run(["make", "-C", out], capture_output=True, text=True)
+        self.assertEqual(hecho.returncode, 0, hecho.stdout + hecho.stderr)
+        return out
+
+    def _capturas(self):
+        return os.path.join(self.tmp, "capturas")
+
+    def _mirar(self, sistema, ruta):
+        import dos_jugadores
+        self.assertEqual(dos_jugadores.comprobar_maquina(sistema, ruta,
+                                                         self._capturas()), 0,
+                         "el segundo mando no llega al segundo jugador")
+
+    def test_los_dos_mandos_de_la_neogeo(self):
+        try:
+            import machine68k  # noqa: F401
+        except ImportError:
+            self.skipTest("falta machine68k (pip3 install amitools)")
+        self._mirar("neogeo", self._generar("neogeo"))
+
+    def test_los_dos_mandos_de_la_megadrive(self):
+        self._mirar("megadrive",
+                    os.path.join(self._construir("megadrive"), "rom/juego.bin"))
+
+    def test_los_dos_mandos_del_amiga(self):
+        self._mirar("amiga",
+                    os.path.join(self._construir("amiga"), "disco/Dos.adf"))
+
+    def test_los_dos_mandos_de_la_jaguar(self):
+        self._mirar("jaguar",
+                    os.path.join(self._construir("jaguar"), "rom/Dos.j64"))
+
+    def test_los_dos_mandos_del_atari_st(self):
+        """En un proceso aparte: Hatari no se deja arrancar dos veces en el
+        mismo, y aqui hay mas de una prueba que lo usa."""
+        import emulador_st
+        from libretro import buscar_core
+        if not buscar_core(emulador_st.CORE, "NEOPLAT_CORE_ST"):
+            self.skipTest("no esta instalado el core de Hatari")
+        if not emulador_st._buscar_tos():
+            self.skipTest("no hay una imagen de TOS (tos.img)")
+        disco = os.path.join(self._construir("atarist"), "disco/dos.st")
+        hecho = subprocess.run(
+            [sys.executable, os.path.join(KIT, "tests", "dos_jugadores.py"),
+             "atarist", disco, self._capturas()],
+            capture_output=True, text=True)
+        print(hecho.stdout.strip())
+        self.assertEqual(hecho.returncode, 0,
+                         "el segundo mando no llega al segundo jugador:\n"
+                         + hecho.stdout + hecho.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

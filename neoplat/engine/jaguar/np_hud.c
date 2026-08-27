@@ -15,6 +15,7 @@ static uint32_t np_hud_puntos = 0xFFFFFFFFUL;
 static uint16_t np_hud_tiempo = 0xFFFF;
 static uint16_t np_hud_estado = 0xFFFF;
 static uint8_t np_hud_vidas = 0xFF;
+static uint8_t np_hud_vidas2 = 0xFF;
 static uint8_t np_hud_etiquetas;
 
 void np_hud_clear(void)
@@ -26,6 +27,7 @@ void np_hud_clear(void)
     np_hud_tiempo = 0xFFFF;
     np_hud_estado = 0xFFFF;
     np_hud_vidas = 0xFF;
+    np_hud_vidas2 = 0xFF;
     np_hud_etiquetas = 0;
     __asm__ __volatile__ ("" ::: "memory");
 }
@@ -77,7 +79,12 @@ void np_hud_draw(const NpWorld *w)
     static uint8_t ultimo_jefe = 0xFF;
     if (!np_hud_etiquetas) {
         np_hud_print(2, 0, "SCORE");
-        np_hud_print(30, 0, "LIVES");
+        if (np_player_count > 1) {
+            np_hud_print(30, 0, "1P");
+            np_hud_print(35, 0, "2P");
+        } else {
+            np_hud_print(30, 0, "LIVES");
+        }
         if (np_time_limit) np_hud_print(18, 0, "TIME");
         np_hud_etiquetas = 1;
     }
@@ -85,9 +92,15 @@ void np_hud_draw(const NpWorld *w)
         np_hud_puntos = w->score;
         np_hud_number(8, 0, w->score, 6);
     }
-    if (w->lives != np_hud_vidas) {
-        np_hud_vidas = w->lives;
-        np_hud_number(36, 0, w->lives, 1);
+    /* Las vidas son de cada jugador. A uno pone "LIVES 3" como siempre; a dos
+       no cabe dos veces, asi que pone "1P 3  2P 3" en el mismo hueco. */
+    if (w->players[0].lives != np_hud_vidas) {
+        np_hud_vidas = w->players[0].lives;
+        np_hud_number(np_player_count > 1 ? 33 : 36, 0, np_hud_vidas, 1);
+    }
+    if (np_player_count > 1 && w->players[1].lives != np_hud_vidas2) {
+        np_hud_vidas2 = w->players[1].lives;
+        np_hud_number(38, 0, np_hud_vidas2, 1);
     }
     if (np_time_limit && w->time_left / 60 != np_hud_tiempo) {
         np_hud_tiempo = (uint16_t)(w->time_left / 60);

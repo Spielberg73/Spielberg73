@@ -133,6 +133,28 @@ fila $81FD   bit 1 botón B
 El kit usa **PAUSE para empezar la partida** (es el botón central del mando de
 Jaguar). En RetroArch cae en el *Select* del mando.
 
+### El segundo mando, que no es el primero desplazado
+
+Con `jugadores: 2` hay que leer el otro puerto, y ahí está la trampa: los dos
+comparten el mismo byte de selección de fila —el puerto 1 mira el nibble bajo y
+el puerto 2 el alto—, pero **la tabla de filas del puerto 2 es la del 1 con los
+bits del revés**. O sea que la fila 0 no se pide con el mismo número:
+
+| | fila 0 | fila 1 |
+|---|---|---|
+| puerto 1 | nibble `$E` (`$81FE`) | `$D` (`$81FD`) |
+| puerto 2 | nibble `$7` (`$817F`) | `$B` (`$81BF`) |
+
+Los nibbles que sobran se dejan a `$F`, que no apunta a ningún mando. Lo demás
+sí es el primero desplazado: las direcciones salen cuatro bits más arriba
+(28-31) y los botones dos (bit 3 el A, bit 2 PAUSE).
+
+Esto no se adivinó: escribiendo `$81EF` —que es lo que uno esperaría— el
+segundo mando no llegaba, y la prueba de emulador
+(`tests/test_sistemas.py`, `TestDosJugadores`) lo cazó. Los números salen del
+manual técnico de Atari, del apartado del adaptador de cuatro jugadores, que es
+donde está la tabla entera de los dieciséis códigos.
+
 ## La ROM que se genera
 
 ```

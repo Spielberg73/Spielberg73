@@ -306,6 +306,7 @@ class Project:
     author: str
     system: str            # para que maquina se compila por defecto
     lives: int
+    players: int           # 1 o 2 jugadores a la vez
     time_limit: int
     hud: bool
     camera: str            # "scroll" o "pantallas"
@@ -928,6 +929,7 @@ def load_project(path: str) -> Project:
     title = (game.str_(["title", "titulo", "título"], "NEOPLAT") or "NEOPLAT")
     author = (game.str_(["author", "autor"], "") or "")
     lives = game.int_(["lives", "vidas"], 3, 1, 9)
+    players = game.int_(["players", "jugadores"], 1, 1, 2)
     time_limit = game.int_(["time", "tiempo", "tiempo_limite"], 0, 0, 999)
     hud = game.bool_(["hud", "marcador"], True)
     camera = _leer_camara(game)
@@ -996,7 +998,7 @@ def load_project(path: str) -> Project:
 
     return Project(
         root=root, title=title.upper()[:24], author=author[:24], system=sistema,
-        lives=lives, camera=camera, amiga_modo=amiga_modo,
+        lives=lives, players=players, camera=camera, amiga_modo=amiga_modo,
         time_limit=time_limit, hud=hud, player=player, tileset=tileset, tiles=tiles,
         enemies=enemies, items=items, layers=layers, sound=sound, levels=levels,
         warnings=warnings,

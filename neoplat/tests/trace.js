@@ -9,9 +9,12 @@ var path = require("path");
 var NPCore = require(path.join(__dirname, "..", "preview", "np_core.js"));
 
 var data = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-var inputs = fs.readFileSync(process.argv[3], "utf8").trim().split(/\s+/)
+/* Dos numeros por linea, uno por mando (igual que np_trace.c). */
+var numeros = fs.readFileSync(process.argv[3], "utf8").trim().split(/\s+/)
   .filter(function (s) { return s.length; })
   .map(Number);
+var inputs = [];
+for (var n = 0; n + 1 < numeros.length; n += 2) inputs.push([numeros[n], numeros[n + 1]]);
 
 var world = NPCore.create(data);
 
@@ -39,13 +42,16 @@ function hex8(v) {
 }
 
 var out = [];
-inputs.forEach(function (input) {
-  world.step(input);
+inputs.forEach(function (par) {
+  var p0 = world.players[0], p1 = world.players[1];
+  world.step(par[0], par[1]);
   out.push([
-    world.frame, world.player.x, world.player.y, world.player.vx, world.player.vy,
-    world.state, world.player.health, world.lives, world.score,
+    world.frame, p0.x, p0.y, p0.vx, p0.vy,
+    world.state, p0.health, p0.lives, world.score,
     world.camX, world.camY, world.levelIndex, world.sfx, world.bossHealth,
-    hex8(entityHash(world))
+    hex8(entityHash(world)),
+    p1.x, p1.y, p1.vx, p1.vy, p1.health, p1.lives,
+    p0.playing, p0.dying, p1.playing, p1.dying
   ].join(" "));
 });
 process.stdout.write(out.join("\n") + "\n");

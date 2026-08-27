@@ -197,6 +197,7 @@
   <span><kbd>Z</kbd> / <kbd>espacio</kbd> saltar</span>
   <span><kbd>&darr;</kbd> bajar de plataforma</span>
   <span><kbd>Enter</kbd> empezar</span>
+  <span id="teclas-2p" hidden>jugador 2: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> moverse &middot; <kbd>G</kbd> saltar</span>
   <span><kbd>R</kbd> reiniciar</span>
   <span><kbd>E</kbd> editar</span>
   <span class="solo-editor"><kbd>1</kbd>&hellip;<kbd>6</kbd> herramientas</span>
@@ -468,15 +469,36 @@
   var latched = 0;
   var scale = 3;
 
+  /* A dos jugadores hacen falta dos juegos de teclas, asi que WASD deja de ser
+     un apano del primero y pasa a ser el mando del segundo. A un jugador todo
+     sigue como estaba: flechas o WASD, y saltar con Z, K o espacio. */
+  var DOS_JUGADORES = (DATA.players || 1) > 1;
+  var input2 = 0, latched2 = 0;
+
   var KEYS = {
-    ArrowLeft: NPCore.IN.LEFT, KeyA: NPCore.IN.LEFT,
-    ArrowRight: NPCore.IN.RIGHT, KeyD: NPCore.IN.RIGHT,
-    ArrowUp: NPCore.IN.UP, KeyW: NPCore.IN.UP,
-    ArrowDown: NPCore.IN.DOWN, KeyS: NPCore.IN.DOWN,
-    KeyZ: NPCore.IN.JUMP, Space: NPCore.IN.JUMP, KeyK: NPCore.IN.JUMP,
-    KeyX: NPCore.IN.ACTION, KeyL: NPCore.IN.ACTION,
+    ArrowLeft: NPCore.IN.LEFT,
+    ArrowRight: NPCore.IN.RIGHT,
+    ArrowUp: NPCore.IN.UP,
+    ArrowDown: NPCore.IN.DOWN,
+    KeyZ: NPCore.IN.JUMP, Space: NPCore.IN.JUMP,
+    KeyX: NPCore.IN.ACTION,
     Enter: NPCore.IN.START
   };
+  var KEYS2 = {
+    KeyA: NPCore.IN.LEFT, KeyD: NPCore.IN.RIGHT,
+    KeyW: NPCore.IN.UP, KeyS: NPCore.IN.DOWN,
+    KeyG: NPCore.IN.JUMP, KeyH: NPCore.IN.ACTION,
+    KeyT: NPCore.IN.START
+  };
+  if (!DOS_JUGADORES) {
+    /* el segundo juego de teclas se lo queda el primero */
+    for (var _t in KEYS2) if (!KEYS[_t]) KEYS[_t] = KEYS2[_t];
+    KEYS.KeyK = NPCore.IN.JUMP;
+    KEYS.KeyL = NPCore.IN.ACTION;
+    KEYS2 = {};
+  } else {
+    document.getElementById("teclas-2p").hidden = false;
+  }
   var PAD = {
     left: NPCore.IN.LEFT, right: NPCore.IN.RIGHT, down: NPCore.IN.DOWN,
     jump: NPCore.IN.JUMP, start: NPCore.IN.START
@@ -536,10 +558,14 @@
     if (ev.code === "Minus" || ev.code === "NumpadSubtract") { setScale(scale - 1); return; }
     var bit = KEYS[ev.code];
     if (bit) { input |= bit; latched |= bit; ev.preventDefault(); }
+    var bit2 = KEYS2[ev.code];
+    if (bit2) { input2 |= bit2; latched2 |= bit2; ev.preventDefault(); }
   });
   document.addEventListener("keyup", function (ev) {
     var bit = KEYS[ev.code];
     if (bit) { input &= ~bit; ev.preventDefault(); }
+    var bit2 = KEYS2[ev.code];
+    if (bit2) { input2 &= ~bit2; ev.preventDefault(); }
   });
   Array.prototype.forEach.call(document.querySelectorAll(".pad button"), function (btn) {
     var bit = PAD[btn.dataset.key];
@@ -816,12 +842,14 @@
   }
 
   function drawPlayer() {
-    if (!world.playerVisible()) return;
     var def = DATA.player.actor;
-    var p = world.player;
-    drawActor(def, NPCore.F2I(p.x) - def.box_x - world.camX,
-              NPCore.F2I(p.y) - def.box_y - world.camY,
-              NPCore.actorFrame(def, p.anim, p.animFrame), !p.facing);
+    for (var i = 0; i < world.players.length; i++) {
+      if (!world.playerVisible(i)) continue;
+      var p = world.players[i];
+      drawActor(def, NPCore.F2I(p.x) - def.box_x - world.camX,
+                NPCore.F2I(p.y) - def.box_y - world.camY,
+                NPCore.actorFrame(def, p.anim, p.animFrame), !p.facing);
+    }
   }
 
   /* Mismo texto y misma fuente 3x5 que el plano fix de la consola. */
@@ -847,8 +875,15 @@
     if (!DATA.hud) return;
     text(2, 1, "SCORE");
     text(8, 1, pad(world.score, 6));
-    text(30, 1, "LIVES");
-    text(36, 1, String(world.lives));
+    if (DOS_JUGADORES) {
+      text(30, 1, "1P");
+      text(33, 1, String(world.players[0].lives));
+      text(35, 1, "2P");
+      text(38, 1, String(world.players[1].lives));
+    } else {
+      text(30, 1, "LIVES");
+      text(36, 1, String(world.players[0].lives));
+    }
     if (DATA.time_limit) {
       text(18, 1, "TIME");
       text(23, 1, pad((world.timeLeft / 60) | 0, 3));
@@ -892,8 +927,9 @@
     if (acc > 250) acc = 250;          /* pestana en segundo plano: no acumular */
     var steps = 0;
     while (acc >= 1000 / 60 && steps < 4) {
-      world.step(input | latched);
+      world.step(input | latched, input2 | latched2);
       latched = 0;
+      latched2 = 0;
       if (world.sfx) audio.evento(world.sfx);
       audio.tocarMusica(world.state === NPCore.STATE.PLAY ?
                         (world.level.music || 0) - 1 : -1);
@@ -2835,6 +2871,7 @@
     data: DATA,
     get world() { return world; },
     get input() { return input; },
+    get input2() { return input2; },
     audio: audio,
     editor: editor,
     pixel: function () { return lienzoPixel; },

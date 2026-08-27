@@ -241,18 +241,31 @@ static void np_anim_tick(const NpActorDef *def, uint8_t anim,
 
 static void np_camera_update(NpWorld *w);
 
+/* Donde sale cada jugador. A dos, el segundo aparece un poco a la derecha para
+   que no empiecen uno dentro del otro. */
+#define NP_HUECO_2P 20
+
+static void np_player_place(NpWorld *w, uint8_t quien)
+{
+    NpPlayer *p = &w->players[quien];
+    p->x = NP_I2F((int32_t)w->level->start_x + (quien ? NP_HUECO_2P : 0));
+    p->y = NP_I2F(w->level->start_y);
+}
+
 void np_world_init(NpWorld *w)
 {
     uint16_t i;
     for (i = 0; i < sizeof(NpWorld); i++) ((uint8_t *)w)[i] = 0;
     w->state = NP_STATE_TITLE;
-    w->lives = np_start_lives;
     w->level_index = 0;
     w->level = &np_levels[0];
+    for (i = 0; i < NP_MAX_PLAYERS; i++) {
+        w->players[i].playing = (uint8_t)(i < np_player_count);
+        w->players[i].lives = np_start_lives;
+        np_player_place(w, (uint8_t)i);
+    }
     /* Colocamos al jugador en su salida ya en la pantalla de titulo: asi el
      * fondo del titulo es el principio del nivel y no una esquina vacia. */
-    w->player.x = NP_I2F(w->level->start_x);
-    w->player.y = NP_I2F(w->level->start_y);
     np_camera_update(w);
 }
 
@@ -293,15 +306,13 @@ static void np_spawn_entities(NpWorld *w)
     }
 }
 
-void np_world_load_level(NpWorld *w, uint16_t index)
+/* Deja a un jugador como recien salido: en la salida del nivel y entero. Se usa
+   al empezar el nivel y cuando reaparece despues de morir. */
+static void np_player_reset(NpWorld *w, uint8_t quien)
 {
     const NpPlayerDef *d = &np_player_def;
-    NpPlayer *p = &w->player;
-    if (index >= np_level_count) index = 0;
-    w->level_index = index;
-    w->level = &np_levels[index];
-    p->x = NP_I2F(w->level->start_x);
-    p->y = NP_I2F(w->level->start_y);
+    NpPlayer *p = &w->players[quien];
+    np_player_place(w, quien);
     p->vx = 0;
     p->vy = 0;
     p->on_ground = 0;
@@ -310,10 +321,20 @@ void np_world_load_level(NpWorld *w, uint16_t index)
     p->invuln = 0;
     p->coyote = 0;
     p->buffer = 0;
+    p->dying = 0;
     p->jumps_left = d->double_jump ? 1 : 0;
     p->anim = NP_ANIM_IDLE;
     p->anim_frame = 0;
     p->anim_timer = 0;
+}
+
+void np_world_load_level(NpWorld *w, uint16_t index)
+{
+    uint8_t i;
+    if (index >= np_level_count) index = 0;
+    w->level_index = index;
+    w->level = &np_levels[index];
+    for (i = 0; i < NP_MAX_PLAYERS; i++) np_player_reset(w, i);
     w->keys = 0;
     w->boss_health = 0;
     w->boss_max = 0;
@@ -323,24 +344,42 @@ void np_world_load_level(NpWorld *w, uint16_t index)
     np_spawn_entities(w);
 }
 
-static void np_player_die(NpWorld *w)
+/* Cuantos jugadores siguen en juego y no se estan muriendo. */
+static uint8_t np_players_up(const NpWorld *w)
 {
-    w->sfx |= NP_SFX_DIE;
-    w->state = NP_STATE_DYING;
-    w->state_timer = NP_DYING_TIME;
-    w->player.vy = -np_player_def.jump;
-    w->player.vx = 0;
-    w->player.anim = NP_ANIM_HURT;
-    w->player.anim_frame = 0;
+    uint8_t i, n = 0;
+    for (i = 0; i < NP_MAX_PLAYERS; i++)
+        if (w->players[i].playing && !w->players[i].dying) n++;
+    return n;
 }
 
-static void np_player_hurt(NpWorld *w, uint8_t damage)
+/* Cuando muere un jugador y queda otro en pie, reaparece el solo y el nivel
+ * sigue: es lo que hace un juego a dos. Cuando **no** queda ninguno, el nivel
+ * se reinicia entero, que es lo de siempre en un juego a uno (ahi el unico
+ * jugador es tambien el ultimo). Una sola regla para los dos casos. */
+static void np_player_die(NpWorld *w, uint8_t quien)
 {
-    NpPlayer *p = &w->player;
-    if (p->invuln || w->state != NP_STATE_PLAY) return;
+    NpPlayer *p = &w->players[quien];
+    w->sfx |= NP_SFX_DIE;
+    p->dying = NP_DYING_TIME;
+    p->vy = -np_player_def.jump;
+    p->vx = 0;
+    p->anim = NP_ANIM_HURT;
+    p->anim_frame = 0;
+    if (!np_players_up(w)) {
+        w->state = NP_STATE_DYING;
+        w->state_timer = NP_DYING_TIME;
+    }
+}
+
+static void np_player_hurt(NpWorld *w, uint8_t quien, uint8_t damage)
+{
+    NpPlayer *p = &w->players[quien];
+    if (p->invuln || p->dying || !p->playing) return;
+    if (w->state != NP_STATE_PLAY) return;
     if (damage >= p->health) {
         p->health = 0;
-        np_player_die(w);
+        np_player_die(w, quien);
         return;
     }
     p->health = (uint8_t)(p->health - damage);
@@ -352,11 +391,11 @@ static void np_player_hurt(NpWorld *w, uint8_t damage)
 
 /* ------------------------------------------------------------- el jugador */
 
-static void np_player_update(NpWorld *w, uint16_t input)
+static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
 {
     const NpPlayerDef *d = &np_player_def;
     const NpActorDef *a = &d->actor;
-    NpPlayer *p = &w->player;
+    NpPlayer *p = &w->players[quien];
     int dir = 0;
     int hit_x = 0, hit_down = 0, hit_up = 0;
     int pressed_jump;
@@ -368,7 +407,7 @@ static void np_player_update(NpWorld *w, uint16_t input)
     else if (dir < 0) { p->vx = np_approach(p->vx, -d->speed, p->on_ground ? d->accel : d->air_accel); p->facing = 0; }
     else if (p->on_ground) p->vx = np_approach(p->vx, 0, d->friction);
 
-    pressed_jump = (input & NP_IN_JUMP) && !(w->prev_input & NP_IN_JUMP);
+    pressed_jump = (input & NP_IN_JUMP) && !(w->prev_input[quien] & NP_IN_JUMP);
     if (pressed_jump) p->buffer = (uint8_t)(d->jump_buffer + 1);
     if (p->buffer) p->buffer--;
 
@@ -414,11 +453,27 @@ static void np_player_update(NpWorld *w, uint16_t input)
 
 /* --------------------------------------------------------------- enemigos */
 
+/* A quien persigue un enemigo: al jugador en juego que tenga mas cerca. Con un
+   solo jugador siempre es el mismo, asi que el juego a uno no cambia. */
+static const NpPlayer *np_nearest_player(const NpWorld *w, np_fix x)
+{
+    const NpPlayer *mejor = &w->players[0];
+    np_fix distancia = 0;
+    uint8_t i, primero = 1;
+    for (i = 0; i < NP_MAX_PLAYERS; i++) {
+        const NpPlayer *p = &w->players[i];
+        np_fix d = NP_ABS(p->x - x);
+        if (!p->playing || p->dying) continue;
+        if (primero || d < distancia) { mejor = p; distancia = d; primero = 0; }
+    }
+    return mejor;
+}
+
 static void np_enemy_update(NpWorld *w, NpEntity *e)
 {
     const NpEnemyDef *d = &np_enemies[e->def];
     const NpActorDef *a = &d->actor;
-    const NpPlayer *p = &w->player;
+    const NpPlayer *p = np_nearest_player(w, e->x);
     int hit_x = 0, hit_down = 0, hit_up = 0;
 
     switch (d->behavior) {
@@ -503,18 +558,21 @@ static void np_item_update(NpWorld *w, NpEntity *e)
     np_anim_tick(&d->actor, e->anim, &e->anim_frame, &e->anim_timer);
 }
 
-static void np_collect(NpWorld *w, NpEntity *e)
+/* Lo recoge quien lo toca: la vida y la salud van a ese jugador, y los puntos
+   y las llaves al marcador, que es comun. */
+static void np_collect(NpWorld *w, uint8_t quien, NpEntity *e)
 {
     const NpItemDef *d = &np_items[e->def];
+    NpPlayer *p = &w->players[quien];
     w->score += d->score;
     w->sfx |= (d->effect == NP_ITEM_LIFE) ? NP_SFX_LIFE : NP_SFX_COIN;
     switch (d->effect) {
     case NP_ITEM_LIFE:
-        if (w->lives < 99) w->lives = (uint8_t)(w->lives + d->amount);
+        if (p->lives < 99) p->lives = (uint8_t)(p->lives + d->amount);
         break;
     case NP_ITEM_HEALTH:
-        w->player.health = (uint8_t)NP_MIN(w->player.health + d->amount,
-                                           np_player_def.health);
+        p->health = (uint8_t)NP_MIN(p->health + d->amount,
+                                    np_player_def.health);
         break;
     case NP_ITEM_KEY:
         if (w->keys < 255) w->keys = (uint8_t)(w->keys + d->amount);
@@ -534,45 +592,52 @@ static void np_finish_level(NpWorld *w)
     w->score += 100 + (w->time_left / 60) * 10;
 }
 
+/* Quien toca que. Se recorre jugador por jugador y, dentro, entidad por
+   entidad: asi el orden es el mismo con uno y con dos, y el juego a uno sale
+   exactamente igual que antes. */
 static void np_touch_entities(NpWorld *w)
 {
     const NpActorDef *pa = &np_player_def.actor;
-    NpPlayer *p = &w->player;
-    uint8_t i;
-    for (i = 0; i < w->entity_count; i++) {
-        NpEntity *e = &w->entities[i];
-        const NpActorDef *ea;
-        if (!e->active) continue;
-        ea = np_entity_def(e);
-        if (!np_boxes_overlap(p->x, p->y, pa->box_w, pa->box_h,
-                              e->x, e->y, ea->box_w, ea->box_h))
-            continue;
-        if (e->kind == 1) {
-            np_collect(w, e);
-            continue;
-        }
-        {
-            const NpEnemyDef *d = &np_enemies[e->def];
-            /* Se pisa al enemigo si vienes cayendo y, antes de moverte en este
-             * frame, tenias los pies por encima de su mitad. Con un tercio la
-             * ventana era tan estrecha que era casi imposible acertar. */
-            int from_above = p->vy > 0 &&
-                (p->y + NP_I2F(pa->box_h) - p->vy) <= e->y + NP_I2F(ea->box_h / 2);
-            if (np_player_def.stomp && d->stompable && from_above) {
-                w->sfx |= NP_SFX_STOMP;
-                if (e->health > 1) {
-                    e->health--;
-                    e->hurt = 20;
+    uint8_t quien, i;
+    for (quien = 0; quien < NP_MAX_PLAYERS; quien++) {
+        NpPlayer *p = &w->players[quien];
+        if (!p->playing || p->dying) continue;
+        for (i = 0; i < w->entity_count; i++) {
+            NpEntity *e = &w->entities[i];
+            const NpActorDef *ea;
+            if (!e->active) continue;
+            ea = np_entity_def(e);
+            if (!np_boxes_overlap(p->x, p->y, pa->box_w, pa->box_h,
+                                  e->x, e->y, ea->box_w, ea->box_h))
+                continue;
+            if (e->kind == 1) {
+                np_collect(w, quien, e);
+                continue;
+            }
+            {
+                const NpEnemyDef *d = &np_enemies[e->def];
+                /* Se pisa al enemigo si vienes cayendo y, antes de moverte en
+                 * este frame, tenias los pies por encima de su mitad. Con un
+                 * tercio la ventana era tan estrecha que era casi imposible
+                 * acertar. */
+                int from_above = p->vy > 0 &&
+                    (p->y + NP_I2F(pa->box_h) - p->vy) <= e->y + NP_I2F(ea->box_h / 2);
+                if (np_player_def.stomp && d->stompable && from_above) {
+                    w->sfx |= NP_SFX_STOMP;
+                    if (e->health > 1) {
+                        e->health--;
+                        e->hurt = 20;
+                    } else {
+                        e->active = 0;
+                        w->score += d->score;
+                        /* matar al jefe termina el nivel, como llegar a la meta */
+                        if (d->boss) np_finish_level(w);
+                    }
+                    p->vy = -np_player_def.bounce;
+                    p->on_ground = 0;
                 } else {
-                    e->active = 0;
-                    w->score += d->score;
-                    /* matar al jefe termina el nivel, como llegar a la meta */
-                    if (d->boss) np_finish_level(w);
+                    np_player_hurt(w, quien, d->damage);
                 }
-                p->vy = -np_player_def.bounce;
-                p->on_ground = 0;
-            } else {
-                np_player_hurt(w, d->damage);
             }
         }
     }
@@ -596,9 +661,26 @@ static void np_camera_update(NpWorld *w)
     const NpActorDef *a = &np_player_def.actor;
     int32_t max_x = (int32_t)w->level->width * NP_TILE - NP_SCREEN_W;
     int32_t max_y = (int32_t)w->level->height * NP_TILE - NP_SCREEN_H;
-    int32_t centro_x = NP_F2I(w->player.x) + a->box_w / 2;
-    int32_t centro_y = NP_F2I(w->player.y) + a->box_h / 2;
+    int32_t centro_x = 0, centro_y = 0;
     int32_t target_x, target_y;
+    /* A dos jugadores la camara va al punto medio de los dos. Con uno sale la
+       misma cuenta de siempre: la suma de uno dividida por uno. */
+    uint8_t i, cuantos = 0;
+    for (i = 0; i < NP_MAX_PLAYERS; i++) {
+        if (!w->players[i].playing) continue;
+        centro_x += NP_F2I(w->players[i].x) + a->box_w / 2;
+        centro_y += NP_F2I(w->players[i].y) + a->box_h / 2;
+        cuantos++;
+    }
+    if (!cuantos) {
+        /* game over: no queda nadie en juego, pero la camara tiene que
+           quedarse donde estaba y no irse al origen */
+        centro_x = NP_F2I(w->players[0].x) + a->box_w / 2;
+        centro_y = NP_F2I(w->players[0].y) + a->box_h / 2;
+    } else if (cuantos > 1) {
+        centro_x /= cuantos;
+        centro_y /= cuantos;
+    }
     if (max_x < 0) max_x = 0;
     if (max_y < 0) max_y = 0;
     if (np_camara_pantallas) {
@@ -614,22 +696,69 @@ static void np_camera_update(NpWorld *w)
     w->cam_y = NP_CLAMP(target_y, 0, max_y);
 }
 
-int np_player_visible(const NpWorld *w)
+/* A dos jugadores, el que se queda atras no puede salirse de la pantalla: la
+ * camara va al punto medio y a el se le para en el borde. Con un solo jugador
+ * no se toca nada -la camara lo lleva centrado y nunca se sale-, asi que el
+ * juego a uno sigue siendo exactamente el mismo. */
+static void np_players_in_view(NpWorld *w)
 {
+    const NpActorDef *a = &np_player_def.actor;
+    int32_t izquierda = w->cam_x;
+    int32_t derecha = w->cam_x + NP_SCREEN_W - a->box_w;
+    uint8_t i;
+    if (np_player_count < 2) return;
+    for (i = 0; i < NP_MAX_PLAYERS; i++) {
+        NpPlayer *p = &w->players[i];
+        if (!p->playing || p->dying) continue;
+        if (NP_F2I(p->x) < izquierda) { p->x = NP_I2F(izquierda); if (p->vx < 0) p->vx = 0; }
+        if (NP_F2I(p->x) > derecha) { p->x = NP_I2F(derecha); if (p->vx > 0) p->vx = 0; }
+    }
+}
+
+int np_player_visible(const NpWorld *w, uint8_t quien)
+{
+    const NpPlayer *p = &w->players[quien];
+    if (!p->playing) return 0;
     if (w->state == NP_STATE_TITLE || w->state == NP_STATE_GAME_OVER) return 0;
-    if (w->player.invuln && (w->frame & 2)) return 0;   /* parpadeo */
+    if (p->invuln && (w->frame & 2)) return 0;   /* parpadeo */
     return 1;
 }
 
 /* ----------------------------------------------------------------- estados */
 
-static void np_play_step(NpWorld *w, uint16_t input)
+/* Un jugador que se esta muriendo mientras el otro sigue: cae, y al acabar la
+   caida reaparece si le quedan vidas. Si se queda sin ellas, se va del juego. */
+static void np_player_falling(NpWorld *w, uint8_t quien)
+{
+    NpPlayer *p = &w->players[quien];
+    p->vy += np_player_def.gravity;
+    if (p->vy > np_player_def.max_fall) p->vy = np_player_def.max_fall;
+    p->y += p->vy;
+    if (p->dying) p->dying--;
+    if (p->dying) return;
+    if (p->lives > 1) {
+        p->lives--;
+        np_player_reset(w, quien);
+    } else {
+        p->lives = 0;
+        p->playing = 0;
+    }
+}
+
+static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
 {
     const NpActorDef *pa = &np_player_def.actor;
-    NpPlayer *p = &w->player;
-    uint8_t i;
+    uint16_t mandos[NP_MAX_PLAYERS];
+    uint8_t quien, i;
 
-    np_player_update(w, input);
+    mandos[0] = input;
+    if (NP_MAX_PLAYERS > 1) mandos[1] = input2;
+    for (quien = 0; quien < NP_MAX_PLAYERS; quien++) {
+        NpPlayer *p = &w->players[quien];
+        if (!p->playing) continue;
+        if (p->dying) np_player_falling(w, quien);
+        else np_player_update(w, quien, mandos[quien]);
+    }
 
     for (i = 0; i < w->entity_count; i++) {
         NpEntity *e = &w->entities[i];
@@ -663,26 +792,36 @@ static void np_play_step(NpWorld *w, uint16_t input)
 
     if (w->state != NP_STATE_PLAY) return;
 
-    if (np_box_touches(w->level,
-                       p->x + NP_I2F(NP_HAZARD_INSET_X),
-                       p->y + NP_I2F(NP_HAZARD_INSET_Y),
-                       pa->box_w - NP_HAZARD_INSET_X * 2,
-                       pa->box_h - NP_HAZARD_INSET_Y,
-                       NP_TILE_HAZARD)) {
-        np_player_hurt(w, 99);
-        return;
+    for (quien = 0; quien < NP_MAX_PLAYERS; quien++) {
+        NpPlayer *p = &w->players[quien];
+        if (!p->playing || p->dying) continue;
+        if (np_box_touches(w->level,
+                           p->x + NP_I2F(NP_HAZARD_INSET_X),
+                           p->y + NP_I2F(NP_HAZARD_INSET_Y),
+                           pa->box_w - NP_HAZARD_INSET_X * 2,
+                           pa->box_h - NP_HAZARD_INSET_Y,
+                           NP_TILE_HAZARD)) {
+            np_player_hurt(w, quien, 99);
+            continue;
+        }
+        if (np_box_touches(w->level, p->x, p->y, pa->box_w, pa->box_h,
+                           NP_TILE_GOAL)) {
+            np_finish_level(w);            /* llega uno, se acaba para los dos */
+            return;
+        }
+        if (NP_F2I(p->y) > (int32_t)(w->level->height + 2) * NP_TILE)
+            np_player_hurt(w, quien, 99);
     }
-    if (np_box_touches(w->level, p->x, p->y, pa->box_w, pa->box_h, NP_TILE_GOAL)) {
-        np_finish_level(w);
-        return;
-    }
-    if (NP_F2I(p->y) > (int32_t)(w->level->height + 2) * NP_TILE) {
-        np_player_hurt(w, 99);
-        return;
-    }
+    if (w->state != NP_STATE_PLAY) return;
+
+    /* el tiempo es de la partida, no de cada uno: al acabarse caen los dos */
     if (np_time_limit) {
-        if (w->time_left) w->time_left--;
-        else np_player_hurt(w, 99);
+        if (w->time_left) {
+            w->time_left--;
+        } else {
+            for (quien = 0; quien < NP_MAX_PLAYERS; quien++)
+                np_player_hurt(w, quien, 99);
+        }
     }
 }
 
@@ -706,9 +845,15 @@ void np_boss_bar(char *out, const NpWorld *w)
     out[5 + NP_BOSS_BAR] = 0;
 }
 
-void np_world_step(NpWorld *w, uint16_t input)
+void np_world_step(NpWorld *w, uint16_t input, uint16_t input2)
 {
-    int start_pressed = (input & NP_IN_START) && !(w->prev_input & NP_IN_START);
+    /* Start vale desde cualquiera de los dos mandos: en la maquina recreativa
+       la partida la empieza el que llega primero. */
+    uint16_t ambos = (uint16_t)(input | (np_player_count > 1 ? input2 : 0));
+    uint16_t antes = (uint16_t)(w->prev_input[0]
+                     | (np_player_count > 1 ? w->prev_input[1] : 0));
+    int start_pressed = (ambos & NP_IN_START) && !(antes & NP_IN_START);
+    uint8_t quien;
     w->frame++;
     w->sfx = 0;                 /* los eventos duran un solo frame */
 
@@ -717,28 +862,45 @@ void np_world_step(NpWorld *w, uint16_t input)
         if (start_pressed) {
             w->sfx |= NP_SFX_START;
             w->score = 0;
-            w->lives = np_start_lives;
+            for (quien = 0; quien < NP_MAX_PLAYERS; quien++) {
+                w->players[quien].playing = (uint8_t)(quien < np_player_count);
+                w->players[quien].lives = np_start_lives;
+            }
             np_world_load_level(w, 0);
         }
         break;
 
     case NP_STATE_PLAY:
-        np_play_step(w, input);
+        np_play_step(w, input, input2);
         break;
 
     case NP_STATE_DYING:
-        w->player.vy += np_player_def.gravity;
-        if (w->player.vy > np_player_def.max_fall) w->player.vy = np_player_def.max_fall;
-        w->player.y += w->player.vy;
+        /* Aqui se llega cuando **no queda nadie en pie**: caen todos y, al
+           acabar la cuenta, el nivel vuelve a empezar si a alguno le quedan
+           vidas. Con un solo jugador es lo de siempre. */
+        for (quien = 0; quien < NP_MAX_PLAYERS; quien++) {
+            NpPlayer *p = &w->players[quien];
+            if (!p->playing || !p->dying) continue;
+            p->vy += np_player_def.gravity;
+            if (p->vy > np_player_def.max_fall) p->vy = np_player_def.max_fall;
+            p->y += p->vy;
+        }
         if (w->state_timer) {
             w->state_timer--;
-        } else if (w->lives > 1) {
-            w->lives--;
-            np_world_load_level(w, w->level_index);
         } else {
-            w->lives = 0;
-            w->state = NP_STATE_GAME_OVER;
-            w->state_timer = NP_GAME_OVER_TIME;
+            uint8_t quedan = 0;
+            for (quien = 0; quien < NP_MAX_PLAYERS; quien++) {
+                NpPlayer *p = &w->players[quien];
+                if (!p->playing) continue;
+                if (p->lives > 1) { p->lives--; quedan++; }
+                else { p->lives = 0; p->playing = 0; }
+            }
+            if (quedan) {
+                np_world_load_level(w, w->level_index);
+            } else {
+                w->state = NP_STATE_GAME_OVER;
+                w->state_timer = NP_GAME_OVER_TIME;
+            }
         }
         break;
 
@@ -767,5 +929,7 @@ void np_world_step(NpWorld *w, uint16_t input)
     }
 
     np_camera_update(w);
-    w->prev_input = input;
+    np_players_in_view(w);
+    w->prev_input[0] = input;
+    if (NP_MAX_PLAYERS > 1) w->prev_input[1] = input2;
 }

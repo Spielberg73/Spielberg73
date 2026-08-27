@@ -106,6 +106,7 @@ GAME_YAML = """# Proyecto NeoPlat: un juego de plataformas que compila para Neo 
 juego:
   titulo: "{titulo}"
   autor: "{autor}"
+  jugadores: 1        # 1 o 2 a la vez, cada uno con su mando
   vidas: 3
   tiempo: 0            # segundos por nivel (0 = sin limite)
   camara: scroll       # scroll (el escenario se desliza) o pantallas
@@ -247,6 +248,7 @@ GAME_YAML_HIERRO = """# Proyecto NeoPlat con la paleta corta: seis colores para 
 juego:
   titulo: "{titulo}"
   autor: "{autor}"
+  jugadores: 1        # 1 o 2 a la vez, cada uno con su mando
   vidas: 3
   tiempo: 0            # segundos por nivel (0 = sin limite)
   camara: scroll       # scroll (el escenario se desliza) o pantallas

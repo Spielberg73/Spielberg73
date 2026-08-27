@@ -26,6 +26,8 @@
 #define MD_PSG         ((volatile uint8_t *)0xC00011)
 #define MD_PAD1_DATA   ((volatile uint8_t *)0xA10003)
 #define MD_PAD1_CTRL   ((volatile uint8_t *)0xA10009)
+#define MD_PAD2_DATA   ((volatile uint8_t *)0xA10005)
+#define MD_PAD2_CTRL   ((volatile uint8_t *)0xA1000B)
 #define MD_Z80_BUS     ((volatile uint16_t *)0xA11100)
 #define MD_Z80_RESET   ((volatile uint16_t *)0xA11200)
 #define MD_TMSS        ((volatile uint32_t *)0xA14000)
@@ -77,6 +79,7 @@ void np_md_vram_addr(uint32_t direccion);
 void np_video_frame(const NpWorld *w);
 void np_wait_vblank(void);
 uint16_t np_input_read(void);
+uint16_t np_input_read2(void);
 
 /* marcador, en la ventana (np_hud.c) */
 void np_hud_clear(void);

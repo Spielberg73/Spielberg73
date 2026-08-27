@@ -104,6 +104,7 @@ void np_jaguar_init(void);
 void np_video_frame(const NpWorld *w);
 void np_wait_vblank(void);
 uint16_t np_input_read(void);
+uint16_t np_input_read2(void);
 
 void np_sound_init(void);
 void np_sound_update(const NpWorld *w);

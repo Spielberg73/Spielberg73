@@ -116,6 +116,7 @@ void np_video_escenario(const NpWorld *w);  /* y cada una por su cuenta: ver */
 void np_video_actores(const NpWorld *w);    /* el reparto en np_video.c      */
 void np_wait_vblank(void);
 uint16_t np_input_read(void);
+uint16_t np_input_read2(void);
 
 void np_sound_init(void);
 void np_sound_update(const NpWorld *w);

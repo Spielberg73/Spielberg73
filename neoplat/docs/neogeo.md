@@ -96,7 +96,8 @@ Las cuatro parejas de columnas se guardan en el orden **3, 0, 1, 2**.
 ```c
 0x300000  mando del jugador 1 (activo a nivel bajo)
 0x300001  watchdog: hay que escribirlo cada frame o la placa se reinicia
-0x380000  START y SELECT
+0x340000  mando del jugador 2 (con `jugadores: 2`)
+0x380000  START y SELECT: bits 0 y 1 los del jugador 1, 2 y 3 los del 2
 0x3C0000  dirección de VRAM
 0x3C0002  lectura/escritura de VRAM (auto-incrementa)
 0x3C0004  incremento tras cada acceso

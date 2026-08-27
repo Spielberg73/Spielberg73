@@ -210,6 +210,12 @@ niveles:
 `P` es la salida del jugador, `G` la meta, `#` bloque sólido, `=` plataforma
 que se atraviesa desde abajo, `^` pinchos. Los demás símbolos los defines tú.
 
+Con `jugadores: 2` juegan dos a la vez en la misma pantalla, cada uno con su
+mando y con sus vidas: la cámara va al punto medio y el que se queda atrás se
+para pegado al borde. En cada máquina el segundo mando está donde toca (en el
+Amiga y en el Atari ST, en el puerto del ratón), y las cinco se comprueban en
+emulador. Los detalles, en [docs/formato.md](docs/formato.md).
+
 La referencia completa está en [docs/formato.md](docs/formato.md) y hay un
 tutorial paso a paso en [docs/tutorial.md](docs/tutorial.md).
 
@@ -451,6 +457,12 @@ Verificado aquí:
   mide exactamente lo que la hoja.
 - Los nombres que el editor escribe en el `game.yaml` se comprueban uno a uno
   contra el lector del kit.
+- **Los dos mandos llegan a los dos jugadores en las cinco máquinas**: con
+  `jugadores: 2`, las pruebas juegan la misma partida tres veces en cada
+  emulador —con un mando, con el otro y con los dos— y exigen que las tres
+  acaben distintas. Ahí se vio que en la Jaguar las filas de la matriz **no se
+  piden con el mismo número** en un puerto que en el otro, que es lo que hacía
+  que el segundo mando no llegase.
 - El driver de sonido del Z80 se ejecuta en un emulador incluido en las pruebas:
   se comprueba que recibe las órdenes del 68000 y escribe en el chip los
   periodos y volúmenes de las notas escritas en el `game.yaml`.
@@ -480,7 +492,6 @@ Lo que aún no hace:
   ([docs/atarist.md](docs/atarist.md)).
 - **Eventos guionizados**: hay cinco comportamientos de enemigo fijos y un jefe
   por nivel (`jefe: si`); no hay forma de guionizar una secuencia.
-- **Dos jugadores**.
 - **Zoom de sprites** (la Neo Geo lo permite; el motor no lo usa).
 
 ## Licencia

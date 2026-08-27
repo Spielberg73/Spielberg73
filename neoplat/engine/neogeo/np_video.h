@@ -16,6 +16,7 @@
 
 /* --- registros del hardware ------------------------------------------- */
 #define NP_REG_P1CNT     ((volatile uint8_t *)0x300000)
+#define NP_REG_P2CNT     ((volatile uint8_t *)0x340000)
 #define NP_REG_WATCHDOG  ((volatile uint8_t *)0x300001)
 #define NP_REG_STATUS_B  ((volatile uint8_t *)0x380000)
 #define NP_REG_VRAMADDR  ((volatile uint16_t *)0x3C0000)
@@ -70,6 +71,7 @@ void np_video_init(void);
 void np_video_frame(const NpWorld *w);
 void np_wait_vblank(void);
 uint16_t np_input_read(void);
+uint16_t np_input_read2(void);
 
 /* HUD (np_hud.c) */
 void np_hud_clear(void);

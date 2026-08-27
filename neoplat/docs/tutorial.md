@@ -97,6 +97,17 @@ jugador:
 
 Cambia un valor, `../ngplat probar` y lo notas al instante.
 
+Y si lo quieres para dos:
+
+```yaml
+juego:
+  jugadores: 2
+```
+
+Juegan los dos a la vez en la misma pantalla, cada uno con su mando y con sus
+vidas. En el preview el segundo va con <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>
+y salta con <kbd>G</kbd>.
+
 ## 6. Añade un enemigo nuevo (desde el editor)
 
 Lo más rápido: en el preview pulsa <kbd>E</kbd>, pestaña **enemigos y objetos**,

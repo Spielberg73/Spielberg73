@@ -240,12 +240,19 @@ El IKBD manda tres cosas mezcladas:
 | | |
 |---|---|
 | teclas | el código de la tecla, y el mismo más `$80` al soltarla |
-| joystick | `$FE` o `$FF` (según el puerto) y detrás las cuatro direcciones y el botón |
+| joystick | `$FF` (puerto 1) o `$FE` (puerto 0) y detrás las cuatro direcciones y el botón |
 | ratón | `$F8`-`$FB` y dos bytes más cada vez que se mueve |
 
 Al arrancar se le pide al IKBD que calle el ratón (`$12`) y que avise del
 joystick (`$14`), pero los paquetes que ya venían de camino hay que tragárselos
 igual: si no, sus dos bytes de desplazamiento se leerían como si fueran teclas.
+
+La cabecera del paquete es lo que dice de qué puerto viene, y por eso con
+`jugadores: 2` no hay nada que configurar: el **puerto 1** (el conector del
+joystick de siempre) es el primer jugador y el **puerto 0** (el del ratón) el
+segundo, así que hay que quitar el ratón y enchufar ahí el otro joystick. El
+teclado sigue siendo solo del primero. En Hatari, el segundo joystick tampoco
+se conecta solo: hay que pedirlo con `hatari_twojoy`.
 
 ## Colores
 

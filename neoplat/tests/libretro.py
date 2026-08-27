@@ -134,7 +134,7 @@ class Emulador:
         self._descifrado = None
         self.formato = PIXEL_0RGB1555   # el que trae libretro por defecto
         self.frames = 0
-        self.pulsado = set()
+        self.pulsado = {0: set(), 1: set()}
         self.sonido = array.array("h")   # muestras estereo entrelazadas
         self.ritmo = 0                   # muestras por segundo, lo dice el core
         self._directorio = ctypes.c_char_p(sistema.encode())
@@ -294,9 +294,9 @@ class Emulador:
         return marcos
 
     def _estado(self, puerto, dispositivo, indice, boton):
-        if puerto != 0 or dispositivo != DEVICE_JOYPAD:
+        if dispositivo != DEVICE_JOYPAD:
             return 0
-        return 1 if boton in self.pulsado else 0
+        return 1 if boton in self.pulsado.get(puerto, ()) else 0
 
     # --- manejo ---------------------------------------------------------
 
@@ -314,10 +314,26 @@ class Emulador:
         self.ritmo = int(round(av.timing.sample_rate))
         # sin esto, PUAE no conecta ningun mando al Amiga
         self.lib.retro_set_controller_port_device(0, DEVICE_JOYPAD)
+        self.lib.retro_set_controller_port_device(1, DEVICE_JOYPAD)
         return av
 
-    def pulsar(self, *nombres):
-        self.pulsado = set(BOTON[n] for n in nombres)
+    def pulsar(self, *nombres, **kwargs):
+        """Deja pulsados esos botones y sueltos los demas. `puerto=1` es el
+        mando del segundo jugador; sin decir nada se toca el del primero, y el
+        otro se queda como estaba."""
+        puerto = kwargs.pop("puerto", 0)
+        if kwargs:
+            raise TypeError("pulsar() no conoce %s" % ", ".join(kwargs))
+        self.pulsado[puerto] = set(BOTON[n] for n in nombres)
+
+    def reiniciar(self):
+        """Como darle al boton de reset: la maquina arranca otra vez con la
+        misma ROM cargada. Sirve para repetir la misma partida cambiando lo que
+        se pulsa y comparar como acaba."""
+        self.pulsado = {0: set(), 1: set()}
+        self._descifrado = None
+        self.frames = 0
+        self.lib.retro_reset()
 
     def avanzar(self, cuantos=1):
         for _ in range(cuantos):

@@ -25,16 +25,27 @@ IN_LEFT, IN_RIGHT, IN_DOWN, IN_JUMP, IN_START = 1, 2, 8, 16, 64
 FRAMES = 3000
 
 
+BOTONES = [IN_RIGHT, IN_RIGHT, IN_RIGHT | IN_JUMP, IN_LEFT,
+           IN_LEFT | IN_JUMP, IN_JUMP, IN_DOWN, 0, IN_START]
+
+
 def _secuencia(semilla: int):
-    """Pulsaciones pseudoaleatorias, iguales para las dos implementaciones."""
+    """Pulsaciones pseudoaleatorias para los dos mandos, iguales para las dos
+    implementaciones. Cada frame son dos numeros: el mando de cada jugador.
+
+    El segundo lleva su propia semilla y cambia de tecla con otro ritmo (cada
+    17 frames y no cada 23), para que los dos no hagan lo mismo a la vez: si
+    fueran iguales, media prueba no comprobaria nada."""
     rng = random.Random(semilla)
-    entradas = [IN_START, IN_START, 0]
-    estado = 0
+    rng2 = random.Random(semilla * 7919 + 13)
+    entradas = [(IN_START, 0), (IN_START, 0), (0, 0)]
+    estado = estado2 = 0
     for i in range(FRAMES):
         if i % 23 == 0:
-            estado = rng.choice([IN_RIGHT, IN_RIGHT, IN_RIGHT | IN_JUMP, IN_LEFT,
-                                 IN_LEFT | IN_JUMP, IN_JUMP, IN_DOWN, 0, IN_START])
-        entradas.append(estado)
+            estado = rng.choice(BOTONES)
+        if i % 17 == 0:
+            estado2 = rng2.choice(BOTONES)
+        entradas.append((estado, estado2))
     return entradas
 
 
@@ -53,10 +64,14 @@ class TestParidad(unittest.TestCase):
         for camara in ("scroll", "pantallas"):
             cls.variantes[camara] = cls._preparar(camara)
         cls.variantes["jefe"] = cls._preparar("scroll", jefe=True)
+        cls.variantes["dos"] = cls._preparar("scroll", dos=True)
+        cls.variantes["dos-pantallas"] = cls._preparar("pantallas", dos=True)
 
     @classmethod
-    def _preparar(cls, camara, jefe=False):
-        proyecto_dir = os.path.join(cls.tmp, "juego-" + camara + ("-jefe" if jefe else ""))
+    def _preparar(cls, camara, jefe=False, dos=False):
+        proyecto_dir = os.path.join(
+            cls.tmp, "juego-" + camara + ("-jefe" if jefe else "")
+            + ("-dos" if dos else ""))
         crear_proyecto(proyecto_dir, "PARIDAD", "TEST")
         yaml = os.path.join(proyecto_dir, "game.yaml")
         with open(yaml, encoding="utf-8") as fh:
@@ -65,6 +80,8 @@ class TestParidad(unittest.TestCase):
         # anadir otra, o el lector se queda con la ultima
         assert "  camara: scroll" in texto, "el andamiaje ya no trae la camara"
         texto = texto.replace("  camara: scroll", "  camara: " + camara, 1)
+        if dos:
+            texto = texto.replace("  vidas:", "  jugadores: 2\n  vidas:", 1)
         if jefe:
             # el jefe del andamiaje vive en el segundo nivel y la traza no llega:
             # se pone uno en el primero, cambiando el enemigo que hay a la salida
@@ -113,7 +130,7 @@ class TestParidad(unittest.TestCase):
         entradas = _secuencia(semilla)
         ruta = os.path.join(self.tmp, "inputs-%d.txt" % semilla)
         with open(ruta, "w", encoding="utf-8") as fh:
-            fh.write("\n".join(str(v) for v in entradas))
+            fh.write("\n".join("%d %d" % par for par in entradas))
         traza_c = subprocess.run([binario, ruta], capture_output=True, text=True, check=True)
         traza_js = subprocess.run(
             ["node", os.path.join(KIT, "tests", "trace.js"), datos_json, ruta],
@@ -125,6 +142,39 @@ class TestParidad(unittest.TestCase):
         for camara in ("scroll", "pantallas"):
             for semilla in (1, 7, 99):
                 self._comparar(camara, semilla)
+
+    def test_misma_traza_a_dos_jugadores(self):
+        """Lo mismo con `jugadores: 2`: dos mandos, dos vidas, la camara en el
+        punto medio y el que se queda atras pegado al borde."""
+        for variante in ("dos", "dos-pantallas"):
+            for semilla in (1, 7, 99):
+                self._comparar(variante, semilla)
+
+    def test_el_segundo_jugador_esta_de_verdad(self):
+        """Si `jugadores: 2` no llegara al motor, el segundo se quedaria quieto
+        en su sitio y la prueba de paridad pasaria sin comprobar nada."""
+        traza, _ = self._trazas(1, "dos")
+        columnas = [linea.split() for linea in traza]
+        self.assertTrue(all(len(c) == 25 for c in columnas),
+                        "la traza no trae las columnas del segundo jugador")
+        # al empezar los dos estan dentro; luego el mando aleatorio puede
+        # dejarlo sin vidas, y eso tambien tiene que salir igual en las dos
+        self.assertEqual({c[23] for c in columnas[:200]}, {"1"},
+                         "el segundo jugador no entra en juego")
+        self.assertGreater(len({c[15] for c in columnas}), 50,
+                           "el segundo jugador no se mueve")
+        # y no van pegados: si hicieran lo mismo, media prueba sobraria
+        distintos = sum(1 for c in columnas if c[1] != c[15])
+        self.assertGreater(distintos, len(columnas) // 2,
+                           "los dos jugadores hacen lo mismo")
+
+    def test_a_un_jugador_el_segundo_no_existe(self):
+        """Y con `jugadores: 1` el segundo se queda fuera: ni se dibuja, ni
+        cuenta para la camara, ni le pasa nada."""
+        traza, _ = self._trazas(1, "scroll")
+        columnas = [linea.split() for linea in traza]
+        self.assertEqual({c[23] for c in columnas}, {"0"},
+                         "el segundo jugador esta en juego sin pedirlo")
 
     def _comparar(self, camara, semilla):
         if True:

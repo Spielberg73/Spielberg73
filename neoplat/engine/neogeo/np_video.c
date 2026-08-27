@@ -25,9 +25,12 @@ void np_wait_vblank(void)
 }
 
 /* El mando de Neo Geo es activo a nivel bajo. */
-uint16_t np_input_read(void)
+/* Los dos mandos son iguales: cambia el registro de la cruceta y que bits de
+   STATUS_B llevan su START (los de P1 son el 0 y el 1, y los de P2 el 2 y el
+   3). Todo activo a nivel bajo, de ahi el complemento. */
+static uint16_t np_input_de(volatile uint8_t *cnt, uint8_t start)
 {
-    uint8_t pad = (uint8_t)~(*NP_REG_P1CNT);
+    uint8_t pad = (uint8_t)~(*cnt);
     uint8_t sys = (uint8_t)~(*NP_REG_STATUS_B);
     uint16_t out = 0;
     if (pad & 0x01) out |= NP_IN_UP;
@@ -36,9 +39,18 @@ uint16_t np_input_read(void)
     if (pad & 0x08) out |= NP_IN_RIGHT;
     if (pad & 0x10) out |= NP_IN_JUMP;      /* boton A */
     if (pad & 0x20) out |= NP_IN_ACTION;    /* boton B */
-    /* START de P1: bit 1 de STATUS_B (bit 0 = SELECT; aceptamos los dos). */
-    if (sys & 0x03) out |= NP_IN_START;
+    if (sys & start) out |= NP_IN_START;    /* START o SELECT, los dos valen */
     return out;
+}
+
+uint16_t np_input_read(void)
+{
+    return np_input_de(NP_REG_P1CNT, 0x03);
+}
+
+uint16_t np_input_read2(void)
+{
+    return np_input_de(NP_REG_P2CNT, 0x0C);
 }
 
 /* La posicion de un sprite son dos palabras que estan a 0x200 de distancia
@@ -325,13 +337,16 @@ void np_video_frame(const NpWorld *w)
         if (sprite >= NP_ACTOR_FIRST_SPRITE + NP_ACTOR_SPRITES) break;
     }
 
-    if (np_player_visible(w)) {
+    for (i = 0; i < NP_MAX_PLAYERS; i++) {
         const NpActorDef *def = &np_player_def.actor;
-        int32_t sx = NP_F2I(w->player.x) - def->box_x - w->cam_x;
-        int32_t sy = NP_F2I(w->player.y) - def->box_y - w->cam_y;
+        const NpPlayer *p = &w->players[i];
+        int32_t sx, sy;
+        if (!np_player_visible(w, i)) continue;
+        sx = NP_F2I(p->x) - def->box_x - w->cam_x;
+        sy = NP_F2I(p->y) - def->box_y - w->cam_y;
         sprite = np_draw_actor(def, sprite, sx, sy,
-                               np_actor_frame(def, w->player.anim, w->player.anim_frame),
-                               (uint8_t)!w->player.facing);
+                               np_actor_frame(def, p->anim, p->anim_frame),
+                               (uint8_t)!p->facing);
     }
 
     while (sprite < NP_ACTOR_FIRST_SPRITE + NP_ACTOR_SPRITES) {

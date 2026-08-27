@@ -41,28 +41,50 @@
     return value;
   }
 
+  var MAX_PLAYERS = 2;
+  var HUECO_2P = 20;             /* lo mismo que NP_HUECO_2P en C */
+
   function World(data) {
+    var i;
     this.data = data;
     this.level = data.levels[0];
-    this.player = {
-      x: 0, y: 0, vx: 0, vy: 0, animTimer: 0, invuln: 0, anim: 0, animFrame: 0,
-      onGround: 0, facing: 1, jumpsLeft: 0, health: 1, coyote: 0, buffer: 0
-    };
+    /* Los jugadores. Con `jugadores: 1` el segundo existe igual, con `playing`
+       a cero: asi el motor es el mismo que en C y no hay dos caminos. */
+    this.players = [];
+    for (i = 0; i < MAX_PLAYERS; i++) {
+      this.players.push({
+        x: 0, y: 0, vx: 0, vy: 0, animTimer: 0, invuln: 0, dying: 0,
+        anim: 0, animFrame: 0, onGround: 0, facing: 1, jumpsLeft: 0,
+        health: 1, coyote: 0, buffer: 0, lives: 0, playing: 0
+      });
+    }
+    this.playerCount = data.players || 1;
     this.entities = [];
     this.camX = 0; this.camY = 0;
     this.score = 0; this.frame = 0;
     this.levelIndex = 0;
     this.state = STATE.TITLE; this.stateTimer = 0;
-    this.timeLeft = 0; this.prevInput = 0;
+    this.timeLeft = 0; this.prevInput = [0, 0];
     this.sfx = 0;                 /* eventos de sonido de este frame */
-    this.lives = data.lives; this.keys = 0; this.entityCount = 0;
+    this.keys = 0; this.entityCount = 0;
     this.bossHealth = 0; this.bossMax = 0;
     /* Igual que np_world_init en C: en el titulo ya se ve el principio del
-       nivel, con el jugador colocado en su salida. */
-    this.player.x = I2F(this.level.start[0]);
-    this.player.y = I2F(this.level.start[1]);
+       nivel, con los jugadores colocados en su salida. */
+    for (i = 0; i < MAX_PLAYERS; i++) {
+      this.players[i].playing = i < this.playerCount ? 1 : 0;
+      this.players[i].lives = data.lives;
+      this.placePlayer(i);
+    }
     this.cameraUpdate();
   }
+
+  /* El primer jugador sale en la salida del nivel y el segundo un poco a la
+     derecha, para que no empiecen uno dentro del otro. */
+  World.prototype.placePlayer = function (quien) {
+    var p = this.players[quien];
+    p.x = I2F(this.level.start[0] + (quien ? HUECO_2P : 0));
+    p.y = I2F(this.level.start[1]);
+  };
 
   World.prototype.tileKindAt = function (tx, ty) {
     var lv = this.level;
@@ -208,17 +230,24 @@
     }
   };
 
+  /* Deja a un jugador como recien salido. Se usa al empezar el nivel y cuando
+     reaparece despues de morir. */
+  World.prototype.resetPlayer = function (quien) {
+    var d = this.data.player, p = this.players[quien];
+    this.placePlayer(quien);
+    p.vx = 0; p.vy = 0; p.onGround = 0; p.facing = 1;
+    p.health = d.health; p.invuln = 0; p.coyote = 0; p.buffer = 0;
+    p.dying = 0;
+    p.jumpsLeft = d.double_jump ? 1 : 0;
+    p.anim = ANIM_IDLE; p.animFrame = 0; p.animTimer = 0;
+  };
+
   World.prototype.loadLevel = function (index) {
-    var d = this.data.player, p = this.player;
+    var i;
     if (index >= this.data.levels.length) index = 0;
     this.levelIndex = index;
     this.level = this.data.levels[index];
-    p.x = I2F(this.level.start[0]);
-    p.y = I2F(this.level.start[1]);
-    p.vx = 0; p.vy = 0; p.onGround = 0; p.facing = 1;
-    p.health = d.health; p.invuln = 0; p.coyote = 0; p.buffer = 0;
-    p.jumpsLeft = d.double_jump ? 1 : 0;
-    p.anim = ANIM_IDLE; p.animFrame = 0; p.animTimer = 0;
+    for (i = 0; i < MAX_PLAYERS; i++) this.resetPlayer(i);
     this.keys = 0;
     this.bossHealth = 0; this.bossMax = 0;
     this.timeLeft = this.data.time_limit * 60;
@@ -227,20 +256,30 @@
     this.spawnEntities();
   };
 
-  World.prototype.playerDie = function () {
-    this.sfx |= SFX.DIE;
-    this.state = STATE.DYING;
-    this.stateTimer = DYING_TIME;
-    this.player.vy = -this.data.player.jump;
-    this.player.vx = 0;
-    this.player.anim = ANIM_HURT;
-    this.player.animFrame = 0;
+  /* Cuantos siguen en juego y no se estan muriendo. */
+  World.prototype.playersUp = function () {
+    var n = 0, i;
+    for (i = 0; i < MAX_PLAYERS; i++)
+      if (this.players[i].playing && !this.players[i].dying) n++;
+    return n;
   };
 
-  World.prototype.playerHurt = function (damage) {
-    var d = this.data.player, p = this.player;
-    if (p.invuln || this.state !== STATE.PLAY) return;
-    if (damage >= p.health) { p.health = 0; this.playerDie(); return; }
+  World.prototype.playerDie = function (quien) {
+    var p = this.players[quien];
+    this.sfx |= SFX.DIE;
+    p.dying = DYING_TIME;
+    p.vy = -this.data.player.jump;
+    p.vx = 0;
+    p.anim = ANIM_HURT;
+    p.animFrame = 0;
+    if (!this.playersUp()) { this.state = STATE.DYING; this.stateTimer = DYING_TIME; }
+  };
+
+  World.prototype.playerHurt = function (quien, damage) {
+    var d = this.data.player, p = this.players[quien];
+    if (p.invuln || p.dying || !p.playing) return;
+    if (this.state !== STATE.PLAY) return;
+    if (damage >= p.health) { p.health = 0; this.playerDie(quien); return; }
     p.health -= damage;
     this.sfx |= SFX.HURT;
     p.invuln = d.invuln;
@@ -250,8 +289,8 @@
 
   var moveOut = { hit: 0, hitDown: 0, hitUp: 0 };
 
-  World.prototype.playerUpdate = function (input) {
-    var d = this.data.player, a = d.actor, p = this.player;
+  World.prototype.playerUpdate = function (quien, input) {
+    var d = this.data.player, a = d.actor, p = this.players[quien];
     var dir = 0;
     if (input & IN.RIGHT) dir += 1;
     if (input & IN.LEFT) dir -= 1;
@@ -260,7 +299,7 @@
     else if (dir < 0) { p.vx = approach(p.vx, -d.speed, p.onGround ? d.accel : d.air_accel); p.facing = 0; }
     else if (p.onGround) p.vx = approach(p.vx, 0, d.friction);
 
-    var pressedJump = (input & IN.JUMP) && !(this.prevInput & IN.JUMP);
+    var pressedJump = (input & IN.JUMP) && !(this.prevInput[quien] & IN.JUMP);
     if (pressedJump) p.buffer = d.jump_buffer + 1;
     if (p.buffer) p.buffer--;
 
@@ -295,8 +334,21 @@
     animTick(a, p);
   };
 
+  /* A quien persigue un enemigo: al jugador en juego que tenga mas cerca.
+     Igual que np_nearest_player en C. */
+  World.prototype.nearestPlayer = function (x) {
+    var mejor = this.players[0], distancia = 0, primero = true, i;
+    for (i = 0; i < MAX_PLAYERS; i++) {
+      var p = this.players[i];
+      if (!p.playing || p.dying) continue;
+      var d = Math.abs(p.x - x);
+      if (primero || d < distancia) { mejor = p; distancia = d; primero = false; }
+    }
+    return mejor;
+  };
+
   World.prototype.enemyUpdate = function (e) {
-    var d = this.data.enemies[e.def], a = d.actor, p = this.player;
+    var d = this.data.enemies[e.def], a = d.actor, p = this.nearestPlayer(e.x);
     switch (d.behavior) {
       case AI_PATROL:
         e.vx = e.facing ? d.speed : -d.speed;
@@ -358,43 +410,51 @@
     animTick(d.actor, e);
   };
 
-  World.prototype.collect = function (e) {
-    var d = this.data.items[e.def];
+  /* Lo recoge quien lo toca: la vida y la salud van a ese jugador, y los
+     puntos y las llaves al marcador, que es comun. */
+  World.prototype.collect = function (quien, e) {
+    var d = this.data.items[e.def], p = this.players[quien];
     this.score += d.score;
     this.sfx |= (d.effect === 1) ? SFX.LIFE : SFX.COIN;
-    if (d.effect === 1) { if (this.lives < 99) this.lives += d.amount; }
+    if (d.effect === 1) { if (p.lives < 99) p.lives += d.amount; }
     else if (d.effect === 2) {
-      this.player.health = Math.min(this.player.health + d.amount, this.data.player.health);
+      p.health = Math.min(p.health + d.amount, this.data.player.health);
     } else if (d.effect === 3) { if (this.keys < 255) this.keys += d.amount; }
     e.active = 0;
   };
 
+  /* Jugador por jugador y, dentro, entidad por entidad: el mismo orden que
+     np_touch_entities en C. */
   World.prototype.touchEntities = function () {
-    var pa = this.data.player.actor, p = this.player, i;
-    for (i = 0; i < this.entityCount; i++) {
-      var e = this.entities[i];
-      if (!e.active) continue;
-      var ea = this.entityDef(e).actor;
-      if (!overlap(p.x, p.y, pa.box_w, pa.box_h, e.x, e.y, ea.box_w, ea.box_h)) continue;
-      if (e.kind === 1) { this.collect(e); continue; }
-      var d = this.data.enemies[e.def];
-      /* Misma ventana de pisado que np_world.c: cayendo y con los pies por
-         encima de la mitad del enemigo antes de moverse. */
-      var fromAbove = p.vy > 0 &&
-        (p.y + I2F(pa.box_h) - p.vy) <= e.y + I2F(idiv(ea.box_h, 2));
-      if (this.data.player.stomp && d.stompable && fromAbove) {
-        this.sfx |= SFX.STOMP;
-        if (e.health > 1) { e.health--; e.hurt = 20; }
-        else {
-          e.active = 0;
-          this.score += d.score;
-          /* matar al jefe termina el nivel, como llegar a la meta */
-          if (d.boss) this.finishLevel();
+    var pa = this.data.player.actor, quien, i;
+    for (quien = 0; quien < MAX_PLAYERS; quien++) {
+      var p = this.players[quien];
+      if (!p.playing || p.dying) continue;
+      for (i = 0; i < this.entityCount; i++) {
+        var e = this.entities[i];
+        if (!e.active) continue;
+        var ea = this.entityDef(e).actor;
+        if (!overlap(p.x, p.y, pa.box_w, pa.box_h, e.x, e.y, ea.box_w, ea.box_h)) continue;
+        if (e.kind === 1) { this.collect(quien, e); continue; }
+        var d = this.data.enemies[e.def];
+        /* Misma ventana de pisado que np_world.c: cayendo y con los pies por
+           encima de la mitad del enemigo antes de moverse. */
+        var fromAbove = p.vy > 0 &&
+          (p.y + I2F(pa.box_h) - p.vy) <= e.y + I2F(idiv(ea.box_h, 2));
+        if (this.data.player.stomp && d.stompable && fromAbove) {
+          this.sfx |= SFX.STOMP;
+          if (e.health > 1) { e.health--; e.hurt = 20; }
+          else {
+            e.active = 0;
+            this.score += d.score;
+            /* matar al jefe termina el nivel, como llegar a la meta */
+            if (d.boss) this.finishLevel();
+          }
+          p.vy = -this.data.player.bounce;
+          p.onGround = 0;
+        } else {
+          this.playerHurt(quien, d.damage);
         }
-        p.vy = -this.data.player.bounce;
-        p.onGround = 0;
-      } else {
-        this.playerHurt(d.damage);
       }
     }
   };
@@ -405,8 +465,21 @@
     var a = this.data.player.actor;
     var maxX = this.level.width * TILE - SCREEN_W;
     var maxY = this.level.height * TILE - SCREEN_H;
-    var cx = F2I(this.player.x) + idiv(a.box_w, 2);
-    var cy = F2I(this.player.y) + idiv(a.box_h, 2);
+    /* A dos jugadores, el punto medio; con uno sale la misma cuenta. */
+    var cx = 0, cy = 0, cuantos = 0, i;
+    for (i = 0; i < MAX_PLAYERS; i++) {
+      if (!this.players[i].playing) continue;
+      cx += F2I(this.players[i].x) + idiv(a.box_w, 2);
+      cy += F2I(this.players[i].y) + idiv(a.box_h, 2);
+      cuantos++;
+    }
+    if (!cuantos) {
+      /* game over: la camara se queda donde estaba, no se va al origen */
+      cx = F2I(this.players[0].x) + idiv(a.box_w, 2);
+      cy = F2I(this.players[0].y) + idiv(a.box_h, 2);
+    } else if (cuantos > 1) {
+      cx = idiv(cx, cuantos); cy = idiv(cy, cuantos);
+    }
     var tx, ty;
     if (maxX < 0) maxX = 0;
     if (maxY < 0) maxY = 0;
@@ -423,9 +496,25 @@
     this.camY = clamp(ty, 0, maxY);
   };
 
-  World.prototype.playerVisible = function () {
+  /* A dos jugadores, el que se queda atras se para en el borde de la pantalla.
+     Con uno no se toca nada: la camara lo lleva centrado y nunca se sale. */
+  World.prototype.playersInView = function () {
+    var a = this.data.player.actor, i;
+    var izquierda = this.camX, derecha = this.camX + SCREEN_W - a.box_w;
+    if (this.playerCount < 2) return;
+    for (i = 0; i < MAX_PLAYERS; i++) {
+      var p = this.players[i];
+      if (!p.playing || p.dying) continue;
+      if (F2I(p.x) < izquierda) { p.x = I2F(izquierda); if (p.vx < 0) p.vx = 0; }
+      if (F2I(p.x) > derecha) { p.x = I2F(derecha); if (p.vx > 0) p.vx = 0; }
+    }
+  };
+
+  World.prototype.playerVisible = function (quien) {
+    var p = this.players[quien || 0];
+    if (!p.playing) return false;
     if (this.state === STATE.TITLE || this.state === STATE.GAME_OVER) return false;
-    if (this.player.invuln && (this.frame & 2)) return false;
+    if (p.invuln && (this.frame & 2)) return false;
     return true;
   };
 
@@ -437,9 +526,28 @@
     this.score += 100 + idiv(this.timeLeft, 60) * 10;
   };
 
-  World.prototype.playStep = function (input) {
-    var pa = this.data.player.actor, p = this.player, i;
-    this.playerUpdate(input);
+  /* Un jugador que se muere mientras el otro sigue: cae, y al acabar la caida
+     reaparece si le quedan vidas. Igual que np_player_falling en C. */
+  World.prototype.playerFalling = function (quien) {
+    var d = this.data.player, p = this.players[quien];
+    p.vy += d.gravity;
+    if (p.vy > d.max_fall) p.vy = d.max_fall;
+    p.y += p.vy;
+    if (p.dying) p.dying--;
+    if (p.dying) return;
+    if (p.lives > 1) { p.lives--; this.resetPlayer(quien); }
+    else { p.lives = 0; p.playing = 0; }
+  };
+
+  World.prototype.playStep = function (input, input2) {
+    var pa = this.data.player.actor, quien, i;
+    var mandos = [input, input2 | 0];
+    for (quien = 0; quien < MAX_PLAYERS; quien++) {
+      var jugador = this.players[quien];
+      if (!jugador.playing) continue;
+      if (jugador.dying) this.playerFalling(quien);
+      else this.playerUpdate(quien, mandos[quien]);
+    }
 
     for (i = 0; i < this.entityCount; i++) {
       var e = this.entities[i];
@@ -468,28 +576,37 @@
     }
     if (this.state !== STATE.PLAY) return;
 
-    if (this.boxTouches(p.x + I2F(HAZARD_INSET_X), p.y + I2F(HAZARD_INSET_Y),
-                        pa.box_w - HAZARD_INSET_X * 2, pa.box_h - HAZARD_INSET_Y,
-                        TILE_HAZARD)) {
-      this.playerHurt(99);
-      return;
+    for (quien = 0; quien < MAX_PLAYERS; quien++) {
+      var q = this.players[quien];
+      if (!q.playing || q.dying) continue;
+      if (this.boxTouches(q.x + I2F(HAZARD_INSET_X), q.y + I2F(HAZARD_INSET_Y),
+                          pa.box_w - HAZARD_INSET_X * 2, pa.box_h - HAZARD_INSET_Y,
+                          TILE_HAZARD)) {
+        this.playerHurt(quien, 99);
+        continue;
+      }
+      if (this.boxTouches(q.x, q.y, pa.box_w, pa.box_h, TILE_GOAL)) {
+        this.finishLevel();            /* llega uno, se acaba para los dos */
+        return;
+      }
+      if (F2I(q.y) > (this.level.height + 2) * TILE) this.playerHurt(quien, 99);
     }
-    if (this.boxTouches(p.x, p.y, pa.box_w, pa.box_h, TILE_GOAL)) {
-      this.finishLevel();
-      return;
-    }
-    if (F2I(p.y) > (this.level.height + 2) * TILE) {
-      this.playerHurt(99);
-      return;
-    }
+    if (this.state !== STATE.PLAY) return;
+
+    /* el tiempo es de la partida, no de cada uno */
     if (this.data.time_limit) {
       if (this.timeLeft) this.timeLeft--;
-      else this.playerHurt(99);
+      else for (quien = 0; quien < MAX_PLAYERS; quien++) this.playerHurt(quien, 99);
     }
   };
 
-  World.prototype.step = function (input) {
-    var startPressed = (input & IN.START) && !(this.prevInput & IN.START);
+  World.prototype.step = function (input, input2) {
+    var i, quien;
+    input2 = input2 | 0;
+    /* Start vale desde cualquiera de los dos mandos. */
+    var ambos = input | (this.playerCount > 1 ? input2 : 0);
+    var antes = this.prevInput[0] | (this.playerCount > 1 ? this.prevInput[1] : 0);
+    var startPressed = (ambos & IN.START) && !(antes & IN.START);
     this.frame++;
     this.sfx = 0;                 /* los eventos duran un solo frame */
 
@@ -498,25 +615,38 @@
         if (startPressed) {
           this.sfx |= SFX.START;
           this.score = 0;
-          this.lives = this.data.lives;
+          for (i = 0; i < MAX_PLAYERS; i++) {
+            this.players[i].playing = i < this.playerCount ? 1 : 0;
+            this.players[i].lives = this.data.lives;
+          }
           this.loadLevel(0);
         }
         break;
       case STATE.PLAY:
-        this.playStep(input);
+        this.playStep(input, input2);
         break;
-      case STATE.DYING:
-        this.player.vy += this.data.player.gravity;
-        if (this.player.vy > this.data.player.max_fall) this.player.vy = this.data.player.max_fall;
-        this.player.y += this.player.vy;
-        if (this.stateTimer) this.stateTimer--;
-        else if (this.lives > 1) { this.lives--; this.loadLevel(this.levelIndex); }
-        else {
-          this.lives = 0;
-          this.state = STATE.GAME_OVER;
-          this.stateTimer = GAME_OVER_TIME;
+      case STATE.DYING: {
+        /* Aqui se llega cuando no queda nadie en pie: caen todos y, al acabar
+           la cuenta, el nivel vuelve a empezar si a alguno le quedan vidas. */
+        for (i = 0; i < MAX_PLAYERS; i++) {
+          var pd = this.players[i];
+          if (!pd.playing || !pd.dying) continue;
+          pd.vy += this.data.player.gravity;
+          if (pd.vy > this.data.player.max_fall) pd.vy = this.data.player.max_fall;
+          pd.y += pd.vy;
         }
+        if (this.stateTimer) { this.stateTimer--; break; }
+        var quedan = 0;
+        for (i = 0; i < MAX_PLAYERS; i++) {
+          var pv = this.players[i];
+          if (!pv.playing) continue;
+          if (pv.lives > 1) { pv.lives--; quedan++; }
+          else { pv.lives = 0; pv.playing = 0; }
+        }
+        if (quedan) this.loadLevel(this.levelIndex);
+        else { this.state = STATE.GAME_OVER; this.stateTimer = GAME_OVER_TIME; }
         break;
+      }
       case STATE.LEVEL_END:
         if (this.stateTimer) this.stateTimer--;
         else if (this.levelIndex + 1 < this.data.levels.length) this.loadLevel(this.levelIndex + 1);
@@ -534,7 +664,9 @@
     }
 
     this.cameraUpdate();
-    this.prevInput = input;
+    this.playersInView();
+    this.prevInput[0] = input;
+    this.prevInput[1] = input2;
   };
 
   var api = {

@@ -169,9 +169,10 @@ def cmd_compilar(args: argparse.Namespace) -> int:
     _info("codigo:   src/ (motor + tu juego)")
     for linea in salida.resumen:
         _info(linea)
-    _info("%d niveles, %d enemigos, %d objetos, %d efectos, %d musicas"
+    _info("%d niveles, %d enemigos, %d objetos, %d efectos, %d musicas%s"
           % (stats["niveles"], stats["enemigos"], stats["objetos"],
-             stats["efectos"], stats["musicas"]))
+             stats["efectos"], stats["musicas"],
+             ", a dos jugadores" if build.project.players > 1 else ""))
 
     if args.make:
         return _ejecutar_make(out_dir, sistema)

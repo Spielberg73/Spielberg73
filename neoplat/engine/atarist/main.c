@@ -42,10 +42,11 @@ int main(void)
     for (;;) {
         for (paso = 0; paso < NP_PASOS_POR_DIBUJO; paso++) {
             uint16_t input = np_input_read();
+            uint16_t input2 = np_player_count > 1 ? np_input_read2() : 0;
 #if NP_MEDIR == 5
             REG16(ST_PALETA) = 0x0700;
 #endif
-            np_world_step(&world, input);
+            np_world_step(&world, input, input2);
             np_sound_update(&world);
 #if NP_MEDIR == 5
             REG16(ST_PALETA) = world.level->background;

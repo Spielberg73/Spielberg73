@@ -98,6 +98,7 @@ extern const uint16_t np_tile_count;
 extern const uint16_t np_tileset_first_tile;
 extern const uint8_t np_tileset_palette;
 extern const uint8_t np_start_lives;
+extern const uint8_t np_player_count;     /* 1 o 2 jugadores a la vez */
 extern const uint16_t np_time_limit;      /* en segundos, 0 = sin limite */
 extern const uint8_t np_camara_pantallas; /* 1 = pantalla a pantalla, 0 = scroll */
 extern const char np_game_title[];

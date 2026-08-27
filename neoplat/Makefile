@@ -15,8 +15,11 @@ test-rapido:
 	cd tests && $(PYTHON) -m unittest discover -p 'test_*.py'
 
 # Prueba el preview en un navegador de verdad (necesita Playwright).
+# La segunda vuelta genera un proyecto con 'jugadores: 2' y comprueba que cada
+# teclado mueve al suyo.
 test-navegador: ejemplo
 	$(PYTHON) tests/navegador.py $(EJEMPLO)/preview.html capturas
+	$(PYTHON) tests/navegador.py --dos capturas
 
 # Arranca lo compilado en emuladores de verdad y deja capturas. Necesita los
 # cores de libretro; si no estan, cada prueba se salta sola:

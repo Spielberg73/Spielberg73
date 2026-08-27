@@ -30,7 +30,7 @@
     var maxX = 0, sinAvanzar = 0, muertes = 0, saltando = 0;
 
     for (var i = 0; i < limite; i++) {
-      var p = w.player;
+      var p = w.players[0];
       var pies = NPCore.F2I(p.y) + pa.box_h;
       var frente = NPCore.F2I(p.x) + pa.box_w + vista;
       var medio = NPCore.F2I(p.y) + Math.floor(pa.box_h / 2);
@@ -64,11 +64,11 @@
       w.step(input);
 
       if (w.state === NPCore.STATE.LEVEL_END || w.state === NPCore.STATE.FINISHED) {
-        return { ok: true, frames: i, muertes: muertes, avance: NPCore.F2I(w.player.x) };
+        return { ok: true, frames: i, muertes: muertes, avance: NPCore.F2I(w.players[0].x) };
       }
       if (w.state === NPCore.STATE.DYING) {
         muertes++;
-        var donde = NPCore.F2I(w.player.x);
+        var donde = NPCore.F2I(w.players[0].x);
         if (muertes > maxMuertes) {
           return { ok: false, motivo: "el bot muere una y otra vez", muertes: muertes,
                    avance: maxX, x: donde };
@@ -79,11 +79,11 @@
           return { ok: false, motivo: "se queda sin vidas", muertes: muertes,
                    avance: maxX, x: donde };
         }
-        w.lives = data.lives;
+        w.players[0].lives = data.lives;
         maxX = 0;
         continue;
       }
-      if (NPCore.F2I(w.player.x) > maxX) { maxX = NPCore.F2I(w.player.x); sinAvanzar = 0; }
+      if (NPCore.F2I(w.players[0].x) > maxX) { maxX = NPCore.F2I(w.players[0].x); sinAvanzar = 0; }
       else if (++sinAvanzar > 600) {
         return { ok: false, motivo: "se queda atascado", muertes: muertes,
                  avance: maxX, x: maxX };

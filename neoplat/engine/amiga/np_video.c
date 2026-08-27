@@ -424,12 +424,14 @@ void np_video_frame(const NpWorld *w)
         np_dibujar_actor(def, sx, sy, np_actor_frame(def, e->anim, e->anim_frame),
                          (uint8_t)!e->facing);
     }
-    if (np_player_visible(w)) {
+    for (i = 0; i < NP_MAX_PLAYERS; i++) {
         const NpActorDef *def = &np_player_def.actor;
-        np_dibujar_actor(def, NP_F2I(w->player.x) - def->box_x,
-                         NP_F2I(w->player.y) - def->box_y,
-                         np_actor_frame(def, w->player.anim, w->player.anim_frame),
-                         (uint8_t)!w->player.facing);
+        const NpPlayer *p = &w->players[i];
+        if (!np_player_visible(w, i)) continue;
+        np_dibujar_actor(def, NP_F2I(p->x) - def->box_x,
+                         NP_F2I(p->y) - def->box_y,
+                         np_actor_frame(def, p->anim, p->anim_frame),
+                         (uint8_t)!p->facing);
     }
 
     /* scroll: los punteros van al pixel de arriba a la izquierda de lo que se ve */
@@ -470,9 +472,13 @@ void np_wait_vblank(void)
     while (np_linea() < NP_LINEA_RETRAZO) ;    /* y esperar al siguiente */
 }
 
-uint16_t np_input_read(void)
+/* Los dos puertos se leen igual, cambiando de sitio: el de la derecha (donde
+ * va el joystick de siempre) tiene los datos en JOY1DAT, el disparo en el bit 7
+ * de CIAA_PRA y el segundo boton en el bit 14 de POTGOR; el de la izquierda (el
+ * del raton, que es donde se enchufa el segundo mando) los tiene en JOY0DAT, el
+ * bit 6 y el bit 10. */
+static uint16_t np_input_de(uint16_t joy, uint8_t disparo, uint16_t boton2)
 {
-    uint16_t joy = JOY1DAT;
     uint16_t salida = 0;
     /* el joystick es de cuadratura: arriba y abajo salen de un xor */
     uint8_t abajo = (uint8_t)((joy >> 1) & 1) ^ (uint8_t)(joy & 1);
@@ -482,8 +488,22 @@ uint16_t np_input_read(void)
     if (joy & 0x0200) salida |= NP_IN_LEFT;
     if (abajo) salida |= NP_IN_DOWN;
     if (arriba) salida |= NP_IN_UP;
-    if (!(CIAA_PRA & 0x80)) salida |= NP_IN_JUMP;      /* boton del joystick */
-    /* start: el segundo boton del joystick o, si no lo tiene, el del raton */
-    if (!(POTGOR & 0x4000) || !(CIAA_PRA & 0x40)) salida |= NP_IN_START;
+    if (!(CIAA_PRA & disparo)) salida |= NP_IN_JUMP;
+    if (!(POTGOR & boton2)) salida |= NP_IN_START;
     return salida;
+}
+
+uint16_t np_input_read(void)
+{
+    uint16_t salida = np_input_de(JOY1DAT, 0x80, 0x4000);
+    /* A un jugador, el boton del raton tambien vale de start: hay joysticks de
+     * un solo boton y si no, no habria manera de empezar. A dos no, porque ese
+     * boton es el salto del segundo jugador. */
+    if (np_player_count < 2 && !(CIAA_PRA & 0x40)) salida |= NP_IN_START;
+    return salida;
+}
+
+uint16_t np_input_read2(void)
+{
+    return np_input_de(JOY0DAT, 0x40, 0x0400);
 }

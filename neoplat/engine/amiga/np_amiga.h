@@ -35,6 +35,7 @@
 #define VPOSR     REG16(0x004)
 #define VHPOSR    REG16(0x006)
 #define POTGOR    REG16(0x016)
+#define JOY0DAT   REG16(0x00A)
 #define JOY1DAT   REG16(0x00C)
 #define INTENAR   REG16(0x01C)
 #define BLTCON0   REG16(0x040)
@@ -121,6 +122,7 @@ void np_amiga_init(void);
 void np_video_frame(const NpWorld *w);
 void np_wait_vblank(void);
 uint16_t np_input_read(void);
+uint16_t np_input_read2(void);
 
 void np_sound_init(void);
 void np_sound_update(const NpWorld *w);

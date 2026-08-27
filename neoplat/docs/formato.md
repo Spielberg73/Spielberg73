@@ -15,7 +15,8 @@ Si escribes mal una opción, `ngplat comprobar` te dice cuál es y dónde está.
 juego:
   titulo: "BOSQUE MAGICO"   # sale en la pantalla de título (máx. 24 letras)
   autor: "DAVID"
-  vidas: 3                  # 1 a 9
+  jugadores: 1              # 1 o 2 a la vez
+  vidas: 3                  # 1 a 9, para cada jugador
   tiempo: 0                 # segundos por nivel; 0 = sin límite
   hud: si                   # marcador de puntos/vidas
   camara: scroll            # scroll o pantallas
@@ -75,6 +76,40 @@ ngplat compilar --sistema megadrive
 
 Valen los nombres alternativos de siempre: `genesis` o `md` para la Mega Drive,
 `a500` para el Amiga, `aes` o `mvs` para la Neo Geo.
+
+### Dos jugadores
+
+Con `jugadores: 2` juegan dos a la vez, cada uno con su mando, en la misma
+pantalla y a la vez (no por turnos). Los dos son el mismo `jugador` del
+`game.yaml`: el mismo dibujo, el mismo salto y las mismas vidas; salen juntos
+en la salida del nivel, separados 20 píxeles.
+
+Lo que cambia respecto a un jugador:
+
+| | |
+|---|---|
+| la cámara | va al punto medio de los dos, y no deja que ninguno se salga: el que se queda atrás se para pegado al borde de la pantalla |
+| las vidas | son de cada uno, y el marcador pone `1P 3  2P 3` en vez de `LIVES 3` |
+| morirse | el que se queda sin vidas desaparece y el otro sigue; el nivel solo se reinicia (o se acaba la partida) cuando caen los dos |
+| empezar | vale el start de cualquiera de los dos mandos |
+
+Dónde se enchufa el segundo mando en cada máquina:
+
+| | |
+|---|---|
+| Neo Geo | el puerto 2 de la placa (`$340000`), con su START y su SELECT en los bits 2 y 3 de STATUS_B |
+| Mega Drive | el segundo conector de mandos (`$A10005`) |
+| Amiga | el **puerto del ratón**, que es el de la izquierda: hay que quitar el ratón y enchufar ahí el otro joystick. A dos jugadores, el botón del ratón deja de valer de start |
+| Atari Jaguar | el segundo conector. Los dos mandos comparten la misma matriz, pero **las filas no se piden con el mismo número** en un puerto que en el otro (ver `engine/jaguar/np_video.c`) |
+| Atari ST | el **puerto 0**, que es el del ratón, igual que en el Amiga. El teclado sigue siendo solo del primero |
+
+En el preview, el segundo jugador va con **WASD** y salta con **G**. A un
+jugador, WASD sigue valiendo como las flechas.
+
+Las cinco se comprueban en emulador (`tests/test_sistemas.py`,
+`TestDosJugadores`): se juega la misma partida tres veces, con un mando, con el
+otro y con los dos, y las tres tienen que acabar distintas. Si el segundo mando
+no llegara, o si los dos leyeran del mismo sitio, saldrían iguales.
 
 ## `jugador`
 

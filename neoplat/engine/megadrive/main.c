@@ -16,7 +16,8 @@ int main(void)
 
     for (;;) {
         uint16_t input = np_input_read();
-        np_world_step(&world, input);
+        uint16_t input2 = np_player_count > 1 ? np_input_read2() : 0;
+        np_world_step(&world, input, input2);
         np_sound_update(&world);
         np_wait_vblank();
         np_video_frame(&world);

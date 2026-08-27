@@ -42,6 +42,7 @@ ANCHO, ALTO = 320, 224
 
 # --- mapa de memoria de la placa ---------------------------------------
 P1CNT = 0x300000        # mando del jugador 1 (activo a nivel bajo)
+P2CNT = 0x340000        # y el del jugador 2, igual
 PUERTO_SONIDO = 0x320000  # ordenes para el Z80 (dispara una NMI en la placa)
 STATUS_B = 0x380000     # start y select (tambien a nivel bajo)
 VRAMADDR = 0x3C0000
@@ -66,6 +67,8 @@ TROZO = 2000            # ciclos por tanda al buscar cuando el juego espera
 
 BOTON = {"UP": 0x01, "DOWN": 0x02, "LEFT": 0x04, "RIGHT": 0x08,
          "A": 0x10, "B": 0x20, "C": 0x40, "D": 0x80}
+# En STATUS_B el START y el SELECT de cada jugador son dos bits: los del
+# primero el 0 y el 1, y los del segundo el 2 y el 3.
 SISTEMA = {"START": 0x01, "SELECT": 0x02}
 
 
@@ -107,6 +110,7 @@ class Maquina:
         self.ritmo = SONIDO_RITMO
 
         self.pulsar()               # nada pulsado
+        self.pulsar(puerto=1)
         self.mem.set_trace_func(self._traza)
         self.mem.set_trace_mode(1)
         self.cpu.pulse_reset()
@@ -143,18 +147,27 @@ class Maquina:
 
     # --- el mando -------------------------------------------------------
 
-    def pulsar(self, *nombres):
-        """Deja pulsados esos botones (y solo esos) hasta la proxima llamada."""
+    def pulsar(self, *nombres, **kwargs):
+        """Deja pulsados esos botones (y solo esos) hasta la proxima llamada.
+
+        `puerto=1` es el mando del segundo jugador; el otro se queda como
+        estaba, porque los dos comparten el registro del START y hay que
+        recordar lo que tenia pulsado cada uno."""
+        puerto = kwargs.pop("puerto", 0)
+        if kwargs:
+            raise TypeError("pulsar() no conoce %s" % ", ".join(kwargs))
         mando = sistema = 0
         for nombre in nombres:
             if nombre in BOTON:
                 mando |= BOTON[nombre]
             elif nombre in SISTEMA:
-                sistema |= SISTEMA[nombre]
+                sistema |= SISTEMA[nombre] << (2 * puerto)
             else:
                 raise KeyError("no existe el boton %r" % nombre)
-        self.mem.w8(P1CNT, ~mando & 0xFF)
-        self.mem.w8(STATUS_B, ~sistema & 0xFF)
+        self._sistema = (getattr(self, "_sistema", 0)
+                         & ~(0x03 << (2 * puerto))) | sistema
+        self.mem.w8(P2CNT if puerto else P1CNT, ~mando & 0xFF)
+        self.mem.w8(STATUS_B, ~self._sistema & 0xFF)
 
     # --- el reloj -------------------------------------------------------
 

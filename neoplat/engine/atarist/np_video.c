@@ -178,9 +178,9 @@ void np_st_init(void)
 #define ST_TECLA_ENTRAR    0x1C
 
 static volatile uint16_t np_teclas;   /* lo que sigue pulsado */
-static volatile uint16_t np_joystick;
+static volatile uint16_t np_joystick[2];   /* [0] puerto 1, [1] puerto 0 */
 static uint8_t np_faltan;            /* bytes que quedan del paquete de ahora */
-static uint8_t np_es_joystick;       /* 1 = el paquete de ahora es del joystick */
+static uint8_t np_es_joystick;       /* 0 = no, 1 = puerto 1, 2 = puerto 0 */
 
 static void np_tecla(uint8_t codigo, uint16_t pulsada)
 {
@@ -207,19 +207,25 @@ void np_ikbd_atender(void)
         if (np_faltan) {
             np_faltan--;
             if (!np_es_joystick) continue;        /* raton: no interesa */
-            np_es_joystick = 0;
-            np_joystick = 0;
-            if (byte & 0x01) np_joystick |= NP_IN_UP;
-            if (byte & 0x02) np_joystick |= NP_IN_DOWN;
-            if (byte & 0x04) np_joystick |= NP_IN_LEFT;
-            if (byte & 0x08) np_joystick |= NP_IN_RIGHT;
-            /* el joystick solo tiene un boton: vale de salto y de start */
-            if (byte & 0x80) np_joystick |= NP_IN_JUMP | NP_IN_START;
+            {
+                uint16_t estado = 0;
+                uint8_t cual = (uint8_t)(np_es_joystick - 1);
+                np_es_joystick = 0;
+                if (byte & 0x01) estado |= NP_IN_UP;
+                if (byte & 0x02) estado |= NP_IN_DOWN;
+                if (byte & 0x04) estado |= NP_IN_LEFT;
+                if (byte & 0x08) estado |= NP_IN_RIGHT;
+                /* el joystick solo tiene un boton: vale de salto y de start */
+                if (byte & 0x80) estado |= NP_IN_JUMP | NP_IN_START;
+                np_joystick[cual] = estado;
+            }
         } else if (byte >= 0xF8 && byte <= 0xFB) {
             np_faltan = 2;                        /* raton: cabecera y dos deltas */
         } else if (byte == 0xFE || byte == 0xFF) {
-            np_faltan = 1;                        /* joystick 0 o 1: da igual cual */
-            np_es_joystick = 1;
+            /* $FF es el puerto 1 (donde va el joystick de siempre) y $FE el
+               puerto 0 (el del raton, que es donde se enchufa el segundo) */
+            np_faltan = 1;
+            np_es_joystick = (uint8_t)(byte == 0xFF ? 1 : 2);
         } else if (byte < 0xF6) {
             np_tecla((uint8_t)(byte & 0x7F), (uint16_t)!(byte & 0x80));
         }
@@ -248,7 +254,15 @@ uint16_t np_input_read(void)
        teclado se queda abajo y el MFP no vuelve a avisar. Mirarlo una vez por
        frame cuesta una lectura y devuelve el mando a la vida. */
     if (REG8(ST_ACIA_ESTADO) & 0x01) np_ikbd_atender();
-    return (uint16_t)(np_teclas | np_joystick);
+    return (uint16_t)(np_teclas | np_joystick[0]);
+}
+
+/* El segundo jugador va en el puerto 0, que es el del raton: hay que quitarlo
+ * y enchufar ahi el otro joystick. El teclado es solo del primero. */
+uint16_t np_input_read2(void)
+{
+    if (REG8(ST_ACIA_ESTADO) & 0x01) np_ikbd_atender();
+    return (uint16_t)np_joystick[1];
 }
 
 /* --- dibujar un tile -----------------------------------------------------
@@ -774,11 +788,13 @@ void np_video_actores(const NpWorld *w)
         np_dibujar_actor(b, def, NP_F2I(e->x) - def->box_x, NP_F2I(e->y) - def->box_y,
                          np_actor_frame(def, e->anim, e->anim_frame));
     }
-    if (np_player_visible(w)) {
+    for (i = 0; i < NP_MAX_PLAYERS; i++) {
         const NpActorDef *def = &np_player_def.actor;
-        np_dibujar_actor(b, def, NP_F2I(w->player.x) - def->box_x,
-                         NP_F2I(w->player.y) - def->box_y,
-                         np_actor_frame(def, w->player.anim, w->player.anim_frame));
+        const NpPlayer *p = &w->players[i];
+        if (!np_player_visible(w, i)) continue;
+        np_dibujar_actor(b, def, NP_F2I(p->x) - def->box_x,
+                         NP_F2I(p->y) - def->box_y,
+                         np_actor_frame(def, p->anim, p->anim_frame));
     }
 
     NP_MARCA(4, w->level->background);

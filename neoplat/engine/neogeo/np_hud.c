@@ -62,6 +62,7 @@ void np_hud_draw(const NpWorld *w)
     static uint16_t last_state = 0xFFFF;
     static uint32_t ultimo_tanteo = 0xFFFFFFFFu;
     static uint16_t ultimas_vidas = 0xFFFF;
+    static uint16_t ultimas_vidas2 = 0xFFFF;
     static uint16_t ultimo_tiempo = 0xFFFF;
     static uint8_t rotulos = 0;
     static uint8_t ultimo_jefe = 0xFF;
@@ -69,7 +70,12 @@ void np_hud_draw(const NpWorld *w)
 
     if (!rotulos) {
         np_hud_print(2, 1, "SCORE", NP_HUD_PALETTE);
-        np_hud_print(30, 1, "LIVES", NP_HUD_PALETTE);
+        if (np_player_count > 1) {
+            np_hud_print(30, 1, "1P", NP_HUD_PALETTE);
+            np_hud_print(35, 1, "2P", NP_HUD_PALETTE);
+        } else {
+            np_hud_print(30, 1, "LIVES", NP_HUD_PALETTE);
+        }
         if (np_time_limit) np_hud_print(18, 1, "TIME", NP_HUD_PALETTE);
         rotulos = 1;
     }
@@ -77,9 +83,16 @@ void np_hud_draw(const NpWorld *w)
         np_hud_number(8, 1, w->score, 6, NP_HUD_PALETTE);
         ultimo_tanteo = w->score;
     }
-    if (w->lives != ultimas_vidas) {
-        np_hud_number(36, 1, w->lives, 1, NP_HUD_PALETTE);
-        ultimas_vidas = (uint16_t)w->lives;
+    /* Las vidas son de cada jugador. A uno pone "LIVES 3" como siempre; a dos
+       no cabe dos veces, asi que pone "1P 3  2P 3" en el mismo hueco. */
+    if (w->players[0].lives != ultimas_vidas) {
+        np_hud_number(np_player_count > 1 ? 33 : 36, 1, w->players[0].lives, 1,
+                      NP_HUD_PALETTE);
+        ultimas_vidas = (uint16_t)w->players[0].lives;
+    }
+    if (np_player_count > 1 && w->players[1].lives != ultimas_vidas2) {
+        np_hud_number(38, 1, w->players[1].lives, 1, NP_HUD_PALETTE);
+        ultimas_vidas2 = (uint16_t)w->players[1].lives;
     }
     if (np_time_limit && segundos != ultimo_tiempo) {
         np_hud_number(23, 1, segundos, 3, NP_HUD_PALETTE);
