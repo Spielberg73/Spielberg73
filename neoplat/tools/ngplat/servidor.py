@@ -63,7 +63,7 @@ def guardar_yaml(raiz: str, texto: str) -> str:
     ruta = ruta_del_yaml(raiz)
     if os.path.isfile(ruta):
         shutil.copyfile(ruta, ruta + ".bak")
-    with open(ruta, "w", encoding="utf-8") as fh:
+    with open(ruta, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(texto)
     return ruta
 

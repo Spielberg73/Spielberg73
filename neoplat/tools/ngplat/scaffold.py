@@ -432,11 +432,13 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
         plantilla = GAME_YAML_HIERRO
     contenido = plantilla.format(titulo=titulo.upper()[:24], autor=autor[:24],
                                  niveles=niveles)
-    with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8") as fh:
+    with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
+              newline="\n") as fh:
         fh.write(contenido)
     creados.append("game.yaml")
 
-    with open(os.path.join(destino, ".gitignore"), "w", encoding="utf-8") as fh:
+    with open(os.path.join(destino, ".gitignore"), "w", encoding="utf-8",
+              newline="\n") as fh:
         fh.write("build/\npreview.html\n")
     creados.append(".gitignore")
     return creados

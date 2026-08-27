@@ -72,10 +72,20 @@ ejemplo-todos:
 	./ngplat compilar $(EJEMPLO) --sistema jaguar --make
 	./ngplat compilar $(EJEMPLO) --sistema atarist --make
 
+# Los paquetes para repartir: los ZIP de docs y del kit en dist/.
+# `paquetes-exe` ademas construye el ngplat.exe de Windows; en Windows sale
+# directo, y desde Linux hace falta Wine con un Python de Windows dentro:
+#   make paquetes-exe PYTHON_WINDOWS="wine /ruta/a/python.exe"
+paquetes:
+	$(PYTHON) empaquetar.py
+
+paquetes-exe:
+	$(PYTHON) empaquetar.py --exe $(if $(PYTHON_WINDOWS),--python "$(PYTHON_WINDOWS)",)
+
 limpiar:
-	rm -rf $(EJEMPLO)/build $(EJEMPLO)/preview.html capturas
+	rm -rf dist $(EJEMPLO)/build $(EJEMPLO)/preview.html capturas
 	find . -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
 
 .PHONY: test test-rapido test-navegador test-emulador test-emulador-md \
 	test-emulador-amiga test-emulador-neogeo test-emulador-jaguar \
-	test-emulador-st ejemplo ejemplo-todos limpiar
+	test-emulador-st ejemplo ejemplo-todos paquetes paquetes-exe limpiar

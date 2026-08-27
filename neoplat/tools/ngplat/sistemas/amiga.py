@@ -24,6 +24,7 @@ from typing import Dict, List
 from .. import gfx, gfx_amiga
 from ..build import Build
 from ..errors import ProjectError
+from ..paths import fuente_del_kit
 from ..sonido import PAULA_CLOCK, periodo_paula, tabla_de_muestras_c
 from .base import Limites, Salida, Sistema, registrar
 
@@ -241,8 +242,8 @@ class Amiga(Sistema):
         nombre = _nombre_ejecutable(build)
         salida.archivos["Makefile"] = _makefile(build, nombre,
                                                 _etiqueta_disco(build.project.title))
-        salida.archivos["hacer_ejecutable.py"] = _fuente_de("hunk.py")
-        salida.archivos["hacer_adf.py"] = _fuente_de("adf.py")
+        salida.archivos["hacer_ejecutable.py"] = fuente_del_kit("hunk.py")
+        salida.archivos["hacer_adf.py"] = fuente_del_kit("adf.py")
         salida.resumen.append(
             "graficos: %d dibujos de 16x16 (%d KB de dibujos y %d KB de mascaras)"
             % (banco.cuantos, len(banco.tiles) // 1024, len(banco.mascaras) // 1024))
@@ -490,14 +491,6 @@ clean:
 
 .PHONY: all run clean
 """ % (build.project.title, nombre, nombre, etiqueta, nombre)
-
-
-def _fuente_de(modulo: str) -> str:
-    """Copia un modulo del kit tal cual, para que el proyecto generado se valga solo."""
-    ruta = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                        modulo)
-    with open(ruta, "r", encoding="utf-8") as fh:
-        return fh.read()
 
 
 def _etiqueta_disco(titulo: str) -> str:

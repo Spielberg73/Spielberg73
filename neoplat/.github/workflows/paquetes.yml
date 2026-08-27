@@ -1,0 +1,47 @@
+# Arma los paquetes de NeoPlat: los ZIP y el ngplat.exe de Windows.
+#
+# El .exe se construye en un Windows de verdad (windows-latest) y no con Wine,
+# que es lo unico que garantiza que el binario es el que va a usar la gente.
+# Los tres paquetes quedan como artefactos de la ejecucion, y si el disparo
+# viene de una etiqueta, tambien colgados de la release.
+
+name: paquetes
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Instalar PyInstaller
+        run: python -m pip install --upgrade pip pyinstaller
+      - name: Empaquetar
+        working-directory: neoplat
+        run: python empaquetar.py --exe
+      - name: Comprobar que el .exe se vale solo
+        working-directory: neoplat
+        shell: pwsh
+        run: |
+          $exe = "dist\windows\ngplat.exe"
+          & $exe nuevo prueba
+          foreach ($s in @("neogeo","megadrive","amiga","jaguar","atarist")) {
+            & $exe compilar prueba --sistema $s
+            if ($LASTEXITCODE -ne 0) { throw "compilar fallo en $s" }
+          }
+          & $exe probar prueba --no-abrir
+      - uses: actions/upload-artifact@v4
+        with:
+          name: neoplat-paquetes
+          path: neoplat/dist/*.zip
+      - name: Colgarlos de la release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: neoplat/dist/*.zip

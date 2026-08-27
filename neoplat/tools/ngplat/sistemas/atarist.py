@@ -38,6 +38,7 @@ from typing import Dict, List
 from .. import gfx, gfx_amiga, gfx_st
 from ..build import Build
 from ..errors import ProjectError
+from ..paths import fuente_del_kit
 from ..sonido import periodo_ym2149, tabla_de_muestras_vacia
 from .base import Limites, Salida, Sistema, registrar
 
@@ -234,8 +235,8 @@ class AtariSt(Sistema):
         nombre = _nombre_ejecutable(build)
         salida.archivos["Makefile"] = _makefile(build, nombre,
                                                 _etiqueta_disco(build.project.title))
-        salida.archivos["hacer_prg.py"] = _fuente_de("prg.py")
-        salida.archivos["hacer_st.py"] = _fuente_de("st_disk.py")
+        salida.archivos["hacer_prg.py"] = fuente_del_kit("prg.py")
+        salida.archivos["hacer_st.py"] = fuente_del_kit("st_disk.py")
         salida.resumen.append(
             "graficos: %d dibujos de 16x16 (%d KB de dibujos y %d KB de mascaras)"
             % (banco.cuantos, len(banco.tiles) // 1024, len(banco.mascaras) // 1024))
@@ -472,14 +473,6 @@ clean:
 
 .PHONY: all run clean
 """ % (build.project.title, nombre, nombre.lower(), etiqueta, nombre)
-
-
-def _fuente_de(modulo: str) -> str:
-    """Copia un modulo del kit tal cual, para que el proyecto generado se valga solo."""
-    ruta = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                        modulo)
-    with open(ruta, "r", encoding="utf-8") as fh:
-        return fh.read()
 
 
 def _etiqueta_disco(titulo: str) -> str:

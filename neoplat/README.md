@@ -51,6 +51,11 @@ cd neoplat
 ./ngplat --version
 ```
 
+En **Windows** hay además un `ngplat.exe` con el kit entero dentro, para no
+tener que instalar Python: se descomprime y se usa desde el símbolo del
+sistema. Sale de [`empaquetar.py`](empaquetar.py) y lo construye sola la
+[acción de GitHub](.github/workflows/paquetes.yml) en un Windows de verdad.
+
 No usa dependencias externas: trae su propio lector de PNG, su propio lector de
 YAML, su propio ensamblador de Z80 y su propio conversor a ejecutable de
 AmigaDOS (si tienes PyYAML instalado, lo aprovecha).
@@ -219,6 +224,45 @@ emulador. Los detalles, en [docs/formato.md](docs/formato.md).
 La referencia completa está en [docs/formato.md](docs/formato.md) y hay un
 tutorial paso a paso en [docs/tutorial.md](docs/tutorial.md).
 
+## Repartirlo: los ZIP y el .exe
+
+```bash
+make paquetes        # los ZIP, en dist/
+make paquetes-exe    # además el ngplat.exe (necesita PyInstaller)
+```
+
+Salen tres cosas:
+
+| | |
+|---|---|
+| `neoplat-docs.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
+| `neoplat-kit.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows.zip` | el `ngplat.exe` y su LEEME |
+
+El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
+plantillas; no necesita Python ni nada instalado. Construirlo desde Linux es
+posible con Wine y un Python de Windows:
+
+```bash
+make paquetes-exe PYTHON_WINDOWS="wine /ruta/a/python.exe"
+```
+
+pero el que se reparte lo hace la acción de GitHub en un `windows-latest`, que
+es lo único que garantiza que el binario es el que va a usar la gente. La
+acción, además, lo ejecuta: crea un proyecto y compila para las cinco máquinas.
+
+**Está comprobado que sale lo mismo por los dos caminos**: un proyecto generado
+con el `.exe` en Windows es byte a byte idéntico a uno generado con `./ngplat`
+en Linux, `preview.html` incluido. Para eso los archivos generados se escriben
+siempre con saltos de línea de Unix (`newline="\n"`), que si no Windows metería
+`\r\n` y los Makefile saldrían distintos.
+
+Y hay una prueba (`tests/test_empaquetar.py`) que monta el árbol que deja
+PyInstaller al arrancar el `.exe` y comprueba que dentro está todo lo que el
+kit abre en marcha: el motor de las cinco máquinas, las plantillas, el preview
+y los módulos que el proyecto generado se lleva consigo. Es fácil añadir un
+archivo nuevo y que el `.exe` se quede sin él; así salta antes de repartirlo.
+
 ## Órdenes
 
 | Orden | Qué hace |
@@ -274,13 +318,19 @@ neoplat/
 │   ├── preview.py          genera el preview jugable
 │   ├── servidor.py         localhost: el editor manda el yaml y compila
 │   ├── png.py / miniyaml.py  lectores propios (cero dependencias)
-│   └── art.py / scaffold.py  el proyecto de ejemplo
+│   ├── art.py / scaffold.py  el proyecto de ejemplo
+│   ├── art_sonido.py       los WAV de ejemplo, generados por codigo
+│   ├── wav.py / adpcm.py   lector de WAV y el codec del YM2610
+│   ├── md_pcm.py           driver de muestras del Z80 de la Mega Drive
+│   └── paths.py            donde esta cada cosa, tambien dentro del .exe
 ├── engine/
 │   ├── core/np_world.c     la simulación (física, colisiones, enemigos)
 │   ├── core/np_aritmetica.c multiplicar y dividir 32 bits en un 68000
 │   ├── neogeo/             vídeo, HUD, sonido y mando de la consola
 │   ├── megadrive/          VDP, plano ventana, PSG, arranque y cabecera
 │   ├── amiga/              copper, blitter, Paula y arranque
+│   ├── jaguar/             el objeto de video, los DAC y el DSP
+│   ├── atarist/            Shifter, YM2149 e IKBD, todo con la CPU
 │   └── host/np_trace.c     ejecuta la simulación en el ordenador (pruebas)
 ├── preview/
 │   ├── np_core.js          la misma simulación, en JavaScript
@@ -291,7 +341,7 @@ neoplat/
 ├── examples/
 │   ├── bosque-magico/      juego de ejemplo listo para compilar
 │   └── cueva-de-hierro/    el mismo motor con seis colores y parallax en Amiga
-└── tests/                  159 pruebas + 24 de jugabilidad + 49 del editor +
+└── tests/                  271 pruebas + 29 de jugabilidad + 66 del editor +
                             bot que se pasa los niveles + emuladores y navegador
 ```
 

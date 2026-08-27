@@ -5,3 +5,5 @@ np_trace
 build/
 capturas/
 *.yaml.bak
+dist/
+ngplat.spec

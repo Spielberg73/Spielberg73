@@ -311,5 +311,5 @@ def generar_para_sistema(build: Build, out_dir: str, sistema, rom_id: str) -> Di
 
 def _escribir_texto(ruta: str, contenido: str) -> None:
     os.makedirs(os.path.dirname(ruta), exist_ok=True)
-    with open(ruta, "w", encoding="utf-8") as fh:
+    with open(ruta, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(contenido)
