@@ -62,7 +62,7 @@ int main(int argc, char **argv)
         const NpPlayer *p1 = &world.players[1];
         np_world_step(&world, (uint16_t)input, (uint16_t)input2);
         printf("%lu %ld %ld %ld %ld %u %u %u %lu %ld %ld %u %u %u %08x"
-               " %ld %ld %ld %ld %u %u %u %u %u %u\n",
+               " %ld %ld %ld %ld %u %u %u %u %u %u %u\n",
                (unsigned long)world.frame,
                (long)p0->x, (long)p0->y, (long)p0->vx, (long)p0->vy,
                (unsigned)world.state, (unsigned)p0->health,
@@ -74,7 +74,8 @@ int main(int argc, char **argv)
                (long)p1->x, (long)p1->y, (long)p1->vx, (long)p1->vy,
                (unsigned)p1->health, (unsigned)p1->lives,
                (unsigned)p0->playing, (unsigned)p0->dying,
-               (unsigned)p1->playing, (unsigned)p1->dying);
+               (unsigned)p1->playing, (unsigned)p1->dying,
+               (unsigned)world.keys);
     }
     fclose(fh);
     return 0;

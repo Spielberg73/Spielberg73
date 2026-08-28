@@ -66,6 +66,7 @@
             nombre: n.name,
             fondo: n.background,
             musica: n.music ? (DATA.sonido.musica[n.music - 1] || {}).nombre || "" : "",
+            llaves: n.keys_needed || 0,
             capas: (n.layers || []).map(function (i) { return DATA.layers[i].name; })
           };
         }),
@@ -372,7 +373,8 @@
       var suelo = h - 2;
       f[suelo] = "P" + f[suelo].substring(1);
       f[suelo] = f[suelo].substring(0, w - 3) + "G" + f[suelo].substring(w - 2);
-      return { filas: f, props: { nombre: nombre, fondo: "#101830", musica: "", capas: [] } };
+      return { filas: f, props: { nombre: nombre, fondo: "#101830", musica: "",
+                                 llaves: 0, capas: [] } };
     }
 
     editor.nuevoNivel = function () {
@@ -391,7 +393,7 @@
       return {
         name: nuevo.props.nombre, width: nuevo.filas[0].length, height: nuevo.filas.length,
         cells: [], spawns: [], start: [16, 16], background: nuevo.props.fondo,
-        layers: [], music: 0, rows: nuevo.filas.slice(),
+        layers: [], music: 0, keys_needed: 0, rows: nuevo.filas.slice(),
         spawn_chars: clonar(modelo.spawn_chars)
       };
     }
@@ -899,6 +901,7 @@
         ? indiceMusica(props.musica) + 1
         : 0;
       nivel.layers = props.capas.map(indiceCapa).filter(function (i) { return i >= 0; });
+      nivel.keys_needed = Math.max(0, Math.round(props.llaves || 0));
     }
 
     function indiceMusica(nombre) {
@@ -1002,7 +1005,7 @@
       function decimales(campo) {
         var enteros = ["vidas", "tiempo", "coyote", "buffer_salto", "vida",
                        "invulnerable", "puntos", "dano", "periodo", "intervalo",
-                       "cantidad", "rango", "amplitud"];
+                       "cantidad", "rango", "amplitud", "llaves"];
         return enteros.indexOf(campo) >= 0 ? 0 : 2;
       }
 
@@ -1074,7 +1077,7 @@
         var props = modelo.niveles[indice];
         var previos = base.niveles[indice];
         var tabla = campos.nivel || {};
-        ["nombre", "fondo", "musica"].forEach(function (campo) {
+        ["nombre", "fondo", "musica", "llaves"].forEach(function (campo) {
           if (!tabla[campo]) return;
           if (previos && !cambio(props[campo], previos[campo])) return;
           if (campo === "musica" && !props.musica) return;
@@ -1136,6 +1139,7 @@
       var lineas = ['  - nombre: "' + props.nombre + '"',
                     '    fondo: "' + props.fondo + '"'];
       if (props.musica) lineas.push("    musica: " + props.musica);
+      if (props.llaves) lineas.push("    llaves: " + Math.round(props.llaves));
       if (props.capas.length) lineas.push("    fondos: [" + props.capas.join(", ") + "]");
       lineas.push("    mapa: |");
       f.forEach(function (fila) { lineas.push("      " + fila); });

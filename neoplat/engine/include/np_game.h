@@ -95,6 +95,7 @@ typedef struct {
     const uint8_t *layers;           /* indices en np_layers, de lejos a cerca */
     uint8_t layer_count;
     uint8_t music;                   /* 0 = sin musica, si no indice + 1 */
+    uint8_t keys_needed;             /* llaves que pide la meta, 0 = ninguna */
 } NpLevel;
 
 /* Tablas que genera el compilador (definidas en gamedata.c). */

@@ -279,6 +279,13 @@ objetos:
       quieto: {frames: [0, 1, 2, 3], velocidad: 7}
 ```
 
+**Llaves.** Un objeto con `efecto: llave` suma `cantidad` al contador de llaves
+de la partida, y un nivel con `llaves: N` no abre la meta hasta que se lleven N.
+Las llaves son **de la partida, no de cada jugador**: a dos, la que coge uno le
+vale al otro. Se vacían al empezar cada nivel, y el marcador enseña `KEYS 01/03`
+mientras el nivel pida alguna. Si un nivel pide más llaves de las que hay
+puestas en su mapa, `ngplat` no compila: no se podría terminar.
+
 ## `fondos` (parallax)
 
 Capas de fondo con scroll propio. Se escriben de la **mas lejana a la mas
@@ -413,6 +420,7 @@ Se puede poner a nivel global o dentro de un nivel concreto (lo del nivel manda)
 niveles:
   - nombre: "BOSQUE"
     fondo: "#101830"
+    llaves: 1               # llaves que hay que llevar para abrir la meta
     spawns: {b: jefe}       # opcional, se suma a los globales
     mapa: |
       ....................
@@ -429,6 +437,8 @@ Reglas del mapa:
 - Máximo 64 enemigos y objetos por nivel.
 - Si un nivel no tiene tile de `meta` ni jefe, `ngplat` te avisa (no se podría
   terminar).
+- Con `llaves: N`, en el mapa tiene que haber al menos N llaves (ver
+  [`objetos`](#objetos)).
 
 Los niveles se juegan en orden; al terminar el último sale `YOU WIN!`.
 

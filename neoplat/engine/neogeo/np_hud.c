@@ -66,6 +66,7 @@ void np_hud_draw(const NpWorld *w)
     static uint16_t ultimo_tiempo = 0xFFFF;
     static uint8_t rotulos = 0;
     static uint8_t ultimo_jefe = 0xFF;
+    static uint16_t ultimas_llaves = 0xFFFF;
     uint16_t segundos = (uint16_t)(w->time_left / 60);
 
     if (!rotulos) {
@@ -107,6 +108,19 @@ void np_hud_draw(const NpWorld *w)
         np_boss_bar(barra, w);
         np_hud_print(2, 2, barra, NP_HUD_PALETTE);
         ultimo_jefe = w->boss_health;
+    }
+
+    /* Las llaves que llevas y las que pide la meta, al lado de la barra del
+       jefe. Igual que ella: solo se repinta cuando cambia alguna de las dos. */
+    {
+        uint16_t ahora = (uint16_t)((w->keys << 8)
+                                    | (w->level ? w->level->keys_needed : 0));
+        if (ahora != ultimas_llaves) {
+            char llaves[NP_KEYS_BAR + 1];
+            np_keys_bar(llaves, w);
+            np_hud_print(20, 2, llaves, NP_HUD_PALETTE);
+            ultimas_llaves = ahora;
+        }
     }
 
     if (w->state != last_state) {

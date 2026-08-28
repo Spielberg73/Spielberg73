@@ -17,7 +17,10 @@
 #define NP_HUD_COLUMNAS 40                       /* 40 caracteres de 8 px */
 #define NP_HUD_FILAS (NP_HUD_ALTO / 8)
 
-uint8_t np_hud_bitmap[NP_HUD_BYTES];
+/* Alineado a cuatro: np_video.c lo vuelca a la pantalla de palabra larga
+   en palabra larga, y en el 68000 una lectura asi en direccion impar es un
+   address error. */
+uint8_t np_hud_bitmap[NP_HUD_BYTES] __attribute__((aligned(4)));
 
 static uint8_t np_hud_sucio;                     /* 1 = hay algo nuevo que copiar */
 
@@ -96,6 +99,7 @@ static void np_hud_borrar_fila(uint8_t fila)
 void np_hud_draw(const NpWorld *w)
 {
     static uint8_t ultimo_jefe = 0xFF;
+    static uint16_t ultimas_llaves = 0xFFFF;
     uint16_t segundos;
 
     if (!np_hud_etiquetas) {            /* las palabras fijas, una sola vez */
@@ -135,6 +139,19 @@ void np_hud_draw(const NpWorld *w)
         np_boss_bar(barra, w);
         np_hud_print(2, 1, barra);
         ultimo_jefe = w->boss_health;
+    }
+
+    /* Las llaves que llevas y las que pide la meta, al lado de la barra del
+       jefe. Igual que ella: solo se repinta cuando cambia alguna de las dos. */
+    {
+        uint16_t ahora = (uint16_t)((w->keys << 8)
+                                    | (w->level ? w->level->keys_needed : 0));
+        if (ahora != ultimas_llaves) {
+            char llaves[NP_KEYS_BAR + 1];
+            np_keys_bar(llaves, w);
+            np_hud_print(20, 1, llaves);
+            ultimas_llaves = ahora;
+        }
     }
 
     if (w->state == np_hud_estado) return;    /* el mensaje sigue igual */

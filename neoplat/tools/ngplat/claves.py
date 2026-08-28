@@ -69,6 +69,7 @@ CAMPOS: Dict[str, Dict[str, List[str]]] = {
         "fondo": ["fondo", "background"],
         "musica": ["musica", "music"],
         "fondos": ["fondos", "layers"],
+        "llaves": ["llaves", "keys"],
     },
 }
 
@@ -104,6 +105,7 @@ RANGOS: Dict[str, Dict[str, float]] = {
     "periodo": {"min": 8, "max": 1200, "paso": 10},
     "intervalo": {"min": 8, "max": 1200, "paso": 10},
     "cantidad": {"min": 1, "max": 9, "paso": 1},
+    "llaves": {"min": 0, "max": 99, "paso": 1},
     "gravedad_enemigo": {"min": 0, "max": 4, "paso": 0.01},
 }
 

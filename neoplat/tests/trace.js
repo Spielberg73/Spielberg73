@@ -51,7 +51,8 @@ inputs.forEach(function (par) {
     world.camX, world.camY, world.levelIndex, world.sfx, world.bossHealth,
     hex8(entityHash(world)),
     p1.x, p1.y, p1.vx, p1.vy, p1.health, p1.lives,
-    p0.playing, p0.dying, p1.playing, p1.dying
+    p0.playing, p0.dying, p1.playing, p1.dying,
+    world.keys
   ].join(" "));
 });
 process.stdout.write(out.join("\n") + "\n");

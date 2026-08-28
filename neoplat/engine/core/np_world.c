@@ -967,7 +967,11 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
             np_player_hurt(w, quien, 99);
             continue;
         }
-        if (np_box_touches(w->level, p->x, p->y, pa->box_w, pa->box_h,
+        /* La meta solo se abre si se llevan las llaves que pide el nivel. Las
+         * llaves son de la partida, no de cada jugador: a dos, las que coge
+         * uno le valen al otro. */
+        if (w->keys >= w->level->keys_needed &&
+            np_box_touches(w->level, p->x, p->y, pa->box_w, pa->box_h,
                            NP_TILE_GOAL)) {
             np_finish_level(w);            /* llega uno, se acaba para los dos */
             return;
@@ -1006,6 +1010,28 @@ void np_boss_bar(char *out, const NpWorld *w)
     for (i = 0; i < 5; i++) out[i] = titulo[i];
     for (i = 0; i < NP_BOSS_BAR; i++) out[5 + i] = (i < llenos) ? '#' : ' ';
     out[5 + NP_BOSS_BAR] = 0;
+}
+
+/* El contador de llaves, "KEYS 01/03", para el marcador (en ingles como el
+   resto: SCORE, LIVES, BOSS). Si el nivel no pide ninguna se devuelve una linea
+   en blanco: asi el marcador no tiene que saber nada del nivel y se limita a
+   escribir lo que salga. */
+void np_keys_bar(char *out, const NpWorld *w)
+{
+    static const char titulo[] = "KEYS ";
+    uint8_t i, piden = w->level ? w->level->keys_needed : 0;
+    uint8_t tengo = w->keys;
+    for (i = 0; i < NP_KEYS_BAR; i++) out[i] = ' ';
+    out[NP_KEYS_BAR] = 0;
+    if (!piden) return;
+    if (tengo > 99) tengo = 99;
+    if (piden > 99) piden = 99;
+    for (i = 0; i < 5; i++) out[i] = titulo[i];
+    out[5] = (char)('0' + tengo / 10);
+    out[6] = (char)('0' + tengo % 10);
+    out[7] = '/';
+    out[8] = (char)('0' + piden / 10);
+    out[9] = (char)('0' + piden % 10);
 }
 
 void np_world_step(NpWorld *w, uint16_t input, uint16_t input2)

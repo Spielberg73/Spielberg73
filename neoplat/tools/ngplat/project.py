@@ -303,6 +303,7 @@ class Level:
     background: Tuple[int, int, int]
     layers: List[str] = field(default_factory=list)   # nombres de capas de fondo
     music: str = ""                                   # nombre de la musica del nivel
+    keys_needed: int = 0                              # llaves que pide la meta
     start: Tuple[int, int] = (0, 0)
 
 
@@ -828,7 +829,8 @@ def _read_levels(raw_levels: Any, tiles: Dict[str, TileDef], spawn_names: List[s
                  warnings: List[str], necesitan_suelo: Optional[Dict[str, bool]] = None,
                  layer_names: Optional[List[str]] = None,
                  music_names: Optional[List[str]] = None,
-                 jefes: Optional[set] = None) -> List[Level]:
+                 jefes: Optional[set] = None,
+                 llaves: Optional[Dict[str, int]] = None) -> List[Level]:
     if not raw_levels:
         raise ProjectError(
             "el juego no tiene niveles",
@@ -888,10 +890,17 @@ def _read_levels(raw_levels: Any, tiles: Dict[str, TileDef], spawn_names: List[s
                 hint="definela en 'sonido: musica:'",
                 where=where,
             )
+        piden = node.int_(["keys", "llaves", "llaves_meta"], 0)
+        if piden < 0 or piden > 99:
+            raise ProjectError(
+                "el nivel pide %d llaves; van de 0 a 99" % piden,
+                hint="pon 'llaves: 3' o quita la linea si la meta esta abierta",
+                where=where,
+            )
         level = Level(name=name, rows=rows, spawns=spawns, background=background,
-                      layers=usadas, music=musica)
+                      layers=usadas, music=musica, keys_needed=piden)
         _validate_level(level, tiles, spawn_names, where, warnings,
-                        necesitan_suelo or {}, jefes or set())
+                        necesitan_suelo or {}, jefes or set(), llaves or {})
         levels.append(level)
     return levels
 
@@ -902,7 +911,8 @@ PLAYER_CHAR = "P"
 def _validate_level(level: Level, tiles: Dict[str, TileDef], spawn_names: List[str],
                     where: str, warnings: List[str],
                     necesitan_suelo: Optional[Dict[str, bool]] = None,
-                    jefes: Optional[set] = None) -> None:
+                    jefes: Optional[set] = None,
+                    llaves: Optional[Dict[str, int]] = None) -> None:
     height = len(level.rows)
     width = len(level.rows[0])
     if width < 20 or height < 14:
@@ -919,6 +929,8 @@ def _validate_level(level: Level, tiles: Dict[str, TileDef], spawn_names: List[s
         )
     necesitan_suelo = necesitan_suelo or {}
     jefes = jefes or set()
+    llaves = llaves or {}
+    hay_llaves = 0            # llaves que se pueden coger en este mapa
     hay_jefe = False
     starts: List[Tuple[int, int]] = []
     unknown: Dict[str, Tuple[int, int]] = {}
@@ -948,9 +960,17 @@ def _validate_level(level: Level, tiles: Dict[str, TileDef], spawn_names: List[s
                     sin_suelo.append((nombre, x + 1, y + 1))
                 if nombre in jefes:
                     hay_jefe = True
+                hay_llaves += llaves.get(nombre, 0)
                 continue
             if ch not in tiles and ch not in unknown:
                 unknown[ch] = (x + 1, y + 1)
+    if level.keys_needed > hay_llaves:
+        raise ProjectError(
+            "la meta pide %d llaves y en el mapa solo hay %d"
+            % (level.keys_needed, hay_llaves),
+            hint="pon mas llaves en el mapa o baja el numero de 'llaves:'",
+            where=where,
+        )
     if unknown:
         ch, (col, line) = sorted(unknown.items())[0]
         raise ProjectError(
@@ -1074,12 +1094,15 @@ def load_project(path: str) -> Project:
         for name, enemy in enemies.items()
     }
     jefes = {name for name, enemy in enemies.items() if enemy.boss}
+    # Cuantas llaves da cada objeto, para poder avisar de una meta imposible.
+    llaves = {name: item.amount for name, item in items.items()
+              if item.effect == "key"}
     layers = _read_layers(top.raw("backgrounds", "fondos", "capas"), root)
     sound = _read_sound(top.raw("sound", "sonido", "audio"), root)
     levels = _read_levels(
         top.raw("levels", "niveles"), tiles, list(enemies) + list(items),
         global_spawns, default_bg, warnings, necesitan_suelo, list(layers),
-        list(sound.musica), jefes=jefes,
+        list(sound.musica), jefes=jefes, llaves=llaves,
     )
 
     known_top = {

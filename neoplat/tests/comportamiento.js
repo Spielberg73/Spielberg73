@@ -44,6 +44,7 @@ function datos(filas, opciones) {
       else if (ch === "e") { spawns.push([x * 16 + 2, y * 16 + 16 - enemigo.box_h, 0, 0]); ch = "."; }
       else if (ch === "v") { spawns.push([x * 16 + 2, y * 16 + 16 - enemigo.box_h, 0, 1]); ch = "."; }
       else if (ch === "o") { spawns.push([x * 16 + 3, y * 16 + 16 - objeto.box_h, 1, 0]); ch = "."; }
+      else if (ch === "k") { spawns.push([x * 16 + 3, y * 16 + 16 - objeto.box_h, 1, 1]); ch = "."; }
       else if (ch === "J") { spawns.push([x * 16 + 2, y * 16 + 16 - enemigo.box_h, 0, 2]); ch = "."; }
       assert.ok(ch in LEYENDA, "simbolo desconocido: " + ch);
       celdas.push(".#=^G".indexOf(ch));
@@ -53,6 +54,7 @@ function datos(filas, opciones) {
   for (var i = 0; i < 64; i++) sin.push(Math.round(Math.sin(2 * Math.PI * i / 64) * F));
   return {
     title: "TEST", author: "", lives: opciones.lives || 3, time_limit: opciones.time || 0,
+    players: opciones.jugadores || 1,
     hud: true, camara_pantallas: opciones.pantallas ? 1 : 0,
     player: {
       actor: jugador,
@@ -87,11 +89,17 @@ function datos(filas, opciones) {
         health: opciones.bossHealth || 3, damage: 1, stompable: 1, edge_turn: 1,
         boss: 1, name: "jefe" }
     ],
-    items: [{ actor: objeto, score: 10, effect: 0, amount: 1, name: "moneda" }],
+    items: [
+      { actor: objeto, score: 10, effect: 0, amount: 1, name: "moneda" },
+      /* efecto 3 = llave: no da puntos de vida, suma al contador de la partida */
+      { actor: objeto, score: 50, effect: 3, amount: opciones.valorLlave || 1,
+        name: "llave" }
+    ],
     tiles: { kind: [0, 1, 2, 3, 4], gfx: [0, 1, 2, 3, 4] },
     levels: [{
       name: "TEST", width: ancho, height: alto, cells: celdas,
-      spawns: spawns, start: start, background: "#000000"
+      spawns: spawns, start: start, background: "#000000",
+      keys_needed: opciones.llaves || 0
     }],
     sin: sin, sheets: { x: { url: "", frame_w: 16, frame_h: 16, per_row: 1 } },
     font: {}
@@ -475,6 +483,52 @@ prueba("la meta termina el nivel", function () {
   assert.ok(w.state === NP.STATE.LEVEL_END || w.state === NP.STATE.FINISHED,
     "no se ha completado el nivel");
   assert.ok(w.score >= 100, "no se han sumado los puntos del nivel");
+});
+
+prueba("sin las llaves que pide el nivel la meta no se abre", function () {
+  var w = mundo(suelo([[13, 6, "G"], [13, 2, "P"]]), { llaves: 1 });
+  correr(w, 200, NP.IN.RIGHT);
+  assert.strictEqual(w.keys, 0, "no habia ninguna llave que coger");
+  assert.strictEqual(w.state, NP.STATE.PLAY,
+    "la meta se ha abierto sin la llave");
+});
+
+prueba("con la llave en la mano la meta se abre", function () {
+  var w = mundo(suelo([[13, 4, "k"], [13, 8, "G"], [13, 2, "P"]]), { llaves: 1 });
+  correr(w, 200, NP.IN.RIGHT);
+  assert.strictEqual(w.keys, 1, "no se ha cogido la llave");
+  assert.ok(w.state === NP.STATE.LEVEL_END || w.state === NP.STATE.FINISHED,
+    "con la llave cogida la meta sigue cerrada");
+});
+
+prueba("una llave que vale por varias abre la meta ella sola", function () {
+  var w = mundo(suelo([[13, 4, "k"], [13, 8, "G"], [13, 2, "P"]]),
+                { llaves: 3, valorLlave: 3 });
+  correr(w, 200, NP.IN.RIGHT);
+  assert.strictEqual(w.keys, 3, "la llave no ha sumado su cantidad");
+  assert.ok(w.state === NP.STATE.LEVEL_END || w.state === NP.STATE.FINISHED,
+    "tres llaves de tres y la meta sigue cerrada");
+});
+
+prueba("las llaves son de la partida: las coge uno y le valen al otro", function () {
+  /* el segundo jugador sale en el mismo sitio que el primero: se le manda a el
+     a por la llave y es el primero el que sale por la meta */
+  var w = mundo(suelo([[13, 5, "k"], [13, 2, "G"], [13, 8, "P"]]),
+                { llaves: 1, jugadores: 2 });
+  var i;
+  for (i = 0; i < 120; i++) w.step(0, NP.IN.LEFT);       /* el 2 va a la llave */
+  assert.strictEqual(w.keys, 1, "el segundo jugador no ha cogido la llave");
+  for (i = 0; i < 200 && w.state === NP.STATE.PLAY; i++) w.step(NP.IN.LEFT, 0);
+  assert.ok(w.state === NP.STATE.LEVEL_END || w.state === NP.STATE.FINISHED,
+    "la llave del segundo jugador no le vale al primero");
+});
+
+prueba("las llaves no se guardan de un nivel para otro", function () {
+  var w = mundo(suelo([[13, 4, "k"], [13, 2, "P"]]));
+  correr(w, 120, NP.IN.RIGHT);
+  assert.strictEqual(w.keys, 1);
+  w.loadLevel(0);
+  assert.strictEqual(w.keys, 0, "las llaves han sobrevivido al cambio de nivel");
 });
 
 prueba("perder todas las vidas lleva a game over y luego al titulo", function () {

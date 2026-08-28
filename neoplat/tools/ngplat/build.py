@@ -58,6 +58,7 @@ class LevelBuild:
     background_rgb: Tuple[int, int, int]
     layers: List[int] = field(default_factory=list)   # indices en Build.layers
     music: int = 0                             # 0 = sin musica, si no indice + 1
+    keys_needed: int = 0                       # llaves que pide la meta
 
 
 @dataclass
@@ -281,6 +282,7 @@ def build_project(project: Project) -> Build:
             background_rgb=level.background,
             layers=[layer_index[n] for n in level.layers],
             music=music_index.get(level.music, 0),
+            keys_needed=level.keys_needed,
         ))
 
     return Build(

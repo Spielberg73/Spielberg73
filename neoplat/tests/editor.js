@@ -250,6 +250,16 @@ prueba("las propiedades del nivel llegan al motor", function () {
   assert.strictEqual(e.modelo.niveles[0].fondo, "#204060");
 });
 
+prueba("las llaves del nivel llegan al motor y al yaml", function () {
+  var e = nuevoEditor();
+  e.ponerPropiedad("nivel", "llaves", 2);
+  assert.strictEqual(e.modelo.niveles[0].llaves, 2);
+  assert.strictEqual(e.data.levels[0].keys_needed, 2,
+    "el preview no se juega con la meta cerrada");
+  var yaml = e.exportarYaml();
+  assert.ok(/llaves:\s*2/.test(yaml), "el yaml no recoge las llaves:\n" + yaml);
+});
+
 prueba("editar un enemigo cambia su comportamiento", function () {
   var e = nuevoEditor();
   if (!e.modelo.enemigos.length) return;

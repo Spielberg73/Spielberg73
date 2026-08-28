@@ -173,6 +173,33 @@ def moneda() -> Image:
     return hoja.image
 
 
+def _llave_frame(alto: int) -> Image:
+    """La llave: anilla a la izquierda, paleton a la derecha.
+
+    Los dos fotogramas son la misma llave subida o bajada un pixel, para que
+    flote sin gastar un color mas: cuantos menos colores lleve el sprite, mas
+    sitio queda en la paleta para el resto del juego.
+    """
+    c = Lienzo(16, 16)
+    oro, oro2 = PALETA["oro"], PALETA["oro2"]
+    y = 5 + alto
+    c.rect(2, y, 6, 5, oro)                  # la anilla
+    c.rect(4, y + 2, 2, 1, (0, 0, 0, 0))     # el agujero
+    c.rect(2, y + 4, 6, 1, oro2)
+    c.rect(8, y + 2, 6, 2, oro)              # el vastago
+    c.rect(8, y + 3, 6, 1, oro2)
+    c.rect(10, y + 4, 1, 2, oro)             # los dientes
+    c.rect(12, y + 4, 1, 2, oro)
+    return c.image
+
+
+def llave() -> Image:
+    hoja = Lienzo(16 * 2, 16)
+    for i, alto in enumerate([0, 1]):
+        hoja.blit(i * 16, 0, _llave_frame(alto))
+    return hoja.image
+
+
 def _bala_frame(fase: int) -> Image:
     """El proyectil: una bolita de energia que late, centrada en el fotograma.
 
@@ -324,6 +351,7 @@ def todos() -> Dict[str, Image]:
         "graficos/enemigo.png": enemigo(),
         "graficos/moneda.png": moneda(),
         "graficos/bala.png": bala(),
+        "graficos/llave.png": llave(),
         "graficos/tiles.png": tileset(),
         "graficos/cielo.png": cielo(),
         "graficos/arboles.png": arboles(),

@@ -83,4 +83,9 @@ int np_player_visible(const NpWorld *w, uint8_t quien);
 #define NP_BOSS_BAR 10
 void np_boss_bar(char *out, const NpWorld *w);
 
+/* Las llaves que llevas y las que pide la meta, "KEYS 01/03"; en blanco si el
+   nivel no pide ninguna. Hace falta un buffer de NP_KEYS_BAR + 1 caracteres. */
+#define NP_KEYS_BAR 10
+void np_keys_bar(char *out, const NpWorld *w);
+
 #endif /* NP_WORLD_H */

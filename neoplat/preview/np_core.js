@@ -714,7 +714,10 @@
         this.playerHurt(quien, 99);
         continue;
       }
-      if (this.boxTouches(q.x, q.y, pa.box_w, pa.box_h, TILE_GOAL)) {
+      /* La meta solo se abre si se llevan las llaves que pide el nivel. Las
+         llaves son de la partida, no de cada jugador. */
+      if (this.keys >= (this.level.keys_needed || 0) &&
+          this.boxTouches(q.x, q.y, pa.box_w, pa.box_h, TILE_GOAL)) {
         this.finishLevel();            /* llega uno, se acaba para los dos */
         return;
       }

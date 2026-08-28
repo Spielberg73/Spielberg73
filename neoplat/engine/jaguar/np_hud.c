@@ -77,6 +77,7 @@ static void np_hud_borrar_fila(uint8_t fila)
 void np_hud_draw(const NpWorld *w)
 {
     static uint8_t ultimo_jefe = 0xFF;
+    static uint16_t ultimas_llaves = 0xFFFF;
     if (!np_hud_etiquetas) {
         np_hud_print(2, 0, "SCORE");
         if (np_player_count > 1) {
@@ -114,6 +115,19 @@ void np_hud_draw(const NpWorld *w)
         np_boss_bar(barra, w);
         np_hud_print(2, 1, barra);
         ultimo_jefe = w->boss_health;
+    }
+
+    /* Las llaves que llevas y las que pide la meta, al lado de la barra del
+       jefe. Igual que ella: solo se repinta cuando cambia alguna de las dos. */
+    {
+        uint16_t ahora = (uint16_t)((w->keys << 8)
+                                    | (w->level ? w->level->keys_needed : 0));
+        if (ahora != ultimas_llaves) {
+            char llaves[NP_KEYS_BAR + 1];
+            np_keys_bar(llaves, w);
+            np_hud_print(20, 1, llaves);
+            ultimas_llaves = ahora;
+        }
     }
 
     if (w->state == np_hud_estado) return;

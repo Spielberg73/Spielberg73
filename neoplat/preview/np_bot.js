@@ -29,6 +29,17 @@
     var vista = opciones.vista === undefined ? 6 : opciones.vista;
     var maxX = 0, sinAvanzar = 0, muertes = 0, saltando = 0;
 
+    /* El bot solo sabe andar hacia la derecha: si la llave que pide la meta
+       esta escondida arriba, se queda dando vueltas delante de la meta sin
+       saber por que. Este aviso lo dice con todas las letras. */
+    function motivo(texto) {
+      var piden = w.level.keys_needed || 0;
+      if (piden && w.keys < piden)
+        return texto + " (le faltan llaves para abrir la meta: tiene "
+               + w.keys + " de " + piden + ")";
+      return texto;
+    }
+
     for (var i = 0; i < limite; i++) {
       var p = w.players[0];
       var pies = NPCore.F2I(p.y) + pa.box_h;
@@ -85,12 +96,12 @@
       }
       if (NPCore.F2I(w.players[0].x) > maxX) { maxX = NPCore.F2I(w.players[0].x); sinAvanzar = 0; }
       else if (++sinAvanzar > 600) {
-        return { ok: false, motivo: "se queda atascado", muertes: muertes,
+        return { ok: false, motivo: motivo("se queda atascado"), muertes: muertes,
                  avance: maxX, x: maxX };
       }
     }
-    return { ok: false, motivo: "no llega a la meta a tiempo", muertes: muertes,
-             avance: maxX, x: maxX };
+    return { ok: false, motivo: motivo("no llega a la meta a tiempo"),
+             muertes: muertes, avance: maxX, x: maxX };
   }
 
   var api = { jugar: jugar };

@@ -62,6 +62,28 @@ class TestNivelesJugables(unittest.TestCase):
                          "el bot no puede terminar el proyecto recien creado:\n"
                          + resultado.stdout)
 
+    def test_avisa_cuando_la_llave_no_esta_en_el_camino(self):
+        """El bot solo anda hacia la derecha. Si la llave que abre la meta esta
+        donde el no llega, tiene que decirlo con esas palabras y no soltar un
+        'se queda atascado' que no explica nada."""
+        destino = os.path.join(self.tmp, "llave-lejos")
+        crear_proyecto(destino, "LLAVE", "TEST")
+        ruta = os.path.join(destino, "game.yaml")
+        with open(ruta, encoding="utf-8") as fh:
+            texto = fh.read()
+        # la llave del andamiaje esta en el camino: se sube a la plataforma
+        # mas alta, donde el bot no llega
+        assert "^...k" in texto, "el andamiaje ya no pone la llave asi"
+        texto = texto.replace("^...k", "^....", 1)
+        texto = texto.replace("      ..............................ccc",
+                              "      ..............................ckc", 1)
+        with open(ruta, "w", encoding="utf-8") as fh:
+            fh.write(texto)
+        resultado = self._jugar(destino)
+        self.assertNotEqual(resultado.returncode, 0,
+                            "el bot dice que llega a una meta cerrada")
+        self.assertIn("le faltan llaves", resultado.stdout, resultado.stdout)
+
     def test_avisa_de_enemigos_sin_suelo(self):
         destino = os.path.join(self.tmp, "flotante")
         crear_proyecto(destino, "FLOTANTE", "TEST")

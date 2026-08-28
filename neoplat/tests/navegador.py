@@ -123,6 +123,14 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
         exigir(disparos["hoja"] == "attack",
                "el proyectil no usa su propio dibujo: %r" % disparos["hoja"])
 
+        # Las llaves: el primer nivel del ejemplo pide una, y el motor del
+        # navegador tiene que verla igual que el de C.
+        llaves = pagina.evaluate("""() => {
+            const w = window.NeoPlat.world;
+            return { piden: w.level.keys_needed || 0, tengo: w.keys }; }""")
+        print("llaves:", json.dumps(llaves))
+        exigir(llaves["piden"] > 0, "el ejemplo ya no cierra la meta con llave")
+
         # A un jugador, WASD tiene que seguir valiendo como las flechas: a dos
         # pasa a ser el mando del segundo, y es facil llevarselo por delante.
         pagina.keyboard.down("a")

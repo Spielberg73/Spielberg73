@@ -925,6 +925,12 @@
       text(18, 1, "TIME");
       text(23, 1, pad((world.timeLeft / 60) | 0, 3));
     }
+    /* Las llaves que llevas y las que pide la meta, en el mismo sitio que en
+       las maquinas. Si el nivel no pide ninguna, no se escribe nada. */
+    if (world.level.keys_needed) {
+      text(20, 2, "KEYS " + pad(Math.min(world.keys, 99), 2)
+                  + "/" + pad(Math.min(world.level.keys_needed, 99), 2));
+    }
     if (world.state === NPCore.STATE.TITLE) {
       text(12, 12, DATA.title);
       text(12, 14, "PRESS START");
@@ -1170,6 +1176,9 @@
       musicas.push({ valor: m.nombre, texto: m.nombre });
     });
     campoLista(cont, "musica", "nivel", "musica", null, props.musica, musicas);
+    // llaves que pide la meta: 0 la deja abierta
+    campoNumero(cont, "llaves para la meta", "nivel", "llaves", null,
+                props.llaves || 0);
 
     var notaCapas = document.getElementById("nota-capas");
     notaCapas.innerHTML = "";

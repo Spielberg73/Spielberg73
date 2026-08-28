@@ -491,6 +491,36 @@ class TestProyectoGenerado(unittest.TestCase):
         self.assertIn("np_tile_mask", texto)
         self.assertIn("np_colores[32]", texto)
 
+    def test_los_arrays_de_bytes_se_declaran_alineados(self):
+        """El Atari ST y el Amiga leen los dibujos de palabra en palabra aunque
+        el array sea de bytes, y el 68000 no sabe hacer eso en una direccion
+        impar: se para en seco. Como el enlazador coloca los arrays de bytes
+        donde le cabe, sin el `aligned` el juego arrancaba o no segun cuantos
+        dibujos llevara."""
+        for maquina, nombres in (
+            ("atarist", ("np_tile_data", "np_tile_mask", "np_pantallas",
+                         "np_hud_bitmap")),
+            ("amiga", ("np_tile_data", "np_tile_mask", "np_bitmap",
+                       "np_hud_bitmap")),
+        ):
+            _, out = self._generar(maquina)
+            fuente = os.path.join(out, "src/graficos.c")
+            if maquina == "atarist" and not os.path.isfile(fuente):
+                self.fail("el Atari ST ya no genera src/graficos.c")
+            with open(fuente, encoding="utf-8") as fh:
+                texto = fh.read()
+            if maquina == "atarist":
+                # el marcador del ST vive en el motor, no en lo generado
+                with open(os.path.join(out, "src/np_hud.c"), encoding="utf-8") as fh:
+                    texto += fh.read()
+            for nombre in nombres:
+                trozo = texto.split(nombre, 1)
+                self.assertEqual(len(trozo), 2, "%s: falta %s" % (maquina, nombre))
+                # la declaracion acaba en el ';' o en el '=' de los datos
+                declaracion = trozo[1].split("{")[0].split(";")[0]
+                self.assertIn("aligned", declaracion,
+                              "%s: %s se declara sin alinear" % (maquina, nombre))
+
     def test_amiga_en_doble_plano_pide_seis_bitplanes(self):
         """Con 'amiga: 8colores' salen tres bitplanes por plano y el mapa de
         bits del parallax, que en el modo normal no existe."""
@@ -634,6 +664,30 @@ class TestProyectoGenerado(unittest.TestCase):
                                  "%s/%s:\n%s" % (sistema, archivo, resultado.stderr))
 
 
+def _simbolos_del_elf(ruta):
+    """{nombre: direccion} de los simbolos globales del ELF que suelta el
+    enlazador de 68000. Se lee con el mismo lector de ELF del kit para no
+    depender de que este instalado `nm`."""
+    import struct
+    from ngplat.prg import Elf
+    with open(ruta, "rb") as fh:
+        elf = Elf(fh.read())
+    tabla = elf.seccion(".symtab")
+    textos = elf.seccion(".strtab")
+    if tabla is None or textos is None:
+        return {}
+    crudo = elf.contenido(tabla)
+    nombres = elf.contenido(textos)
+    salida = {}
+    for i in range(0, len(crudo), 16):
+        off, valor = struct.unpack_from(">II", crudo, i)
+        if not off or off >= len(nombres):
+            continue
+        fin = nombres.index(b"\0", off)
+        salida[nombres[off:fin].decode("ascii", "replace")] = valor
+    return salida
+
+
 class TestCompilacionReal(unittest.TestCase):
     """Con un compilador de 68000 instalado, se construye de verdad."""
 
@@ -674,6 +728,28 @@ class TestCompilacionReal(unittest.TestCase):
         hecho = subprocess.run(["make", "-C", out], capture_output=True, text=True)
         self.assertEqual(hecho.returncode, 0, hecho.stdout + hecho.stderr)
         return out
+
+    def test_los_graficos_caen_en_direccion_par(self):
+        """El Atari ST y el Amiga leen los dibujos de palabra larga en palabra
+        larga aunque el array sea de bytes. En el 68000 eso, en una direccion
+        impar, es un address error: la maquina se para en seco y la pantalla se
+        queda congelada. El enlazador coloca los arrays de bytes donde le cabe,
+        asi que arrancar o no dependia de cuantos dibujos llevara el juego."""
+        for maquina, simbolos in (
+            ("atarist", ("np_tile_data", "np_tile_mask",
+                         "np_pantallas", "np_hud_bitmap")),
+            ("amiga", ("np_tile_data", "np_tile_mask",
+                       "np_bitmap", "np_hud_bitmap")),
+        ):
+            out = self._construir(maquina)
+            tabla = _simbolos_del_elf(os.path.join(out, "juego.elf"))
+            self.assertTrue(tabla, "no se han podido leer los simbolos del ELF")
+            for nombre in simbolos:
+                self.assertIn(nombre, tabla, "%s: falta %s" % (maquina, nombre))
+                self.assertEqual(
+                    tabla[nombre] % 4, 0,
+                    "%s: %s cae en 0x%08x, que no es multiplo de cuatro"
+                    % (maquina, nombre, tabla[nombre]))
 
     def test_cartucho_de_megadrive(self):
         out = self._construir("megadrive")

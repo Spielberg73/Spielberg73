@@ -272,10 +272,10 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
         spawns = "np_level%d_spawns" % i if level.spawns else "0"
         capas = "np_level%d_layers" % i if level.layers else "0"
         src.append(
-            "    { %s, %d, %d, np_level%d_cells, %s, %d, %d, %d, 0x%04x, %s, %d, %d },"
+            "    { %s, %d, %d, np_level%d_cells, %s, %d, %d, %d, 0x%04x, %s, %d, %d, %d },"
             % (_c_string(level.name), level.width, level.height, i, spawns,
                len(level.spawns), level.start[0], level.start[1], level.background,
-               capas, len(level.layers), level.music)
+               capas, len(level.layers), level.music, level.keys_needed)
         )
     src.append("};")
     src.append("const uint16_t np_level_count = %d;" % len(build.levels))

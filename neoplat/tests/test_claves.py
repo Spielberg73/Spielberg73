@@ -29,7 +29,7 @@ VALORES = {
     "pisable": "no", "girar_en_borde": "no", "jefe": "si", "rango": "120",
     "amplitud": "40", "periodo": "90", "intervalo": "60",
     "efecto": "vida", "cantidad": "2", "nombre": '"OTRO NIVEL"',
-    "musica": "tema", "fondos": "[]",
+    "musica": "tema", "fondos": "[]", "llaves": "0",
 }
 
 

@@ -84,6 +84,16 @@ objetos:
     puntos: 10
     animaciones:
       quieto: {frames: [0, 1, 2, 3], velocidad: 7}
+  # 'efecto: llave' no da puntos ni vida: suma al contador de llaves de la
+  # partida. Un nivel con 'llaves: N' no deja pasar por la meta sin ellas.
+  llave:
+    sprite: graficos/llave.png
+    caja: [12, 10]
+    puntos: 50
+    efecto: llave
+    cantidad: 1
+    animaciones:
+      quieto: {frames: [0, 1], velocidad: 10}
 
 # Capas de fondo con scroll propio (parallax). Van de la mas lejana a la mas
 # cercana. 'velocidad' es la fraccion del scroll del escenario: 0 = quieta,
@@ -131,11 +141,13 @@ spawns:
   s: seta
   m: mosca
   c: moneda
+  k: llave
 
 niveles:
   - nombre: "BOSQUE"
     fondo: "#101830"
     musica: bosque
+    llaves: 1
     mapa: |
       ................................................
       ................................................
@@ -151,7 +163,7 @@ niveles:
       ....=====............................=====......
       ................................................
       ..........c...........c..........c..............
-      P.......s.........^.........s...........c...G...
+      P.......s.........^...k.....s...........c...G...
       ##################################..############
   - nombre: "CUEVA"
     fondo: "#180c20"

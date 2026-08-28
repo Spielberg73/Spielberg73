@@ -151,6 +151,7 @@ def build_data(build: Build) -> Dict[str, object]:
             "background": "#%02x%02x%02x" % sistema.color_visible(level.background_rgb),
             "layers": list(level.layers),
             "music": level.music,
+            "keys_needed": level.keys_needed,
         })
     for salida, original in zip(levels, project.levels):
         salida["rows"] = list(original.rows)

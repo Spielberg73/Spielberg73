@@ -24,6 +24,7 @@ from ngplat.scaffold import crear_proyecto
 IN_LEFT, IN_RIGHT, IN_DOWN, IN_JUMP, IN_START = 1, 2, 8, 16, 64
 IN_ACTION = 32
 FRAMES = 3000
+ESTADO_FIN_NIVEL = 3        # NP_STATE_LEVEL_END
 
 
 BOTONES = [IN_RIGHT, IN_RIGHT, IN_RIGHT | IN_JUMP, IN_LEFT,
@@ -69,12 +70,14 @@ class TestParidad(unittest.TestCase):
         cls.variantes["dos"] = cls._preparar("scroll", dos=True)
         cls.variantes["dos-pantallas"] = cls._preparar("pantallas", dos=True)
         cls.variantes["golpe"] = cls._preparar("scroll", golpe=True)
+        cls.variantes["llave"] = cls._preparar("scroll", llave=True)
 
     @classmethod
-    def _preparar(cls, camara, jefe=False, dos=False, golpe=False):
+    def _preparar(cls, camara, jefe=False, dos=False, golpe=False, llave=False):
         proyecto_dir = os.path.join(
             cls.tmp, "juego-" + camara + ("-jefe" if jefe else "")
-            + ("-dos" if dos else "") + ("-golpe" if golpe else ""))
+            + ("-dos" if dos else "") + ("-golpe" if golpe else "")
+            + ("-llave" if llave else ""))
         crear_proyecto(proyecto_dir, "PARIDAD", "TEST")
         yaml = os.path.join(proyecto_dir, "game.yaml")
         with open(yaml, encoding="utf-8") as fh:
@@ -91,6 +94,13 @@ class TestParidad(unittest.TestCase):
             marca = "    tipo: disparo"
             assert marca in texto, "el andamiaje ya no trae el ataque asi"
             texto = texto.replace(marca, "    tipo: golpe", 1)
+        if llave:
+            # el andamiaje pone la llave en la plataforma mas alta y el mando
+            # aleatorio no llega hasta alli: se pone otra a dos pasos de la
+            # salida para que la traza compare tambien el momento de cogerla
+            marca = "\n      P.......s"
+            assert marca in texto, "el primer nivel ya no empieza asi"
+            texto = texto.replace(marca, "\n      P.k.....s", 1)
         if jefe:
             # el jefe del andamiaje vive en el segundo nivel y la traza no llega:
             # se pone uno en el primero, cambiando el enemigo que hay a la salida
@@ -175,6 +185,24 @@ class TestParidad(unittest.TestCase):
         puntos = {int(linea.split()[8]) for linea in traza}
         self.assertGreater(max(puntos), 0, "no se ha matado a nadie")
 
+    def test_misma_traza_con_llaves(self):
+        """El andamiaje trae `llaves: 1` en el primer nivel: las dos
+        implementaciones tienen que contar igual y abrir la meta a la vez."""
+        for semilla in (1, 7, 99):
+            self._comparar("llave", semilla)
+
+    def test_la_meta_no_se_abre_sin_la_llave(self):
+        """Y que la cerradura muerde de verdad: si el motor en C no mirase las
+        llaves, la paridad seguiria pasando (JS haria lo mismo mal)."""
+        traza, _ = self._trazas(1, "llave")
+        columnas = [linea.split() for linea in traza]
+        self.assertIn("1", {c[25] for c in columnas},
+                      "en toda la traza no se coge ni una llave")
+        for c in columnas:
+            if c[5] == str(ESTADO_FIN_NIVEL):
+                self.assertNotEqual(c[25], "0",
+                                    "el nivel se ha acabado sin coger la llave")
+
     def test_misma_traza_a_dos_jugadores(self):
         """Lo mismo con `jugadores: 2`: dos mandos, dos vidas, la camara en el
         punto medio y el que se queda atras pegado al borde."""
@@ -187,7 +215,7 @@ class TestParidad(unittest.TestCase):
         en su sitio y la prueba de paridad pasaria sin comprobar nada."""
         traza, _ = self._trazas(1, "dos")
         columnas = [linea.split() for linea in traza]
-        self.assertTrue(all(len(c) == 25 for c in columnas),
+        self.assertTrue(all(len(c) == 26 for c in columnas),
                         "la traza no trae las columnas del segundo jugador")
         # al empezar los dos estan dentro; luego el mando aleatorio puede
         # dejarlo sin vidas, y eso tambien tiene que salir igual en las dos

@@ -50,9 +50,16 @@ def _suelo(ancho: int, huecos: List[tuple]) -> str:
 #     rebotado hacia delante y no puedes caer sobre pinchos
 #   - los pinchos van de uno en uno y con suelo llano antes y despues
 
-def _nivel_1() -> List[str]:
-    """Nivel de entrada: saltar, coger monedas, pisar un enemigo, esquivar pinchos."""
+def _nivel_1(llave: bool = False) -> List[str]:
+    """Nivel de entrada: saltar, coger monedas, pisar un enemigo, esquivar pinchos.
+
+    Con `llave`, en mitad del camino aparece la llave que pide la meta: se coge
+    de paso, pero sin ella el final del nivel no se abre.
+    """
     a = ANCHO_1
+    suelo_1 = {0: "P", 8: "s", 18: "^", 28: "s", 40: "c", 44: "G"}
+    if llave:
+        suelo_1[22] = "k"
     return [
         _fila("", a),
         _fila("", a),
@@ -68,7 +75,7 @@ def _nivel_1() -> List[str]:
         _poner(a, {4: "=====", 37: "====="}),
         _fila("", a),
         _poner(a, {10: "c", 22: "c", 33: "c"}),
-        _poner(a, {0: "P", 8: "s", 18: "^", 28: "s", 40: "c", 44: "G"}),
+        _poner(a, suelo_1),
         _suelo(a, [(34, 2)]),
     ]
 
@@ -197,6 +204,16 @@ objetos:
     puntos: 10
     animaciones:
       quieto: {{frames: [0, 1, 2, 3], velocidad: 7}}
+  # 'efecto: llave' no da puntos ni vida: suma al contador de llaves de la
+  # partida. Un nivel con 'llaves: N' no deja pasar por la meta sin ellas.
+  llave:
+    sprite: graficos/llave.png
+    caja: [12, 10]
+    puntos: 50
+    efecto: llave
+    cantidad: 1
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 10}}
 
 # Capas de fondo con scroll propio (parallax). Van de la mas lejana a la mas
 # cercana. 'velocidad' es la fraccion del scroll del escenario: 0 = quieta,
@@ -244,6 +261,7 @@ spawns:
   s: seta
   m: mosca
   c: moneda
+  k: llave
   J: jefazo
 
 niveles:
@@ -384,15 +402,17 @@ niveles:
 
 
 def _nivel_yaml(nombre: str, filas: List[str], fondo: str, capas: str = "",
-                musica: str = "") -> str:
+                musica: str = "", llaves: int = 0) -> str:
     cuerpo = "\n".join("      " + fila for fila in filas)
     linea_capas = "    fondos: [%s]\n" % capas if capas else ""
     linea_musica = "    musica: %s\n" % musica if musica else ""
+    linea_llaves = "    llaves: %d\n" % llaves if llaves else ""
     return (
         "  - nombre: \"%s\"\n"
         "    fondo: \"%s\"\n"
-        "%s%s"
-        "    mapa: |\n%s\n" % (nombre, fondo, linea_capas, linea_musica, cuerpo)
+        "%s%s%s"
+        "    mapa: |\n%s\n"
+        % (nombre, fondo, linea_capas, linea_musica, linea_llaves, cuerpo)
     )
 
 
@@ -434,7 +454,8 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
 
     if estilo == "bosque":
         niveles = (
-            _nivel_yaml("BOSQUE", _nivel_1(), "#101830", musica="bosque")
+            _nivel_yaml("BOSQUE", _nivel_1(llave=True), "#101830",
+                        musica="bosque", llaves=1)
             # el segundo nivel usa solo la capa lejana: se puede elegir por nivel
             + _nivel_yaml("CUEVA", _nivel_2(), "#180c20", capas="cielo", musica="cueva")
         )

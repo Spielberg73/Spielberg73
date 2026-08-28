@@ -219,6 +219,10 @@ El jugador puede **atacar**, no sólo pisar: con `ataque:` dispara un proyectil
 o pega de cerca, y el botón de acción de las cinco máquinas pasa a hacer algo.
 `ngplat nuevo` ya te lo deja montado.
 
+La meta se puede **cerrar con llave**: un objeto con `efecto: llave` y un nivel
+con `llaves: N` obligan a dar una vuelta antes de salir. El marcador enseña las
+que llevas, y si el mapa no tiene llaves suficientes `ngplat` no compila.
+
 Con `jugadores: 2` juegan dos a la vez en la misma pantalla, cada uno con su
 mando y con sus vidas: la cámara va al punto medio y el que se queda atrás se
 para pegado al borde. En cada máquina el segundo mando está donde toca (en el
@@ -531,6 +535,16 @@ Verificado aquí:
   botón no dispara sin parar, y que el golpe llega a lo de al lado y no más
   allá), más la paridad C/JS con los dos tipos de ataque: los proyectiles van
   en la misma lista de entidades, así que entran en el hash de la traza.
+- **Las llaves cierran la meta de verdad**: cinco pruebas de jugabilidad en
+  JavaScript (que sin llave la meta no se abre, que con ella sí, que una llave
+  que vale por varias abre sola, que la que coge un jugador le sirve al otro y
+  que no se guardan de un nivel para otro), más una variante de la paridad C/JS
+  que comprueba en toda la traza que el nivel no se acaba nunca con el contador
+  a cero.
+- **Los dibujos caen en dirección par**: el Atari ST y el Amiga leen los tiles
+  de palabra larga en palabra larga aunque el array sea de bytes, y en el 68000
+  hacer eso en una dirección impar para la máquina en seco. Una prueba mira los
+  símbolos del ELF y otra la declaración generada.
 - El driver de sonido del Z80 se ejecuta en un emulador incluido en las pruebas:
   se comprueba que recibe las órdenes del 68000 y escribe en el chip los
   periodos y volúmenes de las notas escritas en el `game.yaml`.
@@ -566,8 +580,6 @@ Lo que aún no hace:
 - **Plataformas móviles**: los tipos de tile son sólido, plataforma, pinchos,
   meta y decorado; ninguno se mueve.
 - **Checkpoints**: morir devuelve siempre al principio del nivel.
-- **Las llaves no abren nada**: se pueden recoger y se cuentan, pero la meta se
-  abre igual.
 - **Zoom de sprites** (la Neo Geo lo permite; el motor no lo usa).
 
 ## Licencia
