@@ -24,6 +24,8 @@ typedef struct {
     uint8_t anim, anim_frame;
     uint8_t on_ground, facing, jumps_left, health;
     uint8_t coyote, buffer;
+    uint16_t attack_timer;   /* frames que le quedan al golpe (cuerpo a cuerpo) */
+    uint16_t attack_cd;      /* frames hasta poder atacar otra vez */
     uint8_t lives;           /* las vidas son de cada uno */
     uint8_t playing;         /* 0 = fuera (segundo jugador de una partida a uno,
                                 o el que se ha quedado sin vidas) */
@@ -32,6 +34,7 @@ typedef struct {
 typedef struct {
     np_fix x, y, vx, vy;
     np_fix home_y;           /* altura de origen (voladores) */
+    uint16_t vida;           /* proyectiles: frames que le quedan de vuelo */
     uint16_t timer;          /* cuenta atras de salto / fase del seno */
     uint16_t anim_timer;
     uint8_t active, kind, def;

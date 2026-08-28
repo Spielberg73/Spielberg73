@@ -27,7 +27,7 @@ function actor(boxW, boxH) {
     first_tile: 0, palette: 0, cols: 1, rows: 1,
     box_x: 0, box_y: 0, box_w: boxW, box_h: boxH,
     frames: 1, frame_w: 16, frame_h: 16, sheet: "x",
-    anims: [anim([0]), anim([0]), anim([0]), anim([0]), anim([0])]
+    anims: [anim([0]), anim([0]), anim([0]), anim([0]), anim([0]), anim([0])]
   };
 }
 
@@ -63,7 +63,17 @@ function datos(filas, opciones) {
       jump_buffer: opciones.buffer === undefined ? 6 : opciones.buffer,
       double_jump: opciones.doubleJump ? 1 : 0,
       stomp: opciones.stomp === false ? 0 : 1,
-      health: opciones.health || 1
+      health: opciones.health || 1,
+      /* el ataque: por defecto ninguno, como un proyecto sin `ataque:` */
+      attack: {
+        kind: opciones.ataque === "golpe" ? 2 : (opciones.ataque ? 1 : 0),
+        speed: fx(opciones.balaVelocidad || 3),
+        range: opciones.alcance || 64,
+        cooldown: opciones.espera === undefined ? 10 : opciones.espera,
+        duration: opciones.duracion || 6,
+        damage: opciones.dano || 1,
+        actor: actor(6, 6)
+      }
     },
     enemies: [
       { actor: enemigo, speed: fx(0.5), gravity: fx(0.28), jump: fx(3.5), range: fx(96),
@@ -313,6 +323,98 @@ prueba("con varias vidas de salud solo se pierde una por golpe", function () {
   for (var i = 0; i < 200 && w.players[0].health === 3; i++) w.step(NP.IN.RIGHT);
   assert.strictEqual(w.players[0].health, 2, "un solo golpe deberia quitar una vida");
   assert.ok(w.players[0].invuln > 0, "no hay invulnerabilidad tras el golpe");
+});
+
+/* ------------------------------------------------------------- ataque */
+
+prueba("sin ataque, el boton de accion no hace nada", function () {
+  var w = mundo(suelo([[13, 8, "e"]]));
+  for (var i = 0; i < 30; i++) w.step(NP.IN.ACTION);
+  var balas = w.entities.filter(function (e) { return e.active && e.kind === 2; });
+  assert.strictEqual(balas.length, 0, "ha salido un disparo sin haber ataque");
+});
+
+prueba("disparar saca un proyectil que vuela hacia donde miras", function () {
+  var w = mundo(suelo([[13, 2, "P"]]), { ataque: "disparo" });
+  w.step(NP.IN.RIGHT);                       // mirando a la derecha
+  w.step(NP.IN.ACTION);
+  var bala = w.entities.filter(function (e) { return e.active && e.kind === 2; })[0];
+  assert.ok(bala, "no ha salido ningun proyectil");
+  var x0 = NP.F2I(bala.x);
+  w.step(0);
+  assert.ok(NP.F2I(bala.x) > x0, "el proyectil no avanza hacia la derecha");
+});
+
+prueba("el proyectil mata al enemigo y da puntos", function () {
+  var w = mundo(suelo([[13, 2, "P"], [13, 10, "e"]]),
+                { ataque: "disparo", alcance: 200 });
+  w.step(NP.IN.RIGHT);
+  w.step(NP.IN.ACTION);
+  for (var i = 0; i < 120 && w.score === 0; i++) w.step(0);
+  assert.ok(w.score > 0, "el disparo no ha matado al enemigo");
+  var vivos = w.entities.filter(function (e) { return e.active && e.kind === 0; });
+  assert.strictEqual(vivos.length, 0, "el enemigo sigue vivo");
+});
+
+prueba("el proyectil se apaga contra una pared", function () {
+  var filas = suelo([[13, 2, "P"]]);
+  filas[13] = filas[13].slice(0, 6) + "#" + filas[13].slice(7);   // pared delante
+  var w = mundo(filas, { ataque: "disparo", alcance: 200 });
+  w.step(NP.IN.RIGHT);
+  w.step(NP.IN.ACTION);
+  for (var i = 0; i < 120; i++) w.step(0);
+  var balas = w.entities.filter(function (e) { return e.active && e.kind === 2; });
+  assert.strictEqual(balas.length, 0, "el proyectil ha atravesado la pared");
+});
+
+prueba("el proyectil se apaga al agotar su alcance", function () {
+  var w = mundo(suelo([[13, 2, "P"]]),
+                { ataque: "disparo", alcance: 24, balaVelocidad: 3 });
+  w.step(NP.IN.RIGHT);
+  w.step(NP.IN.ACTION);
+  var vivo = 0;
+  for (var i = 0; i < 60; i++) {
+    w.step(0);
+    if (w.entities.some(function (e) { return e.active && e.kind === 2; })) vivo++;
+  }
+  assert.ok(vivo > 2 && vivo < 40,
+    "el proyectil ha durado " + vivo + " frames: el alcance no se respeta");
+});
+
+prueba("la espera entre disparos se respeta", function () {
+  var w = mundo(suelo([[13, 2, "P"]]), { ataque: "disparo", espera: 30 });
+  w.step(NP.IN.RIGHT);
+  w.step(NP.IN.ACTION);
+  w.step(0);                                  // soltar, para que sea otro flanco
+  w.step(NP.IN.ACTION);
+  var balas = w.entities.filter(function (e) { return e.active && e.kind === 2; });
+  assert.strictEqual(balas.length, 1, "ha disparado dos veces seguidas");
+});
+
+prueba("mantener el boton no dispara sin parar", function () {
+  var w = mundo(suelo([[13, 2, "P"]]), { ataque: "disparo", espera: 1 });
+  for (var i = 0; i < 20; i++) w.step(NP.IN.ACTION);   // sin soltarlo nunca
+  var balas = w.entities.filter(function (e) { return e.active && e.kind === 2; });
+  assert.strictEqual(balas.length, 1, "el boton dispara solo con mantenerlo");
+});
+
+prueba("el golpe mata de cerca y no saca proyectil", function () {
+  var w = mundo(suelo([[13, 2, "P"], [13, 4, "e"]]),
+                { ataque: "golpe", alcance: 40, duracion: 10 });
+  w.step(NP.IN.RIGHT);
+  w.step(NP.IN.ACTION);
+  for (var i = 0; i < 10 && w.score === 0; i++) w.step(0);
+  assert.ok(w.score > 0, "el golpe no ha matado al enemigo de al lado");
+  var balas = w.entities.filter(function (e) { return e.active && e.kind === 2; });
+  assert.strictEqual(balas.length, 0, "un golpe no deberia sacar proyectil");
+});
+
+prueba("el golpe no llega mas alla de su alcance", function () {
+  var w = mundo(suelo([[13, 2, "P"], [13, 14, "e"]]),
+                { ataque: "golpe", alcance: 8, duracion: 10 });
+  w.step(NP.IN.ACTION);
+  for (var i = 0; i < 10; i++) w.step(0);
+  assert.strictEqual(w.score, 0, "el golpe ha llegado a un enemigo lejano");
 });
 
 prueba("el enemigo que patrulla gira en el borde", function () {

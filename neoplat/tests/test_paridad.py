@@ -22,11 +22,13 @@ from ngplat.preview import build_data
 from ngplat.scaffold import crear_proyecto
 
 IN_LEFT, IN_RIGHT, IN_DOWN, IN_JUMP, IN_START = 1, 2, 8, 16, 64
+IN_ACTION = 32
 FRAMES = 3000
 
 
 BOTONES = [IN_RIGHT, IN_RIGHT, IN_RIGHT | IN_JUMP, IN_LEFT,
-           IN_LEFT | IN_JUMP, IN_JUMP, IN_DOWN, 0, IN_START]
+           IN_LEFT | IN_JUMP, IN_JUMP, IN_DOWN, 0, IN_START,
+           IN_ACTION, IN_RIGHT | IN_ACTION, IN_LEFT | IN_ACTION]
 
 
 def _secuencia(semilla: int):
@@ -66,12 +68,13 @@ class TestParidad(unittest.TestCase):
         cls.variantes["jefe"] = cls._preparar("scroll", jefe=True)
         cls.variantes["dos"] = cls._preparar("scroll", dos=True)
         cls.variantes["dos-pantallas"] = cls._preparar("pantallas", dos=True)
+        cls.variantes["golpe"] = cls._preparar("scroll", golpe=True)
 
     @classmethod
-    def _preparar(cls, camara, jefe=False, dos=False):
+    def _preparar(cls, camara, jefe=False, dos=False, golpe=False):
         proyecto_dir = os.path.join(
             cls.tmp, "juego-" + camara + ("-jefe" if jefe else "")
-            + ("-dos" if dos else ""))
+            + ("-dos" if dos else "") + ("-golpe" if golpe else ""))
         crear_proyecto(proyecto_dir, "PARIDAD", "TEST")
         yaml = os.path.join(proyecto_dir, "game.yaml")
         with open(yaml, encoding="utf-8") as fh:
@@ -82,6 +85,12 @@ class TestParidad(unittest.TestCase):
         texto = texto.replace("  camara: scroll", "  camara: " + camara, 1)
         if dos:
             texto = texto.replace("  vidas:", "  jugadores: 2\n  vidas:", 1)
+        if golpe:
+            # el mismo proyecto, pero con el ataque cuerpo a cuerpo: no salen
+            # proyectiles y el dano lo hace una caja delante del jugador
+            marca = "    tipo: disparo"
+            assert marca in texto, "el andamiaje ya no trae el ataque asi"
+            texto = texto.replace(marca, "    tipo: golpe", 1)
         if jefe:
             # el jefe del andamiaje vive en el segundo nivel y la traza no llega:
             # se pone uno en el primero, cambiando el enemigo que hay a la salida
@@ -142,6 +151,29 @@ class TestParidad(unittest.TestCase):
         for camara in ("scroll", "pantallas"):
             for semilla in (1, 7, 99):
                 self._comparar(camara, semilla)
+
+    def test_misma_traza_disparando(self):
+        """El andamiaje trae `ataque: disparo`, asi que las pulsaciones incluyen
+        el boton de accion y la traza compara tambien los proyectiles: van en la
+        misma lista de entidades y entran en el hash."""
+        for semilla in (1, 7, 99):
+            self._comparar("scroll", semilla)
+
+    def test_misma_traza_pegando(self):
+        """Y con `tipo: golpe`, que no saca proyectiles sino una caja delante."""
+        for semilla in (1, 7, 99):
+            self._comparar("golpe", semilla)
+
+    def test_los_disparos_existen_de_verdad(self):
+        """Si el boton de accion no llegara al motor, o los proyectiles no se
+        crearan, la paridad pasaria sin comprobar nada de esto."""
+        traza, _ = self._trazas(1, "scroll")
+        hashes = {linea.split()[14] for linea in traza}
+        self.assertGreater(len(hashes), 100,
+                           "las entidades casi no cambian: no se esta disparando")
+        # y matando enemigos se suben puntos sin pisarlos
+        puntos = {int(linea.split()[8]) for linea in traza}
+        self.assertGreater(max(puntos), 0, "no se ha matado a nadie")
 
     def test_misma_traza_a_dos_jugadores(self):
         """Lo mismo con `jugadores: 2`: dos mandos, dos vidas, la camara en el

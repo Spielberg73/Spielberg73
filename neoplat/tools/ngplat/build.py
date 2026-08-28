@@ -20,7 +20,7 @@ from .project import (
     Actor, Animation, BEHAVIOR_ID, ITEM_EFFECT_ID, Layer, Project, TILE_KIND_ID, TileDef,
 )
 
-ANIM_SLOTS = ["idle", "run", "jump", "fall", "hurt"]
+ANIM_SLOTS = ["idle", "run", "jump", "fall", "hurt", "attack"]
 SIN_STEPS = 64
 
 
@@ -29,7 +29,7 @@ class ActorBuild:
     name: str
     actor: Actor
     sheet: gfx.Sheet
-    anims: List[Animation]          # 5 ranuras, en el orden de ANIM_SLOTS
+    anims: List[Animation]          # una por ranura, en el orden de ANIM_SLOTS
 
 
 @dataclass
@@ -72,6 +72,7 @@ class Build:
     items: List[ActorBuild]
     layers: List[LayerBuild]
     levels: List[LevelBuild]
+    attack: Optional[ActorBuild] = None       # el proyectil, si el juego lo lleva
     music_order: List[str] = field(default_factory=list)   # nombres, en orden
     font: Dict[str, int] = field(default_factory=dict)
     hud_palette: int = 0
@@ -85,7 +86,14 @@ class Build:
     pcm_bytes: int = 0                                       # lo que ocupan las muestras
 
     def actor_builds(self) -> List[ActorBuild]:
-        return [self.player] + self.enemies + self.items
+        """Todos los dibujos que hay que empaquetar, en un orden que **no
+        cambia**: el jugador, los enemigos, los objetos y, al final, el
+        proyectil. Va al final para que anadir un ataque no mueva los indices
+        de enemigos y objetos, que es lo que guardan los niveles."""
+        todos = [self.player] + self.enemies + self.items
+        if self.attack is not None:
+            todos.append(self.attack)
+        return todos
 
     def stats(self) -> Dict[str, int]:
         datos = {
@@ -223,6 +231,9 @@ def build_project(project: Project) -> Build:
         _load_actor(item, "objetos.%s" % name, project.root)
         for name, item in project.items.items()
     ]
+    attack = (_load_actor(project.player.attack, "jugador.ataque", project.root)
+              if project.player.attack is not None
+              and project.player.attack.sprite else None)
     enemy_index = {b.name: i for i, b in enumerate(enemies)}
     item_index = {b.name: i for i, b in enumerate(items)}
 
@@ -275,7 +286,7 @@ def build_project(project: Project) -> Build:
     return Build(
         project=project, rom=rom, tiles=tiles, tile_index=tile_index, tileset=tileset,
         player=player, enemies=enemies, items=items, layers=layers, levels=levels,
-        music_order=music_order, sin_table=_sin_table(),
+        attack=attack, music_order=music_order, sin_table=_sin_table(),
     )
 
 
@@ -334,6 +345,26 @@ def player_values(project: Project) -> Dict[str, object]:
         "coyote": p.coyote, "jump_buffer": p.jump_buffer,
         "double_jump": 1 if p.double_jump else 0, "stomp": 1 if p.stomp else 0,
         "health": p.health,
+    }
+
+
+ATTACK_KIND_ID = {"": 0, "shot": 1, "melee": 2}
+
+
+def attack_values(project: Project) -> Dict[str, object]:
+    """Los campos de NpAttackDef. Sin ataque salen todos a cero, que es lo que
+    el motor entiende como 'este juego no lleva ataque'."""
+    a = project.player.attack
+    if a is None:
+        return {"kind": 0, "speed": 0, "range": 0, "cooldown": 0,
+                "duration": 0, "damage": 0}
+    return {
+        "kind": ATTACK_KIND_ID[a.kind],
+        "speed": to_fixed(a.speed),
+        "range": a.range,
+        "cooldown": a.cooldown,
+        "duration": a.duration,
+        "damage": a.damage,
     }
 
 

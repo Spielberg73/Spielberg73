@@ -44,6 +44,16 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_TILE_GOAL     4
 #define NP_TILE_DECOR    5
 
+/* Tipos de ataque del jugador (NpAttackDef.kind). */
+#define NP_ATTACK_NONE  0
+#define NP_ATTACK_SHOT  1
+#define NP_ATTACK_MELEE 2
+
+/* Que es cada entidad (NpEntity.kind). */
+#define NP_KIND_ENEMY 0
+#define NP_KIND_ITEM  1
+#define NP_KIND_SHOT  2
+
 /* Comportamientos de enemigo; coinciden con BEHAVIOR_ID de project.py. */
 #define NP_AI_PATROL 0
 #define NP_AI_FLYER  1
@@ -63,7 +73,8 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_ANIM_JUMP 2
 #define NP_ANIM_FALL 3
 #define NP_ANIM_HURT 4
-#define NP_ANIM_SLOTS 5
+#define NP_ANIM_ATTACK 5
+#define NP_ANIM_SLOTS 6
 
 /* Eventos de sonido que produce la simulacion (un bit cada uno). Coinciden con
  * EVENTO_BIT de tools/ngplat/sonido.py. La simulacion solo los marca; quien los
@@ -78,7 +89,8 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_SFX_DIE     0x0040
 #define NP_SFX_GOAL    0x0080
 #define NP_SFX_LIFE    0x0100
-#define NP_SFX_SLOTS   9         /* cuantos eventos distintos hay */
+#define NP_SFX_SHOOT   0x0200
+#define NP_SFX_SLOTS   10        /* cuantos eventos distintos hay */
 
 /* Estados del juego. */
 #define NP_STATE_TITLE     0

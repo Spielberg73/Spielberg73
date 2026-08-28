@@ -138,6 +138,7 @@ jugador:
     correr: {frames: [1, 2, 3, 2], velocidad: 6}
     saltar: {frames: [4]}
     caer:   {frames: [5]}
+    atacar: {frames: [6]}     # sólo si el jugador tiene ataque
 ```
 
 **La hoja de sprites** es un PNG con los fotogramas uno detrás de otro, de
@@ -146,11 +147,48 @@ transparente por imagen.
 
 **Animaciones**: `frames` es la lista de fotogramas y `velocidad` los frames de
 juego que dura cada uno (más alto = más lento). Ranuras que entiende el motor:
-`quieto`, `correr`, `saltar`, `caer`, `hurt`. Si falta alguna, se usa la más
-parecida (`caer` cae en `saltar`, y todo lo demás en `quieto`).
+`quieto`, `correr`, `saltar`, `caer`, `hurt`, `atacar`. Si falta alguna, se usa
+la más parecida (`caer` cae en `saltar`, y todo lo demás en `quieto`).
 
 **La caja de colisión** se centra horizontalmente en el fotograma y se apoya en
 su borde inferior. Hazla algo más estrecha que el dibujo: se juega mejor.
+
+### `ataque`
+
+Sin esta sección el jugador **sólo puede pisar enemigos** y el botón de acción
+no hace nada. Con ella, ataca:
+
+```yaml
+jugador:
+  ataque:
+    tipo: disparo            # disparo o golpe
+    sprite: graficos/bala.png
+    frame: [16, 16]
+    caja: [6, 6]
+    desplazamiento: [5, 5]   # la caja, centrada en el fotograma
+    velocidad: 3.5           # píxeles por frame que vuela el disparo
+    alcance: 96              # px que recorre antes de apagarse
+    espera: 18               # frames entre un ataque y el siguiente
+    dano: 1
+    animaciones:
+      quieto: {frames: [0, 1, 2, 1], velocidad: 4}
+```
+
+| tipo | qué hace |
+|---|---|
+| `disparo` | sale un proyectil que vuela de frente hasta chocar con una pared, dar a un enemigo o agotar su `alcance`. Necesita `sprite` |
+| `golpe` | no sale nada: durante `duracion` frames hay una caja de `alcance` píxeles delante del jugador que hace daño a lo que toque. No necesita dibujo |
+
+El botón va **por flanco**: mantenerlo pulsado no dispara sin parar, y la
+cadencia la marca `espera`. Mientras dura un `golpe`, el jugador usa la
+animación `atacar` si la has puesto.
+
+Los proyectiles viven en la misma lista que enemigos y objetos, así que caben
+64 cosas a la vez en pantalla contándolos; si no queda hueco, el disparo se
+pierde. Uno que sale de la pantalla se apaga solo.
+
+`ngplat nuevo` ya te deja un ataque de ejemplo montado, con su `bala.png` y su
+sonido (`sonido: efectos: disparo:`).
 
 ## `tiles`
 
@@ -299,7 +337,8 @@ sonido:
 ```
 
 **Momentos que puedes sonorizar** (los produce el juego solo): `empezar`,
-`salto`, `doble_salto`, `moneda`, `pisar`, `golpe`, `muerte`, `meta`, `vida`.
+`salto`, `doble_salto`, `moneda`, `pisar`, `golpe`, `muerte`, `meta`, `vida`,
+`disparo`.
 
 **Tipos de efecto**:
 

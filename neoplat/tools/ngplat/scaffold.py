@@ -131,6 +131,19 @@ jugador:
     correr: {{frames: [1, 2, 3, 2], velocidad: 6}}
     saltar: {{frames: [4]}}
     caer:   {{frames: [5]}}
+  # El boton de accion. Quitalo entero y el jugador solo podra pisar enemigos.
+  ataque:
+    tipo: disparo            # disparo (sale un proyectil) o golpe (cuerpo a cuerpo)
+    sprite: graficos/bala.png
+    frame: [16, 16]
+    caja: [6, 6]
+    desplazamiento: [5, 5]   # la caja, centrada en el fotograma
+    velocidad: 3.5           # pixeles por frame que vuela el disparo
+    alcance: 96              # px que recorre antes de apagarse
+    espera: 18               # frames entre un disparo y el siguiente
+    dano: 1
+    animaciones:
+      quieto: {{frames: [0, 1, 2, 1], velocidad: 4}}
 
 tiles:
   imagen: graficos/tiles.png
@@ -213,6 +226,7 @@ sonido:
     golpe:   {{muestra: sonidos/golpe.wav, tipo: ruido, duracion: 10}}
     muerte:  {{notas: "sol4 mi4 do4 sol3", velocidad: 6}}
     meta:    {{notas: "do5 mi5 sol5 do6", velocidad: 6}}
+    disparo: {{tipo: barrido, desde: 1200, hasta: 300, duracion: 4}}
   musica:
     bosque:
       velocidad: 8          # frames que dura cada nota (mas alto = mas lento)
@@ -346,6 +360,7 @@ sonido:
     golpe:   {{tipo: ruido, duracion: 10}}
     muerte:  {{notas: "mi4 do4 la3 mi3", velocidad: 6}}
     meta:    {{notas: "la4 do5 mi5 la5", velocidad: 6}}
+    disparo: {{tipo: barrido, desde: 1100, hasta: 280, duracion: 4}}
   musica:
     galeria:
       velocidad: 9

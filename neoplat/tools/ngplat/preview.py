@@ -15,7 +15,8 @@ from typing import Dict, List
 
 from . import gfx, sistemas
 from .claves import tabla_para_el_editor
-from .build import Build, actor_def_values, enemy_values, item_values, player_values, tile_tables
+from .build import (Build, actor_def_values, attack_values, enemy_values,
+                    item_values, player_values, tile_tables)
 from .paths import PREVIEW_DIR, TEMPLATES_DIR
 from .png import Image, encode_png, read_png
 
@@ -93,6 +94,11 @@ def build_data(build: Build) -> Dict[str, object]:
 
     player = dict(player_values(project))
     player["actor"] = actor_json(build.player, "player")
+    # el ataque: `kind` a cero quiere decir que el juego no lleva ninguno
+    ataque = dict(attack_values(project))
+    ataque["actor"] = (actor_json(build.attack, "attack") if build.attack is not None
+                       else actor_def_values(build.player))
+    player["attack"] = ataque
 
     enemies: List[Dict[str, object]] = []
     for i, enemy in enumerate(build.enemies):

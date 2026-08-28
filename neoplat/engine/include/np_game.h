@@ -24,12 +24,32 @@ typedef struct {
     NpAnim anims[NP_ANIM_SLOTS];
 } NpActorDef;
 
+/* El ataque del jugador. `kind` a cero quiere decir que el juego no lleva
+ * ataque y el boton no hace nada, que es como estaba el kit hasta ahora.
+ *
+ *   NP_ATTACK_SHOT   sale un proyectil que vuela de frente hasta chocar con
+ *                    una pared, dar a un enemigo o agotar su alcance;
+ *   NP_ATTACK_MELEE  no sale nada: durante `duration` frames hay una caja
+ *                    delante del jugador que hace dano a lo que toque.
+ *
+ * `actor` es el dibujo del proyectil, y solo se usa con NP_ATTACK_SHOT. */
+typedef struct {
+    NpActorDef actor;
+    np_fix speed;            /* velocidad del proyectil */
+    uint16_t range;          /* pixeles que recorre, o alcance del golpe */
+    uint16_t cooldown;       /* frames entre un ataque y el siguiente */
+    uint16_t duration;       /* frames que dura el golpe */
+    uint8_t kind;            /* NP_ATTACK_* */
+    uint8_t damage;
+} NpAttackDef;
+
 typedef struct {
     NpActorDef actor;
     np_fix speed, accel, friction, air_accel;
     np_fix jump, jump_cut, gravity, max_fall, bounce;
     uint16_t invuln;
     uint8_t coyote, jump_buffer, double_jump, stomp, health;
+    NpAttackDef attack;
 } NpPlayerDef;
 
 typedef struct {

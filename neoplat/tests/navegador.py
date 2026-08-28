@@ -91,6 +91,38 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
         exigir(estado["x"] > 10, "el jugador no avanza")
         pagina.locator("#pantalla").screenshot(path=os.path.join(capturas, "juego.png"))
 
+        # El ataque: pulsar X saca un proyectil a la lista de entidades. Sin
+        # esto, que el boton llegue al motor no lo comprueba nadie desde el
+        # navegador.
+        antes = pagina.evaluate("""() => {
+            const w = window.NeoPlat.world;
+            let n = 0;
+            for (let i = 0; i < w.entityCount; i++)
+              if (w.entities[i].active && w.entities[i].kind === 2) n++;
+            return { balas: n, ataque: !!window.NeoPlat.data.player.attack.kind }; }""")
+        exigir(antes["ataque"], "el proyecto de ejemplo ya no trae ataque")
+        # se reinicia antes: despues de un rato corriendo solo, el jugador
+        # puede estar muriendose, y ahi no se dispara
+        pagina.keyboard.press("r")
+        pagina.wait_for_timeout(150)
+        pagina.keyboard.press("Enter")
+        pagina.wait_for_timeout(250)
+        pagina.keyboard.down("x")
+        pagina.wait_for_timeout(150)
+        pagina.keyboard.up("x")
+        disparos = pagina.evaluate("""() => {
+            const w = window.NeoPlat.world;
+            let n = 0, def = null;
+            for (let i = 0; i < w.entityCount; i++) {
+              const e = w.entities[i];
+              if (e.active && e.kind === 2) { n++; def = w.entityDef(e).actor; }
+            }
+            return { balas: n, hoja: def ? def.sheet : "" }; }""")
+        print("disparo:", json.dumps(disparos))
+        exigir(disparos["balas"] > antes["balas"], "pulsar X no dispara")
+        exigir(disparos["hoja"] == "attack",
+               "el proyectil no usa su propio dibujo: %r" % disparos["hoja"])
+
         # A un jugador, WASD tiene que seguir valiendo como las flechas: a dos
         # pasa a ser el mando del segundo, y es facil llevarselo por delante.
         pagina.keyboard.down("a")

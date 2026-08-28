@@ -238,6 +238,18 @@ class Player(Actor):
     bounce: float = 3.6
     health: int = 1
     invuln: int = 90
+    attack: Optional["Attack"] = None
+
+
+@dataclass
+class Attack(Actor):
+    """El ataque del jugador. `kind` vacio = el juego no lleva ataque."""
+    kind: str = ""                 # "shot" o "melee"
+    speed: float = 3.0             # velocidad del proyectil
+    range: int = 64                # px que recorre, o alcance del golpe
+    cooldown: int = 20             # frames entre ataques
+    duration: int = 8              # frames que dura el golpe
+    damage: int = 1
 
 
 @dataclass
@@ -457,6 +469,59 @@ def _leer_modo_amiga(game: Node) -> str:
     return MODOS_AMIGA[clave]
 
 
+ATTACK_KINDS = {
+    "disparo": "shot", "shot": "shot", "bala": "shot", "proyectil": "shot",
+    "tiro": "shot", "shoot": "shot",
+    "golpe": "melee", "melee": "melee", "espada": "melee", "cuerpo": "melee",
+    "puno": "melee", "puño": "melee",
+}
+
+
+def _read_attack(node: Node, root: str) -> Optional["Attack"]:
+    """El ataque del jugador. Sin seccion `ataque:` no hay ataque y el boton de
+    accion no hace nada, que es como estaba el kit antes."""
+    if not node.data:
+        return None
+    where = "jugador.ataque"
+    kind = node.choice(["type", "tipo"], ATTACK_KINDS, "shot")
+    sprite = node.str_(["sprite", "imagen", "image"], "") or ""
+    if kind == "shot" and not sprite:
+        raise ProjectError(
+            "un ataque de tipo 'disparo' necesita el dibujo del proyectil",
+            hint="anade 'sprite: graficos/bala.png', o usa 'tipo: golpe' si no "
+                 "quieres que salga nada",
+            where=where)
+    if sprite:
+        _require_file(root, sprite, where)
+        fw, fh, bw, bh, bx, by = _actor_geometry(node, where, (8, 8))
+        anims = _read_animations(node.child("animations", "animaciones", "anims"),
+                                 where)
+    else:
+        fw = fh = bw = bh = 8
+        bx = by = 0
+        anims = {}
+    ataque = Attack(
+        name="attack", sprite=sprite, frame_w=fw, frame_h=fh,
+        box_w=bw, box_h=bh, box_x=bx, box_y=by, animations=anims,
+        kind=kind,
+        speed=node.num(["speed", "velocidad"], 3.0, 0.25, 12.0),
+        range=node.int_(["range", "alcance"], 64 if kind == "shot" else 12, 4, 512),
+        cooldown=node.int_(["cooldown", "espera", "cadencia"], 20, 1, 300),
+        duration=node.int_(["duration", "duracion", "duración"], 8, 1, 120),
+        damage=node.int_(["damage", "dano", "daño"], 1, 1, 99),
+    )
+    _warn_unknown(node, where, [
+        "type", "tipo", "sprite", "imagen", "image",
+        "frame", "fotograma", "tamano_frame", "hitbox", "caja", "colision",
+        "colisión", "tamano", "tamaño", "size", "hitbox_offset", "offset_caja",
+        "desplazamiento", "animations", "animaciones", "anims",
+        "speed", "velocidad", "range", "alcance", "cooldown", "espera",
+        "cadencia", "duration", "duracion", "duración",
+        "damage", "dano", "daño",
+    ])
+    return ataque
+
+
 def _read_player(node: Node, root: str) -> Player:
     where = "jugador"
     sprite = node.str_(["sprite", "imagen", "image"], required=True)
@@ -481,6 +546,7 @@ def _read_player(node: Node, root: str) -> Player:
         bounce=node.num(["bounce", "rebote"], 3.6, 0.0, 12.0),
         health=node.int_(["health", "salud", "vida"], 1, 1, 9),
         invuln=node.int_(["invuln", "invulnerable", "invulnerabilidad"], 90, 0, 600),
+        attack=_read_attack(node.child("attack", "ataque"), root),
     )
     _warn_unknown(node, where, [
         "sprite", "imagen", "image", "frame", "fotograma", "tamano_frame",
@@ -494,7 +560,7 @@ def _read_player(node: Node, root: str) -> Player:
         "double_jump", "doble_salto", "coyote", "coyote_time", "margen_salto",
         "jump_buffer", "buffer_salto", "stomp", "pisar", "pisar_enemigos",
         "bounce", "rebote", "health", "salud", "vida", "invuln", "invulnerable",
-        "invulnerabilidad",
+        "invulnerabilidad", "attack", "ataque",
     ])
     return player
 

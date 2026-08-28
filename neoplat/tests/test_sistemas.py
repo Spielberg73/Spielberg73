@@ -33,6 +33,34 @@ def _banderas_del_makefile(ruta):
     return [b for b in ("-fno-store-merging",) if b in texto]
 
 
+def _comprobar_amiga(prueba, disco, capturas, proyecto="", pantallas=False):
+    """Arranca el disquete del Amiga en PUAE, en un proceso aparte.
+
+    Aparte por lo mismo que el ST: **el core no se deja arrancar dos veces en
+    el mismo proceso**. No se cuelga como Hatari, que seria facil de ver; lo
+    que hace es sonar peor. La primera vez el analizador reconoce las 16 notas
+    de la melodia y a partir de la segunda solo 12, con las ultimas mudas.
+    Esta medido: `dosveces.py` arranca tres veces seguidas y da 16, 12, 12.
+
+    Como el game.yaml no cuelga del disquete, se le pasa donde esta para que
+    el proceso hijo sepa que musica y que efecto tiene que oir."""
+    import emulador_amiga
+    from libretro import buscar_core
+    if not buscar_core(emulador_amiga.CORE, "NEOPLAT_CORE_AMIGA"):
+        prueba.skipTest("no esta instalado el core de PUAE")
+    orden = [sys.executable, os.path.join(KIT, "tests", "emulador_amiga.py"),
+             disco, capturas]
+    if proyecto:
+        orden.append("--proyecto=" + proyecto)
+    if pantallas:
+        orden.append("--pantallas")
+    hecho = subprocess.run(orden, capture_output=True, text=True)
+    print(hecho.stdout.strip())
+    prueba.assertEqual(hecho.returncode, 0,
+                       "el disquete no arranca, no se juega o no suena en el "
+                       "emulador:\n" + hecho.stdout + hecho.stderr)
+
+
 def _comprobar_st(prueba, disco, capturas, proyecto="", pantallas=False):
     """Arranca el disquete del ST en Hatari, en un proceso aparte.
 
@@ -856,17 +884,9 @@ class TestCompilacionReal(unittest.TestCase):
     def test_el_disquete_arranca_en_un_emulador(self):
         """Y encender el Amiga: el disquete entero, del bootblock al ultimo
         bitplane."""
-        import emulador_amiga
-        from libretro import buscar_core
-        if not buscar_core(emulador_amiga.CORE, "NEOPLAT_CORE_AMIGA"):
-            self.skipTest("no esta instalado el core de PUAE")
         out = self._construir("amiga")
-        capturas = os.path.join(self.tmp, "capturas-amiga")
-        musica, salto, _ = self._banda_sonora()
-        self.assertEqual(
-            emulador_amiga.comprobar(os.path.join(out, "disco/Prueba.adf"),
-                                     capturas, musica, salto), 0,
-            "el disquete no arranca, no se juega o no suena en el emulador")
+        _comprobar_amiga(self, os.path.join(out, "disco/Prueba.adf"),
+                         os.path.join(self.tmp, "capturas-amiga"), self.proyecto)
 
     def test_el_disquete_de_st_arranca_en_un_emulador(self):
         """Y encender el ST: el disquete entero, del FAT12 al ultimo bitplane,
@@ -1004,15 +1024,9 @@ class TestCamaraPorPantallas(unittest.TestCase):
             "la Mega Drive no salta de pantalla como debe")
 
     def test_el_amiga_salta_de_pantalla(self):
-        import emulador_amiga
-        from libretro import buscar_core
-        if not buscar_core(emulador_amiga.CORE, "NEOPLAT_CORE_AMIGA"):
-            self.skipTest("no esta instalado el core de PUAE")
         out = self._construir("amiga")
-        self.assertEqual(
-            emulador_amiga.comprobar(os.path.join(out, "disco/Pantallas.adf"),
-                                     self._capturas("amiga"), pantallas=True), 0,
-            "el Amiga no salta de pantalla como debe")
+        _comprobar_amiga(self, os.path.join(out, "disco/Pantallas.adf"),
+                         self._capturas("amiga"), self.proyecto, pantallas=True)
 
     def test_el_atari_st_salta_de_pantalla(self):
         out = self._construir("atarist")

@@ -173,6 +173,29 @@ def moneda() -> Image:
     return hoja.image
 
 
+def _bala_frame(fase: int) -> Image:
+    """El proyectil: una bolita de energia que late, centrada en el fotograma.
+
+    El fotograma es de 16x16 porque estas maquinas dibujan los sprites en
+    bloques de ese tamano, pero la bola ocupa ocho pixeles a proposito: en el
+    Atari ST cada actor lo pinta la CPU pixel a pixel, asi que un disparo
+    grande se paga en frames. La caja de colision son seis.
+    """
+    c = Lienzo(16, 16)
+    nucleo, halo = PALETA["meta"], PALETA["meta2"]
+    fuera, dentro = [(4, 2), (3, 2), (3, 1)][fase]
+    c.rect(8 - fuera, 8 - fuera, fuera * 2, fuera * 2, halo)
+    c.rect(8 - dentro, 8 - dentro, dentro * 2, dentro * 2, nucleo)
+    return c.image
+
+
+def bala() -> Image:
+    hoja = Lienzo(16 * 3, 16)
+    for i in range(3):
+        hoja.blit(i * 16, 0, _bala_frame(i))
+    return hoja.image
+
+
 def _tile_vacio() -> Image:
     return Lienzo(16, 16).image
 
@@ -300,6 +323,7 @@ def todos() -> Dict[str, Image]:
         "graficos/heroe.png": heroe(),
         "graficos/enemigo.png": enemigo(),
         "graficos/moneda.png": moneda(),
+        "graficos/bala.png": bala(),
         "graficos/tiles.png": tileset(),
         "graficos/cielo.png": cielo(),
         "graficos/arboles.png": arboles(),

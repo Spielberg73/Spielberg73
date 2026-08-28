@@ -198,7 +198,8 @@ static int np_box_touches(const NpLevel *lv, np_fix x, np_fix y, int bw, int bh,
 
 const NpActorDef *np_entity_def(const NpEntity *e)
 {
-    if (e->kind == 0) return &np_enemies[e->def].actor;
+    if (e->kind == NP_KIND_ENEMY) return &np_enemies[e->def].actor;
+    if (e->kind == NP_KIND_SHOT) return &np_player_def.attack.actor;
     return &np_items[e->def].actor;
 }
 
@@ -273,6 +274,11 @@ static void np_spawn_entities(NpWorld *w)
 {
     const NpLevel *lv = w->level;
     uint16_t i;
+    /* La lista se limpia entera, no solo hasta entity_count: los proyectiles
+       buscan hueco recorriendola desde el principio, y una entidad viva de un
+       nivel anterior mas alla del ultimo spawn les daria un sitio ocupado. El
+       preview hace lo mismo, y de eso vive la paridad. */
+    for (i = 0; i < NP_MAX_ENTITIES; i++) w->entities[i].active = 0;
     w->entity_count = 0;
     for (i = 0; i < lv->spawn_count && w->entity_count < NP_MAX_ENTITIES; i++) {
         const NpSpawn *s = &lv->spawns[i];
@@ -294,7 +300,8 @@ static void np_spawn_entities(NpWorld *w)
         e->timer = 0;
         def = np_entity_def(e);
         (void)def;
-        if (e->kind == 0) {
+        e->vida = 0;
+        if (e->kind == NP_KIND_ENEMY) {
             const NpEnemyDef *ed = &np_enemies[e->def];
             e->health = ed->health;
             e->timer = ed->interval;
@@ -323,6 +330,8 @@ static void np_player_reset(NpWorld *w, uint8_t quien)
     p->buffer = 0;
     p->dying = 0;
     p->jumps_left = d->double_jump ? 1 : 0;
+    p->attack_timer = 0;
+    p->attack_cd = 0;
     p->anim = NP_ANIM_IDLE;
     p->anim_frame = 0;
     p->anim_timer = 0;
@@ -389,6 +398,144 @@ static void np_player_hurt(NpWorld *w, uint8_t quien, uint8_t damage)
     p->vx = p->facing ? -np_player_def.speed : np_player_def.speed;
 }
 
+static void np_finish_level(NpWorld *w);
+
+/* ---------------------------------------------------------------- ataque */
+/*
+ * El boton de accion. Hasta ahora el motor lo leia y no hacia nada con el; con
+ * `ataque:` en el game.yaml el jugador puede disparar o pegar.
+ *
+ * Disparar mete un proyectil en la lista de entidades, con `kind` a
+ * NP_KIND_SHOT. Va ahi y no en una lista aparte a proposito: asi las cinco
+ * maquinas lo dibujan sin tocar una linea (todas recorren las entidades y
+ * piden su dibujo a np_entity_def) y la traza de las pruebas lo cuenta en su
+ * hash, o sea que la paridad con el preview tambien lo comprueba.
+ */
+
+/* Un hueco libre en la lista. Se busca desde el principio, que es lo mismo que
+   hace el preview: el orden tiene que ser identico o la paridad falla. */
+static int np_hueco_libre(NpWorld *w)
+{
+    uint8_t i;
+    for (i = 0; i < NP_MAX_ENTITIES; i++) {
+        if (!w->entities[i].active) {
+            if (i >= w->entity_count) w->entity_count = (uint8_t)(i + 1);
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* El dano que hace un ataque a un enemigo. Devuelve 1 si le ha dado. */
+static int np_hit_enemy(NpWorld *w, NpEntity *e, uint8_t damage)
+{
+    const NpEnemyDef *d = &np_enemies[e->def];
+    if (e->health > damage) {
+        e->health = (uint8_t)(e->health - damage);
+        e->hurt = 20;
+        w->sfx |= NP_SFX_STOMP;
+        return 1;
+    }
+    e->active = 0;
+    w->score += d->score;
+    w->sfx |= NP_SFX_STOMP;
+    if (d->boss) np_finish_level(w);
+    return 1;
+}
+
+static void np_player_attack(NpWorld *w, uint8_t quien)
+{
+    const NpAttackDef *at = &np_player_def.attack;
+    NpPlayer *p = &w->players[quien];
+    const NpActorDef *pa = &np_player_def.actor;
+
+    if (at->kind == NP_ATTACK_NONE || p->attack_cd) return;
+    p->attack_cd = at->cooldown;
+    w->sfx |= NP_SFX_SHOOT;
+
+    if (at->kind == NP_ATTACK_MELEE) {
+        p->attack_timer = at->duration;
+        return;
+    }
+    {
+        int hueco = np_hueco_libre(w);
+        NpEntity *e;
+        if (hueco < 0) return;               /* no cabe: el disparo se pierde */
+        e = &w->entities[hueco];
+        e->active = 1;
+        e->kind = NP_KIND_SHOT;
+        e->def = 0;
+        e->facing = p->facing;
+        /* sale a la altura del centro del jugador y por el lado que mira */
+        e->x = p->x + NP_I2F(p->facing ? pa->box_w : -at->actor.box_w);
+        e->y = p->y + NP_I2F((pa->box_h - at->actor.box_h) / 2);
+        e->vx = p->facing ? at->speed : -at->speed;
+        e->vy = 0;
+        e->home_y = e->y;
+        e->health = 1;
+        e->hurt = 0;
+        e->timer = 0;
+        e->anim = NP_ANIM_IDLE;
+        e->anim_frame = 0;
+        e->anim_timer = 0;
+        /* cuanto vuela: el alcance en pixeles, pasado a frames */
+        e->vida = at->speed ? (uint16_t)((NP_I2F(at->range) / at->speed) + 1) : 1;
+    }
+}
+
+/* Un proyectil en vuelo: avanza, y se apaga al chocar con una pared, al darle
+   a un enemigo o al agotar su alcance. */
+static void np_shot_update(NpWorld *w, NpEntity *e)
+{
+    const NpActorDef *a = &np_player_def.attack.actor;
+    uint8_t i;
+    int hit_x = 0;
+
+    if (!e->vida) { e->active = 0; return; }
+    e->vida--;
+    e->x = np_move_x(w->level, e->x, e->y, a->box_w, a->box_h, e->vx, &hit_x);
+    if (hit_x) { e->active = 0; return; }
+
+    for (i = 0; i < w->entity_count; i++) {
+        NpEntity *otra = &w->entities[i];
+        const NpActorDef *ea;
+        if (!otra->active || otra->kind != NP_KIND_ENEMY) continue;
+        ea = np_entity_def(otra);
+        if (!np_boxes_overlap(e->x, e->y, a->box_w, a->box_h,
+                              otra->x, otra->y, ea->box_w, ea->box_h))
+            continue;
+        np_hit_enemy(w, otra, np_player_def.attack.damage);
+        e->active = 0;
+        return;
+    }
+    np_anim_tick(a, e->anim, &e->anim_frame, &e->anim_timer);
+}
+
+/* El golpe cuerpo a cuerpo: mientras dura, una caja delante del jugador. */
+static void np_melee_update(NpWorld *w, uint8_t quien)
+{
+    const NpAttackDef *at = &np_player_def.attack;
+    const NpActorDef *pa = &np_player_def.actor;
+    NpPlayer *p = &w->players[quien];
+    np_fix gx, gy;
+    uint8_t i;
+
+    if (!p->attack_timer) return;
+    p->attack_timer--;
+    gx = p->facing ? p->x + NP_I2F(pa->box_w) : p->x - NP_I2F(at->range);
+    gy = p->y;
+    for (i = 0; i < w->entity_count; i++) {
+        NpEntity *e = &w->entities[i];
+        const NpActorDef *ea;
+        if (!e->active || e->kind != NP_KIND_ENEMY) continue;
+        ea = np_entity_def(e);
+        if (!np_boxes_overlap(gx, gy, at->range, pa->box_h,
+                              e->x, e->y, ea->box_w, ea->box_h))
+            continue;
+        np_hit_enemy(w, e, at->damage);
+    }
+}
+
 /* ------------------------------------------------------------- el jugador */
 
 static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
@@ -406,6 +553,13 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
     if (dir > 0) { p->vx = np_approach(p->vx, d->speed, p->on_ground ? d->accel : d->air_accel); p->facing = 1; }
     else if (dir < 0) { p->vx = np_approach(p->vx, -d->speed, p->on_ground ? d->accel : d->air_accel); p->facing = 0; }
     else if (p->on_ground) p->vx = np_approach(p->vx, 0, d->friction);
+
+    /* El ataque va por flanco: mantener el boton no dispara sin parar, y la
+       cadencia la marca `espera:` del game.yaml. */
+    if (p->attack_cd) p->attack_cd--;
+    if ((input & NP_IN_ACTION) && !(w->prev_input[quien] & NP_IN_ACTION))
+        np_player_attack(w, quien);
+    np_melee_update(w, quien);
 
     pressed_jump = (input & NP_IN_JUMP) && !(w->prev_input[quien] & NP_IN_JUMP);
     if (pressed_jump) p->buffer = (uint8_t)(d->jump_buffer + 1);
@@ -441,7 +595,9 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
 
     if (p->invuln) p->invuln--;
 
-    if (!p->on_ground)
+    if (p->attack_timer)
+        np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer, NP_ANIM_ATTACK);
+    else if (!p->on_ground)
         np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer,
                     p->vy < 0 ? NP_ANIM_JUMP : NP_ANIM_FALL);
     else if (p->vx > NP_I2F(1) / 8 || p->vx < -(NP_I2F(1) / 8))
@@ -610,7 +766,8 @@ static void np_touch_entities(NpWorld *w)
             if (!np_boxes_overlap(p->x, p->y, pa->box_w, pa->box_h,
                                   e->x, e->y, ea->box_w, ea->box_h))
                 continue;
-            if (e->kind == 1) {
+            if (e->kind == NP_KIND_SHOT) continue;   /* es tuyo: no te toca */
+            if (e->kind == NP_KIND_ITEM) {
                 np_collect(w, quien, e);
                 continue;
             }
@@ -766,10 +923,16 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
         if (!e->active) continue;
         dx = NP_F2I(e->x) - (int32_t)w->cam_x;
         if (dx < -NP_CULL_MARGIN || dx > NP_SCREEN_W + NP_CULL_MARGIN) {
-            if (e->kind == 0) continue;      /* enemigos lejanos: en pausa */
+            /* Lejos de la vista, los enemigos se quedan en pausa y los
+               proyectiles se apagan: uno que sale de la pantalla ya no vuelve,
+               y si no se ocuparia un hueco de la lista hasta agotar su
+               alcance. */
+            if (e->kind == NP_KIND_SHOT) { e->active = 0; continue; }
+            if (e->kind == NP_KIND_ENEMY) continue;
         }
         if (e->hurt) e->hurt--;
-        if (e->kind == 0) np_enemy_update(w, e);
+        if (e->kind == NP_KIND_SHOT) np_shot_update(w, e);
+        else if (e->kind == NP_KIND_ENEMY) np_enemy_update(w, e);
         else np_item_update(w, e);
     }
 
@@ -782,7 +945,7 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
     w->boss_max = 0;
     for (i = 0; i < w->entity_count; i++) {
         const NpEntity *e = &w->entities[i];
-        if (e->active && e->kind == 0 && np_enemies[e->def].boss) {
+        if (e->active && e->kind == NP_KIND_ENEMY && np_enemies[e->def].boss) {
             w->boss_health = e->health;
             w->boss_max = np_enemies[e->def].health;
             break;

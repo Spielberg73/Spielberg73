@@ -230,16 +230,25 @@ def comprobar(adf: str, capturas: str = "capturas", musica=None,
 
 
 if __name__ == "__main__":
-    disco = (sys.argv[1] if len(sys.argv) > 1
+    argumentos = [a for a in sys.argv[1:] if not a.startswith("--")]
+    opciones = [a for a in sys.argv[1:] if a.startswith("--")]
+    disco = (argumentos[0] if argumentos
              else "examples/bosque-magico/build/amiga/disco/BosqueMagico.adf")
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
         os.path.abspath(__file__))), "tools"))
     from ngplat.project import load_project
     from sonido import buscar_proyecto, musica_al_empezar
-    proyecto = buscar_proyecto(disco)
+    # el game.yaml no siempre esta encima del disquete (las pruebas del kit lo
+    # dejan en otra carpeta), asi que se puede decir donde esta
+    proyecto = ""
+    for opcion in opciones:
+        if opcion.startswith("--proyecto="):
+            proyecto = opcion.split("=", 1)[1]
+    proyecto = proyecto or buscar_proyecto(disco)
     p = load_project(proyecto) if proyecto else None
-    sys.exit(comprobar(disco, sys.argv[2] if len(sys.argv) > 2 else "capturas",
+    sys.exit(comprobar(disco, argumentos[1] if len(argumentos) > 1 else "capturas",
                        musica_al_empezar(p) if p else None,
                        p.sound.efectos.get("salto") if p else None,
                        parallax=bool(p and p.amiga_modo == "8colores" and p.layers),
-                       pantallas=bool(p and p.camera == "pantallas")))
+                       pantallas="--pantallas" in opciones
+                                 or bool(p and p.camera == "pantallas")))

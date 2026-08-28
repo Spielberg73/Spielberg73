@@ -14,8 +14,8 @@ from typing import Dict, List, Sequence
 
 from .sonido import EVENTOS
 from .build import (
-    Build, actor_def_values, enemy_values, item_values, layer_values, player_values,
-    tile_tables,
+    ANIM_SLOTS, Build, actor_def_values, attack_values, enemy_values, item_values,
+    layer_values, player_values, tile_tables,
 )
 from .fixed import FIXED_ONE
 from .paths import ENGINE_DIR, TEMPLATES_DIR
@@ -45,6 +45,15 @@ def _anim_arrays(prefix: str, build_actor) -> str:
         frames = ", ".join(str(f) for f in anim.frames)
         out.append("static const uint8_t %s_anim%d[] = { %s };" % (prefix, slot, frames))
     return "\n".join(out)
+
+
+def _actor_vacio() -> str:
+    """Un NpActorDef a cero, para las tablas que no tienen ningun elemento.
+
+    Las ranuras de animacion se cuentan a partir de ANIM_SLOTS y no a mano:
+    anadir una (como paso con la de atacar) rompia esto en silencio."""
+    ranuras = ", ".join(["{ 0, 0, 0, 0 }"] * len(ANIM_SLOTS))
+    return "{ 0, 0, 1, 1, 0, 0, 16, 16, { %s } }" % ranuras
 
 
 def _actor_def(prefix: str, values: Dict[str, object]) -> str:
@@ -156,6 +165,8 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
 
     # --- jugador
     src.append(_anim_arrays("np_player", build.player))
+    if build.attack is not None:
+        src.append(_anim_arrays("np_attack", build.attack))
     pv = player_values(project)
     src.append("const NpPlayerDef np_player_def = {")
     src.append(_actor_def("np_player", actor_def_values(build.player)) + ",")
@@ -163,8 +174,20 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("    %d, %d, %d, %d, %d," % (pv["jump"], pv["jump_cut"], pv["gravity"],
                                             pv["max_fall"], pv["bounce"]))
     src.append("    %d," % pv["invuln"])
-    src.append("    %d, %d, %d, %d, %d" % (pv["coyote"], pv["jump_buffer"],
-                                           pv["double_jump"], pv["stomp"], pv["health"]))
+    src.append("    %d, %d, %d, %d, %d," % (pv["coyote"], pv["jump_buffer"],
+                                            pv["double_jump"], pv["stomp"], pv["health"]))
+    # el ataque: su dibujo es el ultimo de la lista de actores, si lo hay
+    av = attack_values(project)
+    src.append("    /* ataque */")
+    src.append("    {")
+    if build.attack is not None:
+        src.append(_actor_def("np_attack", actor_def_values(build.attack)) + ",")
+    else:
+        src.append("    " + _actor_vacio() + ",")
+    src.append("        %d, %d, %d, %d, %d, %d"
+               % (av["speed"], av["range"], av["cooldown"], av["duration"],
+                  av["kind"], av["damage"]))
+    src.append("    }")
     src.append("};")
     src.append("")
 
@@ -174,9 +197,7 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
         src.append(_anim_arrays("np_enemy%d" % i, enemy))
     src.append("const NpEnemyDef np_enemies[] = {")
     if not build.enemies:
-        src.append("    { { 0, 0, 1, 1, 0, 0, 16, 16, { { 0, 0, 0, 0 }, { 0, 0, 0, 0 },"
-                   " { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 } } },"
-                   " 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1 }")
+        src.append("    { %s, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1 }" % _actor_vacio())
     for i, enemy in enumerate(build.enemies):
         ev = enemy_values(enemy)
         src.append("    {")
@@ -199,8 +220,7 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
         src.append(_anim_arrays("np_item%d" % i, item))
     src.append("const NpItemDef np_items[] = {")
     if not build.items:
-        src.append("    { { 0, 0, 1, 1, 0, 0, 16, 16, { { 0, 0, 0, 0 }, { 0, 0, 0, 0 },"
-                   " { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 } } }, 0, 0, 1 }")
+        src.append("    { %s, 0, 0, 1 }" % _actor_vacio())
     for i, item in enumerate(build.items):
         iv = item_values(item)
         src.append("    {")

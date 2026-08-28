@@ -215,6 +215,10 @@ niveles:
 `P` es la salida del jugador, `G` la meta, `#` bloque sólido, `=` plataforma
 que se atraviesa desde abajo, `^` pinchos. Los demás símbolos los defines tú.
 
+El jugador puede **atacar**, no sólo pisar: con `ataque:` dispara un proyectil
+o pega de cerca, y el botón de acción de las cinco máquinas pasa a hacer algo.
+`ngplat nuevo` ya te lo deja montado.
+
 Con `jugadores: 2` juegan dos a la vez en la misma pantalla, cada uno con su
 mando y con sus vidas: la cámara va al punto medio y el que se queda atrás se
 para pegado al borde. En cada máquina el segundo mando está donde toca (en el
@@ -341,7 +345,7 @@ neoplat/
 ├── examples/
 │   ├── bosque-magico/      juego de ejemplo listo para compilar
 │   └── cueva-de-hierro/    el mismo motor con seis colores y parallax en Amiga
-└── tests/                  271 pruebas + 29 de jugabilidad + 66 del editor +
+└── tests/                  274 pruebas + 38 de jugabilidad + 66 del editor +
                             bot que se pasa los niveles + emuladores y navegador
 ```
 
@@ -384,7 +388,7 @@ consola, y da igual en cuál.
 make test           # herramientas, validación, generación de C y paridad C/JS
 make test-emulador  # arranca la ROM y el disquete en emuladores de verdad
 make test-navegador # abre el preview y el editor en Chromium
-node tests/comportamiento.js   # 24 pruebas de jugabilidad
+node tests/comportamiento.js   # 38 pruebas de jugabilidad
 make ejemplo-todos             # compila el ejemplo para las cinco máquinas
 ```
 
@@ -521,6 +525,12 @@ Verificado aquí:
   El driver de Z80 de la Mega Drive se ejecuta byte a byte en el emulador del
   kit, cruce de banco incluido, y en la Neo Geo el banco descifra el ADPCM-A
   para poder oírlo.
+- **El ataque hace lo que dice**: nueve pruebas de jugabilidad en JavaScript
+  (que el proyectil vuela hacia donde miras, mata y da puntos, se apaga contra
+  una pared y al agotar el alcance, que la cadencia se respeta, que mantener el
+  botón no dispara sin parar, y que el golpe llega a lo de al lado y no más
+  allá), más la paridad C/JS con los dos tipos de ataque: los proyectiles van
+  en la misma lista de entidades, así que entran en el hash de la traza.
 - El driver de sonido del Z80 se ejecuta en un emulador incluido en las pruebas:
   se comprueba que recibe las órdenes del 68000 y escribe en el chip los
   periodos y volúmenes de las notas escritas en el `game.yaml`.
@@ -553,6 +563,11 @@ Lo que aún no hace:
   ([docs/atarist.md](docs/atarist.md)).
 - **Eventos guionizados**: hay cinco comportamientos de enemigo fijos y un jefe
   por nivel (`jefe: si`); no hay forma de guionizar una secuencia.
+- **Plataformas móviles**: los tipos de tile son sólido, plataforma, pinchos,
+  meta y decorado; ninguno se mueve.
+- **Checkpoints**: morir devuelve siempre al principio del nivel.
+- **Las llaves no abren nada**: se pueden recoger y se cuentan, pero la meta se
+  abre igual.
 - **Zoom de sprites** (la Neo Geo lo permite; el motor no lo usa).
 
 ## Licencia

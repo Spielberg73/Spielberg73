@@ -23,11 +23,14 @@
   var IN = { LEFT: 1, RIGHT: 2, UP: 4, DOWN: 8, JUMP: 16, ACTION: 32, START: 64 };
   var TILE_EMPTY = 0, TILE_SOLID = 1, TILE_PLATFORM = 2, TILE_HAZARD = 3, TILE_GOAL = 4;
   var AI_PATROL = 0, AI_FLYER = 1, AI_CHASER = 2, AI_JUMPER = 3;
-  var ANIM_IDLE = 0, ANIM_RUN = 1, ANIM_JUMP = 2, ANIM_FALL = 3, ANIM_HURT = 4;
+  var ANIM_IDLE = 0, ANIM_RUN = 1, ANIM_JUMP = 2, ANIM_FALL = 3, ANIM_HURT = 4,
+      ANIM_ATTACK = 5;
+  var KIND_ENEMY = 0, KIND_ITEM = 1, KIND_SHOT = 2;
+  var ATTACK_NONE = 0, ATTACK_SHOT = 1, ATTACK_MELEE = 2;
   var STATE = { TITLE: 0, PLAY: 1, DYING: 2, LEVEL_END: 3, GAME_OVER: 4, FINISHED: 5 };
   /* Eventos de sonido; mismos bits que NP_SFX_* en np_types.h. */
   var SFX = { START: 1, JUMP: 2, DJUMP: 4, COIN: 8, STOMP: 16, HURT: 32,
-              DIE: 64, GOAL: 128, LIFE: 256 };
+              DIE: 64, GOAL: 128, LIFE: 256, SHOOT: 512 };
 
   function I2F(v) { return v * FIX_ONE; }
   function F2I(v) { return v >> FIX_SHIFT; }
@@ -55,7 +58,8 @@
       this.players.push({
         x: 0, y: 0, vx: 0, vy: 0, animTimer: 0, invuln: 0, dying: 0,
         anim: 0, animFrame: 0, onGround: 0, facing: 1, jumpsLeft: 0,
-        health: 1, coyote: 0, buffer: 0, lives: 0, playing: 0
+        health: 1, coyote: 0, buffer: 0, lives: 0, playing: 0,
+        attackTimer: 0, attackCd: 0
       });
     }
     this.playerCount = data.players || 1;
@@ -180,7 +184,9 @@
   };
 
   World.prototype.entityDef = function (e) {
-    return e.kind === 0 ? this.data.enemies[e.def] : this.data.items[e.def];
+    if (e.kind === KIND_ENEMY) return this.data.enemies[e.def];
+    if (e.kind === KIND_SHOT) return this.data.player.attack;
+    return this.data.items[e.def];
   };
 
   function actorFrame(def, anim, animFrame) {
@@ -209,6 +215,9 @@
 
   World.prototype.spawnEntities = function () {
     var lv = this.level, i;
+    /* La lista se vacia entera: los proyectiles buscan hueco recorriendola
+       desde el principio, y una entidad viva de un nivel anterior les daria un
+       sitio ocupado. En C es el mismo bucle sobre las 64 ranuras. */
     this.entities = [];
     this.entityCount = 0;
     for (i = 0; i < lv.spawns.length && this.entityCount < MAX_ENTITIES; i++) {
@@ -216,9 +225,9 @@
       var e = {
         active: 1, kind: s[2], def: s[3], x: I2F(s[0]), y: I2F(s[1]),
         homeY: I2F(s[1]), vx: 0, vy: 0, facing: 0, anim: ANIM_IDLE,
-        animFrame: 0, animTimer: 0, hurt: 0, timer: 0, health: 1
+        animFrame: 0, animTimer: 0, hurt: 0, timer: 0, health: 1, vida: 0
       };
-      if (e.kind === 0) {
+      if (e.kind === KIND_ENEMY) {
         var ed = this.data.enemies[e.def];
         e.health = ed.health;
         e.timer = ed.interval;
@@ -237,7 +246,7 @@
     this.placePlayer(quien);
     p.vx = 0; p.vy = 0; p.onGround = 0; p.facing = 1;
     p.health = d.health; p.invuln = 0; p.coyote = 0; p.buffer = 0;
-    p.dying = 0;
+    p.dying = 0; p.attackTimer = 0; p.attackCd = 0;
     p.jumpsLeft = d.double_jump ? 1 : 0;
     p.anim = ANIM_IDLE; p.animFrame = 0; p.animTimer = 0;
   };
@@ -289,6 +298,114 @@
 
   var moveOut = { hit: 0, hitDown: 0, hitUp: 0 };
 
+  /* ------------------------------------------------------------- ataque
+   *
+   * Traduccion literal de np_player_attack / np_shot_update / np_melee_update
+   * de engine/core/np_world.c. Los proyectiles van en la misma lista que
+   * enemigos y objetos (kind = KIND_SHOT) para que las cinco maquinas los
+   * dibujen sin tocar nada y para que la traza de las pruebas los cuente.
+   */
+
+  /* Un hueco libre en la lista, buscando desde el principio: el mismo orden
+     que en C, o la paridad falla. */
+  World.prototype.huecoLibre = function () {
+    var i;
+    for (i = 0; i < this.entities.length; i++) {
+      if (!this.entities[i].active) {
+        if (i >= this.entityCount) this.entityCount = i + 1;
+        return i;
+      }
+    }
+    if (this.entities.length >= MAX_ENTITIES) return -1;
+    this.entities.push({
+      active: 0, kind: KIND_SHOT, def: 0, x: 0, y: 0, homeY: 0, vx: 0, vy: 0,
+      facing: 0, anim: ANIM_IDLE, animFrame: 0, animTimer: 0, hurt: 0,
+      timer: 0, health: 1, vida: 0
+    });
+    i = this.entities.length - 1;
+    if (i >= this.entityCount) this.entityCount = i + 1;
+    return i;
+  };
+
+  World.prototype.hitEnemy = function (e, damage) {
+    var d = this.data.enemies[e.def];
+    if (e.health > damage) {
+      e.health -= damage;
+      e.hurt = 20;
+      this.sfx |= SFX.STOMP;
+      return;
+    }
+    e.active = 0;
+    this.score += d.score;
+    this.sfx |= SFX.STOMP;
+    if (d.boss) this.finishLevel();
+  };
+
+  World.prototype.playerAttack = function (quien) {
+    var at = this.data.player.attack, p = this.players[quien];
+    var pa = this.data.player.actor;
+    if (!at || at.kind === ATTACK_NONE || p.attackCd) return;
+    p.attackCd = at.cooldown;
+    this.sfx |= SFX.SHOOT;
+    if (at.kind === ATTACK_MELEE) { p.attackTimer = at.duration; return; }
+
+    var hueco = this.huecoLibre();
+    if (hueco < 0) return;
+    var e = this.entities[hueco];
+    e.active = 1;
+    e.kind = KIND_SHOT;
+    e.def = 0;
+    e.facing = p.facing;
+    e.x = p.x + I2F(p.facing ? pa.box_w : -at.actor.box_w);
+    e.y = p.y + I2F(idiv(pa.box_h - at.actor.box_h, 2));
+    e.vx = p.facing ? at.speed : -at.speed;
+    e.vy = 0;
+    e.homeY = e.y;
+    e.health = 1;
+    e.hurt = 0;
+    e.timer = 0;
+    e.anim = ANIM_IDLE;
+    e.animFrame = 0;
+    e.animTimer = 0;
+    e.vida = at.speed ? idiv(I2F(at.range), at.speed) + 1 : 1;
+  };
+
+  World.prototype.shotUpdate = function (e) {
+    var at = this.data.player.attack, a = at.actor, i;
+    if (!e.vida) { e.active = 0; return; }
+    e.vida--;
+    e.x = this.moveX(e.x, e.y, a.box_w, a.box_h, e.vx, moveOut);
+    if (moveOut.hit) { e.active = 0; return; }
+    for (i = 0; i < this.entityCount; i++) {
+      var otra = this.entities[i];
+      if (!otra.active || otra.kind !== KIND_ENEMY) continue;
+      var ea = this.entityDef(otra).actor;
+      if (!overlap(e.x, e.y, a.box_w, a.box_h,
+                        otra.x, otra.y, ea.box_w, ea.box_h)) continue;
+      this.hitEnemy(otra, at.damage);
+      e.active = 0;
+      return;
+    }
+    animTick(a, e);
+  };
+
+  World.prototype.meleeUpdate = function (quien) {
+    var at = this.data.player.attack, p = this.players[quien];
+    var pa = this.data.player.actor, i;
+    if (!p.attackTimer) return;
+    p.attackTimer--;
+    var gx = p.facing ? p.x + I2F(pa.box_w) : p.x - I2F(at.range);
+    var gy = p.y;
+    for (i = 0; i < this.entityCount; i++) {
+      var e = this.entities[i];
+      if (!e.active || e.kind !== KIND_ENEMY) continue;
+      var ea = this.entityDef(e).actor;
+      if (!overlap(gx, gy, at.range, pa.box_h,
+                        e.x, e.y, ea.box_w, ea.box_h)) continue;
+      this.hitEnemy(e, at.damage);
+    }
+  };
+
   World.prototype.playerUpdate = function (quien, input) {
     var d = this.data.player, a = d.actor, p = this.players[quien];
     var dir = 0;
@@ -298,6 +415,12 @@
     if (dir > 0) { p.vx = approach(p.vx, d.speed, p.onGround ? d.accel : d.air_accel); p.facing = 1; }
     else if (dir < 0) { p.vx = approach(p.vx, -d.speed, p.onGround ? d.accel : d.air_accel); p.facing = 0; }
     else if (p.onGround) p.vx = approach(p.vx, 0, d.friction);
+
+    /* El ataque va por flanco: mantener el boton no dispara sin parar. */
+    if (p.attackCd) p.attackCd--;
+    if ((input & IN.ACTION) && !(this.prevInput[quien] & IN.ACTION))
+      this.playerAttack(quien);
+    this.meleeUpdate(quien);
 
     var pressedJump = (input & IN.JUMP) && !(this.prevInput[quien] & IN.JUMP);
     if (pressedJump) p.buffer = d.jump_buffer + 1;
@@ -328,7 +451,8 @@
 
     if (p.invuln) p.invuln--;
 
-    if (!p.onGround) animSet(p, p.vy < 0 ? ANIM_JUMP : ANIM_FALL);
+    if (p.attackTimer) animSet(p, ANIM_ATTACK);
+    else if (!p.onGround) animSet(p, p.vy < 0 ? ANIM_JUMP : ANIM_FALL);
     else if (p.vx > idiv(FIX_ONE, 8) || p.vx < -idiv(FIX_ONE, 8)) animSet(p, ANIM_RUN);
     else animSet(p, ANIM_IDLE);
     animTick(a, p);
@@ -435,7 +559,8 @@
         if (!e.active) continue;
         var ea = this.entityDef(e).actor;
         if (!overlap(p.x, p.y, pa.box_w, pa.box_h, e.x, e.y, ea.box_w, ea.box_h)) continue;
-        if (e.kind === 1) { this.collect(quien, e); continue; }
+        if (e.kind === KIND_SHOT) continue;      /* es tuyo: no te toca */
+        if (e.kind === KIND_ITEM) { this.collect(quien, e); continue; }
         var d = this.data.enemies[e.def];
         /* Misma ventana de pisado que np_world.c: cayendo y con los pies por
            encima de la mitad del enemigo antes de moverse. */
@@ -554,10 +679,14 @@
       if (!e.active) continue;
       var dx = F2I(e.x) - this.camX;
       if (dx < -CULL_MARGIN || dx > SCREEN_W + CULL_MARGIN) {
-        if (e.kind === 0) continue;
+        /* Lejos de la vista, los enemigos se quedan en pausa y los
+           proyectiles se apagan: uno que sale de la pantalla ya no vuelve. */
+        if (e.kind === KIND_SHOT) { e.active = 0; continue; }
+        if (e.kind === KIND_ENEMY) continue;
       }
       if (e.hurt) e.hurt--;
-      if (e.kind === 0) this.enemyUpdate(e);
+      if (e.kind === KIND_SHOT) this.shotUpdate(e);
+      else if (e.kind === KIND_ENEMY) this.enemyUpdate(e);
       else this.itemUpdate(e);
     }
 
@@ -568,7 +697,7 @@
     this.bossMax = 0;
     for (i = 0; i < this.entityCount; i++) {
       var b = this.entities[i];
-      if (b.active && b.kind === 0 && this.data.enemies[b.def].boss) {
+      if (b.active && b.kind === KIND_ENEMY && this.data.enemies[b.def].boss) {
         this.bossHealth = b.health;
         this.bossMax = this.data.enemies[b.def].health;
         break;
