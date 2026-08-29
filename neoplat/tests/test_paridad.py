@@ -25,6 +25,8 @@ IN_LEFT, IN_RIGHT, IN_DOWN, IN_JUMP, IN_START = 1, 2, 8, 16, 64
 IN_ACTION = 32
 IN_UP = 4
 FRAMES = 3000
+ESTADO_JUEGO = 1            # NP_STATE_PLAY
+ESTADO_MURIENDO = 2         # NP_STATE_DYING
 ESTADO_FIN_NIVEL = 3        # NP_STATE_LEVEL_END
 
 
@@ -113,12 +115,14 @@ class TestParidad(unittest.TestCase):
             assert marca in texto, "el primer nivel ya no empieza asi"
             texto = texto.replace(marca, "\n      P.k.....s", 1)
         if genero == "castlevania":
-            # El candelabro del andamiaje esta a doce columnas de la salida y el
-            # mando aleatorio no llega a pegarle: se acerca a la salida para que
-            # la traza compare tambien romperlo, coger la municion y gastarla.
+            # El candelabro, la mejora del latigo y el punto de control estan
+            # repartidos por el nivel y el mando aleatorio no llega a ninguno:
+            # se juntan los tres a la salida para que la traza compare tambien
+            # romperlo, coger la municion, alargar el latigo y, al morir,
+            # reaparecer en la antorcha en vez de en la salida.
             marca = "P.......s...V"
             assert marca in texto, "el primer nivel ya no empieza asi"
-            texto = texto.replace(marca, "P.V.....s....", 1)
+            texto = texto.replace(marca, "P.VM!...s....", 1)
         if tablon:
             # el andamiaje pone la plataforma movil en el segundo nivel y la
             # traza no llega: se pone una a la salida del primero, encima del
@@ -298,6 +302,41 @@ class TestParidad(unittest.TestCase):
         self.assertGreater(distintos, 20,
                            "la escalera no cambia por donde pasa el jugador")
 
+    def test_el_punto_de_control_manda_al_reaparecer(self):
+        """El punto de control tiene que cambiar **donde** reapareces, no solo
+        encenderse: sin esto la paridad compararia dos motores que apuntan la
+        casilla y luego la ignoran."""
+        traza, _ = self._trazas(1, "castillo")
+        columnas = [linea.split() for linea in traza]
+        salida = int(columnas[0][1]) >> 8
+        self.assertEqual({c[27] for c in columnas}, {"0", "1"},
+                         "en toda la traza no se toca el punto de control")
+        marcados = [c for c in columnas if c[27] == "1"]
+        self.assertEqual({(c[28], c[29]) for c in marcados}, {("4", "14")},
+                         "el punto de control apuntado no es el del mapa")
+        # y el que reaparece despues de morir sale ahi, no en la salida
+        vueltas = [b for a, b in zip(columnas, columnas[1:])
+                   if a[5] == str(ESTADO_MURIENDO) and b[5] == str(ESTADO_JUEGO)]
+        self.assertTrue(vueltas, "en toda la traza no se muere nadie")
+        for c in vueltas:
+            x = int(c[1]) >> 8
+            self.assertGreater(x, salida + 32,
+                               "se reaparece en la salida, no en la antorcha")
+            self.assertLess(abs(x - 4 * 16), 16,
+                            "se reaparece lejos de la casilla marcada")
+
+    def test_la_mejora_del_latigo_se_coge_y_se_pierde(self):
+        """La mejora sube el alcance del arma y se pierde al morir. Si no se
+        cogiera ninguna, la paridad estaria comparando dos latigos de serie."""
+        traza, _ = self._trazas(1, "castillo")
+        columnas = [linea.split() for linea in traza]
+        niveles = [int(c[30]) for c in columnas]
+        self.assertGreater(max(niveles), 0,
+                           "en toda la traza no se coge ni una mejora")
+        # y despues de morir se vuelve a cero: si solo subiera, morir no dolria
+        perdidas = sum(1 for a, b in zip(niveles, niveles[1:]) if b < a)
+        self.assertGreater(perdidas, 0, "la mejora no se pierde nunca")
+
     def test_misma_traza_a_dos_jugadores(self):
         """Lo mismo con `jugadores: 2`: dos mandos, dos vidas, la camara en el
         punto medio y el que se queda atras pegado al borde."""
@@ -310,7 +349,7 @@ class TestParidad(unittest.TestCase):
         en su sitio y la prueba de paridad pasaria sin comprobar nada."""
         traza, _ = self._trazas(1, "dos")
         columnas = [linea.split() for linea in traza]
-        self.assertTrue(all(len(c) == 27 for c in columnas),
+        self.assertTrue(all(len(c) == 31 for c in columnas),
                         "la traza no trae las columnas del segundo jugador")
         # al empezar los dos estan dentro; luego el mando aleatorio puede
         # dejarlo sin vidas, y eso tambien tiene que salir igual en las dos

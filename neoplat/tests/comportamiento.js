@@ -17,9 +17,10 @@ function fx(v) { return Math.round(v * F); }
 
 /* El simbolo del mapa -> su hueco en la leyenda; y la leyenda -> el tipo de
    tile que entiende el motor (0 vacio, 1 solido, 2 plataforma, 3 peligro,
-   4 meta, 6 escalera que sube a la derecha, 7 la que sube a la izquierda). */
-var LEYENDA = { ".": 0, "#": 1, "=": 2, "^": 3, "G": 4, "/": 5, "\\": 6 };
-var TIPOS = [0, 1, 2, 3, 4, 6, 7];
+   4 meta, 6 escalera que sube a la derecha, 7 la que sube a la izquierda,
+   8 punto de control). */
+var LEYENDA = { ".": 0, "#": 1, "=": 2, "^": 3, "G": 4, "/": 5, "\\": 6, "!": 7 };
+var TIPOS = [0, 1, 2, 3, 4, 6, 7, 8];
 
 function anim(frames, speed) {
   return { frames: frames, count: frames.length, speed: speed || 8, loop: 1 };
@@ -51,6 +52,7 @@ function datos(filas, opciones) {
       else if (ch === "v") { spawns.push([x * 16 + 2, y * 16 + 16 - enemigo.box_h, 0, 1]); ch = "."; }
       else if (ch === "o") { spawns.push([x * 16 + 3, y * 16 + 16 - objeto.box_h, 1, 0]); ch = "."; }
       else if (ch === "k") { spawns.push([x * 16 + 3, y * 16 + 16 - objeto.box_h, 1, 1]); ch = "."; }
+      else if (ch === "M") { spawns.push([x * 16 + 3, y * 16 + 16 - objeto.box_h, 1, 3]); ch = "."; }
       else if (ch === "T") { spawns.push([x * 16, y * 16 + 16 - tablon.box_h, 3, 0]); ch = "."; }
       else if (ch === "C") { spawns.push([x * 16 + 2, y * 16 + 16 - candelabro.box_h, 4, 0]); ch = "."; }
       else if (ch === "V") { spawns.push([x * 16 + 2, y * 16 + 16 - candelabro.box_h, 4, 1]); ch = "."; }
@@ -91,6 +93,10 @@ function datos(filas, opciones) {
         windup: opciones.preparacion || 0,
         locks: opciones.clavado ? 1 : 0,
         damage: opciones.dano || 1,
+        /* las mejoras del arma: cada una suma `range_step` al alcance */
+        levels: opciones.mejoras || 0,
+        range_step: opciones.alcanceMejora === undefined ? 12
+                                                         : opciones.alcanceMejora,
         actor: actor(6, 6)
       },
       /* el arma secundaria: por defecto ninguna, como un juego sin
@@ -126,7 +132,9 @@ function datos(filas, opciones) {
         name: "llave" },
       /* efecto 4 = municion del arma secundaria */
       { actor: objeto, score: 0, effect: 4, amount: opciones.valorMunicion || 5,
-        name: "corazon" }
+        name: "corazon" },
+      /* efecto 5 = mejora del arma: la alarga un paso y se pierde al morir */
+      { actor: objeto, score: 200, effect: 5, amount: 1, name: "mejora" }
     ],
     breakables: [
       /* "C": suelta la moneda; "V": no suelta nada */
@@ -142,7 +150,7 @@ function datos(filas, opciones) {
       axis: opciones.tablonEje === "vertical" ? 1 : 0,
       name: "tablon"
     }],
-    tiles: { kind: TIPOS, gfx: [0, 1, 2, 3, 4, 5, 6] },
+    tiles: { kind: TIPOS, gfx: [0, 1, 2, 3, 4, 5, 6, 7] },
     levels: [{
       name: "TEST", width: ancho, height: alto, cells: celdas,
       spawns: spawns, start: start, background: "#000000",
@@ -1168,6 +1176,162 @@ prueba("morir con vidas de sobra reinicia el nivel", function () {
   assert.strictEqual(w.players[0].lives, 2);
   assert.strictEqual(NP.F2I(w.players[0].x), inicio);
   assert.strictEqual(w.state, NP.STATE.PLAY);
+});
+
+/* ------------------------------------------- puntos de control */
+
+/* El suelo de siempre con la antorcha en la columna 8 y unos pinchos en la 14:
+   se sale de la 2, se pasa por la antorcha y se muere en los pinchos. */
+function conAntorcha(extra) {
+  return suelo([[13, 2, "P"], [13, 8, "!"], [13, 14, "^"]].concat(extra || []));
+}
+
+/* Corre hacia la derecha hasta que se pierde una vida (o se acaban los frames)
+   y devuelve el jugador ya reaparecido. */
+function morirYVolver(w) {
+  var vidas = w.players[0].lives;
+  for (var i = 0; i < 600 && w.players[0].lives === vidas; i++) w.step(NP.IN.RIGHT);
+  for (var j = 0; j < 200 && w.state !== NP.STATE.PLAY; j++) w.step(0);
+  return w.players[0];
+}
+
+prueba("la antorcha no estorba: se pasa por delante", function () {
+  /* sin pinchos: aqui lo unico que se mira es que la casilla no frene ni haga
+     dano, y unos pinchos mas adelante lo taparian */
+  var w = mundo(suelo([[13, 2, "P"], [13, 8, "!"]]));
+  var antes = NP.F2I(w.players[0].x);
+  correr(w, 120, NP.IN.RIGHT);
+  assert.ok(NP.F2I(w.players[0].x) > antes + 100,
+            "la antorcha frena al jugador");
+  assert.strictEqual(w.players[0].health, 1, "la antorcha hace dano");
+});
+
+prueba("pasar por la antorcha apunta su casilla", function () {
+  var w = mundo(conAntorcha());
+  assert.strictEqual(w.checkOn, 0, "empieza con un punto de control puesto");
+  correr(w, 120, NP.IN.RIGHT);
+  assert.strictEqual(w.checkOn, 1, "no se ha marcado el punto de control");
+  assert.strictEqual(w.checkX, 8, "la columna marcada no es la de la antorcha");
+  assert.strictEqual(w.checkY, 13, "la fila marcada no es la de la antorcha");
+});
+
+prueba("al morir se reaparece en la antorcha y no en la salida", function () {
+  var w = mundo(conAntorcha(), { lives: 3 });
+  var salida = w.level.start[0];
+  var p = morirYVolver(w);
+  assert.strictEqual(w.players[0].lives, 2, "no se ha perdido una vida");
+  assert.strictEqual(w.state, NP.STATE.PLAY, "el nivel no ha vuelto a empezar");
+  assert.ok(NP.F2I(p.x) > salida + 32, "se reaparece en la salida");
+  assert.ok(Math.abs(NP.F2I(p.x) - 8 * 16) < 16,
+            "se reaparece lejos de la antorcha: " + NP.F2I(p.x));
+  assert.strictEqual(w.checkOn, 1, "reiniciar el nivel ha borrado la antorcha");
+});
+
+prueba("sin pasar por la antorcha se reaparece en la salida", function () {
+  /* la misma prueba con la antorcha detras: si el motor la marcase sin
+     tocarla, la de arriba pasaria sin comprobar nada */
+  var w = mundo(suelo([[13, 2, "P"], [13, 0, "!"], [13, 14, "^"]]), { lives: 3 });
+  var salida = w.level.start[0];
+  var p = morirYVolver(w);
+  assert.strictEqual(w.checkOn, 0, "se ha marcado una antorcha que no se toca");
+  assert.strictEqual(NP.F2I(p.x), salida, "no se reaparece en la salida");
+});
+
+prueba("volver a pasar por la misma antorcha no vuelve a sonar", function () {
+  var w = mundo(conAntorcha());
+  var suena = 0, i;
+  for (i = 0; i < 120; i++) { w.step(NP.IN.RIGHT); if (w.sfx & NP.SFX.CHECK) suena++; }
+  assert.strictEqual(suena, 1, "la antorcha ha sonado " + suena + " veces");
+  for (i = 0; i < 90; i++) { w.step(NP.IN.LEFT); if (w.sfx & NP.SFX.CHECK) suena++; }
+  for (i = 0; i < 120; i++) { w.step(NP.IN.RIGHT); if (w.sfx & NP.SFX.CHECK) suena++; }
+  assert.strictEqual(suena, 1, "la antorcha vuelve a sonar al repasarla");
+});
+
+prueba("manda la ultima antorcha por la que se pasa", function () {
+  var w = mundo(suelo([[13, 2, "P"], [13, 6, "!"], [13, 12, "!"], [13, 18, "^"]]),
+                { lives: 3 });
+  correr(w, 50, NP.IN.RIGHT);
+  assert.strictEqual(w.checkX, 6, "no se ha marcado la primera");
+  correr(w, 90, NP.IN.RIGHT);
+  assert.strictEqual(w.checkX, 12, "la segunda antorcha no releva a la primera");
+  var p = morirYVolver(w);
+  assert.ok(Math.abs(NP.F2I(p.x) - 12 * 16) < 16,
+            "se reaparece en la primera antorcha, no en la ultima");
+});
+
+prueba("cargar el nivel a mano borra la antorcha", function () {
+  var w = mundo(conAntorcha());
+  correr(w, 120, NP.IN.RIGHT);
+  assert.strictEqual(w.checkOn, 1);
+  w.loadLevel(0);                 /* empezar un nivel es empezarlo de cero */
+  assert.strictEqual(w.checkOn, 0, "el nivel nuevo hereda la antorcha");
+  assert.strictEqual(NP.F2I(w.players[0].x), w.level.start[0],
+                     "no se empieza en la salida del nivel");
+});
+
+/* ------------------------------------------- mejoras del arma */
+
+/* El jugador en la columna 2 y un candelabro en la 4: con el alcance de serie
+   (12 px) el latigo se queda corto y con una mejora (+12) llega. */
+function conMejora(opciones) {
+  var o = { ataque: "golpe", alcance: 12, mejoras: 2, alcanceMejora: 12,
+            espera: 1, duracion: 6 };
+  Object.keys(opciones || {}).forEach(function (k) { o[k] = opciones[k]; });
+  return { filas: suelo([[13, 2, "P"], [13, 4, "V"]]), opciones: o };
+}
+
+function candelabroVivo(w) {
+  for (var i = 0; i < w.entityCount; i++)
+    if (w.entities[i].kind === 4 && w.entities[i].active) return true;
+  return false;
+}
+
+prueba("el latigo de serie no llega al candelabro", function () {
+  var c = conMejora();
+  var w = mundo(c.filas, c.opciones);
+  correr(w, 60, NP.IN.ACTION);
+  assert.ok(candelabroVivo(w), "el latigo de serie ya llegaba: la prueba no vale");
+});
+
+prueba("con una mejora el latigo llega mas lejos", function () {
+  var c = conMejora();
+  var w = mundo(c.filas, c.opciones);
+  w.players[0].power = 1;
+  correr(w, 60, NP.IN.ACTION);
+  assert.ok(!candelabroVivo(w), "la mejora no alarga el latigo");
+});
+
+prueba("una mejora de mas no alarga nada si el arma no las admite", function () {
+  var c = conMejora({ mejoras: 0 });
+  var w = mundo(c.filas, c.opciones);
+  w.players[0].power = 5;
+  correr(w, 60, NP.IN.ACTION);
+  assert.ok(candelabroVivo(w), "el arma se alarga sin admitir mejoras");
+});
+
+prueba("recoger la mejora sube el nivel del arma", function () {
+  var c = conMejora();
+  var w = mundo(suelo([[13, 2, "P"], [13, 3, "M"], [13, 4, "V"]]), c.opciones);
+  assert.strictEqual(w.players[0].power, 0);
+  correr(w, 30, NP.IN.RIGHT);
+  assert.strictEqual(w.players[0].power, 1, "recoger la mejora no ha subido nada");
+});
+
+prueba("las mejoras no pasan del tope del arma", function () {
+  var c = conMejora({ mejoras: 1 });
+  var w = mundo(suelo([[13, 2, "P"], [13, 3, "M"], [13, 5, "M"]]), c.opciones);
+  correr(w, 90, NP.IN.RIGHT);
+  assert.strictEqual(w.players[0].power, 1, "el arma se ha mejorado de mas");
+});
+
+prueba("morir devuelve el arma a como estaba", function () {
+  var c = conMejora();
+  var w = mundo(suelo([[13, 2, "P"], [13, 3, "M"], [13, 14, "^"]]),
+                Object.assign({ lives: 3 }, c.opciones));
+  correr(w, 30, NP.IN.RIGHT);
+  assert.strictEqual(w.players[0].power, 1, "no se ha cogido la mejora");
+  morirYVolver(w);
+  assert.strictEqual(w.players[0].power, 0, "la mejora sobrevive a la muerte");
 });
 
 /* ----------------------------------------------------------------- camara */

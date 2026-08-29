@@ -24,6 +24,8 @@
   var TILE_EMPTY = 0, TILE_SOLID = 1, TILE_PLATFORM = 2, TILE_HAZARD = 3, TILE_GOAL = 4;
   /* escaleras: la que sube a la derecha y la que sube a la izquierda */
   var TILE_STAIR_R = 6, TILE_STAIR_L = 7;
+  /* punto de control: se atraviesa y apunta donde reaparece el jugador */
+  var TILE_CHECK = 8;
   var AI_PATROL = 0, AI_FLYER = 1, AI_CHASER = 2, AI_JUMPER = 3;
   var ANIM_IDLE = 0, ANIM_RUN = 1, ANIM_JUMP = 2, ANIM_FALL = 3, ANIM_HURT = 4,
       ANIM_ATTACK = 5, ANIM_STAIR = 6;
@@ -37,7 +39,8 @@
   var STATE = { TITLE: 0, PLAY: 1, DYING: 2, LEVEL_END: 3, GAME_OVER: 4, FINISHED: 5 };
   /* Eventos de sonido; mismos bits que NP_SFX_* en np_types.h. */
   var SFX = { START: 1, JUMP: 2, DJUMP: 4, COIN: 8, STOMP: 16, HURT: 32,
-              DIE: 64, GOAL: 128, LIFE: 256, SHOOT: 512, BREAK: 1024 };
+              DIE: 64, GOAL: 128, LIFE: 256, SHOOT: 512, BREAK: 1024,
+              CHECK: 2048 };
 
   function I2F(v) { return v * FIX_ONE; }
   function F2I(v) { return v >> FIX_SHIFT; }
@@ -66,7 +69,7 @@
         x: 0, y: 0, vx: 0, vy: 0, animTimer: 0, invuln: 0, dying: 0,
         anim: 0, animFrame: 0, onGround: 0, facing: 1, jumpsLeft: 0,
         health: 1, coyote: 0, buffer: 0, lives: 0, playing: 0,
-        attackTimer: 0, attackCd: 0, riding: 0, stun: 0,
+        attackTimer: 0, attackCd: 0, riding: 0, stun: 0, power: 0,
         stairs: 0, stairDir: 1
       });
     }
@@ -80,6 +83,9 @@
     this.sfx = 0;                 /* eventos de sonido de este frame */
     this.keys = 0; this.hearts = 0; this.entityCount = 0;
     this.bossHealth = 0; this.bossMax = 0;
+    /* El punto de control tocado en este nivel, en casillas. `checkOn` a cero
+       quiere decir que se reaparece en la salida. */
+    this.checkX = 0; this.checkY = 0; this.checkOn = 0;
     /* Igual que np_world_init en C: en el titulo ya se ve el principio del
        nivel, con los jugadores colocados en su salida. */
     for (i = 0; i < MAX_PLAYERS; i++) {
@@ -91,11 +97,20 @@
   }
 
   /* El primer jugador sale en la salida del nivel y el segundo un poco a la
-     derecha, para que no empiecen uno dentro del otro. */
+     derecha, para que no empiecen uno dentro del otro. Si hay un punto de
+     control tocado, se sale de pie encima de esa casilla y centrado en su
+     columna, igual que np_player_place en C. */
   World.prototype.placePlayer = function (quien) {
-    var p = this.players[quien];
-    p.x = I2F(this.level.start[0] + (quien ? HUECO_2P : 0));
-    p.y = I2F(this.level.start[1]);
+    var a = this.data.player.actor, p = this.players[quien], x, y;
+    if (this.checkOn) {
+      x = this.checkX * TILE + ((TILE - a.box_w) / 2 | 0);
+      y = this.checkY * TILE + TILE - a.box_h;
+    } else {
+      x = this.level.start[0];
+      y = this.level.start[1];
+    }
+    p.x = I2F(x + (quien ? HUECO_2P : 0));
+    p.y = I2F(y);
   };
 
   World.prototype.tileKindAt = function (tx, ty) {
@@ -263,6 +278,7 @@
     p.vx = 0; p.vy = 0; p.onGround = 0; p.facing = 1;
     p.health = d.health; p.invuln = 0; p.coyote = 0; p.buffer = 0;
     p.dying = 0; p.attackTimer = 0; p.attackCd = 0; p.riding = 0; p.stun = 0;
+    p.power = 0;                /* el arma vuelve a la de serie */
     p.stairs = 0; p.stairDir = 1;
     p.jumpsLeft = d.double_jump ? 1 : 0;
     p.anim = ANIM_IDLE; p.animFrame = 0; p.animTimer = 0;
@@ -273,6 +289,8 @@
     if (index >= this.data.levels.length) index = 0;
     this.levelIndex = index;
     this.level = this.data.levels[index];
+    /* antes de colocar a nadie: cargar un nivel es empezarlo de cero */
+    this.checkOn = 0; this.checkX = 0; this.checkY = 0;
     for (i = 0; i < MAX_PLAYERS; i++) this.resetPlayer(i);
     this.keys = 0;
     this.hearts = 0;
@@ -398,6 +416,14 @@
     else if (e.kind === KIND_BREAKABLE) this.hitBreakable(e, damage);
   };
 
+  /* El alcance del arma ahora mismo: el de siempre mas lo que suman las
+     mejoras recogidas. Igual que np_attack_range en C. */
+  World.prototype.attackRange = function (quien) {
+    var at = this.data.player.attack, p = this.players[quien];
+    var niveles = p.power < at.levels ? p.power : at.levels;
+    return at.range + niveles * at.range_step;
+  };
+
   World.prototype.playerAttack = function (quien) {
     var at = this.data.player.attack, p = this.players[quien];
     var pa = this.data.player.actor;
@@ -426,7 +452,8 @@
     e.anim = ANIM_IDLE;
     e.animFrame = 0;
     e.animTimer = 0;
-    e.vida = at.speed ? idiv(I2F(at.range), at.speed) + 1 : 1;
+    e.vida = at.speed
+      ? idiv(I2F(this.attackRange(quien)), at.speed) + 1 : 1;
   };
 
   World.prototype.shotUpdate = function (e) {
@@ -457,7 +484,8 @@
     if (at.kind !== ATTACK_MELEE) return;     /* un disparo no pega de cerca */
     /* Los primeros `preparacion:` frames el golpe se ve pero no toca. */
     if (p.attackTimer + at.windup >= at.duration) return;
-    var gx = p.facing ? p.x + I2F(pa.box_w) : p.x - I2F(at.range);
+    var alcance = this.attackRange(quien);
+    var gx = p.facing ? p.x + I2F(pa.box_w) : p.x - I2F(alcance);
     var gy = p.y;
     for (i = 0; i < this.entityCount; i++) {
       var e = this.entities[i];
@@ -467,7 +495,7 @@
          varios frames y acertaria en todos. Igual que np_melee_update. */
       if (e.hurt) continue;
       var ea = this.entityDef(e).actor;
-      if (!overlap(gx, gy, at.range, pa.box_h,
+      if (!overlap(gx, gy, alcance, pa.box_h,
                         e.x, e.y, ea.box_w, ea.box_h)) continue;
       this.hitEntity(e, at.damage);
     }
@@ -861,7 +889,35 @@
       p.health = Math.min(p.health + d.amount, this.data.player.health);
     } else if (d.effect === 3) { if (this.keys < 255) this.keys += d.amount; }
     else if (d.effect === 4) { this.hearts = Math.min(this.hearts + d.amount, 99); }
+    else if (d.effect === 5) {
+      var at = this.data.player.attack;
+      p.power = Math.min(p.power + d.amount, at ? at.levels : 0);
+    }
     e.active = 0;
+  };
+
+  /* Los puntos de control. Se busca **la casilla**, no solo si toca alguna,
+     porque lo que hay que guardar es donde estaba. Volver a pasar por el que
+     ya esta marcado no hace nada; pasar por uno anterior si lo mueve hacia
+     atras. Igual que np_check_touch en C. */
+  World.prototype.checkTouch = function (quien) {
+    var a = this.data.player.actor, p = this.players[quien];
+    var tx0 = F2I(p.x) >> TILE_SHIFT;
+    var tx1 = F2I(p.x + I2F(a.box_w) - 1) >> TILE_SHIFT;
+    var ty0 = F2I(p.y) >> TILE_SHIFT;
+    var ty1 = F2I(p.y + I2F(a.box_h) - 1) >> TILE_SHIFT;
+    var tx, ty;
+    for (ty = ty0; ty <= ty1; ty++) {
+      for (tx = tx0; tx <= tx1; tx++) {
+        if (this.tileKindAt(tx, ty) !== TILE_CHECK) continue;
+        if (this.checkOn && this.checkX === tx && this.checkY === ty) return;
+        this.checkOn = 1;
+        this.checkX = tx;
+        this.checkY = ty;
+        this.sfx |= SFX.CHECK;
+        return;
+      }
+    }
   };
 
   /* Jugador por jugador y, dentro, entidad por entidad: el mismo orden que
@@ -1048,6 +1104,7 @@
         this.playerHurt(quien, 99);
         continue;
       }
+      this.checkTouch(quien);
       /* La meta solo se abre si se llevan las llaves que pide el nivel. Las
          llaves son de la partida, no de cada jugador. */
       if (this.keys >= (this.level.keys_needed || 0) &&
@@ -1064,6 +1121,18 @@
       if (this.timeLeft) this.timeLeft--;
       else for (quien = 0; quien < MAX_PLAYERS; quien++) this.playerHurt(quien, 99);
     }
+  };
+
+  /* Volver a empezar el nivel despues de perder una vida: cargarlo, pero
+     conservando el punto de control. Igual que np_level_restart en C. */
+  World.prototype.levelRestart = function () {
+    var on = this.checkOn, cx = this.checkX, cy = this.checkY, i;
+    this.loadLevel(this.levelIndex);
+    if (!on) return;
+    this.checkOn = on;
+    this.checkX = cx;
+    this.checkY = cy;
+    for (i = 0; i < MAX_PLAYERS; i++) this.placePlayer(i);
   };
 
   World.prototype.step = function (input, input2) {
@@ -1109,7 +1178,7 @@
           if (pv.lives > 1) { pv.lives--; quedan++; }
           else { pv.lives = 0; pv.playing = 0; }
         }
-        if (quedan) this.loadLevel(this.levelIndex);
+        if (quedan) this.levelRestart();
         else { this.state = STATE.GAME_OVER; this.stateTimer = GAME_OVER_TIME; }
         break;
       }

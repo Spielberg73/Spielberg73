@@ -104,6 +104,18 @@ class TestCli(unittest.TestCase):
         self.assertNotIn("stair_r", {t.kind for t in plat.tiles.values()})
         self.assertIn("/", cast.levels[0].rows[14],
                       "el nivel del de latigo no trae escalera")
+        # los puntos de control y la mejora del arma van con el mismo genero
+        self.assertIn("check", tipos, "el de latigo no tiene puntos de control")
+        self.assertNotIn("check", {t.kind for t in plat.tiles.values()})
+        self.assertIn("!", cast.levels[0].rows[14],
+                      "el nivel del de latigo no trae punto de control")
+        self.assertEqual(cast.player.attack.levels, 2,
+                         "el latigo no se puede mejorar")
+        self.assertEqual(plat.player.attack.levels, 0,
+                         "el de plataformas trae mejoras de arma")
+        self.assertIn("upgrade", {i.effect for i in cast.items.values()},
+                      "el de latigo no trae el objeto que mejora el arma")
+        self.assertNotIn("upgrade", {i.effect for i in plat.items.values()})
 
     def test_un_genero_que_no_existe_no_cuela(self):
         destino = os.path.join(self.tmp, "inventado")

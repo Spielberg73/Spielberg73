@@ -77,6 +77,9 @@ Abre `game.yaml` y busca `niveles:`. El mapa son caracteres:
   (mira `spawns:`)
 - `/` y `|` escaleras (en el género castlevania): te subes pulsando arriba
   encima de ellas y subes en diagonal, paso a paso
+- `!` un punto de control (también en castlevania): no estorba, pero si te
+  matan reapareces ahí en vez de al principio del nivel
+- `M` la mejora del látigo: cada una lo alarga un poco, y se pierden al morir
 
 
 Cambia lo que quieras y vuelve a lanzar `../ngplat probar`. Tarda menos de un

@@ -43,6 +43,12 @@ typedef struct {
      * brazo tarda en llegar, y es lo que obliga a medir la distancia en vez de
      * pegar botones. 0 = el golpe vale desde el primer frame. */
     uint16_t windup;
+    /* Las mejoras del arma. Un objeto con `efecto: mejora` sube un nivel, cada
+     * nivel suma `range_step` pixeles de alcance y se pierden todos al morir,
+     * que es lo que hace que perder una vida duela mas que perder una vida.
+     * `levels` a cero deja el arma como estaba y el objeto no hace nada. */
+    uint16_t range_step;     /* pixeles que alarga cada mejora */
+    uint8_t levels;          /* cuantas mejoras admite (0 = ninguna) */
     uint8_t kind;            /* NP_ATTACK_* */
     uint8_t damage;
     uint8_t locks;           /* 1 = mientras pegas no te puedes mover */

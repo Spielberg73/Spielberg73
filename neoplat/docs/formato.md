@@ -191,6 +191,8 @@ jugador:
     preparacion: 0           # frames de esos en los que todavía no hace daño
     clavado: no              # si sí, mientras pegas no te mueves
     dano: 1
+    mejoras: 0               # cuántas veces se puede mejorar (0 = ninguna)
+    alcance_mejora: 12       # px que alarga cada mejora
     animaciones:
       quieto: {frames: [0, 1, 2, 1], velocidad: 4}
 ```
@@ -219,6 +221,30 @@ pierde. Uno que sale de la pantalla se apaga solo.
 
 `ngplat nuevo` ya te deja un ataque de ejemplo montado, con su `bala.png` y su
 sonido (`sonido: efectos: disparo:`).
+
+#### Mejorar el arma
+
+Con **`mejoras:`** el arma se puede alargar durante la partida, que es el
+látigo de los clásicos: cada objeto con `efecto: mejora` (ver
+[`objetos`](#objetos)) sube un nivel y cada nivel suma `alcance_mejora` píxeles
+de alcance, hasta el tope que marque `mejoras`.
+
+```yaml
+jugador:
+  ataque:
+    tipo: golpe
+    alcance: 26              # de serie
+    mejoras: 2               # dos mejoras: 26 -> 38 -> 50 px
+    alcance_mejora: 12
+```
+
+Vale igual con `tipo: disparo`, y entonces lo que crece es lo que vuela el
+proyectil antes de apagarse.
+
+Las mejoras **se pierden al morir** y al empezar un nivel nuevo: reapareces
+siempre con el arma de serie. Es lo que hace que una vida valga algo. Con
+`mejoras: 0` (lo de por defecto) el objeto no hace nada y el arma es siempre la
+misma.
 
 ### `secundaria` (el arma que gasta munición)
 
@@ -298,6 +324,34 @@ Se dibujan en diagonal, un escalón por casilla:
 Sin `velocidad_escalera` se sube a la mitad de lo que se anda. Con `0` el juego
 no tiene escaleras y los tiles se quedan de adorno.
 
+### Puntos de control
+
+```yaml
+tiles:
+  leyenda:
+    '!': {tile: 8, tipo: control}
+```
+
+Un punto de control **no estorba**: se pasa por delante como por un decorado.
+Lo que hace es apuntar su casilla al tocarla, y si te matan y te quedan vidas
+reapareces ahí en vez de al principio del nivel. Es lo que permite hacer
+niveles largos sin que morir sea un castigo.
+
+- reapareces **de pie encima de la casilla marcada** y centrado en su columna,
+  así que la marca se pone en la fila donde quieres caer (normalmente la de
+  encima del suelo), y da igual por dónde pasaras al tocarla;
+- **manda el último por el que pasas**, aunque sea uno anterior: si retrocedes
+  a por algo y vuelves a cruzar el de antes, ese pasa a ser el bueno;
+- volver a pasar por el que ya está marcado **no hace nada** (ni suena);
+- el resto del nivel **vuelve a empezar** igual que siempre: los enemigos, los
+  objetos y los candelabros salen otra vez donde salían;
+- cambiar de nivel **lo borra**: cada nivel empieza sin punto de control.
+
+A dos jugadores es de la partida, no de cada uno: el que muere vuelve al último
+que haya tocado cualquiera de los dos.
+
+Con el `evento: control` de `sonido:` le pones sonido al momento de tocarlo.
+
 ## `rompibles`
 
 ```yaml
@@ -361,6 +415,7 @@ Tipos:
 | `meta` | termina el nivel |
 | `escalera` | escalera que **sube hacia la derecha** |
 | `escalera_izquierda` | escalera que **sube hacia la izquierda** |
+| `control` | punto de control: no estorba, pero apunta dónde reapareces |
 | `decor` | se dibuja, no estorba |
 
 Atajos: `'#': 3` equivale a `{tile: 3, tipo: solido}`, y `'#': [3, plataforma]`
@@ -421,7 +476,7 @@ objetos:
     sprite: graficos/moneda.png
     caja: [10, 10]
     puntos: 10
-    efecto: puntos       # puntos | vida | salud | llave | municion
+    efecto: puntos       # puntos | vida | salud | llave | municion | mejora
     cantidad: 1
     animaciones:
       quieto: {frames: [0, 1, 2, 3], velocidad: 7}
@@ -433,6 +488,12 @@ Las llaves son **de la partida, no de cada jugador**: a dos, la que coge uno le
 vale al otro. Se vacían al empezar cada nivel, y el marcador enseña `KEYS 01/03`
 mientras el nivel pida alguna. Si un nivel pide más llaves de las que hay
 puestas en su mapa, `ngplat` no compila: no se podría terminar.
+
+**Mejoras del arma.** Un objeto con `efecto: mejora` sube `cantidad` niveles el
+arma del jugador y la alarga (ver [`ataque`](#mejorar-el-arma)). Se para en el
+tope que marque `mejoras:`, y si el ataque no admite ninguna el objeto no hace
+nada. A diferencia de las llaves, el nivel del arma es **de cada jugador**, y se
+pierde al morir.
 
 ## `plataformas`
 
@@ -524,7 +585,7 @@ sonido:
 
 **Momentos que puedes sonorizar** (los produce el juego solo): `empezar`,
 `salto`, `doble_salto`, `moneda`, `pisar`, `golpe`, `muerte`, `meta`, `vida`,
-`disparo`.
+`disparo`, `romper` (un rompible) y `control` (tocar un punto de control).
 
 **Tipos de efecto**:
 

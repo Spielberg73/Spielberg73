@@ -49,6 +49,10 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
  * solo cuentan cuando el jugador se sube a ellas. */
 #define NP_TILE_STAIR_R  6       /* sube hacia la derecha */
 #define NP_TILE_STAIR_L  7       /* sube hacia la izquierda */
+/* Punto de control: no estorba (se atraviesa), pero al tocarlo se apunta donde
+ * estas. Si te matan y te quedan vidas, vuelves ahi en vez de al principio del
+ * nivel, que es lo que hace que un nivel largo no sea un castigo. */
+#define NP_TILE_CHECK    8
 
 /* Tipos de ataque del jugador (NpAttackDef.kind). */
 #define NP_ATTACK_NONE  0
@@ -85,6 +89,7 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_ITEM_HEALTH 2
 #define NP_ITEM_KEY    3
 #define NP_ITEM_AMMO   4         /* municion del arma secundaria */
+#define NP_ITEM_UPGRADE 5        /* mejora el arma: cada uno la alarga un paso */
 
 /* Ranuras de animacion (las que genera el compilador para cada actor). */
 #define NP_ANIM_IDLE 0
@@ -111,7 +116,8 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_SFX_LIFE    0x0100
 #define NP_SFX_SHOOT   0x0200
 #define NP_SFX_BREAK   0x0400    /* se ha roto un candelabro */
-#define NP_SFX_SLOTS   11        /* cuantos eventos distintos hay */
+#define NP_SFX_CHECK   0x0800    /* se ha activado un punto de control */
+#define NP_SFX_SLOTS   12        /* cuantos eventos distintos hay */
 
 /* Estados del juego. */
 #define NP_STATE_TITLE     0

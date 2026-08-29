@@ -51,7 +51,8 @@ def _suelo(ancho: int, huecos: List[tuple]) -> str:
 #     rebotado hacia delante y no puedes caer sobre pinchos
 #   - los pinchos van de uno en uno y con suelo llano antes y despues
 
-def _nivel_1(llave: bool = False, escalera: bool = False) -> List[str]:
+def _nivel_1(llave: bool = False, escalera: bool = False,
+             control: bool = False) -> List[str]:
     """Nivel de entrada: saltar, coger monedas, pisar un enemigo, esquivar pinchos.
 
     Con `llave`, en mitad del camino aparece la llave que pide la meta: se coge
@@ -62,11 +63,20 @@ def _nivel_1(llave: bool = False, escalera: bool = False) -> List[str]:
     Cada escalon sube una fila y avanza una columna, que es como los lee el
     motor, y el agujero del suelo se tapa porque con el salto sin correccion
     del genero de latigo no se cruza.
+
+    Con `control` se pone la antorcha a mitad de camino (justo pasados los
+    pinchos, que es donde duele volver a empezar) y una moneda se cambia por la
+    mejora del arma. Se cambia, no se anade: cada sprite de mas en pantalla se
+    paga y este nivel ya va al limite de la Neo Geo.
     """
     a = ANCHO_1
     suelo_1 = {0: "P", 8: "s", 12: "V", 18: "^", 28: "s", 40: "c", 44: "G"}
     if llave:
         suelo_1[22] = "k"
+    fila_13 = {22: "c", 33: "c"}
+    if control:
+        suelo_1[24] = "!"       # la antorcha, pasados los pinchos de la 18
+        fila_13[33] = "M"       # la mejora del latigo, en vez de una moneda
     escalones = {}
     if escalera:
         for i, fila in enumerate((14, 13, 12)):
@@ -97,15 +107,18 @@ def _nivel_1(llave: bool = False, escalera: bool = False) -> List[str]:
         # el candelabro baja a la fila del suelo (para poder pegarle andando) y
         # a cambio se quita la moneda de arriba: cada sprite de mas en pantalla
         # se paga, y este nivel ya iba al limite de la Neo Geo
-        _poner(a, con_escalon(13, {22: "c", 33: "c"})),
+        _poner(a, con_escalon(13, fila_13)),
         _poner(a, con_escalon(14, suelo_1)),
         _suelo(a, [] if escalera else [(34, 2)]),
     ]
 
 
-def _nivel_2() -> List[str]:
+def _nivel_2(control: bool = False) -> List[str]:
     """Segundo nivel: voladores, saltos encadenados y un hueco mas largo."""
     a = ANCHO_2
+    suelo_2 = {0: "P", 8: "s", 18: "^", 30: "s", 42: "^", 51: "J"}
+    if control:
+        suelo_2[26] = "!"       # la antorcha, pasado el primer hueco
     return [
         _fila("", a),
         _fila("", a),
@@ -122,7 +135,7 @@ def _nivel_2() -> List[str]:
         # el tablon que va y viene: se sube uno encima y se deja llevar
         _poner(a, {32: "T"}),
         _poner(a, {6: "c", 17: "V", 27: "c", 38: "c", 45: "c"}),
-        _poner(a, {0: "P", 8: "s", 18: "^", 30: "s", 42: "^", 51: "J"}),
+        _poner(a, suelo_2),
         _suelo(a, [(24, 2), (47, 2)]),
     ]
 
@@ -170,7 +183,7 @@ tiles:
     '=': {{tile: 2, tipo: plataforma}}
     '^': {{tile: 3, tipo: peligro}}
     'G': {{tile: 4, tipo: meta}}
-{escaleras}
+{escaleras}{control}
 enemigos:
   seta:
     sprite: graficos/enemigo.png
@@ -223,7 +236,7 @@ objetos:
     cantidad: 1
     animaciones:
       quieto: {{frames: [0, 1], velocidad: 10}}
-{municion}
+{municion}{mejora}
 # Rompibles: no hacen nada hasta que les pegas, y entonces sueltan lo que
 # lleven dentro. Es el bucle de los clasicos de latigo: pegarle a todo.
 rompibles:
@@ -299,7 +312,7 @@ spawns:
   T: tablon
   V: candelabro
   J: jefazo
-
+{spawns}
 niveles:
 {niveles}"""
 
@@ -351,7 +364,7 @@ tiles:
     '=': {{tile: 2, tipo: plataforma}}
     '^': {{tile: 3, tipo: peligro}}
     'G': {{tile: 4, tipo: meta}}
-{escaleras}
+{escaleras}{control}
 enemigos:
   raton:
     sprite: graficos/enemigo.png
@@ -394,7 +407,7 @@ objetos:
     puntos: 10
     animaciones:
       quieto: {{frames: [0, 1, 2, 3], velocidad: 7}}
-{municion}
+{municion}{mejora}
 # Rompibles: no hacen nada hasta que les pegas, y entonces sueltan lo que
 # lleven dentro.
 rompibles:
@@ -453,7 +466,7 @@ spawns:
   T: viga
   V: brasero
   J: guardian
-
+{spawns}
 niveles:
 {niveles}"""
 
@@ -493,9 +506,13 @@ class Genero:
     fisica: str                  # lineas sueltas de la seccion `jugador:`
     armas: str                   # los bloques `ataque:` y `secundaria:`
     escaleras: str               # las filas de escalera de la leyenda
+    control: str                 # la fila del punto de control, si lo lleva
     municion: str                # el objeto de `efecto: municion`, si lo hay
+    mejora: str                  # el objeto de `efecto: mejora`, si lo hay
+    spawns: str                  # simbolos de mapa que anade este genero
     suelta: str                  # que suelta el rompible
     con_escaleras: bool          # si los niveles llevan una
+    con_control: bool            # si los niveles llevan puntos de control
 
 
 def _genero_plataformas(nombres: Dict[str, str]) -> Genero:
@@ -523,9 +540,13 @@ def _genero_plataformas(nombres: Dict[str, str]) -> Genero:
                "    animaciones:\n"
                "      quieto: {frames: [0, 1, 2, 1], velocidad: 4}\n"),
         escaleras="",
+        control="",
         municion="",
+        mejora="",
+        spawns="",
         suelta=nombres["moneda"],
         con_escaleras=False,
+        con_control=False,
     )
 
 
@@ -552,6 +573,8 @@ def _genero_castlevania(nombres: Dict[str, str]) -> Genero:
                "    clavado: si\n"
                "    espera: 18\n"
                "    dano: 1\n"
+               "    mejoras: 2             # cuantas veces se puede mejorar\n"
+               "    alcance_mejora: 12     # px que alarga cada mejora\n"
                "  # El arma secundaria: se tira con **arriba + accion** y gasta\n"
                "  # municion. 'tipo: arco' la haria caer describiendo una parabola.\n"
                "  secundaria:\n"
@@ -567,6 +590,9 @@ def _genero_castlevania(nombres: Dict[str, str]) -> Genero:
                "    dano: 1\n"),
         escaleras=("    '/': {tile: 6, tipo: escalera}\n"
                    "    '|': {tile: 7, tipo: escalera_izquierda}\n"),
+        # La antorcha no estorba: se pasa por delante. Al tocarla se apunta
+        # donde estas, y si te matan vuelves ahi en vez de al principio.
+        control="    '!': {tile: 8, tipo: control}\n",
         municion=("  # 'efecto: municion' recarga el arma secundaria. Ojo:\n"
                   "  # 'efecto: corazon' a secas es salud, que es otra cosa.\n"
                   "  %s:\n"
@@ -578,8 +604,20 @@ def _genero_castlevania(nombres: Dict[str, str]) -> Genero:
                   "    animaciones:\n"
                   "      quieto: {frames: [0, 1], velocidad: 12}\n"
                   % nombres["municion"]),
+        # 'efecto: mejora' alarga el latigo un paso (`alcance_mejora`) y se
+        # pierde al morir: es lo que hace que una vida valga algo.
+        mejora=("  mejora:\n"
+                "    sprite: graficos/mejora.png\n"
+                "    caja: [10, 10]\n"
+                "    puntos: 200\n"
+                "    efecto: mejora\n"
+                "    cantidad: 1\n"
+                "    animaciones:\n"
+                "      quieto: {frames: [0, 1], velocidad: 10}\n"),
+        spawns="  M: mejora\n",
         suelta=nombres["municion"],
         con_escaleras=True,
+        con_control=True,
     )
 
 
@@ -677,23 +715,29 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
 
     if estilo == "bosque":
         niveles = (
-            _nivel_yaml("BOSQUE", _nivel_1(llave=True, escalera=g.con_escaleras),
+            _nivel_yaml("BOSQUE",
+                        _nivel_1(llave=True, escalera=g.con_escaleras,
+                                 control=g.con_control),
                         "#101830", musica="bosque", llaves=1)
             # el segundo nivel usa solo la capa lejana: se puede elegir por nivel
-            + _nivel_yaml("CUEVA", _nivel_2(), "#180c20", capas="cielo", musica="cueva")
+            + _nivel_yaml("CUEVA", _nivel_2(control=g.con_control), "#180c20",
+                          capas="cielo", musica="cueva")
         )
         plantilla = GAME_YAML
     else:
         niveles = (
-            _nivel_yaml("GALERIA", _nivel_1(escalera=g.con_escaleras), "#14121e",
-                        musica="galeria")
-            + _nivel_yaml("EL POZO", _nivel_2(), "#0e1018", musica="pozo")
+            _nivel_yaml("GALERIA",
+                        _nivel_1(escalera=g.con_escaleras, control=g.con_control),
+                        "#14121e", musica="galeria")
+            + _nivel_yaml("EL POZO", _nivel_2(control=g.con_control), "#0e1018",
+                          musica="pozo")
         )
         plantilla = GAME_YAML_HIERRO
     contenido = plantilla.format(
         titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles,
         fisica=g.fisica, armas=g.armas, escaleras=g.escaleras,
-        municion=g.municion, suelta=g.suelta)
+        control=g.control, municion=g.municion, mejora=g.mejora,
+        spawns=g.spawns, suelta=g.suelta)
     with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
               newline="\n") as fh:
         fh.write(contenido)

@@ -54,6 +54,8 @@ CAMPOS: Dict[str, Dict[str, List[str]]] = {
         "preparacion": ["preparacion", "windup"],
         "clavado": ["clavado", "locks"],
         "dano": ["dano", "damage"],
+        "mejoras": ["mejoras", "levels", "niveles"],
+        "alcance_mejora": ["alcance_mejora", "range_step", "paso_mejora"],
     },
     "enemigo": {
         "comportamiento": ["comportamiento", "behavior"],
@@ -121,6 +123,8 @@ RANGOS: Dict[str, Dict[str, float]] = {
     "aturdido": {"min": 0, "max": 120, "paso": 2},
     "velocidad_escalera": {"min": 0.0, "max": 8, "paso": 0.1},
     "alcance": {"min": 4, "max": 512, "paso": 4},
+    "mejoras": {"min": 0, "max": 8, "paso": 1},
+    "alcance_mejora": {"min": 1, "max": 128, "paso": 2},
     "duracion": {"min": 1, "max": 120, "paso": 1},
     "preparacion": {"min": 0, "max": 120, "paso": 1},
     "vida": {"min": 1, "max": 9, "paso": 1},

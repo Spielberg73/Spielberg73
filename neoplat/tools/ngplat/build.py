@@ -427,7 +427,8 @@ def attack_values(project: Project) -> Dict[str, object]:
     a = project.player.attack
     if a is None:
         return {"kind": 0, "speed": 0, "range": 0, "cooldown": 0,
-                "duration": 0, "windup": 0, "damage": 0, "locks": 0}
+                "duration": 0, "windup": 0, "damage": 0, "locks": 0,
+                "levels": 0, "range_step": 0}
     return {
         "kind": ATTACK_KIND_ID[a.kind],
         "speed": to_fixed(a.speed),
@@ -437,6 +438,8 @@ def attack_values(project: Project) -> Dict[str, object]:
         "windup": a.windup,
         "damage": a.damage,
         "locks": 1 if a.locks else 0,
+        "levels": a.levels,
+        "range_step": a.range_step,
     }
 
 

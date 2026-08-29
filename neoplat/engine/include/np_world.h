@@ -28,6 +28,7 @@ typedef struct {
     uint16_t attack_cd;      /* frames hasta poder atacar otra vez */
     uint16_t stun;           /* frames sin control tras recibir un golpe */
     uint8_t riding;          /* plataforma que le lleva: indice + 1, 0 = ninguna */
+    uint8_t power;           /* mejoras del arma recogidas (0 = sin mejorar) */
     uint8_t stairs;          /* 1 = subido a una escalera */
     int8_t stair_dir;        /* hacia donde avanza en x al subir: +1 o -1 */
     uint8_t lives;           /* las vidas son de cada uno */
@@ -62,6 +63,12 @@ typedef struct {
     uint16_t prev_input[NP_MAX_PLAYERS];
     uint16_t sfx;            /* eventos de sonido de este frame (NP_SFX_*) */
     uint8_t keys, hearts, entity_count;
+    /* El punto de control tocado en este nivel, en casillas. `check_on` a cero
+       quiere decir que todavia no se ha tocado ninguno y se reaparece en la
+       salida. Se guarda en el mundo y no en el jugador porque a dos vale para
+       los dos: el que muere vuelve al ultimo que haya tocado cualquiera. */
+    int16_t check_x, check_y;
+    uint8_t check_on;
     /* El jefe que hay en pantalla, para que el marcador pueda ensenarlo: los
        golpes que le quedan y los que aguantaba entero. 0 = no hay jefe. */
     uint8_t boss_health, boss_max;

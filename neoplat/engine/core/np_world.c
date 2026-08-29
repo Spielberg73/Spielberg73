@@ -261,11 +261,24 @@ static void np_camera_update(NpWorld *w);
    que no empiecen uno dentro del otro. */
 #define NP_HUECO_2P 20
 
+/* Donde aparece un jugador: en la salida del nivel, o en el ultimo punto de
+   control que se haya tocado. Se cae de pie **encima** de la casilla marcada y
+   centrado en su columna, para que la marca se pueda poner donde se quiera sin
+   depender de por donde se paso al tocarla. */
 static void np_player_place(NpWorld *w, uint8_t quien)
 {
+    const NpActorDef *a = &np_player_def.actor;
     NpPlayer *p = &w->players[quien];
-    p->x = NP_I2F((int32_t)w->level->start_x + (quien ? NP_HUECO_2P : 0));
-    p->y = NP_I2F(w->level->start_y);
+    int32_t x, y;
+    if (w->check_on) {
+        x = (int32_t)w->check_x * NP_TILE + (NP_TILE - (int32_t)a->box_w) / 2;
+        y = (int32_t)w->check_y * NP_TILE + NP_TILE - (int32_t)a->box_h;
+    } else {
+        x = w->level->start_x;
+        y = w->level->start_y;
+    }
+    p->x = NP_I2F(x + (quien ? NP_HUECO_2P : 0));
+    p->y = NP_I2F(y);
 }
 
 void np_world_init(NpWorld *w)
@@ -354,6 +367,7 @@ static void np_player_reset(NpWorld *w, uint8_t quien)
     p->attack_timer = 0;
     p->attack_cd = 0;
     p->stun = 0;
+    p->power = 0;               /* el arma vuelve a la de serie */
     p->riding = 0;
     p->stairs = 0;
     p->stair_dir = 1;
@@ -368,6 +382,10 @@ void np_world_load_level(NpWorld *w, uint16_t index)
     if (index >= np_level_count) index = 0;
     w->level_index = index;
     w->level = &np_levels[index];
+    /* antes de colocar a nadie: cargar un nivel es empezarlo de cero */
+    w->check_on = 0;
+    w->check_x = 0;
+    w->check_y = 0;
     for (i = 0; i < NP_MAX_PLAYERS; i++) np_player_reset(w, i);
     w->keys = 0;
     w->hearts = 0;
@@ -530,6 +548,16 @@ static int np_hit_entity(NpWorld *w, NpEntity *e, uint8_t damage)
     return 0;
 }
 
+/* El alcance del arma ahora mismo: el de siempre mas lo que hayan sumado las
+   mejoras. Es una cuenta y no un campo guardado para que no haya dos verdades
+   que puedan separarse. */
+static uint16_t np_attack_range(const NpPlayer *p)
+{
+    const NpAttackDef *at = &np_player_def.attack;
+    uint8_t niveles = p->power < at->levels ? p->power : at->levels;
+    return (uint16_t)(at->range + niveles * at->range_step);
+}
+
 static void np_player_attack(NpWorld *w, uint8_t quien)
 {
     const NpAttackDef *at = &np_player_def.attack;
@@ -567,7 +595,8 @@ static void np_player_attack(NpWorld *w, uint8_t quien)
         e->anim_frame = 0;
         e->anim_timer = 0;
         /* cuanto vuela: el alcance en pixeles, pasado a frames */
-        e->vida = at->speed ? (uint16_t)((NP_I2F(at->range) / at->speed) + 1) : 1;
+        e->vida = at->speed
+            ? (uint16_t)((NP_I2F(np_attack_range(p)) / at->speed) + 1) : 1;
     }
 }
 
@@ -699,6 +728,7 @@ static void np_melee_update(NpWorld *w, uint8_t quien)
     const NpActorDef *pa = &np_player_def.actor;
     NpPlayer *p = &w->players[quien];
     np_fix gx, gy;
+    uint16_t alcance;
     uint8_t i;
 
     if (!p->attack_timer) return;
@@ -708,7 +738,8 @@ static void np_melee_update(NpWorld *w, uint8_t quien)
        todavia esta saliendo. Es la diferencia entre medir la distancia y
        machacar el boton. */
     if (p->attack_timer + at->windup >= at->duration) return;
-    gx = p->facing ? p->x + NP_I2F(pa->box_w) : p->x - NP_I2F(at->range);
+    alcance = np_attack_range(p);
+    gx = p->facing ? p->x + NP_I2F(pa->box_w) : p->x - NP_I2F(alcance);
     gy = p->y;
     for (i = 0; i < w->entity_count; i++) {
         NpEntity *e = &w->entities[i];
@@ -722,7 +753,7 @@ static void np_melee_update(NpWorld *w, uint8_t quien)
            cuerpo. */
         if (e->hurt) continue;
         ea = np_entity_def(e);
-        if (!np_boxes_overlap(gx, gy, at->range, pa->box_h,
+        if (!np_boxes_overlap(gx, gy, alcance, pa->box_h,
                               e->x, e->y, ea->box_w, ea->box_h))
             continue;
         np_hit_entity(w, e, at->damage);
@@ -1177,6 +1208,10 @@ static void np_collect(NpWorld *w, uint8_t quien, NpEntity *e)
     case NP_ITEM_AMMO:
         w->hearts = (uint8_t)NP_MIN(w->hearts + d->amount, 99);
         break;
+    case NP_ITEM_UPGRADE:
+        p->power = (uint8_t)NP_MIN(p->power + d->amount,
+                                   np_player_def.attack.levels);
+        break;
     default:
         break;
     }
@@ -1190,6 +1225,35 @@ static void np_finish_level(NpWorld *w)
     w->state = NP_STATE_LEVEL_END;
     w->state_timer = NP_LEVEL_END_TIME;
     w->score += 100 + (w->time_left / 60) * 10;
+}
+
+/* Los puntos de control. Se busca **la casilla**, no solo si toca alguna,
+   porque lo que hay que guardar es donde estaba: el jugador reaparecera ahi.
+   Volver a pasar por el que ya esta marcado no hace nada (ni suena), pero
+   pasar por uno anterior si lo mueve hacia atras: manda el ultimo que se toca,
+   que es lo que uno espera despues de retroceder a por algo. */
+static void np_check_touch(NpWorld *w, uint8_t quien)
+{
+    const NpActorDef *a = &np_player_def.actor;
+    const NpPlayer *p = &w->players[quien];
+    int32_t tx0 = NP_F2I(p->x) >> NP_TILE_SHIFT;
+    int32_t tx1 = NP_F2I(p->x + NP_I2F(a->box_w) - 1) >> NP_TILE_SHIFT;
+    int32_t ty0 = NP_F2I(p->y) >> NP_TILE_SHIFT;
+    int32_t ty1 = NP_F2I(p->y + NP_I2F(a->box_h) - 1) >> NP_TILE_SHIFT;
+    int32_t tx, ty;
+    for (ty = ty0; ty <= ty1; ty++) {
+        for (tx = tx0; tx <= tx1; tx++) {
+            if (np_tile_kind_at(w->level, tx, ty) != NP_TILE_CHECK) continue;
+            if (w->check_on && w->check_x == (int16_t)tx &&
+                w->check_y == (int16_t)ty)
+                return;
+            w->check_on = 1;
+            w->check_x = (int16_t)tx;
+            w->check_y = (int16_t)ty;
+            w->sfx |= NP_SFX_CHECK;
+            return;
+        }
+    }
 }
 
 /* Quien toca que. Se recorre jugador por jugador y, dentro, entidad por
@@ -1349,6 +1413,21 @@ static void np_player_falling(NpWorld *w, uint8_t quien)
     }
 }
 
+/* Volver a empezar el nivel despues de perder una vida. Es cargar el nivel,
+   pero conservando el punto de control: cargarlo lo borra (empezar un nivel es
+   empezarlo de cero) y aqui no se esta empezando, se esta reintentando. */
+static void np_level_restart(NpWorld *w)
+{
+    uint8_t on = w->check_on, i;
+    int16_t cx = w->check_x, cy = w->check_y;
+    np_world_load_level(w, w->level_index);
+    if (!on) return;
+    w->check_on = on;
+    w->check_x = cx;
+    w->check_y = cy;
+    for (i = 0; i < NP_MAX_PLAYERS; i++) np_player_place(w, i);
+}
+
 static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
 {
     const NpActorDef *pa = &np_player_def.actor;
@@ -1429,6 +1508,7 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
             np_player_hurt(w, quien, 99);
             continue;
         }
+        np_check_touch(w, quien);
         /* La meta solo se abre si se llevan las llaves que pide el nivel. Las
          * llaves son de la partida, no de cada jugador: a dos, las que coge
          * uno le valen al otro. */
@@ -1558,7 +1638,7 @@ void np_world_step(NpWorld *w, uint16_t input, uint16_t input2)
                 else { p->lives = 0; p->playing = 0; }
             }
             if (quedan) {
-                np_world_load_level(w, w->level_index);
+                np_level_restart(w);
             } else {
                 w->state = NP_STATE_GAME_OVER;
                 w->state_timer = NP_GAME_OVER_TIME;

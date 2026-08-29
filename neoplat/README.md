@@ -95,7 +95,7 @@ el nivel de partida.
 | género | cómo se juega |
 |---|---|
 | `plataformas` | saltas, pisas enemigos y disparas, y el salto se corrige en el aire. Lo de toda la vida |
-| `castlevania` | pegas con látigo, subes escaleras y gastas munición. El salto **no** se corrige y un golpe te tira al vacío |
+| `castlevania` | pegas con látigo, subes escaleras, gastas munición y el látigo se mejora. El salto **no** se corrige, un golpe te tira al vacío y hay puntos de control |
 
 Si prefieres decirlo de una:
 
@@ -252,6 +252,16 @@ se baja con abajo. Es un modo de movimiento aparte —sin gravedad, sin saltos y
 sin choques— del que se sale solo por los dos extremos, y del que un golpe te
 tira.
 
+Y hay **puntos de control**: con `tipo: control` en la leyenda pones una marca
+que no estorba —se pasa por delante— pero que apunta su casilla al tocarla. Si
+te matan y te quedan vidas, reapareces ahí de pie en vez de al principio del
+nivel, así que un nivel largo deja de ser un castigo. Manda el último por el
+que pasas, y cada nivel empieza sin ninguno.
+
+Y el **arma se mejora**: con `mejoras:` y `alcance_mejora:` en el ataque, cada
+objeto de `efecto: mejora` alarga el látigo un paso, hasta el tope que pongas.
+Se pierden al morir, que es lo que hace que una vida valga algo.
+
 Y hay **candelabros**: con `rompibles:` defines algo que no hace nada hasta que
 le pegas y entonces suelta lo que lleve dentro. Con un objeto de
 `efecto: municion` y un arma `secundaria:` (arriba + acción) tienes el bucle
@@ -320,7 +330,7 @@ archivo nuevo y que el `.exe` se quede sin él; así salta antes de repartirlo.
 | Orden | Qué hace |
 |---|---|
 | `ngplat nuevo <carpeta>` | Crea un proyecto jugable con gráficos de ejemplo, preguntando el género |
-| `ngplat nuevo <carpeta> --genero castlevania` | Lo mismo, con látigo, escaleras y munición en vez de saltar y pisar |
+| `ngplat nuevo <carpeta> --genero castlevania` | Lo mismo, con látigo, escaleras, munición y puntos de control en vez de saltar y pisar |
 | `ngplat nuevo <carpeta> --estilo hierro` | Lo mismo, pero dibujado con seis colores y listo para el doble plano del Amiga |
 | `ngplat comprobar [proyecto]` | Valida el `game.yaml` y dice cuánto ocupa el juego |
 | `ngplat probar [proyecto]` | Abre el preview y el editor, y se queda sirviéndolo |
@@ -599,6 +609,18 @@ Verificado aquí:
   también la munición, y una prueba comprueba que en esa traza se rompe algún
   candelabro y que la munición se gasta —si no, la paridad estaría comparando
   dos motores que no hacen nada.
+- **Las escaleras, los puntos de control y las mejoras del arma**: veinticuatro
+  pruebas de jugabilidad en JavaScript (que te subes con arriba y con abajo,
+  que dentro no hay gravedad ni salto, que se sale de pie por los dos extremos,
+  que un golpe te tira; que la antorcha no estorba ni hace daño pero apunta su
+  casilla, que al morir se reaparece en ella y no en la salida, que sin tocarla
+  se reaparece en la salida, que manda la última por la que pasas y que
+  repasarla no vuelve a sonar; que el látigo de serie se queda corto y con una
+  mejora llega, que las mejoras se paran en el tope y se pierden al morir), más
+  las variantes de paridad C/JS. En la traza del castillo se comprueba que el
+  punto de control se enciende **y** cambia dónde reapareces, y que la mejora
+  se coge y se pierde: sin eso, la paridad estaría comparando dos motores que
+  apuntan la casilla y luego la ignoran.
 - **Las plataformas móviles llevan al jugador**: ocho pruebas de jugabilidad en
   JavaScript (que va y viene entre sus dos extremos y no se pasa, que el
   jugador se planta encima y se mueve exactamente lo mismo que ella, que una

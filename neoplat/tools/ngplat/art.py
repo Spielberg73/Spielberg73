@@ -269,6 +269,36 @@ def corazon() -> Image:
     return hoja.image
 
 
+def _mejora_frame(brillo: bool) -> Image:
+    """La mejora del arma: una bola de pinchos que destella.
+
+    Se dibuja con los dos tonos del oro (los de la moneda) porque tiene que
+    leerse como algo que se recoge y no como un enemigo, que en esta paleta van
+    todos en morado.
+    """
+    c = Lienzo(16, 16)
+    oro, oro2 = PALETA["oro"], PALETA["oro2"]
+    metal = PALETA["metal"]
+    c.rect(6, 6, 4, 4, oro)              # la bola
+    c.rect(5, 7, 6, 2, oro)
+    c.rect(7, 5, 2, 6, oro)
+    c.rect(6, 8, 2, 2, oro2)             # la sombra de abajo
+    for x, y in ((3, 7), (12, 7), (7, 3), (7, 12)):
+        c.px(x, y, oro2)                 # los pinchos
+        c.px(x, y + 1, oro2)
+    if brillo:
+        c.px(6, 6, metal)
+        c.px(9, 9, metal)
+    return c.image
+
+
+def mejora() -> Image:
+    hoja = Lienzo(16 * 2, 16)
+    for i, brillo in enumerate((False, True)):
+        hoja.blit(i * 16, 0, _mejora_frame(brillo))
+    return hoja.image
+
+
 def cuchillo() -> Image:
     """Lo que tira el arma secundaria: una hoja con su mango."""
     c = Lienzo(16, 16)
@@ -379,11 +409,32 @@ def _tile_escalera(derecha: bool) -> Image:
     return c.image
 
 
+def _tile_control() -> Image:
+    """Una antorcha en la pared: el punto de control.
+
+    Tiene que leerse de lejos y no parecerse a nada que haga dano, asi que va
+    encendida y en la mitad de arriba de la casilla: la de abajo se queda vacia
+    para que el jugador vea que se pasa por delante.
+    """
+    c = Lienzo(16, 16)
+    madera, madera2 = PALETA["madera"], PALETA["madera2"]
+    metal, oro, oro2 = PALETA["metal"], PALETA["oro"], PALETA["oro2"]
+    c.rect(7, 7, 2, 9, madera2)          # el palo
+    c.rect(6, 6, 4, 2, madera)           # el agarre
+    c.rect(5, 5, 6, 2, metal)            # el pebetero
+    c.rect(6, 2, 4, 3, oro2)             # la llama, por dentro
+    c.rect(7, 0, 2, 3, oro)
+    c.px(5, 3, oro2)
+    c.px(10, 3, oro2)
+    return c.image
+
+
 def tileset() -> Image:
     tiles = [
         _tile_vacio(), _tile_suelo(), _tile_plataforma(),
         _tile_pinchos(), _tile_meta(), _tile_tierra(),
         _tile_escalera(True), _tile_escalera(False),
+        _tile_control(),
     ]
     hoja = Lienzo(16 * len(tiles), 16)
     for i, tile in enumerate(tiles):
@@ -457,6 +508,7 @@ def todos() -> Dict[str, Image]:
         "graficos/candelabro.png": candelabro(),
         "graficos/corazon.png": corazon(),
         "graficos/cuchillo.png": cuchillo(),
+        "graficos/mejora.png": mejora(),
         "graficos/tiles.png": tileset(),
         "graficos/cielo.png": cielo(),
         "graficos/arboles.png": arboles(),

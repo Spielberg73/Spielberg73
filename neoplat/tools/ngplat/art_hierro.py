@@ -296,10 +296,29 @@ def _tile_escalera(derecha: bool) -> Image:
     return c.image
 
 
+def _tile_control() -> Image:
+    """La antorcha del punto de control, con los seis colores de este estilo.
+
+    El palo va en `roca2` (es parte del escenario) y la llama en `oro`, que es
+    el color de lo que se recoge: asi se lee como algo bueno y no como algo que
+    hace dano, que aqui va todo en `rojo`.
+    """
+    c = Lienzo(16, 16)
+    c.rect(7, 7, 2, 9, ROCA2)            # el palo
+    c.rect(6, 6, 4, 2, ROCA)             # el agarre
+    c.rect(5, 5, 6, 2, LINEA)            # el pebetero
+    c.rect(6, 2, 4, 3, ORO)              # la llama
+    c.rect(7, 0, 2, 3, CLARO)
+    c.px(5, 3, ORO)
+    c.px(10, 3, ORO)
+    return c.image
+
+
 def tileset() -> Image:
     tiles = [_tile_vacio(), _tile_roca(), _tile_viga(),
              _tile_pinchos(), _tile_puerta(), _tile_fondo(),
-             _tile_escalera(True), _tile_escalera(False)]
+             _tile_escalera(True), _tile_escalera(False),
+             _tile_control()]
     hoja = Lienzo(16 * len(tiles), 16)
     for i, tile in enumerate(tiles):
         hoja.blit(i * 16, 0, tile)
@@ -360,6 +379,30 @@ def cueva() -> Image:
     return c.image
 
 
+def _mejora_frame(brillo: bool) -> Image:
+    """La mejora del arma en los seis colores de este estilo: `oro` porque es
+    algo que se recoge, y `claro` solo para el destello."""
+    c = Lienzo(16, 16)
+    c.rect(6, 6, 4, 4, ORO)
+    c.rect(5, 7, 6, 2, ORO)
+    c.rect(7, 5, 2, 6, ORO)
+    c.rect(6, 8, 2, 2, LINEA)
+    for x, y in ((3, 7), (12, 7), (7, 3), (7, 12)):
+        c.px(x, y, ORO)
+        c.px(x, y + 1, ORO)
+    if brillo:
+        c.px(6, 6, CLARO)
+        c.px(9, 9, CLARO)
+    return c.image
+
+
+def mejora() -> Image:
+    hoja = Lienzo(16 * 2, 16)
+    for i, brillo in enumerate((False, True)):
+        hoja.blit(i * 16, 0, _mejora_frame(brillo))
+    return hoja.image
+
+
 def todos() -> Dict[str, Image]:
     return {
         "graficos/heroe.png": heroe(),
@@ -370,6 +413,7 @@ def todos() -> Dict[str, Image]:
         "graficos/corazon.png": chispa(),
         "graficos/bala.png": bala(),
         "graficos/cuchillo.png": cuchillo(),
+        "graficos/mejora.png": mejora(),
         "graficos/tiles.png": tileset(),
         "graficos/cueva.png": cueva(),
     }

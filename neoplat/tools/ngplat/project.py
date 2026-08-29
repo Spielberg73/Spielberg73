@@ -180,10 +180,13 @@ TILE_KINDS = {
     "escalera_sube_derecha": "stair_r", "stairs": "stair_r",
     "escalera_izquierda": "stair_l", "stair_l": "stair_l",
     "escalera_sube_izquierda": "stair_l",
+    # punto de control: se atraviesa, y al tocarlo apunta donde reapareces
+    "control": "check", "punto_control": "check", "punto_de_control": "check",
+    "checkpoint": "check", "check": "check", "bandera": "check",
 }
 
 TILE_KIND_ID = {"empty": 0, "solid": 1, "platform": 2, "hazard": 3, "goal": 4,
-                "decor": 5, "stair_r": 6, "stair_l": 7}
+                "decor": 5, "stair_r": 6, "stair_l": 7, "check": 8}
 
 BEHAVIORS = {
     "patrulla": "patrol", "patrol": "patrol", "andar": "patrol", "walker": "patrol",
@@ -204,9 +207,13 @@ ITEM_EFFECTS = {
     # como estaba antes y no se cambia; la municion es "municion"/"corazones".
     "municion": "ammo", "munición": "ammo", "ammo": "ammo",
     "corazones": "ammo", "hearts": "ammo",
+    # mejora del arma: alarga el ataque un paso y se pierde al morir
+    "mejora": "upgrade", "upgrade": "upgrade", "mejorar": "upgrade",
+    "arma": "upgrade", "latigo": "upgrade", "látigo": "upgrade",
 }
 
-ITEM_EFFECT_ID = {"points": 0, "life": 1, "health": 2, "key": 3, "ammo": 4}
+ITEM_EFFECT_ID = {"points": 0, "life": 1, "health": 2, "key": 3, "ammo": 4,
+                  "upgrade": 5}
 
 
 @dataclass
@@ -266,6 +273,8 @@ class Attack(Actor):
     windup: int = 0                # frames de preparacion antes de hacer dano
     locks: bool = False            # mientras pegas, no te mueves
     damage: int = 1
+    levels: int = 0                # cuantas mejoras admite (0 = ninguna)
+    range_step: int = 12           # px que alarga cada mejora
 
 
 @dataclass
@@ -562,6 +571,9 @@ def _read_attack(node: Node, root: str) -> Optional["Attack"]:
         windup=node.int_(["windup", "preparacion", "preparación", "aviso"], 0, 0, 120),
         locks=node.bool_(["locks", "clavado", "sin_moverse"], False),
         damage=node.int_(["damage", "dano", "daño"], 1, 1, 99),
+        levels=node.int_(["levels", "mejoras", "niveles"], 0, 0, 8),
+        range_step=node.int_(["range_step", "alcance_mejora", "paso_mejora"],
+                             12, 1, 128),
     )
     if ataque.windup >= ataque.duration:
         raise ProjectError(
@@ -579,6 +591,8 @@ def _read_attack(node: Node, root: str) -> Optional["Attack"]:
         "windup", "preparacion", "preparación", "aviso",
         "locks", "clavado", "sin_moverse",
         "damage", "dano", "daño",
+        "levels", "mejoras", "niveles", "range_step", "alcance_mejora",
+        "paso_mejora",
     ])
     return ataque
 

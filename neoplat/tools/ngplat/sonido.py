@@ -53,7 +53,7 @@ NOTA_RE = re.compile(r"^(do|re|mi|fa|sol|la|si|[a-g])([#b]?)(-?\d)?(?::(\d+))?$"
 # Eventos que puede disparar el motor. Son fijos: el juego los produce y el
 # usuario decide que suena en cada uno.
 EVENTOS = ["empezar", "salto", "doble_salto", "moneda", "pisar", "golpe",
-           "muerte", "meta", "vida", "disparo", "romper"]
+           "muerte", "meta", "vida", "disparo", "romper", "control"]
 
 EVENTO_ALIAS = {
     "start": "empezar", "inicio": "empezar",
@@ -69,6 +69,8 @@ EVENTO_ALIAS = {
     "ataque": "disparo", "attack": "disparo",
     "break": "romper", "candelabro": "romper", "rompible": "romper",
     "romperse": "romper",
+    "checkpoint": "control", "punto_control": "control", "bandera": "control",
+    "check": "control",
 }
 
 # Bits que usa el motor (coinciden con NP_SFX_* de np_types.h).

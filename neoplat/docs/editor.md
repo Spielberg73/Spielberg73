@@ -39,7 +39,9 @@ símbolo de la leyenda (con su dibujo real) y otro por cada enemigo u objeto que
 hayas definido en `spawns`, más la salida del jugador. Si el juego tiene
 **escaleras** (`tipo: escalera` y `escalera_izquierda`), salen como un símbolo
 más: se pintan casilla a casilla, subiendo una fila y avanzando una columna por
-escalón, que es como las recorre el motor.
+escalón, que es como las recorre el motor. Los **puntos de control**
+(`tipo: control`) también: se pintan en la fila donde quieres que caiga el
+jugador al reaparecer, que suele ser la de encima del suelo.
 
 Debajo del lienzo hay un **minimapa**: enseña el nivel entero y el recuadro de
 lo que estás viendo; haz clic para ir a cualquier parte. Las **guías** marcan

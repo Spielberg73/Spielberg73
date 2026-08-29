@@ -1387,6 +1387,7 @@
             else if (tipo === 2) color = "#b0834a";
             else if (tipo === 3) color = "#e0574f";
             else if (tipo === 6 || tipo === 7) color = "#c89a5c";
+            else if (tipo === 8) color = "#f2b705";
             else if (tipo === 4) color = "#58d0e8";
           }
           if (!color) continue;
@@ -1522,7 +1523,7 @@
       DATA.tiles.chars.forEach(function (ch, i) {
         if (ch === " ") return;
         var tipos = ["vacio", "solido", "plataforma", "peligro", "meta", "decorado",
-                     "escalera", "escalera izq"];
+                     "escalera", "escalera izq", "punto de control"];
         lista.push({ char: ch, etiqueta: tipos[DATA.tiles.kind[i]] || "tile",
                      tipo: "tile", hoja: "__tiles__", frame: DATA.tiles.gfx[i] });
       });
