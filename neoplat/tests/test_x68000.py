@@ -19,7 +19,7 @@ from ngplat import sistemas
 from ngplat.codegen import generar_para_sistema
 from ngplat.scaffold import crear_proyecto
 from ngplat.x68k_disk import (ErrorDisco, crear_disquete, leer_archivo,
-                              leer_directorio)
+                              leer_bpb, leer_directorio)
 
 from ngplat.art import PALETA as PALETA_BOSQUE
 from ngplat.art_hierro import PALETA as PALETA_HIERRO
@@ -140,21 +140,32 @@ class TestDisquete(unittest.TestCase):
         disco = crear_disquete({"JUEGO.X": b"hola"})
         self.assertEqual(len(disco), 77 * 2 * 8 * 1024)
 
-    def test_lleva_la_firma_y_el_bpb(self):
-        """La firma en el nombre del fabricante y el BPB son lo que distingue un
-        disquete del X68000 de uno de PC: si se pierden, no lo lee nadie."""
+    def test_el_bpb_va_donde_va_y_en_big_endian(self):
+        """Lo que distingue el sector de arranque del X68000 del de un PC: el
+        nombre del fabricante ocupa 16 bytes y el BPB va en 0x12 y en big
+        endian. Comprobado contra un disco de sistema de Sharp de verdad; la
+        primera version lo escribia en 0x0B y en little endian, que es como lo
+        **finge** una herramienta para poder leerlo con una libreria de PC."""
         disco = crear_disquete({"JUEGO.X": b"hola"})
-        self.assertEqual(disco[0:3], b"\x60\x3c\x90", "falta el salto")
-        self.assertEqual(disco[3:11], b"X68IPL30")
-        self.assertEqual(struct.unpack("<H", disco[11:13])[0], 1024,
+        self.assertEqual(struct.unpack(">H", disco[0:2])[0], 0x601C,
+                         "el salto al codigo de arranque no esta")
+        self.assertEqual(len(disco[2:18]), 16)
+        bpb = leer_bpb(disco)
+        self.assertEqual(bpb["sector"], 1024,
                          "los sectores de esta maquina son de 1024 bytes")
-        self.assertEqual(disco[13], 1)          # un sector por agrupacion
-        self.assertEqual(disco[16], 2)          # dos FAT
-        self.assertEqual(struct.unpack("<H", disco[17:19])[0], 192)
-        self.assertEqual(struct.unpack("<H", disco[19:21])[0], 1232)
-        self.assertEqual(disco[21], 0xFE)
-        self.assertEqual(struct.unpack("<H", disco[24:26])[0], 8)
-        self.assertEqual(struct.unpack("<H", disco[26:28])[0], 2)
+        self.assertEqual(bpb["por_agrupacion"], 1)
+        self.assertEqual(bpb["fats"], 2)
+        self.assertEqual(bpb["reservados"], 1)
+        self.assertEqual(bpb["raiz"], 192)
+        self.assertEqual(bpb["sectores"], 1232)
+        self.assertEqual(bpb["medio"], 0xFE)
+        self.assertEqual(bpb["sectores_fat"], 2)
+
+    def test_el_bpb_no_esta_donde_lo_pondria_un_pc(self):
+        """Y que no vuelva el fallo de antes: en 0x0B y little endian no hay un
+        BPB, hay parte del nombre del fabricante."""
+        disco = crear_disquete({"JUEGO.X": b"hola"})
+        self.assertNotEqual(struct.unpack("<H", disco[11:13])[0], 1024)
 
     def test_un_archivo_vuelve_igual(self):
         datos = bytes(range(256)) * 3
@@ -186,6 +197,46 @@ class TestDisquete(unittest.TestCase):
     def test_lo_que_no_cabe_en_el_disquete_avisa(self):
         with self.assertRaises(ErrorDisco):
             crear_disquete({"ENORME.X": b"\0" * (2 * 1024 * 1024)})
+
+
+class TestDiscoDeSharp(unittest.TestCase):
+    """Leer un disco de sistema de Human68k de verdad.
+
+    Es la unica prueba que dice que el formato esta bien de verdad y no solo
+    que somos consistentes con nosotros mismos. El disco no viene en el
+    repositorio (es software de Sharp): se busca en NEOPLAT_HUMAN68K y, si no
+    esta, la prueba se salta, igual que hace la del Atari ST con el TOS.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        ruta = os.environ.get("NEOPLAT_HUMAN68K", "")
+        if not ruta or not os.path.isfile(ruta):
+            raise unittest.SkipTest("no hay un disco de Human68k "
+                                    "(pon NEOPLAT_HUMAN68K)")
+        with open(ruta, "rb") as fh:
+            cls.disco = fh.read()
+
+    def test_el_bpb_del_disco_de_sharp_se_lee(self):
+        bpb = leer_bpb(self.disco)
+        self.assertEqual(bpb["sector"], 1024)
+        self.assertEqual(bpb["sectores"], 1232)
+        self.assertEqual(bpb["fats"], 2)
+
+    def test_se_ven_los_archivos_del_sistema(self):
+        nombres = {n.upper() for n, _, _ in leer_directorio(self.disco)}
+        self.assertIn("HUMAN.SYS", nombres)
+        self.assertIn("COMMAND.X", nombres)
+
+    def test_human_sys_es_un_ejecutable_x(self):
+        """Y de paso comprueba el otro formato: HUMAN.SYS es un .X, asi que si
+        nuestra idea de la cabecera fuera mala, aqui se veria."""
+        datos = leer_archivo(self.disco, "HUMAN.SYS")
+        self.assertEqual(datos[:4], b"HU\0\0")
+        (base, entrada, texto, seccion, bss, reloc,
+         simbolos) = struct.unpack(">7I", datos[4:32])
+        self.assertEqual(len(datos), 64 + texto + seccion + reloc + simbolos,
+                         "los tamanos de la cabecera no suman el archivo")
 
 
 class TestCompilaDeVerdad(unittest.TestCase):

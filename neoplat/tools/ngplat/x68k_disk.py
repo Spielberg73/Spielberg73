@@ -1,9 +1,27 @@
 """Monta un disquete de Human68k (X68000) con el juego dentro.
 
-Un disquete del X68000 es un **FAT12 con sectores de 1024 bytes**, no de 512:
-por lo demas es el mismo sistema de archivos de toda la vida. Lo que lo hace
-suyo es el sector de arranque, que lleva la firma `X68IPL30` en el nombre del
-fabricante y, detras del BPB, el codigo que carga Human68k.
+Un disquete del X68000 es un **FAT12 con sectores de 1024 bytes**, no de 512.
+La FAT y el directorio son los de toda la vida, pero el sector de arranque
+**no**: el nombre del fabricante ocupa 16 bytes en vez de 8 y el BPB va detras,
+en 0x12, y en **big endian**, que es lo suyo en un 68000.
+
+    +0x00  word      salto al codigo de arranque
+    +0x02  16 bytes  nombre del fabricante
+    +0x12  word      bytes por sector          (big endian)
+    +0x14  byte      sectores por agrupacion
+    +0x15  byte      cuantas FAT
+    +0x16  word      sectores reservados
+    +0x18  word      entradas del directorio raiz
+    +0x1A  word      sectores del disco
+    +0x1C  byte      descriptor de medio
+    +0x1D  byte      sectores por FAT
+    +0x1E  el codigo de arranque
+
+Esto sale de mirar un disco de sistema de Sharp de verdad, no de la
+documentacion. La primera version de este modulo copiaba el BPB de una
+herramienta que lee estos disquetes, y estaba mal: esa herramienta **fabrica**
+un sector de arranque de mentira, con el BPB en 0x0B y en little endian, para
+poder pasarselo a una libreria de FAT de PC. Ninguna maquina lo escribe asi.
 
 La geometria es la del 2HD japones de 5,25 pulgadas:
 
@@ -36,7 +54,7 @@ POR_PISTA = 8
 SECTORES = PISTAS * CARAS * POR_PISTA          # 1232
 TAMANO = SECTORES * SECTOR                     # 1.261.568 bytes
 
-FIRMA = b"X68IPL30"
+FABRICANTE = b"NEOPLAT 1.00    "     # 16 bytes, como el de Sharp
 RESERVADOS = 1
 FATS = 2
 SECTORES_FAT = 2
@@ -102,29 +120,44 @@ def _entrada(nombre: str, primera: int, largo: int) -> bytes:
             + struct.pack("<I", largo))
 
 
-def sector_de_arranque(etiqueta: str = "NEOPLAT") -> bytes:
-    """El sector 0: el salto, la firma, el BPB y sitio para el codigo.
+def sector_de_arranque() -> bytes:
+    """El sector 0: el salto, el nombre del fabricante y el BPB.
 
     El codigo de arranque se deja a cero: este disquete se lee desde Human68k,
     no arranca solo. Para que arrancara solo haria falta el cargador que busca
     y monta HUMAN.SYS, que es lo que trae el disco de sistema de Sharp.
     """
     d = bytearray(SECTOR)
-    d[0:3] = b"\x60\x3c\x90"                    # bra +0x3c, y un relleno
-    d[3:11] = FIRMA
-    struct.pack_into("<H", d, 11, SECTOR)
-    d[13] = 1                                   # un sector por agrupacion
-    struct.pack_into("<H", d, 14, RESERVADOS)
-    d[16] = FATS
-    struct.pack_into("<H", d, 17, ENTRADAS_RAIZ)
-    struct.pack_into("<H", d, 19, SECTORES)
-    d[21] = MEDIO
-    struct.pack_into("<H", d, 22, SECTORES_FAT)
-    struct.pack_into("<H", d, 24, POR_PISTA)
-    struct.pack_into("<H", d, 26, CARAS)
-    d[43:54] = etiqueta.upper()[:11].ljust(11).encode("ascii")
-    d[54:62] = b"FAT12   "
+    struct.pack_into(">H", d, 0, 0x601C)        # bra al codigo, en 0x1E
+    d[2:18] = FABRICANTE
+    struct.pack_into(">H", d, 0x12, SECTOR)
+    d[0x14] = 1                                 # un sector por agrupacion
+    d[0x15] = FATS
+    struct.pack_into(">H", d, 0x16, RESERVADOS)
+    struct.pack_into(">H", d, 0x18, ENTRADAS_RAIZ)
+    struct.pack_into(">H", d, 0x1A, SECTORES)
+    d[0x1C] = MEDIO
+    d[0x1D] = SECTORES_FAT
     return bytes(d)
+
+
+def leer_bpb(disco: bytes) -> Dict[str, int]:
+    """Los parametros del disquete, sacados de su propio sector de arranque.
+
+    Leerlos en vez de darlos por supuestos hace que esto valga para **cualquier**
+    disquete de Human68k, no solo para los que monta este modulo: es lo que
+    permite comprobarlo contra un disco de sistema de Sharp de verdad.
+    """
+    return {
+        "sector": struct.unpack(">H", disco[0x12:0x14])[0],
+        "por_agrupacion": disco[0x14],
+        "fats": disco[0x15],
+        "reservados": struct.unpack(">H", disco[0x16:0x18])[0],
+        "raiz": struct.unpack(">H", disco[0x18:0x1A])[0],
+        "sectores": struct.unpack(">H", disco[0x1A:0x1C])[0],
+        "medio": disco[0x1C],
+        "sectores_fat": disco[0x1D],
+    }
 
 
 def crear_disquete(archivos: Dict[str, bytes], etiqueta: str = "NEOPLAT") -> bytes:
@@ -133,7 +166,9 @@ def crear_disquete(archivos: Dict[str, bytes], etiqueta: str = "NEOPLAT") -> byt
         raise ErrorDisco("caben %d archivos en la raiz y hay %d"
                          % (ENTRADAS_RAIZ, len(archivos)))
     disco = bytearray(TAMANO)
-    disco[0:SECTOR] = sector_de_arranque(etiqueta)
+    disco[0:SECTOR] = sector_de_arranque()
+    if etiqueta:
+        pass                                    # la etiqueta va en el directorio
 
     entradas = bytearray()
     cadenas: List[List[int]] = []
@@ -165,34 +200,47 @@ def crear_disquete(archivos: Dict[str, bytes], etiqueta: str = "NEOPLAT") -> byt
 def leer_directorio(disco: bytes) -> List[Tuple[str, int, int]]:
     """Lo que hay en la raiz: (nombre, primera agrupacion, tamano).
 
-    Existe para que las pruebas puedan releer lo que se ha escrito, que es la
-    unica forma de saber que el disquete esta bien montado sin un X68000.
+    La raiz se busca con el BPB del propio disquete, no con los numeros de este
+    modulo, asi que esto lee tambien un disco de sistema de Sharp. Las entradas
+    si son las de FAT de siempre: la agrupacion y el tamano van en little
+    endian aunque el BPB sea big endian.
     """
+    bpb = leer_bpb(disco)
+    sector = bpb["sector"]
+    raiz = bpb["reservados"] + bpb["fats"] * bpb["sectores_fat"]
     salida = []
-    base = RAIZ * SECTOR
-    for i in range(ENTRADAS_RAIZ):
+    base = raiz * sector
+    for i in range(bpb["raiz"]):
         e = disco[base + i * 32:base + (i + 1) * 32]
-        if not e or e[0] in (0x00, 0xE5):
+        if len(e) < 32 or e[0] in (0x00, 0xE5):
             continue
-        nombre = e[0:8].decode("ascii").rstrip()
-        extension = e[8:11].decode("ascii").rstrip()
-        primera, largo = struct.unpack("<H", e[26:28])[0], struct.unpack("<I", e[28:32])[0]
+        if e[11] & 0x08:                        # etiqueta del volumen
+            continue
+        nombre = e[0:8].decode("latin-1").rstrip()
+        extension = e[8:11].decode("latin-1").rstrip()
         salida.append((nombre + ("." + extension if extension else ""),
-                       primera, largo))
+                       struct.unpack("<H", e[26:28])[0],
+                       struct.unpack("<I", e[28:32])[0]))
     return salida
 
 
 def leer_archivo(disco: bytes, nombre: str) -> bytes:
     """Saca un archivo siguiendo la FAT, como haria Human68k."""
+    bpb = leer_bpb(disco)
+    sector = bpb["sector"]
+    primera_fat = bpb["reservados"]
+    raiz = primera_fat + bpb["fats"] * bpb["sectores_fat"]
+    datos_en = raiz + (bpb["raiz"] * 32 + sector - 1) // sector
     for encontrado, primera, largo in leer_directorio(disco):
         if encontrado.upper() != nombre.upper():
             continue
-        fat = disco[PRIMERA_FAT * SECTOR:(PRIMERA_FAT + SECTORES_FAT) * SECTOR]
+        fat = disco[primera_fat * sector:
+                    (primera_fat + bpb["sectores_fat"]) * sector]
         datos = bytearray()
         agrupacion = primera
         while 2 <= agrupacion < 0xFF8 and len(datos) < largo:
-            inicio = (DATOS + agrupacion - 2) * SECTOR
-            datos += disco[inicio:inicio + SECTOR]
+            inicio = (datos_en + (agrupacion - 2) * bpb["por_agrupacion"]) * sector
+            datos += disco[inicio:inicio + sector * bpb["por_agrupacion"]]
             base = agrupacion * 3 // 2
             par = fat[base] | (fat[base + 1] << 8)
             agrupacion = (par >> 4) if agrupacion & 1 else (par & 0xFFF)
