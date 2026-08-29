@@ -54,6 +54,13 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_KIND_ITEM  1
 #define NP_KIND_SHOT  2
 #define NP_KIND_PLATFORM 3
+#define NP_KIND_BREAKABLE 4      /* candelabro: se rompe y suelta algo */
+#define NP_KIND_SUBSHOT 5        /* lo que tira el arma secundaria */
+
+/* El arma secundaria: se lanza con arriba + accion y gasta municion. */
+#define NP_SUB_NONE  0
+#define NP_SUB_LINE  1           /* va recto */
+#define NP_SUB_ARC   2           /* describe un arco (le afecta la gravedad) */
 
 /* Por donde va y viene una plataforma movil. */
 #define NP_PLAT_X 0                  /* de lado */
@@ -71,6 +78,7 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_ITEM_LIFE   1
 #define NP_ITEM_HEALTH 2
 #define NP_ITEM_KEY    3
+#define NP_ITEM_AMMO   4         /* municion del arma secundaria */
 
 /* Ranuras de animacion (las que genera el compilador para cada actor). */
 #define NP_ANIM_IDLE 0
@@ -95,7 +103,8 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_SFX_GOAL    0x0080
 #define NP_SFX_LIFE    0x0100
 #define NP_SFX_SHOOT   0x0200
-#define NP_SFX_SLOTS   10        /* cuantos eventos distintos hay */
+#define NP_SFX_BREAK   0x0400    /* se ha roto un candelabro */
+#define NP_SFX_SLOTS   11        /* cuantos eventos distintos hay */
 
 /* Estados del juego. */
 #define NP_STATE_TITLE     0

@@ -52,7 +52,7 @@ inputs.forEach(function (par) {
     hex8(entityHash(world)),
     p1.x, p1.y, p1.vx, p1.vy, p1.health, p1.lives,
     p0.playing, p0.dying, p1.playing, p1.dying,
-    world.keys
+    world.keys, world.hearts
   ].join(" "));
 });
 process.stdout.write(out.join("\n") + "\n");

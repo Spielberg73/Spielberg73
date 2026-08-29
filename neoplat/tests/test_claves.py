@@ -58,6 +58,7 @@ class TestClaves(unittest.TestCase):
         return load_project(proyecto_minimo(self.tmp, texto))
 
     def _probar_seccion(self, seccion, ancla, sangria):
+        self.assertTrue(CAMPOS[seccion], "la seccion '%s' no tiene campos" % seccion)
         for campo, alias in CAMPOS[seccion].items():
             if campo not in VALORES:
                 continue
@@ -103,6 +104,9 @@ class TestClaves(unittest.TestCase):
         proyecto = self._cargar(_yaml([(self.ATAQUE[0], self.ATAQUE[1])]))
         self.assertIsNotNone(proyecto.player.attack, "no ha leido el ataque")
         self.assertEqual(proyecto.player.attack.kind, "melee")
+
+    def test_alias_de_los_rompibles(self):
+        self._probar_seccion("rompible", "  antorcha:", "    ")
 
     def test_alias_de_las_plataformas(self):
         self._probar_seccion("plataforma", "  tablon:", "    ")

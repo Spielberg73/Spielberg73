@@ -38,6 +38,7 @@ function datos(filas, opciones) {
   var jugador = actor(opciones.boxW || 12, opciones.boxH || 14);
   var enemigo = actor(12, 12), objeto = actor(10, 10);
   var tablon = actor(opciones.tablonAncho || 32, 6);
+  var candelabro = actor(12, 14);
   for (var y = 0; y < alto; y++) {
     for (var x = 0; x < ancho; x++) {
       var ch = filas[y][x];
@@ -47,6 +48,8 @@ function datos(filas, opciones) {
       else if (ch === "o") { spawns.push([x * 16 + 3, y * 16 + 16 - objeto.box_h, 1, 0]); ch = "."; }
       else if (ch === "k") { spawns.push([x * 16 + 3, y * 16 + 16 - objeto.box_h, 1, 1]); ch = "."; }
       else if (ch === "T") { spawns.push([x * 16, y * 16 + 16 - tablon.box_h, 3, 0]); ch = "."; }
+      else if (ch === "C") { spawns.push([x * 16 + 2, y * 16 + 16 - candelabro.box_h, 4, 0]); ch = "."; }
+      else if (ch === "V") { spawns.push([x * 16 + 2, y * 16 + 16 - candelabro.box_h, 4, 1]); ch = "."; }
       else if (ch === "J") { spawns.push([x * 16 + 2, y * 16 + 16 - enemigo.box_h, 0, 2]); ch = "."; }
       assert.ok(ch in LEYENDA, "simbolo desconocido: " + ch);
       celdas.push(".#=^G".indexOf(ch));
@@ -83,6 +86,19 @@ function datos(filas, opciones) {
         locks: opciones.clavado ? 1 : 0,
         damage: opciones.dano || 1,
         actor: actor(6, 6)
+      },
+      /* el arma secundaria: por defecto ninguna, como un juego sin
+         `secundaria:` en el game.yaml */
+      sub: {
+        kind: opciones.secundaria === "arco" ? 2 : (opciones.secundaria ? 1 : 0),
+        speed: fx(opciones.subVelocidad || 3),
+        gravity: fx(opciones.subGravedad === undefined ? 0.25 : opciones.subGravedad),
+        jump: fx(opciones.subSalto === undefined ? 3 : opciones.subSalto),
+        range: opciones.subAlcance || 160,
+        cooldown: opciones.subEspera === undefined ? 24 : opciones.subEspera,
+        cost: opciones.subCoste === undefined ? 1 : opciones.subCoste,
+        damage: opciones.subDano || 1,
+        actor: actor(8, 8)
       }
     },
     enemies: [
@@ -101,7 +117,17 @@ function datos(filas, opciones) {
       { actor: objeto, score: 10, effect: 0, amount: 1, name: "moneda" },
       /* efecto 3 = llave: no da puntos de vida, suma al contador de la partida */
       { actor: objeto, score: 50, effect: 3, amount: opciones.valorLlave || 1,
-        name: "llave" }
+        name: "llave" },
+      /* efecto 4 = municion del arma secundaria */
+      { actor: objeto, score: 0, effect: 4, amount: opciones.valorMunicion || 5,
+        name: "corazon" }
+    ],
+    breakables: [
+      /* "C": suelta la moneda; "V": no suelta nada */
+      { actor: candelabro, score: 100, drop: opciones.suelta === undefined ? 1
+                                             : opciones.suelta,
+        health: opciones.candelabroVida || 1, name: "candelabro" },
+      { actor: candelabro, score: 0, drop: 0, health: 1, name: "vacio" }
     ],
     platforms: [{
       actor: tablon,
@@ -673,6 +699,179 @@ prueba("el golpe recibido corta el ataque a medias", function () {
   for (i = 0; i < 300 && w.players[0].health === 3; i++) w.step(NP.IN.RIGHT);
   assert.strictEqual(w.players[0].attackTimer, 0,
     "sigue pegando despues de que le hayan dado");
+});
+
+/* ------------------------------------ candelabros: pegarles y que suelten */
+
+function entidadDe(w, kind) {
+  for (var i = 0; i < w.entityCount; i++)
+    if (w.entities[i].active && w.entities[i].kind === kind) return w.entities[i];
+  return null;
+}
+
+prueba("un enemigo con vida aguanta un golpe por ataque, no uno por frame", function () {
+  /* la caja del golpe dura varios frames y acertaba en todos: un solo ataque
+     se llevaba por delante a un enemigo de cinco de vida */
+  var w = mundo(suelo([[13, 3, "J"], [13, 2, "P"]]),
+                { ataque: "golpe", alcance: 24, espera: 90, duracion: 8,
+                  bossHealth: 5, health: 9 });
+  correr(w, 4);
+  w.step(NP.IN.ACTION);
+  correr(w, 8);
+  assert.strictEqual(w.entities[0].health, 4,
+    "un solo ataque le ha quitado mas de un golpe de vida");
+  assert.strictEqual(w.entities[0].active, 1, "lo ha matado de un ataque");
+});
+
+prueba("el candelabro no hace nada hasta que le pegas", function () {
+  var w = mundo(suelo([[13, 4, "C"], [13, 2, "P"]]), { health: 3 });
+  correr(w, 120, NP.IN.RIGHT);        /* se le pasa por encima */
+  assert.strictEqual(w.players[0].health, 3, "el candelabro hace dano");
+  assert.ok(entidadDe(w, 4), "el candelabro ha desaparecido solo");
+});
+
+prueba("el golpe rompe el candelabro y suelta lo que lleva", function () {
+  var w = mundo(suelo([[13, 3, "C"], [13, 2, "P"]]),
+                { ataque: "golpe", alcance: 24, espera: 60 });
+  correr(w, 4);
+  var puntos = w.score;
+  w.step(NP.IN.ACTION);
+  correr(w, 4);
+  assert.strictEqual(entidadDe(w, 4), null, "el candelabro sigue entero");
+  var objeto = entidadDe(w, 1);
+  assert.ok(objeto, "no ha soltado nada");
+  assert.strictEqual(objeto.def, 0, "ha soltado un objeto que no era");
+  assert.ok(w.score > puntos, "romperlo no ha dado puntos");
+});
+
+prueba("lo que suelta se puede recoger", function () {
+  var w = mundo(suelo([[13, 3, "C"], [13, 2, "P"]]),
+                { ataque: "golpe", alcance: 24, espera: 60 });
+  correr(w, 4);
+  w.step(NP.IN.ACTION);
+  correr(w, 4);
+  var antes = w.score;
+  correr(w, 60, NP.IN.RIGHT);        /* se va a por ello */
+  assert.strictEqual(entidadDe(w, 1), null, "no ha recogido lo que ha soltado");
+  assert.ok(w.score > antes, "recogerlo no ha dado puntos");
+});
+
+prueba("un candelabro vacio se rompe y no suelta nada", function () {
+  var w = mundo(suelo([[13, 3, "V"], [13, 2, "P"]]),
+                { ataque: "golpe", alcance: 24, espera: 60 });
+  correr(w, 4);
+  w.step(NP.IN.ACTION);
+  correr(w, 4);
+  assert.strictEqual(entidadDe(w, 4), null, "sigue entero");
+  assert.strictEqual(entidadDe(w, 1), null, "ha soltado algo sin llevar nada");
+});
+
+prueba("un candelabro duro aguanta varios golpes", function () {
+  var w = mundo(suelo([[13, 3, "C"], [13, 2, "P"]]),
+                { ataque: "golpe", alcance: 24, espera: 8, candelabroVida: 3 });
+  correr(w, 4);
+  w.step(NP.IN.ACTION);
+  correr(w, 4);
+  assert.ok(entidadDe(w, 4), "ha caido al primer golpe llevando tres de vida");
+  /* el boton va por flanco: hay que soltarlo entre golpe y golpe */
+  var i;
+  for (i = 0; i < 120 && entidadDe(w, 4); i++)
+    w.step(i % 12 === 0 ? NP.IN.ACTION : 0);
+  assert.strictEqual(entidadDe(w, 4), null, "no cae ni a golpes");
+});
+
+prueba("el disparo tambien rompe candelabros", function () {
+  var w = mundo(suelo([[13, 8, "C"], [13, 2, "P"]]),
+                { ataque: "disparo", alcance: 128, espera: 60 });
+  correr(w, 4);
+  w.step(NP.IN.ACTION);
+  correr(w, 60);
+  assert.strictEqual(entidadDe(w, 4), null, "el disparo no lo ha roto");
+  assert.ok(entidadDe(w, 1), "no ha soltado nada");
+});
+
+/* --------------------------------------- corazones y arma secundaria */
+
+prueba("los corazones se cuentan aparte de la vida", function () {
+  var filas = suelo([[13, 2, "P"]]);
+  /* la municion se coloca a mano: el simbolo 'o' es el objeto 0 */
+  var w = mundo(filas, { secundaria: "recta" });
+  w.entities.push({
+    active: 1, kind: 1, def: 2, x: NP.I2F(60), y: NP.I2F(210),
+    homeX: 0, homeY: 0, vx: 0, vy: 0, facing: 0, anim: 0, animFrame: 0,
+    animTimer: 0, hurt: 0, timer: 0, health: 1, vida: 0
+  });
+  w.entityCount = w.entities.length;
+  var vida = w.players[0].health;
+  correr(w, 90, NP.IN.RIGHT);
+  assert.strictEqual(w.hearts, 5, "no ha cogido la municion: " + w.hearts);
+  assert.strictEqual(w.players[0].health, vida, "la municion ha dado vida");
+});
+
+prueba("arriba + accion tira el arma secundaria y gasta municion", function () {
+  var w = mundo(suelo([[13, 2, "P"]]), { secundaria: "recta", subCoste: 2 });
+  w.hearts = 5;
+  correr(w, 4);
+  w.step(NP.IN.UP | NP.IN.ACTION);
+  correr(w, 2);
+  assert.ok(entidadDe(w, 5), "no ha salido nada");
+  assert.strictEqual(w.hearts, 3, "no ha gastado la municion que cuesta");
+});
+
+prueba("sin municion no sale el arma secundaria: se pega", function () {
+  var w = mundo(suelo([[13, 2, "P"]]),
+                { secundaria: "recta", subCoste: 2, ataque: "golpe", espera: 60 });
+  w.hearts = 1;
+  correr(w, 4);
+  w.step(NP.IN.UP | NP.IN.ACTION);
+  correr(w, 2);
+  assert.strictEqual(entidadDe(w, 5), null, "ha tirado sin municion");
+  assert.strictEqual(w.hearts, 1, "ha gastado municion igualmente");
+  assert.ok(w.players[0].attackTimer > 0, "no ha pegado en su lugar");
+});
+
+prueba("el boton a secas no gasta municion", function () {
+  var w = mundo(suelo([[13, 2, "P"]]),
+                { secundaria: "recta", ataque: "golpe", espera: 60 });
+  w.hearts = 4;
+  correr(w, 4);
+  w.step(NP.IN.ACTION);
+  correr(w, 2);
+  assert.strictEqual(w.hearts, 4, "el ataque normal gasta municion");
+  assert.strictEqual(entidadDe(w, 5), null, "el boton a secas tira el arma");
+});
+
+prueba("el arma en arco cae, la recta no", function () {
+  function altura(tipo) {
+    var w = mundo(suelo([[13, 2, "P"]]),
+                  { secundaria: tipo, subAlcance: 300, subSalto: 2, subGravedad: 0.3 });
+    w.hearts = 9;
+    correr(w, 4);
+    w.step(NP.IN.UP | NP.IN.ACTION);
+    var e = entidadDe(w, 5);
+    var y0 = e.y, mas = y0;
+    var i;
+    for (i = 0; i < 40 && e.active; i++) {
+      w.step(0);
+      if (e.y > mas) mas = e.y;
+    }
+    return mas - y0;
+  }
+  assert.strictEqual(altura("recta"), 0, "la recta se ha caido");
+  assert.ok(altura("arco") > 0, "el arco no cae");
+});
+
+prueba("el arma secundaria mata enemigos y rompe candelabros", function () {
+  var w = mundo(suelo([[13, 8, "e"], [13, 12, "C"], [13, 2, "P"]]),
+                { secundaria: "recta", subAlcance: 300, subEspera: 4 });
+  w.hearts = 20;
+  correr(w, 4);
+  /* el boton va por flanco: mantenerlo pulsado tira una sola vez */
+  var i;
+  for (i = 0; i < 400; i++)
+    w.step(i % 8 === 0 ? (NP.IN.UP | NP.IN.ACTION) : 0);
+  assert.strictEqual(entidadDe(w, 0), null, "no ha matado al enemigo");
+  assert.strictEqual(entidadDe(w, 4), null, "no ha roto el candelabro");
 });
 
 /* ------------------------------------------------- plataformas moviles */

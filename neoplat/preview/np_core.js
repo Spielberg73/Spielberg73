@@ -26,13 +26,16 @@
   var ANIM_IDLE = 0, ANIM_RUN = 1, ANIM_JUMP = 2, ANIM_FALL = 3, ANIM_HURT = 4,
       ANIM_ATTACK = 5;
   var KIND_ENEMY = 0, KIND_ITEM = 1, KIND_SHOT = 2, KIND_PLATFORM = 3;
+  var KIND_BREAKABLE = 4, KIND_SUBSHOT = 5;
+  /* el arma secundaria: 0 ninguna, 1 recta, 2 en arco */
+  var SUB_NONE = 0, SUB_LINE = 1, SUB_ARC = 2;
   /* por donde va y viene una plataforma movil */
   var PLAT_X = 0, PLAT_Y = 1;
   var ATTACK_NONE = 0, ATTACK_SHOT = 1, ATTACK_MELEE = 2;
   var STATE = { TITLE: 0, PLAY: 1, DYING: 2, LEVEL_END: 3, GAME_OVER: 4, FINISHED: 5 };
   /* Eventos de sonido; mismos bits que NP_SFX_* en np_types.h. */
   var SFX = { START: 1, JUMP: 2, DJUMP: 4, COIN: 8, STOMP: 16, HURT: 32,
-              DIE: 64, GOAL: 128, LIFE: 256, SHOOT: 512 };
+              DIE: 64, GOAL: 128, LIFE: 256, SHOOT: 512, BREAK: 1024 };
 
   function I2F(v) { return v * FIX_ONE; }
   function F2I(v) { return v >> FIX_SHIFT; }
@@ -72,7 +75,7 @@
     this.state = STATE.TITLE; this.stateTimer = 0;
     this.timeLeft = 0; this.prevInput = [0, 0];
     this.sfx = 0;                 /* eventos de sonido de este frame */
-    this.keys = 0; this.entityCount = 0;
+    this.keys = 0; this.hearts = 0; this.entityCount = 0;
     this.bossHealth = 0; this.bossMax = 0;
     /* Igual que np_world_init en C: en el titulo ya se ve el principio del
        nivel, con los jugadores colocados en su salida. */
@@ -189,6 +192,8 @@
     if (e.kind === KIND_ENEMY) return this.data.enemies[e.def];
     if (e.kind === KIND_SHOT) return this.data.player.attack;
     if (e.kind === KIND_PLATFORM) return this.data.platforms[e.def];
+    if (e.kind === KIND_BREAKABLE) return this.data.breakables[e.def];
+    if (e.kind === KIND_SUBSHOT) return this.data.player.sub;
     return this.data.items[e.def];
   };
 
@@ -239,6 +244,8 @@
         e.facing = 1;
       } else if (e.kind === KIND_PLATFORM) {
         e.facing = 1;             /* sale hacia la derecha o hacia abajo */
+      } else if (e.kind === KIND_BREAKABLE) {
+        e.health = this.data.breakables[e.def].health;
       }
       this.entities.push(e);
       this.entityCount++;
@@ -264,6 +271,7 @@
     this.level = this.data.levels[index];
     for (i = 0; i < MAX_PLAYERS; i++) this.resetPlayer(i);
     this.keys = 0;
+    this.hearts = 0;
     this.bossHealth = 0; this.bossMax = 0;
     this.timeLeft = this.data.time_limit * 60;
     this.state = STATE.PLAY;
@@ -352,6 +360,39 @@
     if (d.boss) this.finishLevel();
   };
 
+  /* Romper un candelabro. Lo que suelte ocupa su propia ranura, asi que nunca
+     se queda sin sitio. Igual que np_hit_breakable en C. */
+  World.prototype.hitBreakable = function (e, damage) {
+    var d = this.data.breakables[e.def];
+    var suelta = d.drop;
+    if (e.health > damage) {
+      e.health -= damage;
+      e.hurt = 10;
+      this.sfx |= SFX.BREAK;
+      return;
+    }
+    this.score += d.score;
+    this.sfx |= SFX.BREAK;
+    if (!suelta || suelta > this.data.items.length) { e.active = 0; return; }
+    var ea = d.actor, ia = this.data.items[suelta - 1].actor;
+    var cx = e.x + I2F(idiv(ea.box_w, 2));
+    var suelo = e.y + I2F(ea.box_h);
+    e.kind = KIND_ITEM;
+    e.def = suelta - 1;
+    e.x = cx - I2F(idiv(ia.box_w, 2));
+    e.y = suelo - I2F(ia.box_h);
+    e.homeX = e.x; e.homeY = e.y;
+    e.vx = 0; e.vy = 0;
+    e.health = 1; e.hurt = 0; e.timer = 0; e.vida = 0;
+    e.anim = ANIM_IDLE; e.animFrame = 0; e.animTimer = 0;
+  };
+
+  /* Lo que hace un ataque al tocar algo. Igual que np_hit_entity. */
+  World.prototype.hitEntity = function (e, damage) {
+    if (e.kind === KIND_ENEMY) this.hitEnemy(e, damage);
+    else if (e.kind === KIND_BREAKABLE) this.hitBreakable(e, damage);
+  };
+
   World.prototype.playerAttack = function (quien) {
     var at = this.data.player.attack, p = this.players[quien];
     var pa = this.data.player.actor;
@@ -391,11 +432,12 @@
     if (moveOut.hit) { e.active = 0; return; }
     for (i = 0; i < this.entityCount; i++) {
       var otra = this.entities[i];
-      if (!otra.active || otra.kind !== KIND_ENEMY) continue;
+      if (!otra.active) continue;
+      if (otra.kind !== KIND_ENEMY && otra.kind !== KIND_BREAKABLE) continue;
       var ea = this.entityDef(otra).actor;
       if (!overlap(e.x, e.y, a.box_w, a.box_h,
                         otra.x, otra.y, ea.box_w, ea.box_h)) continue;
-      this.hitEnemy(otra, at.damage);
+      this.hitEntity(otra, at.damage);
       e.active = 0;
       return;
     }
@@ -414,12 +456,82 @@
     var gy = p.y;
     for (i = 0; i < this.entityCount; i++) {
       var e = this.entities[i];
-      if (!e.active || e.kind !== KIND_ENEMY) continue;
+      if (!e.active) continue;
+      if (e.kind !== KIND_ENEMY && e.kind !== KIND_BREAKABLE) continue;
+      /* Lo que esta parpadeando no se vuelve a tocar: la caja del golpe dura
+         varios frames y acertaria en todos. Igual que np_melee_update. */
+      if (e.hurt) continue;
       var ea = this.entityDef(e).actor;
       if (!overlap(gx, gy, at.range, pa.box_h,
                         e.x, e.y, ea.box_w, ea.box_h)) continue;
-      this.hitEnemy(e, at.damage);
+      this.hitEntity(e, at.damage);
     }
+  };
+
+  /* ------------------------------------------------- arma secundaria
+   *
+   * Arriba + accion, y gasta municion. Traduccion literal de np_player_sub /
+   * np_subshot_update / np_breakable_update. */
+
+  World.prototype.playerSub = function (quien) {
+    var sb = this.data.player.sub, p = this.players[quien];
+    var pa = this.data.player.actor;
+    if (!sb || sb.kind === SUB_NONE || p.attackCd) return;
+    if (this.hearts < sb.cost) return;
+    var hueco = this.huecoLibre();
+    if (hueco < 0) return;
+    this.hearts -= sb.cost;
+    p.attackCd = sb.cooldown;
+    p.attackTimer = this.data.player.attack.duration;
+    this.sfx |= SFX.SHOOT;
+    var e = this.entities[hueco];
+    e.active = 1;
+    e.kind = KIND_SUBSHOT;
+    e.def = 0;
+    e.facing = p.facing;
+    e.x = p.x + I2F(p.facing ? pa.box_w : -sb.actor.box_w);
+    e.y = p.y + I2F(idiv(pa.box_h - sb.actor.box_h, 2));
+    e.vx = p.facing ? sb.speed : -sb.speed;
+    e.vy = (sb.kind === SUB_ARC) ? -sb.jump : 0;
+    e.homeX = e.x; e.homeY = e.y;
+    e.health = 1; e.hurt = 0; e.timer = 0;
+    e.anim = ANIM_IDLE; e.animFrame = 0; e.animTimer = 0;
+    e.vida = sb.speed ? idiv(I2F(sb.range), sb.speed) + 1 : 1;
+  };
+
+  World.prototype.subshotUpdate = function (e) {
+    var sb = this.data.player.sub, a = sb.actor, i;
+    if (!e.vida) { e.active = 0; return; }
+    e.vida--;
+    if (sb.kind === SUB_ARC) {
+      e.vy += sb.gravity;
+      if (e.vy > ENTITY_FALL) e.vy = ENTITY_FALL;
+    }
+    e.x = this.moveX(e.x, e.y, a.box_w, a.box_h, e.vx, moveOut);
+    if (moveOut.hit) { e.active = 0; return; }
+    if (e.vy) {
+      e.y = this.moveY(e.x, e.y, a.box_w, a.box_h, e.vy, 1, moveOut);
+      if (moveOut.hitDown || moveOut.hitUp) { e.active = 0; return; }
+    }
+    for (i = 0; i < this.entityCount; i++) {
+      var otra = this.entities[i];
+      if (!otra.active) continue;
+      if (otra.kind !== KIND_ENEMY && otra.kind !== KIND_BREAKABLE) continue;
+      var ea = this.entityDef(otra).actor;
+      if (!overlap(e.x, e.y, a.box_w, a.box_h,
+                        otra.x, otra.y, ea.box_w, ea.box_h)) continue;
+      this.hitEntity(otra, sb.damage);
+      e.active = 0;
+      return;
+    }
+    animTick(a, e);
+  };
+
+  /* Un candelabro no hace nada: se anima y espera a que le pegues. */
+  World.prototype.breakableUpdate = function (e) {
+    var d = this.data.breakables[e.def];
+    animSet(e, ANIM_IDLE);
+    animTick(d.actor, e);
   };
 
   /* --------------------------------------------- plataformas moviles */
@@ -513,8 +625,15 @@
 
     /* El ataque va por flanco: mantener el boton no dispara sin parar. */
     if (p.attackCd) p.attackCd--;
-    if ((input & IN.ACTION) && !(this.prevInput[quien] & IN.ACTION))
-      this.playerAttack(quien);
+    if ((input & IN.ACTION) && !(this.prevInput[quien] & IN.ACTION)) {
+      /* arriba + accion tira el arma secundaria; el boton a secas, el ataque
+         de siempre. Sin arma o sin municion, se pega. */
+      var sb = this.data.player.sub;
+      if ((input & IN.UP) && sb && sb.kind !== SUB_NONE && this.hearts >= sb.cost)
+        this.playerSub(quien);
+      else
+        this.playerAttack(quien);
+    }
     this.meleeUpdate(quien);
 
     var pressedJump = (input & IN.JUMP) && !(this.prevInput[quien] & IN.JUMP);
@@ -641,6 +760,7 @@
     else if (d.effect === 2) {
       p.health = Math.min(p.health + d.amount, this.data.player.health);
     } else if (d.effect === 3) { if (this.keys < 255) this.keys += d.amount; }
+    else if (d.effect === 4) { this.hearts = Math.min(this.hearts + d.amount, 99); }
     e.active = 0;
   };
 
@@ -656,8 +776,10 @@
         if (!e.active) continue;
         var ea = this.entityDef(e).actor;
         if (!overlap(p.x, p.y, pa.box_w, pa.box_h, e.x, e.y, ea.box_w, ea.box_h)) continue;
-        if (e.kind === KIND_SHOT) continue;      /* es tuyo: no te toca */
+        if (e.kind === KIND_SHOT || e.kind === KIND_SUBSHOT)
+          continue;                              /* es tuyo: no te toca */
         if (e.kind === KIND_PLATFORM) continue;  /* es suelo, no un bicho */
+        if (e.kind === KIND_BREAKABLE) continue; /* hay que pegarle */
         if (e.kind === KIND_ITEM) { this.collect(quien, e); continue; }
         var d = this.data.enemies[e.def];
         /* Misma ventana de pisado que np_world.c: cayendo y con los pies por
@@ -787,13 +909,18 @@
       if (dx < -CULL_MARGIN || dx > SCREEN_W + CULL_MARGIN) {
         /* Lejos de la vista, los enemigos se quedan en pausa y los
            proyectiles se apagan: uno que sale de la pantalla ya no vuelve. */
-        if (e.kind === KIND_SHOT) { e.active = 0; continue; }
+        if (e.kind === KIND_SHOT || e.kind === KIND_SUBSHOT) {
+          e.active = 0;
+          continue;
+        }
         if (e.kind === KIND_ENEMY) continue;
       }
       if (e.kind === KIND_PLATFORM) continue;        /* ya se ha movido */
       if (e.hurt) e.hurt--;
       if (e.kind === KIND_SHOT) this.shotUpdate(e);
+      else if (e.kind === KIND_SUBSHOT) this.subshotUpdate(e);
       else if (e.kind === KIND_ENEMY) this.enemyUpdate(e);
+      else if (e.kind === KIND_BREAKABLE) this.breakableUpdate(e);
       else this.itemUpdate(e);
     }
 

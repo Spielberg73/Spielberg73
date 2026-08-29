@@ -58,8 +58,14 @@ class TestEmpaquetado(unittest.TestCase):
     def test_spawns_apoyados_en_el_suelo(self):
         nivel = self.build.levels[0]
         self.assertTrue(nivel.spawns)
+        # cada tipo de spawn mira su propia tabla: mirando siempre la de
+        # objetos, un candelabro o una plataforma se comparaban con la caja
+        # equivocada y la prueba decia cualquier cosa
+        tablas = {0: self.build.enemies, 1: self.build.items,
+                  3: self.build.platforms, 4: self.build.breakables}
         for x, y, kind, index in nivel.spawns:
-            actor = (self.build.enemies if kind == 0 else self.build.items)[index].actor
+            self.assertIn(kind, tablas, "tipo de spawn desconocido: %d" % kind)
+            actor = tablas[kind][index].actor
             self.assertEqual((y + actor.box_h) % 16, 0,
                              "la entidad no queda apoyada en la rejilla de tiles")
             self.assertGreaterEqual(x, 0)

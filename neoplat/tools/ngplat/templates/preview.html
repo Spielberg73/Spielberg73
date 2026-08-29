@@ -954,11 +954,14 @@
       text(18, 1, "TIME");
       text(23, 1, pad((world.timeLeft / 60) | 0, 3));
     }
-    /* Las llaves que llevas y las que pide la meta, en el mismo sitio que en
-       las maquinas. Si el nivel no pide ninguna, no se escribe nada. */
+    /* Lo que llevas -llaves y municion- en el mismo sitio que en las maquinas.
+       Cada mitad solo sale si el juego la usa. */
     if (world.level.keys_needed) {
       text(20, 2, "KEYS " + pad(Math.min(world.keys, 99), 2)
                   + "/" + pad(Math.min(world.level.keys_needed, 99), 2));
+    }
+    if (DATA.player.sub && DATA.player.sub.kind) {
+      text(31, 2, "AMMO " + pad(Math.min(world.hearts, 99), 2));
     }
     if (world.state === NPCore.STATE.TITLE) {
       text(12, 12, DATA.title);
@@ -1854,6 +1857,9 @@
     });
     (DATA.platforms || []).forEach(function (pl, i) {
       actores.push({ hoja: pl.actor.sheet, nombre: pl.name || ("plataforma " + i) });
+    });
+    (DATA.breakables || []).forEach(function (b, i) {
+      actores.push({ hoja: b.actor.sheet, nombre: b.name || ("rompible " + i) });
     });
     // el proyectil solo existe si el juego lleva ataque
     if (DATA.player && DATA.player.attack && DATA.player.attack.kind &&

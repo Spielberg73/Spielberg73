@@ -145,6 +145,41 @@ def gema() -> Image:
 
 # --- el escenario ---------------------------------------------------------
 
+def _brasero_frame(llama: int) -> Image:
+    """El rompible del estilo hierro: un brasero de metal con su llama."""
+    c = Lienzo(16, 16)
+    c.rect(6, 9, 4, 5, ROCA)             # el pie
+    c.rect(6, 13, 4, 1, LINEA)
+    c.rect(5, 14, 6, 2, ROCA2)           # la base
+    c.rect(7, 6, 2, 3, ROJO)             # la llama
+    c.rect(7, 4 - llama, 2, 3, ORO)
+    c.px(8, 3 - llama, ORO)
+    return c.image
+
+
+def brasero() -> Image:
+    hoja = Lienzo(16 * 2, 16)
+    for i, llama in enumerate([0, 1]):
+        hoja.blit(i * 16, 0, _brasero_frame(llama))
+    return hoja.image
+
+
+def _chispa_frame(ancho: int) -> Image:
+    """La municion: una chispa que late."""
+    c = Lienzo(16, 16)
+    x0 = 8 - ancho // 2
+    c.rect(x0, 6, ancho, ancho, ORO)
+    c.rect(x0 + 1, 7, ancho - 2, ancho - 2, CLARO)
+    return c.image
+
+
+def chispa() -> Image:
+    hoja = Lienzo(16 * 2, 16)
+    for i, ancho in enumerate([8, 6]):
+        hoja.blit(i * 16, 0, _chispa_frame(ancho))
+    return hoja.image
+
+
 def plataforma() -> Image:
     """La plataforma movil: una viga suelta de dos tiles de ancho.
 
@@ -286,6 +321,8 @@ def todos() -> Dict[str, Image]:
         "graficos/enemigo.png": enemigo(),
         "graficos/gema.png": gema(),
         "graficos/plataforma.png": plataforma(),
+        "graficos/candelabro.png": brasero(),
+        "graficos/corazon.png": chispa(),
         "graficos/tiles.png": tileset(),
         "graficos/cueva.png": cueva(),
     }

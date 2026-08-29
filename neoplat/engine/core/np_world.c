@@ -201,6 +201,8 @@ const NpActorDef *np_entity_def(const NpEntity *e)
     if (e->kind == NP_KIND_ENEMY) return &np_enemies[e->def].actor;
     if (e->kind == NP_KIND_SHOT) return &np_player_def.attack.actor;
     if (e->kind == NP_KIND_PLATFORM) return &np_platforms[e->def].actor;
+    if (e->kind == NP_KIND_BREAKABLE) return &np_breakables[e->def].actor;
+    if (e->kind == NP_KIND_SUBSHOT) return &np_player_def.sub.actor;
     return &np_items[e->def].actor;
 }
 
@@ -312,6 +314,8 @@ static void np_spawn_entities(NpWorld *w)
         } else if (e->kind == NP_KIND_PLATFORM) {
             e->health = 1;
             e->facing = 1;           /* sale hacia la derecha o hacia abajo */
+        } else if (e->kind == NP_KIND_BREAKABLE) {
+            e->health = np_breakables[e->def].health;
         } else {
             e->health = 1;
         }
@@ -352,6 +356,7 @@ void np_world_load_level(NpWorld *w, uint16_t index)
     w->level = &np_levels[index];
     for (i = 0; i < NP_MAX_PLAYERS; i++) np_player_reset(w, i);
     w->keys = 0;
+    w->hearts = 0;
     w->boss_health = 0;
     w->boss_max = 0;
     w->time_left = (uint16_t)(np_time_limit * 60);
@@ -455,6 +460,61 @@ static int np_hit_enemy(NpWorld *w, NpEntity *e, uint8_t damage)
     return 1;
 }
 
+/* Le pega a un candelabro. Devuelve 1 si se lo ha llevado por delante.
+ *
+ * Al romperse suelta lo que lleve dentro ocupando **su propia ranura** de la
+ * lista: asi un candelabro nunca puede quedarse sin sitio para su objeto, que
+ * seria la peor forma de perder una vida extra. */
+static int np_hit_breakable(NpWorld *w, NpEntity *e, uint8_t damage)
+{
+    const NpBreakableDef *d = &np_breakables[e->def];
+    uint8_t suelta = d->drop;
+    if (e->health > damage) {
+        e->health = (uint8_t)(e->health - damage);
+        e->hurt = 10;
+        w->sfx |= NP_SFX_BREAK;
+        return 1;
+    }
+    w->score += d->score;
+    w->sfx |= NP_SFX_BREAK;
+    if (!suelta || suelta > np_item_count) {
+        e->active = 0;
+        return 1;
+    }
+    {
+        /* el objeto sale centrado donde estaba el candelabro */
+        const NpActorDef *ea = &d->actor;
+        const NpActorDef *ia = &np_items[suelta - 1].actor;
+        np_fix cx = e->x + NP_I2F(ea->box_w / 2);
+        np_fix suelo = e->y + NP_I2F(ea->box_h);
+        e->kind = NP_KIND_ITEM;
+        e->def = (uint8_t)(suelta - 1);
+        e->x = cx - NP_I2F(ia->box_w / 2);
+        e->y = suelo - NP_I2F(ia->box_h);
+        e->home_x = e->x;
+        e->home_y = e->y;
+        e->vx = 0;
+        e->vy = 0;
+        e->health = 1;
+        e->hurt = 0;
+        e->timer = 0;
+        e->vida = 0;
+        e->anim = NP_ANIM_IDLE;
+        e->anim_frame = 0;
+        e->anim_timer = 0;
+    }
+    return 1;
+}
+
+/* Lo que hace un ataque al tocar una entidad: hacer dano a un enemigo o
+ * reventar un candelabro. Devuelve 1 si ha pasado algo. */
+static int np_hit_entity(NpWorld *w, NpEntity *e, uint8_t damage)
+{
+    if (e->kind == NP_KIND_ENEMY) return np_hit_enemy(w, e, damage);
+    if (e->kind == NP_KIND_BREAKABLE) return np_hit_breakable(w, e, damage);
+    return 0;
+}
+
 static void np_player_attack(NpWorld *w, uint8_t quien)
 {
     const NpAttackDef *at = &np_player_def.attack;
@@ -496,6 +556,98 @@ static void np_player_attack(NpWorld *w, uint8_t quien)
     }
 }
 
+/* El arma secundaria: arriba + accion, y gasta municion.
+ *
+ * Es lo que en los clasicos separa el latigo del cuchillo o el hacha: uno
+ * siempre esta ahi y la otra se acaba. Con `tipo: arco` sale hacia arriba y la
+ * gravedad la va bajando, que es la diferencia entre tirar de frente y tirar
+ * por encima de una pared. */
+static void np_player_sub(NpWorld *w, uint8_t quien)
+{
+    const NpSubDef *sb = &np_player_def.sub;
+    NpPlayer *p = &w->players[quien];
+    const NpActorDef *pa = &np_player_def.actor;
+    int hueco;
+
+    if (sb->kind == NP_SUB_NONE || p->attack_cd) return;
+    if (w->hearts < sb->cost) return;         /* sin municion no sale nada */
+    hueco = np_hueco_libre(w);
+    if (hueco < 0) return;
+    w->hearts = (uint8_t)(w->hearts - sb->cost);
+    p->attack_cd = sb->cooldown;
+    p->attack_timer = np_player_def.attack.duration;
+    w->sfx |= NP_SFX_SHOOT;
+    {
+        NpEntity *e = &w->entities[hueco];
+        e->active = 1;
+        e->kind = NP_KIND_SUBSHOT;
+        e->def = 0;
+        e->facing = p->facing;
+        e->x = p->x + NP_I2F(p->facing ? pa->box_w : -sb->actor.box_w);
+        e->y = p->y + NP_I2F((pa->box_h - sb->actor.box_h) / 2);
+        e->vx = p->facing ? sb->speed : -sb->speed;
+        e->vy = (sb->kind == NP_SUB_ARC) ? -sb->jump : 0;
+        e->home_x = e->x;
+        e->home_y = e->y;
+        e->health = 1;
+        e->hurt = 0;
+        e->timer = 0;
+        e->anim = NP_ANIM_IDLE;
+        e->anim_frame = 0;
+        e->anim_timer = 0;
+        e->vida = sb->speed ? (uint16_t)((NP_I2F(sb->range) / sb->speed) + 1) : 1;
+    }
+}
+
+/* Lo tirado por el arma secundaria en vuelo. A diferencia del disparo normal,
+   este puede caer: con `tipo: arco` la gravedad lo baja, y se apaga tambien al
+   dar en el suelo. */
+static void np_subshot_update(NpWorld *w, NpEntity *e)
+{
+    const NpSubDef *sb = &np_player_def.sub;
+    const NpActorDef *a = &sb->actor;
+    uint8_t i;
+    int hit_x = 0, hit_down = 0, hit_up = 0;
+
+    if (!e->vida) { e->active = 0; return; }
+    e->vida--;
+    if (sb->kind == NP_SUB_ARC) {
+        e->vy += sb->gravity;
+        if (e->vy > NP_ENTITY_FALL) e->vy = NP_ENTITY_FALL;
+    }
+    e->x = np_move_x(w->level, e->x, e->y, a->box_w, a->box_h, e->vx, &hit_x);
+    if (hit_x) { e->active = 0; return; }
+    if (e->vy) {
+        e->y = np_move_y(w->level, e->x, e->y, a->box_w, a->box_h, e->vy, 1,
+                         &hit_down, &hit_up);
+        if (hit_down || hit_up) { e->active = 0; return; }
+    }
+
+    for (i = 0; i < w->entity_count; i++) {
+        NpEntity *otra = &w->entities[i];
+        const NpActorDef *ea;
+        if (!otra->active) continue;
+        if (otra->kind != NP_KIND_ENEMY && otra->kind != NP_KIND_BREAKABLE) continue;
+        ea = np_entity_def(otra);
+        if (!np_boxes_overlap(e->x, e->y, a->box_w, a->box_h,
+                              otra->x, otra->y, ea->box_w, ea->box_h))
+            continue;
+        np_hit_entity(w, otra, sb->damage);
+        e->active = 0;
+        return;
+    }
+    np_anim_tick(a, e->anim, &e->anim_frame, &e->anim_timer);
+}
+
+/* Un candelabro: no hace nada. Solo se anima y espera a que le pegues. */
+static void np_breakable_update(NpWorld *w, NpEntity *e)
+{
+    const NpBreakableDef *d = &np_breakables[e->def];
+    (void)w;
+    np_anim_set(&e->anim, &e->anim_frame, &e->anim_timer, NP_ANIM_IDLE);
+    np_anim_tick(&d->actor, e->anim, &e->anim_frame, &e->anim_timer);
+}
+
 /* Un proyectil en vuelo: avanza, y se apaga al chocar con una pared, al darle
    a un enemigo o al agotar su alcance. */
 static void np_shot_update(NpWorld *w, NpEntity *e)
@@ -512,12 +664,13 @@ static void np_shot_update(NpWorld *w, NpEntity *e)
     for (i = 0; i < w->entity_count; i++) {
         NpEntity *otra = &w->entities[i];
         const NpActorDef *ea;
-        if (!otra->active || otra->kind != NP_KIND_ENEMY) continue;
+        if (!otra->active) continue;
+        if (otra->kind != NP_KIND_ENEMY && otra->kind != NP_KIND_BREAKABLE) continue;
         ea = np_entity_def(otra);
         if (!np_boxes_overlap(e->x, e->y, a->box_w, a->box_h,
                               otra->x, otra->y, ea->box_w, ea->box_h))
             continue;
-        np_hit_enemy(w, otra, np_player_def.attack.damage);
+        np_hit_entity(w, otra, np_player_def.attack.damage);
         e->active = 0;
         return;
     }
@@ -545,12 +698,19 @@ static void np_melee_update(NpWorld *w, uint8_t quien)
     for (i = 0; i < w->entity_count; i++) {
         NpEntity *e = &w->entities[i];
         const NpActorDef *ea;
-        if (!e->active || e->kind != NP_KIND_ENEMY) continue;
+        if (!e->active) continue;
+        if (e->kind != NP_KIND_ENEMY && e->kind != NP_KIND_BREAKABLE) continue;
+        /* Lo que esta parpadeando no se vuelve a tocar. La caja del golpe se
+           queda puesta varios frames y acierta en todos: sin esto, un solo
+           ataque se llevaba por delante a un enemigo de cinco de vida y el
+           `vida:` de los enemigos no servia de nada contra un cuerpo a
+           cuerpo. */
+        if (e->hurt) continue;
         ea = np_entity_def(e);
         if (!np_boxes_overlap(gx, gy, at->range, pa->box_h,
                               e->x, e->y, ea->box_w, ea->box_h))
             continue;
-        np_hit_enemy(w, e, at->damage);
+        np_hit_entity(w, e, at->damage);
     }
 }
 
@@ -675,8 +835,15 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
     /* El ataque va por flanco: mantener el boton no dispara sin parar, y la
        cadencia la marca `espera:` del game.yaml. */
     if (p->attack_cd) p->attack_cd--;
-    if ((input & NP_IN_ACTION) && !(w->prev_input[quien] & NP_IN_ACTION))
-        np_player_attack(w, quien);
+    if ((input & NP_IN_ACTION) && !(w->prev_input[quien] & NP_IN_ACTION)) {
+        /* arriba + accion tira el arma secundaria; el boton a secas, el
+           ataque de siempre. Si no hay arma o no queda municion, se pega. */
+        if ((input & NP_IN_UP) && np_player_def.sub.kind != NP_SUB_NONE
+            && w->hearts >= np_player_def.sub.cost)
+            np_player_sub(w, quien);
+        else
+            np_player_attack(w, quien);
+    }
     np_melee_update(w, quien);
 
     pressed_jump = (input & NP_IN_JUMP) && !(w->prev_input[quien] & NP_IN_JUMP);
@@ -853,6 +1020,9 @@ static void np_collect(NpWorld *w, uint8_t quien, NpEntity *e)
     case NP_ITEM_KEY:
         if (w->keys < 255) w->keys = (uint8_t)(w->keys + d->amount);
         break;
+    case NP_ITEM_AMMO:
+        w->hearts = (uint8_t)NP_MIN(w->hearts + d->amount, 99);
+        break;
     default:
         break;
     }
@@ -886,8 +1056,10 @@ static void np_touch_entities(NpWorld *w)
             if (!np_boxes_overlap(p->x, p->y, pa->box_w, pa->box_h,
                                   e->x, e->y, ea->box_w, ea->box_h))
                 continue;
-            if (e->kind == NP_KIND_SHOT) continue;   /* es tuyo: no te toca */
+            if (e->kind == NP_KIND_SHOT || e->kind == NP_KIND_SUBSHOT)
+                continue;                            /* es tuyo: no te toca */
             if (e->kind == NP_KIND_PLATFORM) continue;   /* es suelo, no un bicho */
+            if (e->kind == NP_KIND_BREAKABLE) continue;  /* hay que pegarle */
             if (e->kind == NP_KIND_ITEM) {
                 np_collect(w, quien, e);
                 continue;
@@ -1057,13 +1229,18 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
                proyectiles se apagan: uno que sale de la pantalla ya no vuelve,
                y si no se ocuparia un hueco de la lista hasta agotar su
                alcance. */
-            if (e->kind == NP_KIND_SHOT) { e->active = 0; continue; }
+            if (e->kind == NP_KIND_SHOT || e->kind == NP_KIND_SUBSHOT) {
+                e->active = 0;
+                continue;
+            }
             if (e->kind == NP_KIND_ENEMY) continue;
         }
         if (e->kind == NP_KIND_PLATFORM) continue;      /* ya se ha movido */
         if (e->hurt) e->hurt--;
         if (e->kind == NP_KIND_SHOT) np_shot_update(w, e);
+        else if (e->kind == NP_KIND_SUBSHOT) np_subshot_update(w, e);
         else if (e->kind == NP_KIND_ENEMY) np_enemy_update(w, e);
+        else if (e->kind == NP_KIND_BREAKABLE) np_breakable_update(w, e);
         else np_item_update(w, e);
     }
 
@@ -1143,26 +1320,37 @@ void np_boss_bar(char *out, const NpWorld *w)
     out[5 + NP_BOSS_BAR] = 0;
 }
 
-/* El contador de llaves, "KEYS 01/03", para el marcador (en ingles como el
-   resto: SCORE, LIVES, BOSS). Si el nivel no pide ninguna se devuelve una linea
-   en blanco: asi el marcador no tiene que saber nada del nivel y se limita a
-   escribir lo que salga. */
-void np_keys_bar(char *out, const NpWorld *w)
+/* Escribe "NN" en dos digitos, con tope en 99. */
+static void np_dos_digitos(char *out, uint8_t valor)
 {
-    static const char titulo[] = "KEYS ";
+    if (valor > 99) valor = 99;
+    out[0] = (char)('0' + valor / 10);
+    out[1] = (char)('0' + valor % 10);
+}
+
+/* La linea de "lo que llevas": llaves y municion, "KEYS 01/03 AMMO 05" (en
+   ingles como el resto del marcador: SCORE, LIVES, BOSS). Cada mitad sale en
+   blanco si el juego no la usa, asi que el marcador no tiene que saber nada de
+   esto y se limita a escribir lo que salga. */
+void np_extras_bar(char *out, const NpWorld *w)
+{
+    static const char llaves[] = "KEYS ";
+    static const char municion[] = "AMMO ";
     uint8_t i, piden = w->level ? w->level->keys_needed : 0;
-    uint8_t tengo = w->keys;
-    for (i = 0; i < NP_KEYS_BAR; i++) out[i] = ' ';
-    out[NP_KEYS_BAR] = 0;
-    if (!piden) return;
-    if (tengo > 99) tengo = 99;
-    if (piden > 99) piden = 99;
-    for (i = 0; i < 5; i++) out[i] = titulo[i];
-    out[5] = (char)('0' + tengo / 10);
-    out[6] = (char)('0' + tengo % 10);
-    out[7] = '/';
-    out[8] = (char)('0' + piden / 10);
-    out[9] = (char)('0' + piden % 10);
+
+    for (i = 0; i < NP_EXTRAS_BAR; i++) out[i] = ' ';
+    out[NP_EXTRAS_BAR] = 0;
+    if (piden) {
+        for (i = 0; i < 5; i++) out[i] = llaves[i];
+        np_dos_digitos(out + 5, w->keys);
+        out[7] = '/';
+        np_dos_digitos(out + 8, piden);
+    }
+    /* la municion solo tiene sentido si el juego lleva arma secundaria */
+    if (np_player_def.sub.kind != NP_SUB_NONE) {
+        for (i = 0; i < 5; i++) out[11 + i] = municion[i];
+        np_dos_digitos(out + 16, w->hearts);
+    }
 }
 
 void np_world_step(NpWorld *w, uint16_t input, uint16_t input2)

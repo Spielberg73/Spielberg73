@@ -48,6 +48,22 @@ typedef struct {
     uint8_t locks;           /* 1 = mientras pegas no te puedes mover */
 } NpAttackDef;
 
+/* El arma secundaria: se lanza con **arriba + accion** y gasta municion, que
+ * es una cuenta aparte de la vida (los objetos con `efecto: municion` la
+ * suben). Con `gravity` a cero va recta; con gravedad describe un arco y cae,
+ * que es lo que distingue un hacha de un cuchillo. */
+typedef struct {
+    NpActorDef actor;
+    np_fix speed;
+    np_fix gravity;          /* 0 = recta */
+    np_fix jump;             /* impulso hacia arriba al salir, para el arco */
+    uint16_t range;          /* pixeles que recorre antes de apagarse */
+    uint16_t cooldown;
+    uint8_t kind;            /* NP_SUB_* */
+    uint8_t cost;            /* municion que gasta cada tirada */
+    uint8_t damage;
+} NpSubDef;
+
 typedef struct {
     NpActorDef actor;
     np_fix speed, accel, friction, air_accel;
@@ -59,6 +75,7 @@ typedef struct {
     uint16_t invuln, stun;
     uint8_t coyote, jump_buffer, double_jump, stomp, health;
     NpAttackDef attack;
+    NpSubDef sub;
 } NpPlayerDef;
 
 typedef struct {
@@ -74,6 +91,17 @@ typedef struct {
     uint16_t score;
     uint8_t effect, amount;
 } NpItemDef;
+
+/* Un candelabro: no hace nada hasta que le pegas, y entonces suelta lo que
+ * lleve dentro. Es el bucle de los clasicos de latigo -pegar a todo lo que se
+ * mueva y a todo lo que no- y por eso es una entidad y no un tile: asi las
+ * cinco maquinas lo dibujan gratis y entra en el hash de la traza. */
+typedef struct {
+    NpActorDef actor;
+    uint16_t score;
+    uint8_t drop;            /* indice del objeto que suelta + 1; 0 = nada */
+    uint8_t health;          /* golpes que aguanta */
+} NpBreakableDef;
 
 typedef struct {
     uint16_t x, y;           /* posicion en pixeles (esquina superior izquierda) */
@@ -122,6 +150,7 @@ extern const NpPlayerDef np_player_def;
 extern const NpEnemyDef np_enemies[];
 extern const NpItemDef np_items[];
 extern const NpPlatformDef np_platforms[];
+extern const NpBreakableDef np_breakables[];
 extern const NpLevel np_levels[];
 extern const NpLayer np_layers[];
 extern const uint8_t np_tile_kind[];     /* tipo de cada tile del proyecto */
@@ -136,6 +165,7 @@ extern const uint16_t np_layer_count;
 extern const uint16_t np_enemy_count;
 extern const uint16_t np_item_count;
 extern const uint16_t np_platform_count;
+extern const uint16_t np_breakable_count;
 extern const uint16_t np_tile_count;
 extern const uint16_t np_tileset_first_tile;
 extern const uint8_t np_tileset_palette;

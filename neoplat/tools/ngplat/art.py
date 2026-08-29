@@ -223,6 +223,64 @@ def bala() -> Image:
     return hoja.image
 
 
+def _candelabro_frame(llama: int) -> Image:
+    """Un candelabro: pie de metal y una llama que titila.
+
+    Es lo que hay que romper para que suelte cosas, asi que se dibuja alto y
+    estrecho: se ve de lejos y no se confunde con un enemigo.
+    """
+    c = Lienzo(16, 16)
+    metal, metal2 = PALETA["metal"], PALETA["metal2"]
+    fuego, fuego2 = PALETA["oro"], PALETA["camisa"]
+    c.rect(6, 9, 4, 5, metal)            # el pie
+    c.rect(6, 13, 4, 1, metal2)
+    c.rect(5, 14, 6, 2, metal2)          # la base
+    c.rect(7, 6, 2, 3, fuego2)           # la llama
+    c.rect(7, 4 - llama, 2, 3, fuego)
+    c.px(8, 3 - llama, fuego)
+    return c.image
+
+
+def candelabro() -> Image:
+    hoja = Lienzo(16 * 2, 16)
+    for i, llama in enumerate([0, 1]):
+        hoja.blit(i * 16, 0, _candelabro_frame(llama))
+    return hoja.image
+
+
+def _corazon_frame(ancho: int) -> Image:
+    """La municion del arma secundaria: un corazon que late."""
+    c = Lienzo(16, 16)
+    rojo, rojo2 = PALETA["camisa"], PALETA["enemigo2"]
+    x0 = 8 - ancho // 2
+    c.rect(x0, 5, ancho, 4, rojo)
+    c.rect(x0 + 1, 9, ancho - 2, 2, rojo)
+    c.rect(x0 + 2, 11, ancho - 4, 1, rojo)
+    c.rect(x0, 4, 2, 2, rojo)
+    c.rect(x0 + ancho - 2, 4, 2, 2, rojo)
+    c.rect(x0 + 1, 6, 1, 2, rojo2)
+    return c.image
+
+
+def corazon() -> Image:
+    hoja = Lienzo(16 * 2, 16)
+    for i, ancho in enumerate([8, 6]):
+        hoja.blit(i * 16, 0, _corazon_frame(ancho))
+    return hoja.image
+
+
+def cuchillo() -> Image:
+    """Lo que tira el arma secundaria: una hoja con su mango."""
+    c = Lienzo(16, 16)
+    metal, metal2 = PALETA["metal"], PALETA["metal2"]
+    madera = PALETA["madera2"]
+    c.rect(2, 7, 4, 2, madera)           # el mango
+    c.rect(6, 7, 8, 2, metal)
+    c.rect(6, 8, 8, 1, metal2)
+    c.px(14, 7, metal)
+    return c.image
+
+
 def plataforma() -> Image:
     """La plataforma movil: un tablon de dos tiles de ancho.
 
@@ -369,6 +427,9 @@ def todos() -> Dict[str, Image]:
         "graficos/bala.png": bala(),
         "graficos/llave.png": llave(),
         "graficos/plataforma.png": plataforma(),
+        "graficos/candelabro.png": candelabro(),
+        "graficos/corazon.png": corazon(),
+        "graficos/cuchillo.png": cuchillo(),
         "graficos/tiles.png": tileset(),
         "graficos/cielo.png": cielo(),
         "graficos/arboles.png": arboles(),

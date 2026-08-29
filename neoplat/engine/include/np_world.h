@@ -59,7 +59,7 @@ typedef struct {
     uint16_t time_left;      /* en frames */
     uint16_t prev_input[NP_MAX_PLAYERS];
     uint16_t sfx;            /* eventos de sonido de este frame (NP_SFX_*) */
-    uint8_t keys, entity_count;
+    uint8_t keys, hearts, entity_count;
     /* El jefe que hay en pantalla, para que el marcador pueda ensenarlo: los
        golpes que le quedan y los que aguantaba entero. 0 = no hay jefe. */
     uint8_t boss_health, boss_max;
@@ -86,9 +86,11 @@ int np_player_visible(const NpWorld *w, uint8_t quien);
 #define NP_BOSS_BAR 10
 void np_boss_bar(char *out, const NpWorld *w);
 
-/* Las llaves que llevas y las que pide la meta, "KEYS 01/03"; en blanco si el
-   nivel no pide ninguna. Hace falta un buffer de NP_KEYS_BAR + 1 caracteres. */
-#define NP_KEYS_BAR 10
-void np_keys_bar(char *out, const NpWorld *w);
+/* La linea de "lo que llevas" del marcador: las llaves que pide el nivel y la
+   municion del arma secundaria, "KEYS 01/03 AMMO 05". Cada mitad sale en
+   blanco si el juego no la usa, asi que el marcador no tiene que saber nada:
+   escribe lo que salga. Hace falta un buffer de NP_EXTRAS_BAR + 1 caracteres. */
+#define NP_EXTRAS_BAR 20
+void np_extras_bar(char *out, const NpWorld *w);
 
 #endif /* NP_WORLD_H */

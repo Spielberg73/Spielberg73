@@ -131,6 +131,33 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
         print("llaves:", json.dumps(llaves))
         exigir(llaves["piden"] > 0, "el ejemplo ya no cierra la meta con llave")
 
+        # Los candelabros y el arma secundaria: se rompe uno con el ataque y
+        # sale lo que lleva dentro, que es el bucle entero.
+        candelabro = pagina.evaluate("""() => {
+            const w = window.NeoPlat.world;
+            const cuantos = (k) => {
+              let n = 0;
+              for (let i = 0; i < w.entityCount; i++)
+                if (w.entities[i].active && w.entities[i].kind === k) n++;
+              return n;
+            };
+            const antes = { velas: cuantos(4), objetos: cuantos(1) };
+            // se le pega a todo lo que se pueda durante un rato
+            for (let i = 0; i < 400; i++) w.step(i % 20 === 0 ? 32 : 2, 0);
+            return { antes: antes, velas: cuantos(4),
+                     hayArma: !!(w.data.player.sub && w.data.player.sub.kind) };
+        }""")
+        print("candelabros:", json.dumps(candelabro))
+        exigir(candelabro["antes"]["velas"] > 0,
+               "el ejemplo ya no trae candelabros")
+        exigir(candelabro["velas"] < candelabro["antes"]["velas"],
+               "pegando no se rompe ningun candelabro")
+        exigir(candelabro["hayArma"], "el ejemplo ya no trae arma secundaria")
+        pagina.keyboard.press("r")
+        pagina.wait_for_timeout(150)
+        pagina.keyboard.press("Enter")
+        pagina.wait_for_timeout(250)
+
         # La plataforma movil vive en el segundo nivel: se carga y se mira que
         # este ahi y que se mueva sola.
         tablon = pagina.evaluate("""async () => {

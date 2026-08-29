@@ -176,11 +176,13 @@
     function tablaDeKind(kind) {
       if (kind === 0) return DATA.enemies;
       if (kind === 3) return DATA.platforms || [];
+      if (kind === 4) return DATA.breakables || [];
       return DATA.items;
     }
     function nombresDeKind(kind) {
       if (kind === 0) return DATA.nombres.enemigos;
       if (kind === 3) return DATA.nombres.plataformas || [];
+      if (kind === 4) return DATA.nombres.rompibles || [];
       return DATA.nombres.objetos;
     }
     function actorDe(ch) {
@@ -520,7 +522,7 @@
       var lista = [];
       var vistas = {};
       DATA.enemies.concat(DATA.items).concat(DATA.platforms || [])
-        .concat([DATA.player]).forEach(function (a) {
+        .concat(DATA.breakables || []).concat([DATA.player]).forEach(function (a) {
         if (!a || !a.actor) return;
         var llave = a.actor.sprite || a.actor.sheet;   // un archivo, una entrada
         if (vistas[llave]) return;
@@ -1374,7 +1376,10 @@
           if (ch === "P") color = "#f2b705";
           else if (esSpawn(ch)) {
             var k = spawnChars()[ch].kind;
-            color = k === 0 ? "#c4453c" : (k === 3 ? "#b0834a" : "#f2d98a");
+            color = k === 0 ? "#c4453c"
+                  : k === 3 ? "#b0834a"
+                  : k === 4 ? "#9a8fd6"
+                  : "#f2d98a";
           }
           else {
             var tipo = tipoDeTile(ch);
@@ -1524,7 +1529,7 @@
         var s = chars[ch];
         var d = tablaDeKind(s.kind)[s.def];
         if (!d) return;
-        var tipos = { 0: "enemigo", 1: "objeto", 3: "plataforma" };
+        var tipos = { 0: "enemigo", 1: "objeto", 3: "plataforma", 4: "rompible" };
         lista.push({ char: ch,
                      etiqueta: nombresDeKind(s.kind)[s.def] || tipos[s.kind],
                      tipo: tipos[s.kind], hoja: d.actor.sheet, frame: 0 });

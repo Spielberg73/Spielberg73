@@ -211,6 +211,10 @@ objetos:
 plataformas:
   tablon:
     sprite: o.png
+rompibles:
+  antorcha:
+    sprite: o.png
+    suelta: moneda
 spawns:
   s: bicho
   c: moneda

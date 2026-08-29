@@ -15,8 +15,9 @@ from typing import Dict, List
 
 from . import gfx, sistemas
 from .claves import tabla_para_el_editor
-from .build import (Build, actor_def_values, attack_values, enemy_values,
-                    item_values, platform_values, player_values, tile_tables)
+from .build import (Build, actor_def_values, attack_values, breakable_values,
+                    enemy_values, item_values, platform_values, player_values,
+                    sub_values, tile_tables)
 from .paths import PREVIEW_DIR, TEMPLATES_DIR
 from .png import Image, encode_png, read_png
 
@@ -99,6 +100,11 @@ def build_data(build: Build) -> Dict[str, object]:
     ataque["actor"] = (actor_json(build.attack, "attack") if build.attack is not None
                        else actor_def_values(build.player))
     player["attack"] = ataque
+    # y el arma secundaria: `kind` a cero quiere decir que no hay ninguna
+    arma = dict(sub_values(project))
+    arma["actor"] = (actor_json(build.sub, "sub") if build.sub is not None
+                     else actor_def_values(build.player))
+    player["sub"] = arma
 
     enemies: List[Dict[str, object]] = []
     for i, enemy in enumerate(build.enemies):
@@ -120,6 +126,14 @@ def build_data(build: Build) -> Dict[str, object]:
         entry["actor"] = actor_json(plat, "plat%d" % i)
         entry["name"] = plat.name
         platforms.append(entry)
+
+    item_index_pos = {b.name: i for i, b in enumerate(build.items)}
+    breakables: List[Dict[str, object]] = []
+    for i, rom in enumerate(build.breakables):
+        entry = dict(breakable_values(rom, item_index_pos))
+        entry["actor"] = actor_json(rom, "rompible%d" % i)
+        entry["name"] = rom.name
+        breakables.append(entry)
 
     layers = []
     for i, layer in enumerate(build.layers):
@@ -146,6 +160,7 @@ def build_data(build: Build) -> Dict[str, object]:
     enemy_index = {b.name: i for i, b in enumerate(build.enemies)}
     item_index = {b.name: i for i, b in enumerate(build.items)}
     platform_index = {b.name: i for i, b in enumerate(build.platforms)}
+    breakable_index = {b.name: i for i, b in enumerate(build.breakables)}
 
     levels = []
     for level in build.levels:
@@ -167,10 +182,12 @@ def build_data(build: Build) -> Dict[str, object]:
             char: ({"kind": 0, "def": enemy_index[nombre]} if nombre in enemy_index
                    else {"kind": 3, "def": platform_index[nombre]}
                    if nombre in platform_index
+                   else {"kind": 4, "def": breakable_index[nombre]}
+                   if nombre in breakable_index
                    else {"kind": 1, "def": item_index[nombre]})
             for char, nombre in original.spawns.items()
             if nombre in enemy_index or nombre in item_index
-            or nombre in platform_index
+            or nombre in platform_index or nombre in breakable_index
         }
 
     font = {char: list(rows) for char, rows in gfx.FONT_3X5.items()}
@@ -215,6 +232,7 @@ def build_data(build: Build) -> Dict[str, object]:
         "enemies": enemies,
         "items": items,
         "platforms": platforms,
+        "breakables": breakables,
         # `gfx` aqui es el numero de tile dentro del tileset (en la ROM se
         # convierte al numero absoluto de la ROM C).
         "tiles": {
@@ -233,6 +251,7 @@ def build_data(build: Build) -> Dict[str, object]:
             "enemigos": [b.name for b in build.enemies],
             "objetos": [b.name for b in build.items],
             "plataformas": [b.name for b in build.platforms],
+            "rompibles": [b.name for b in build.breakables],
         },
         "camara_pantallas": 1 if project.camera == "pantallas" else 0,
         "amiga_modo": project.amiga_modo,

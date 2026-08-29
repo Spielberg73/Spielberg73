@@ -75,6 +75,10 @@ CAMPOS: Dict[str, Dict[str, List[str]]] = {
         "efecto": ["efecto", "effect"],
         "cantidad": ["cantidad", "amount"],
     },
+    "rompible": {
+        "puntos": ["puntos", "score"],
+        "vida": ["vida", "salud", "health"],
+    },
     "plataforma": {
         "movimiento": ["movimiento", "eje", "axis"],
         "velocidad": ["velocidad", "speed"],
@@ -92,7 +96,7 @@ CAMPOS: Dict[str, Dict[str, List[str]]] = {
 # Valores que admiten las opciones de tipo lista cerrada.
 OPCIONES: Dict[str, List[str]] = {
     "comportamiento": ["patrulla", "volador", "perseguidor", "saltarin", "fijo"],
-    "efecto": ["puntos", "vida", "salud", "llave"],
+    "efecto": ["puntos", "vida", "salud", "llave", "municion"],
     "camara": ["scroll", "pantallas"],
     "movimiento": ["horizontal", "vertical"],
     "amiga": ["32colores", "8colores"],

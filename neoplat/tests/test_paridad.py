@@ -23,13 +23,15 @@ from ngplat.scaffold import crear_proyecto
 
 IN_LEFT, IN_RIGHT, IN_DOWN, IN_JUMP, IN_START = 1, 2, 8, 16, 64
 IN_ACTION = 32
+IN_UP = 4
 FRAMES = 3000
 ESTADO_FIN_NIVEL = 3        # NP_STATE_LEVEL_END
 
 
 BOTONES = [IN_RIGHT, IN_RIGHT, IN_RIGHT | IN_JUMP, IN_LEFT,
            IN_LEFT | IN_JUMP, IN_JUMP, IN_DOWN, 0, IN_START,
-           IN_ACTION, IN_RIGHT | IN_ACTION, IN_LEFT | IN_ACTION]
+           IN_ACTION, IN_RIGHT | IN_ACTION, IN_LEFT | IN_ACTION,
+           IN_UP | IN_ACTION, IN_UP]
 
 
 def _secuencia(semilla: int):
@@ -118,10 +120,10 @@ class TestParidad(unittest.TestCase):
             # el andamiaje pone la plataforma movil en el segundo nivel y la
             # traza no llega: se pone una a la salida del primero, encima del
             # jugador, para que se suba a ella y la traza compare tambien eso
-            marca = "\n      ..........c...........c..........c.............."
+            marca = "\n      ......................c..........c.............."
             assert marca in texto, "el primer nivel ya no tiene esa fila"
             texto = texto.replace(
-                marca, "\n      ..T.......c...........c..........c..............", 1)
+                marca, "\n      ..T...................c..........c..............", 1)
         if jefe:
             # el jefe del andamiaje vive en el segundo nivel y la traza no llega:
             # se pone uno en el primero, cambiando el enemigo que hay a la salida
@@ -263,6 +265,18 @@ class TestParidad(unittest.TestCase):
         self.assertGreater(distintos, len(con) // 4,
                            "el latigo se juega igual que el golpe de siempre")
 
+    def test_los_candelabros_y_el_arma_secundaria_pasan_de_verdad(self):
+        """El andamiaje trae candelabros que sueltan municion y un arma
+        secundaria que la gasta. Si no se rompiera ninguno, la paridad estaria
+        comparando dos motores que no hacen nada de esto."""
+        traza, _ = self._trazas(1, "scroll")
+        municion = [int(linea.split()[26]) for linea in traza]
+        self.assertGreater(max(municion), 0,
+                           "en toda la traza no se rompe ni un candelabro")
+        # y esa municion se gasta: si solo subiera, el arma no estaria saliendo
+        gastos = sum(1 for a, b in zip(municion, municion[1:]) if b < a)
+        self.assertGreater(gastos, 0, "la municion sube pero no se gasta nunca")
+
     def test_misma_traza_a_dos_jugadores(self):
         """Lo mismo con `jugadores: 2`: dos mandos, dos vidas, la camara en el
         punto medio y el que se queda atras pegado al borde."""
@@ -275,7 +289,7 @@ class TestParidad(unittest.TestCase):
         en su sitio y la prueba de paridad pasaria sin comprobar nada."""
         traza, _ = self._trazas(1, "dos")
         columnas = [linea.split() for linea in traza]
-        self.assertTrue(all(len(c) == 26 for c in columnas),
+        self.assertTrue(all(len(c) == 27 for c in columnas),
                         "la traza no trae las columnas del segundo jugador")
         # al empezar los dos estan dentro; luego el mando aleatorio puede
         # dejarlo sin vidas, y eso tambien tiene que salir igual en las dos

@@ -57,7 +57,7 @@ def _nivel_1(llave: bool = False) -> List[str]:
     de paso, pero sin ella el final del nivel no se abre.
     """
     a = ANCHO_1
-    suelo_1 = {0: "P", 8: "s", 18: "^", 28: "s", 40: "c", 44: "G"}
+    suelo_1 = {0: "P", 8: "s", 12: "V", 18: "^", 28: "s", 40: "c", 44: "G"}
     if llave:
         suelo_1[22] = "k"
     return [
@@ -74,7 +74,10 @@ def _nivel_1(llave: bool = False) -> List[str]:
         _poner(a, {5: "ccc", 38: "ccc"}),
         _poner(a, {4: "=====", 37: "====="}),
         _fila("", a),
-        _poner(a, {10: "c", 22: "c", 33: "c"}),
+        # el candelabro baja a la fila del suelo (para poder pegarle andando) y
+        # a cambio se quita la moneda de arriba: cada sprite de mas en pantalla
+        # se paga, y este nivel ya iba al limite de la Neo Geo
+        _poner(a, {22: "c", 33: "c"}),
         _poner(a, suelo_1),
         _suelo(a, [(34, 2)]),
     ]
@@ -98,7 +101,7 @@ def _nivel_2() -> List[str]:
         _poner(a, {3: "=====", 47: "====="}),
         # el tablon que va y viene: se sube uno encima y se deja llevar
         _poner(a, {32: "T"}),
-        _poner(a, {6: "c", 17: "c", 27: "c", 38: "c", 45: "c"}),
+        _poner(a, {6: "c", 17: "V", 27: "c", 38: "c", 45: "c"}),
         _poner(a, {0: "P", 8: "s", 18: "^", 30: "s", 42: "^", 51: "J"}),
         _suelo(a, [(24, 2), (47, 2)]),
     ]
@@ -152,6 +155,19 @@ jugador:
     dano: 1
     animaciones:
       quieto: {{frames: [0, 1, 2, 1], velocidad: 4}}
+  # El arma secundaria: se tira con **arriba + accion** y gasta municion (los
+  # corazones). 'tipo: arco' la haria caer describiendo una parabola.
+  secundaria:
+    tipo: recta
+    sprite: graficos/cuchillo.png
+    frame: [16, 16]
+    caja: [10, 4]
+    desplazamiento: [3, 6]
+    velocidad: 4.0
+    alcance: 200
+    espera: 24
+    coste: 1               # corazones que gasta cada tirada
+    dano: 1
 
 tiles:
   imagen: graficos/tiles.png
@@ -215,6 +231,28 @@ objetos:
     cantidad: 1
     animaciones:
       quieto: {{frames: [0, 1], velocidad: 10}}
+  # 'efecto: municion' recarga el arma secundaria. Ojo: 'efecto: corazon' a
+  # secas es salud, que es otra cosa.
+  corazon:
+    sprite: graficos/corazon.png
+    caja: [10, 8]
+    puntos: 0
+    efecto: municion
+    cantidad: 5
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 12}}
+
+# Rompibles: no hacen nada hasta que les pegas, y entonces sueltan lo que
+# lleven dentro. Es el bucle de los clasicos de latigo: pegarle a todo.
+rompibles:
+  candelabro:
+    sprite: graficos/candelabro.png
+    caja: [8, 12]
+    suelta: corazon        # el objeto que aparece al romperlo
+    puntos: 100
+    vida: 1                # golpes que aguanta
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 8}}
 
 # Plataformas moviles: van y vienen entre donde salen y 'distancia' pixeles mas
 # alla, y el que se sube encima va con ellas. No hacen dano ni se pueden matar:
@@ -257,6 +295,7 @@ sonido:
     muerte:  {{notas: "sol4 mi4 do4 sol3", velocidad: 6}}
     meta:    {{notas: "do5 mi5 sol5 do6", velocidad: 6}}
     disparo: {{tipo: barrido, desde: 1200, hasta: 300, duracion: 4}}
+    romper:  {{tipo: ruido, duracion: 6}}
   musica:
     bosque:
       velocidad: 8          # frames que dura cada nota (mas alto = mas lento)
@@ -276,6 +315,7 @@ spawns:
   c: moneda
   k: llave
   T: tablon
+  V: candelabro
   J: jefazo
 
 niveles:
@@ -374,10 +414,29 @@ objetos:
     puntos: 10
     animaciones:
       quieto: {{frames: [0, 1, 2, 3], velocidad: 7}}
+  # 'efecto: municion' recarga el arma secundaria
+  chispa:
+    sprite: graficos/corazon.png
+    caja: [10, 8]
+    puntos: 0
+    efecto: municion
+    cantidad: 5
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 12}}
 
 # Plataformas moviles: van y vienen entre donde salen y 'distancia' pixeles mas
 # alla, y el que se sube encima va con ellas. Son escenario que se mueve: ni
 # hacen dano ni se pueden matar.
+rompibles:
+  brasero:
+    sprite: graficos/candelabro.png
+    caja: [8, 12]
+    suelta: chispa
+    puntos: 100
+    vida: 1
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 8}}
+
 plataformas:
   viga:
     sprite: graficos/plataforma.png
@@ -422,6 +481,7 @@ spawns:
   m: murcielago
   c: gema
   T: viga
+  V: brasero
   J: guardian
 
 niveles:

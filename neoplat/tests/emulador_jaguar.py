@@ -134,17 +134,26 @@ def comprobar(rom: str, capturas: str = "capturas",
     # arriba a partir de ahi y el marcador sale dos veces.
     ancho, alto, pixeles = emu.frame
     claro = max(colores(emu.frame), key=lambda p: sum(p))     # el blanco del marcador
-    filas_texto = 0
+    # Se mira **donde** cae el texto, no cuanto hay: contar filas a secas
+    # confundia "el marcador tiene otra linea" (llaves, municion) con "el
+    # marcador sale dos veces", que es lo unico que se quiere detectar. El
+    # sintoma de la carrera es texto **por debajo** de la franja del marcador.
+    HUD = 24 * alto // 240                    # la franja de arriba, escalada
+    arriba = abajo = 0
     for y in range(alto):
         cuantos = sum(1 for x in range(ancho) if pixeles[y * ancho + x] == claro)
-        if cuantos >= 20:
-            filas_texto += 1
-    exigir(filas_texto >= 3, "no se ve el texto del marcador")
-    exigir(filas_texto <= 8,
-           "el marcador sale repetido (%d filas de texto, deberian ser unas 5): "
-           "la lista de objetos se esta reescribiendo con el haz en mitad de la "
-           "pantalla" % filas_texto)
-    print("marcador: %d filas de texto" % filas_texto)
+        if cuantos < 20:
+            continue
+        if y < HUD:
+            arriba += 1
+        else:
+            abajo += 1
+    exigir(arriba >= 3, "no se ve el texto del marcador")
+    exigir(abajo == 0,
+           "hay %d filas de texto por debajo del marcador: la lista de objetos "
+           "se esta reescribiendo con el haz en mitad de la pantalla" % abajo)
+    print("marcador: %d filas de texto en su franja, %d por debajo"
+          % (arriba, abajo))
 
     # --- 5) sigue vivo al final -----------------------------------------
     ultimo = emu.frame

@@ -74,7 +74,9 @@ class Build:
     layers: List[LayerBuild]
     levels: List[LevelBuild]
     platforms: List[ActorBuild] = field(default_factory=list)
+    breakables: List[ActorBuild] = field(default_factory=list)
     attack: Optional[ActorBuild] = None       # el proyectil, si el juego lo lleva
+    sub: Optional[ActorBuild] = None          # lo que tira el arma secundaria
     music_order: List[str] = field(default_factory=list)   # nombres, en orden
     font: Dict[str, int] = field(default_factory=dict)
     hud_palette: int = 0
@@ -93,9 +95,12 @@ class Build:
         moviles y, al final del todo, el proyectil. Lo que se anade va detras
         para no mover los indices de lo que ya estaba, que es lo que guardan
         los niveles."""
-        todos = [self.player] + self.enemies + self.items + self.platforms
+        todos = ([self.player] + self.enemies + self.items + self.platforms
+                 + self.breakables)
         if self.attack is not None:
             todos.append(self.attack)
+        if self.sub is not None:
+            todos.append(self.sub)
         return todos
 
     def stats(self) -> Dict[str, int]:
@@ -108,6 +113,7 @@ class Build:
             "enemigos": len(self.enemies),
             "objetos": len(self.items),
             "plataformas": len(self.platforms),
+            "rompibles": len(self.breakables),
             "bytes_mapas": sum(len(lv.cells) for lv in self.levels),
         }
         datos.update(self.info.get("stats", {}))     # lo que anada cada sistema
@@ -239,12 +245,19 @@ def build_project(project: Project) -> Build:
         _load_actor(plat, "plataformas.%s" % name, project.root)
         for name, plat in project.platforms.items()
     ]
+    breakables = [
+        _load_actor(rom, "rompibles.%s" % name, project.root)
+        for name, rom in project.breakables.items()
+    ]
     attack = (_load_actor(project.player.attack, "jugador.ataque", project.root)
               if project.player.attack is not None
               and project.player.attack.sprite else None)
+    sub = (_load_actor(project.player.sub, "jugador.secundaria", project.root)
+           if project.player.sub is not None else None)
     enemy_index = {b.name: i for i, b in enumerate(enemies)}
     item_index = {b.name: i for i, b in enumerate(items)}
     platform_index = {b.name: i for i, b in enumerate(platforms)}
+    breakable_index = {b.name: i for i, b in enumerate(breakables)}
 
     music_order = list(project.sound.musica)
     music_index = {name: i + 1 for i, name in enumerate(music_order)}
@@ -269,6 +282,9 @@ def build_project(project: Project) -> Build:
                     elif name in platform_index:
                         kind, index = 3, platform_index[name]
                         actor = platforms[index].actor
+                    elif name in breakable_index:
+                        kind, index = 4, breakable_index[name]
+                        actor = breakables[index].actor
                     else:
                         kind, index = 1, item_index[name]
                         actor = items[index].actor
@@ -299,8 +315,8 @@ def build_project(project: Project) -> Build:
     return Build(
         project=project, rom=rom, tiles=tiles, tile_index=tile_index, tileset=tileset,
         player=player, enemies=enemies, items=items, layers=layers, levels=levels,
-        platforms=platforms, attack=attack, music_order=music_order,
-        sin_table=_sin_table(),
+        platforms=platforms, breakables=breakables, attack=attack, sub=sub,
+        music_order=music_order, sin_table=_sin_table(),
     )
 
 
@@ -355,6 +371,35 @@ def platform_values(build: ActorBuild) -> Dict[str, object]:
     pl = build.actor         # type: ignore[assignment]
     return {"speed": to_fixed(pl.speed), "distance": pl.distance,
             "axis": PLATFORM_AXIS_ID[pl.axis]}
+
+
+SUB_KIND_ID = {"": 0, "line": 1, "arc": 2}
+
+
+def sub_values(project: Project) -> Dict[str, object]:
+    """Los campos de NpSubDef. Sin arma secundaria salen todos a cero."""
+    sb = project.player.sub
+    if sb is None:
+        return {"kind": 0, "speed": 0, "gravity": 0, "jump": 0, "range": 0,
+                "cooldown": 0, "cost": 0, "damage": 0}
+    return {
+        "kind": SUB_KIND_ID[sb.kind],
+        "speed": to_fixed(sb.speed),
+        "gravity": to_fixed(sb.gravity),
+        "jump": to_fixed(sb.jump),
+        "range": sb.range,
+        "cooldown": sb.cooldown,
+        "cost": sb.cost,
+        "damage": sb.damage,
+    }
+
+
+def breakable_values(build: ActorBuild, item_index: Dict[str, int]) -> Dict[str, object]:
+    """Los campos de NpBreakableDef. `drop` es el indice del objeto **mas uno**:
+    el cero significa 'no suelta nada'."""
+    b = build.actor          # type: ignore[assignment]
+    return {"score": b.score, "health": b.health,
+            "drop": item_index.get(b.drop, -1) + 1}
 
 
 def player_values(project: Project) -> Dict[str, object]:

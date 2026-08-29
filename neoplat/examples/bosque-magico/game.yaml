@@ -45,6 +45,19 @@ jugador:
     dano: 1
     animaciones:
       quieto: {frames: [0, 1, 2, 1], velocidad: 4}
+  # El arma secundaria: se tira con **arriba + accion** y gasta municion (los
+  # corazones). 'tipo: arco' la haria caer describiendo una parabola.
+  secundaria:
+    tipo: recta
+    sprite: graficos/cuchillo.png
+    frame: [16, 16]
+    caja: [10, 4]
+    desplazamiento: [3, 6]
+    velocidad: 4.0
+    alcance: 200
+    espera: 24
+    coste: 1
+    dano: 1
 
 tiles:
   imagen: graficos/tiles.png
@@ -94,6 +107,28 @@ objetos:
     cantidad: 1
     animaciones:
       quieto: {frames: [0, 1], velocidad: 10}
+  # 'efecto: municion' recarga el arma secundaria. Ojo: 'efecto: corazon' a
+  # secas es salud, que es otra cosa.
+  corazon:
+    sprite: graficos/corazon.png
+    caja: [10, 8]
+    puntos: 0
+    efecto: municion
+    cantidad: 5
+    animaciones:
+      quieto: {frames: [0, 1], velocidad: 12}
+
+# Rompibles: no hacen nada hasta que les pegas, y entonces sueltan lo que
+# lleven dentro. Es el bucle de los clasicos de latigo: pegarle a todo.
+rompibles:
+  candelabro:
+    sprite: graficos/candelabro.png
+    caja: [8, 12]
+    suelta: corazon
+    puntos: 100
+    vida: 1
+    animaciones:
+      quieto: {frames: [0, 1], velocidad: 8}
 
 # Plataformas moviles: van y vienen entre donde salen y 'distancia' pixeles mas
 # alla, y el que se sube encima va con ellas. No hacen dano ni se pueden matar:
@@ -136,6 +171,7 @@ sonido:
     muerte:  {notas: "sol4 mi4 do4 sol3", velocidad: 6}
     meta:    {notas: "do5 mi5 sol5 do6", velocidad: 6}
     disparo: {tipo: barrido, desde: 1200, hasta: 300, duracion: 4}
+    romper:  {tipo: ruido, duracion: 6}
   musica:
     bosque:
       velocidad: 8          # frames que dura cada nota (mas alto = mas lento)
@@ -155,6 +191,7 @@ spawns:
   c: moneda
   k: llave
   T: tablon
+  V: candelabro
 
 niveles:
   - nombre: "BOSQUE"
@@ -175,8 +212,8 @@ niveles:
       .....ccc..............................ccc.......
       ....=====............................=====......
       ................................................
-      ..........c...........c..........c..............
-      P.......s.........^...k.....s...........c...G...
+      ......................c..........c..............
+      P.......s...V.....^...k.....s...........c...G...
       ##################################..############
   - nombre: "CUEVA"
     fondo: "#180c20"
@@ -196,6 +233,6 @@ niveles:
       ....ccc.........................................ccc.....
       ...=====.......................................=====....
       ................................T.......................
-      ......c..........c.........c..........c......c..........
+      ......c..........V.........c..........c......c..........
       P.......s.........^...........s...........^..........G..
       ########################..#####################..#######

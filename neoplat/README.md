@@ -229,6 +229,16 @@ La meta se puede **cerrar con llave**: un objeto con `efecto: llave` y un nivel
 con `llaves: N` obligan a dar una vuelta antes de salir. El marcador enseña las
 que llevas, y si el mapa no tiene llaves suficientes `ngplat` no compila.
 
+Y hay **candelabros**: con `rompibles:` defines algo que no hace nada hasta que
+le pegas y entonces suelta lo que lleve dentro. Con un objeto de
+`efecto: municion` y un arma `secundaria:` (arriba + acción) tienes el bucle
+entero de los clásicos de látigo: pegarle a todo, recoger corazones y gastarlos
+en el cuchillo. El ataque además puede tener `preparacion:` (frames en los que
+el brazo todavía sale y no hace daño) y `clavado:` (mientras pegas, no te
+mueves), y al recibir daño sales despedido con `retroceso:` y te quedas
+`aturdido:` frames sin control: un roce al borde de una plataforma pasa a
+tirarte al vacío.
+
 Y hay **plataformas móviles**: con `plataformas:` defines una tabla que va y
 viene, y el que se sube encima va con ella. Se apoya como un tile de
 `plataforma` (por debajo se pasa a través, pulsando abajo te dejas caer) y no
@@ -555,6 +565,16 @@ Verificado aquí:
   que no se guardan de un nivel para otro), más una variante de la paridad C/JS
   que comprueba en toda la traza que el nivel no se acaba nunca con el contador
   a cero.
+- **El bucle de los candelabros**: catorce pruebas de jugabilidad en JavaScript
+  (que el candelabro no hace daño ni se recoge, que el golpe y el disparo lo
+  rompen y sale lo que lleva dentro apoyado donde estaba, que uno vacío no
+  suelta nada, que con `vida:` hacen falta varios ataques, que arriba + acción
+  gasta munición y sin munición pega en vez de tirar, que el botón a secas no
+  gasta, y que el arma en arco cae y la recta no), más una variante de paridad
+  C/JS: el andamiaje trae candelabros y cuchillo, así que las trazas comparan
+  también la munición, y una prueba comprueba que en esa traza se rompe algún
+  candelabro y que la munición se gasta —si no, la paridad estaría comparando
+  dos motores que no hacen nada.
 - **Las plataformas móviles llevan al jugador**: ocho pruebas de jugabilidad en
   JavaScript (que va y viene entre sus dos extremos y no se pasa, que el
   jugador se planta encima y se mueve exactamente lo mismo que ella, que una
@@ -600,6 +620,10 @@ Lo que aún no hace:
 - **Eventos guionizados**: hay cinco comportamientos de enemigo fijos y un jefe
   por nivel (`jefe: si`); no hay forma de guionizar una secuencia.
 - **Checkpoints**: morir devuelve siempre al principio del nivel.
+- **Escaleras** de las que se suben con arriba y abajo: el jugador tiene un
+  solo modo de movimiento, y una escalera es un segundo modo entero (montarse,
+  desmontarse, quedarse pegado al eje). Es lo que más se echa de menos para un
+  juego de castillo.
 - **Zoom de sprites** (la Neo Geo lo permite; el motor no lo usa).
 
 ## Licencia

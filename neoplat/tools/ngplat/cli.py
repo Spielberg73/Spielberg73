@@ -89,6 +89,8 @@ def cmd_comprobar(args: argparse.Namespace) -> int:
     print("  objetos         %d" % stats["objetos"])
     if stats.get("plataformas"):
         print("  plataformas     %d" % stats["plataformas"])
+    if stats.get("rompibles"):
+        print("  rompibles       %d" % stats["rompibles"])
     if "tiles_sprite" in stats:
         print("  tiles de sprite %d  (%d KB de ROM C)"
               % (stats["tiles_sprite"], (stats["bytes_c1"] + stats["bytes_c2"]) // 1024))
@@ -174,13 +176,21 @@ def cmd_compilar(args: argparse.Namespace) -> int:
     _info("codigo:   src/ (motor + tu juego)")
     for linea in salida.resumen:
         _info(linea)
-    _info("%d niveles, %d enemigos, %d objetos%s, %d efectos, %d musicas%s"
-          % (stats["niveles"], stats["enemigos"], stats["objetos"],
-             (", %d plataforma%s" % (stats["plataformas"],
-                                      "s" if stats["plataformas"] != 1 else ""))
-             if stats.get("plataformas") else "",
-             stats["efectos"], stats["musicas"],
-             ", a dos jugadores" if build.project.players > 1 else ""))
+    # se monta como lista y no encadenando condicionales: encadenados, el
+    # 'else' se comia el trozo siguiente y los rompibles no salian nunca
+    partes = ["%d niveles" % stats["niveles"],
+              "%d enemigos" % stats["enemigos"],
+              "%d objetos" % stats["objetos"]]
+    for clave, singular, plural in (("plataformas", "plataforma", "plataformas"),
+                                    ("rompibles", "rompible", "rompibles")):
+        cuantos = stats.get(clave, 0)
+        if cuantos:
+            partes.append("%d %s" % (cuantos, singular if cuantos == 1 else plural))
+    partes.append("%d efectos" % stats["efectos"])
+    partes.append("%d musicas" % stats["musicas"])
+    if build.project.players > 1:
+        partes.append("a dos jugadores")
+    _info(", ".join(partes))
 
     if args.make:
         return _ejecutar_make(out_dir, sistema)

@@ -219,6 +219,79 @@ pierde. Uno que sale de la pantalla se apaga solo.
 `ngplat nuevo` ya te deja un ataque de ejemplo montado, con su `bala.png` y su
 sonido (`sonido: efectos: disparo:`).
 
+### `secundaria` (el arma que gasta munición)
+
+```yaml
+jugador:
+  secundaria:
+    tipo: recta              # recta | arco
+    sprite: graficos/cuchillo.png
+    frame: [16, 16]
+    caja: [10, 4]
+    desplazamiento: [3, 6]
+    velocidad: 4.0
+    gravedad: 0.25           # sólo cuenta en arco
+    salto: 3.0               # impulso hacia arriba al salir, sólo en arco
+    alcance: 200
+    espera: 24
+    coste: 1                 # munición que gasta cada tirada
+    dano: 1
+```
+
+Se lanza con **arriba + acción**, y gasta munición. El botón a secas sigue
+haciendo el ataque de siempre, y si no te queda munición, arriba + acción
+también pega: nunca te quedas sin nada que hacer.
+
+| tipo | qué hace |
+|---|---|
+| `recta` | vuela de frente, como el disparo del ataque normal |
+| `arco` | sale hacia arriba con `salto` y la `gravedad` lo va bajando: cae describiendo una parábola y se apaga al tocar el suelo |
+
+La munición la dan los objetos con `efecto: municion` (y la sueltan los
+rompibles). **Ojo con el nombre**: `efecto: corazon` a secas significa *salud*,
+que es otra cosa; la munición es `municion`, `municiones` o `hearts`.
+
+La munición se vacía al empezar cada nivel, igual que las llaves, y el marcador
+la enseña como `AMMO 05` mientras el juego lleve arma secundaria.
+
+## `rompibles`
+
+```yaml
+rompibles:
+  candelabro:
+    sprite: graficos/candelabro.png
+    caja: [8, 12]
+    suelta: corazon        # nombre de un objeto de 'objetos:'
+    puntos: 100
+    vida: 1                # golpes que aguanta
+    animaciones:
+      quieto: {frames: [0, 1], velocidad: 8}
+```
+
+Un rompible **no hace nada** hasta que le pegas: no te toca, no hace daño y no
+se puede pisar. Al romperlo suelta el objeto de `suelta:` justo donde estaba
+—apoyado en el mismo suelo— y da sus `puntos`. Sin `suelta:` simplemente
+desaparece.
+
+Es el bucle de los clásicos de látigo: pegarle a todo, a ver qué cae. Se
+colocan en el mapa con su símbolo, como los enemigos:
+
+```yaml
+spawns:
+  V: candelabro
+```
+
+Detalles que conviene saber:
+
+- Lo rompe tanto el ataque normal (`golpe` o `disparo`) como el arma
+  secundaria.
+- Lo que suelta ocupa **la misma ranura** de la lista de entidades que ocupaba
+  el rompible, así que nunca puede quedarse sin sitio: una vida extra dentro de
+  un candelabro no se pierde por estar la pantalla llena.
+- Con `vida:` mayor que uno hacen falta varios ataques, no varios frames: lo
+  que ya está parpadeando no se vuelve a tocar hasta que se le pasa.
+- Si `suelta:` nombra algo que no está en `objetos:`, `ngplat` no compila.
+
 ## `tiles`
 
 ```yaml
@@ -302,7 +375,7 @@ objetos:
     sprite: graficos/moneda.png
     caja: [10, 10]
     puntos: 10
-    efecto: puntos       # puntos | vida | salud | llave
+    efecto: puntos       # puntos | vida | salud | llave | municion
     cantidad: 1
     animaciones:
       quieto: {frames: [0, 1, 2, 3], velocidad: 7}

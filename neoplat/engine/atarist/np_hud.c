@@ -99,7 +99,7 @@ static void np_hud_borrar_fila(uint8_t fila)
 void np_hud_draw(const NpWorld *w)
 {
     static uint8_t ultimo_jefe = 0xFF;
-    static uint16_t ultimas_llaves = 0xFFFF;
+    static uint32_t ultimas_llaves = 0xFFFFFFFFu;
     uint16_t segundos;
 
     if (!np_hud_etiquetas) {            /* las palabras fijas, una sola vez */
@@ -141,14 +141,17 @@ void np_hud_draw(const NpWorld *w)
         ultimo_jefe = w->boss_health;
     }
 
-    /* Las llaves que llevas y las que pide la meta, al lado de la barra del
-       jefe. Igual que ella: solo se repinta cuando cambia alguna de las dos. */
+    /* Lo que llevas -llaves y municion- al lado de la barra del jefe. Igual
+       que ella: solo se repinta cuando cambia algo. */
     {
-        uint16_t ahora = (uint16_t)((w->keys << 8)
-                                    | (w->level ? w->level->keys_needed : 0));
+        /* los tres numeros en un solo valor, cada uno en su byte: mezclarlos
+           con un OR haria que uno tapara al otro y el marcador se quedaria
+           colgado */
+        uint32_t ahora = ((uint32_t)w->keys << 16) | ((uint32_t)w->hearts << 8)
+                       | (uint32_t)(w->level ? w->level->keys_needed : 0);
         if (ahora != ultimas_llaves) {
-            char llaves[NP_KEYS_BAR + 1];
-            np_keys_bar(llaves, w);
+            char llaves[NP_EXTRAS_BAR + 1];
+            np_extras_bar(llaves, w);
             np_hud_print(20, 1, llaves);
             ultimas_llaves = ahora;
         }

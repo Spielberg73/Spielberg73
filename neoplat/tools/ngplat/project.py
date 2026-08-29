@@ -194,9 +194,13 @@ ITEM_EFFECTS = {
     "vida": "life", "life": "life", "1up": "life",
     "salud": "health", "health": "health", "corazon": "health", "corazón": "health",
     "llave": "key", "key": "key",
+    # municion del arma secundaria. Ojo: "corazon" a secas es salud, que es
+    # como estaba antes y no se cambia; la municion es "municion"/"corazones".
+    "municion": "ammo", "munición": "ammo", "ammo": "ammo",
+    "corazones": "ammo", "hearts": "ammo",
 }
 
-ITEM_EFFECT_ID = {"points": 0, "life": 1, "health": 2, "key": 3}
+ITEM_EFFECT_ID = {"points": 0, "life": 1, "health": 2, "key": 3, "ammo": 4}
 
 
 @dataclass
@@ -241,6 +245,7 @@ class Player(Actor):
     knockback: float = 0.0        # 0 = tanto como la velocidad de andar
     stun: int = 0                 # frames sin control tras un golpe
     attack: Optional["Attack"] = None
+    sub: Optional["Sub"] = None
 
 
 @dataclass
@@ -279,6 +284,27 @@ class Item(Actor):
     effect: str = "points"
     score: int = 10
     amount: int = 1
+
+
+@dataclass
+class Sub(Actor):
+    """El arma secundaria: arriba + accion, y gasta municion."""
+    kind: str = ""                 # "" ninguna, "line" recta, "arc" en arco
+    speed: float = 3.0
+    gravity: float = 0.25          # solo cuenta en arco
+    jump: float = 3.0              # impulso hacia arriba al salir, en arco
+    range: int = 160
+    cooldown: int = 24
+    cost: int = 1
+    damage: int = 1
+
+
+@dataclass
+class Breakable(Actor):
+    """Un candelabro: se rompe a golpes y suelta lo que lleve dentro."""
+    drop: str = ""                 # nombre del objeto que suelta
+    score: int = 0
+    health: int = 1
 
 
 @dataclass
@@ -343,13 +369,15 @@ class Project:
     enemies: Dict[str, Enemy]
     items: Dict[str, Item]
     platforms: Dict[str, "Platform"]
+    breakables: Dict[str, "Breakable"]
     layers: Dict[str, Layer]
     sound: "sonido_mod.Sonido"
     levels: List[Level]
     warnings: List[str] = field(default_factory=list)
 
     def spawn_names(self) -> List[str]:
-        return list(self.enemies) + list(self.items) + list(self.platforms)
+        return (list(self.enemies) + list(self.items) + list(self.platforms)
+                + list(self.breakables))
 
 
 # ------------------------------------------------------------------- lectura
@@ -546,6 +574,68 @@ def _read_attack(node: Node, root: str) -> Optional["Attack"]:
     return ataque
 
 
+SUB_KINDS = {
+    "recta": "line", "recto": "line", "line": "line", "straight": "line",
+    "arco": "arc", "arc": "arc", "parabola": "arc", "parábola": "arc",
+}
+
+
+def _read_sub(node: Node, root: str) -> Optional["Sub"]:
+    """El arma secundaria. Sin seccion `secundaria:` no hay ninguna y arriba +
+    accion se comporta como el boton a secas."""
+    if not node.data:
+        return None
+    where = "jugador.secundaria"
+    kind = node.choice(["type", "tipo"], SUB_KINDS, "line")
+    sprite = node.str_(["sprite", "imagen", "image"], "") or ""
+    if not sprite:
+        raise ProjectError(
+            "el arma secundaria necesita el dibujo de lo que lanza",
+            hint="anade 'sprite: graficos/cuchillo.png'",
+            where=where)
+    _require_file(root, sprite, where)
+    fw, fh, bw, bh, bx, by = _actor_geometry(node, where, (16, 16))
+    anims = _read_animations(node.child("animations", "animaciones", "anims"), where)
+    arma = Sub(
+        name="sub", sprite=sprite, frame_w=fw, frame_h=fh,
+        box_w=bw, box_h=bh, box_x=bx, box_y=by, animations=anims,
+        kind=kind,
+        speed=node.num(["speed", "velocidad"], 3.0, 0.25, 12.0),
+        gravity=node.num(["gravity", "gravedad"], 0.25, 0.0, 4.0),
+        jump=node.num(["jump", "salto", "impulso"], 3.0, 0.0, 12.0),
+        range=node.int_(["range", "alcance"], 160, 8, 512),
+        cooldown=node.int_(["cooldown", "espera", "cadencia"], 24, 1, 300),
+        cost=node.int_(["cost", "coste", "municion", "munición"], 1, 0, 99),
+        damage=node.int_(["damage", "dano", "daño"], 1, 1, 99),
+    )
+    _warn_unknown(node, where, [
+        "type", "tipo", "sprite", "imagen", "image",
+        "frame", "fotograma", "tamano_frame", "hitbox", "caja", "colision",
+        "colisión", "tamano", "tamaño", "size", "hitbox_offset", "offset_caja",
+        "desplazamiento", "animations", "animaciones", "anims",
+        "speed", "velocidad", "gravity", "gravedad", "jump", "salto", "impulso",
+        "range", "alcance", "cooldown", "espera", "cadencia",
+        "cost", "coste", "municion", "munición", "damage", "dano", "daño",
+    ])
+    return arma
+
+
+def _read_breakable(name: str, data: Any, root: str) -> "Breakable":
+    where = "rompibles.%s" % name
+    node = Node(data, where)
+    sprite = node.str_(["sprite", "imagen", "image"], required=True)
+    _require_file(root, sprite, where)
+    fw, fh, bw, bh, bx, by = _actor_geometry(node, where, (16, 16))
+    anims = _read_animations(node.child("animations", "animaciones", "anims"), where)
+    return Breakable(
+        name=name, sprite=sprite, frame_w=fw, frame_h=fh,
+        box_w=bw, box_h=bh, box_x=bx, box_y=by, animations=anims,
+        drop=node.str_(["drop", "suelta", "contiene"], "") or "",
+        score=node.int_(["score", "puntos"], 0, 0, 99999),
+        health=node.int_(["health", "salud", "vida"], 1, 1, 99),
+    )
+
+
 def _read_player(node: Node, root: str) -> Player:
     where = "jugador"
     sprite = node.str_(["sprite", "imagen", "image"], required=True)
@@ -574,6 +664,7 @@ def _read_player(node: Node, root: str) -> Player:
                            0.0, 12.0),
         stun=node.int_(["stun", "aturdido", "aturdimiento"], 0, 0, 120),
         attack=_read_attack(node.child("attack", "ataque"), root),
+        sub=_read_sub(node.child("sub", "secundaria", "arma_secundaria"), root),
     )
     # Sin `retroceso:` el empujon es el de siempre: lo que anda el jugador. Asi
     # un proyecto que no lo pone se comporta exactamente igual que antes.
@@ -594,6 +685,7 @@ def _read_player(node: Node, root: str) -> Player:
         "invulnerabilidad", "attack", "ataque",
         "knockback", "retroceso", "empujon", "empujón",
         "stun", "aturdido", "aturdimiento",
+        "sub", "secundaria", "arma_secundaria",
     ])
     return player
 
@@ -1135,10 +1227,23 @@ def load_project(path: str) -> Project:
     platforms: Dict[str, Platform] = {}
     for name, data_plat in (top.child("platforms", "plataformas").data or {}).items():
         platforms[str(name)] = _read_platform(str(name), data_plat, root)
+    breakables: Dict[str, Breakable] = {}
+    for name, data_rom in (top.child("breakables", "rompibles").data or {}).items():
+        breakables[str(name)] = _read_breakable(str(name), data_rom, root)
+    for nombre, rompible in breakables.items():
+        if rompible.drop and rompible.drop not in items:
+            raise ProjectError(
+                "el rompible '%s' suelta '%s', que no es ningun objeto"
+                % (nombre, rompible.drop),
+                hint="definelo en 'objetos:', o quita la linea 'suelta:'",
+                where="rompibles.%s" % nombre)
 
     for a, b, texto in ((enemies, items, "enemigo y como objeto"),
                         (enemies, platforms, "enemigo y como plataforma"),
-                        (items, platforms, "objeto y como plataforma")):
+                        (items, platforms, "objeto y como plataforma"),
+                        (enemies, breakables, "enemigo y como rompible"),
+                        (items, breakables, "objeto y como rompible"),
+                        (platforms, breakables, "plataforma y como rompible")):
         repetidos = set(a) & set(b)
         if repetidos:
             raise ProjectError(
@@ -1161,7 +1266,7 @@ def load_project(path: str) -> Project:
     sound = _read_sound(top.raw("sound", "sonido", "audio"), root)
     levels = _read_levels(
         top.raw("levels", "niveles"), tiles,
-        list(enemies) + list(items) + list(platforms),
+        list(enemies) + list(items) + list(platforms) + list(breakables),
         global_spawns, default_bg, warnings, necesitan_suelo, list(layers),
         list(sound.musica), jefes=jefes, llaves=llaves,
     )
@@ -1169,7 +1274,7 @@ def load_project(path: str) -> Project:
     known_top = {
         "game", "juego", "player", "jugador", "tiles", "tileset", "bloques",
         "enemies", "enemigos", "items", "objetos", "levels", "niveles",
-        "platforms", "plataformas",
+        "platforms", "plataformas", "breakables", "rompibles",
         "spawns", "simbolos", "símbolos", "backgrounds", "fondos", "capas",
         "sound", "sonido", "audio",
     }
@@ -1196,7 +1301,7 @@ def load_project(path: str) -> Project:
         root=root, title=title.upper()[:24], author=author[:24], system=sistema,
         lives=lives, players=players, camera=camera, amiga_modo=amiga_modo,
         time_limit=time_limit, hud=hud, player=player, tileset=tileset, tiles=tiles,
-        enemies=enemies, items=items, platforms=platforms, layers=layers,
-        sound=sound, levels=levels,
+        enemies=enemies, items=items, platforms=platforms,
+        breakables=breakables, layers=layers, sound=sound, levels=levels,
         warnings=warnings,
     )
