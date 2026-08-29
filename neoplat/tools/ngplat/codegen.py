@@ -15,7 +15,7 @@ from typing import Dict, List, Sequence
 from .sonido import EVENTOS
 from .build import (
     ANIM_SLOTS, Build, actor_def_values, attack_values, enemy_values, item_values,
-    layer_values, player_values, tile_tables,
+    layer_values, platform_values, player_values, tile_tables,
 )
 from .fixed import FIXED_ONE
 from .paths import ENGINE_DIR, TEMPLATES_DIR
@@ -229,6 +229,23 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
         src.append("    }," if i + 1 < len(build.items) else "    }")
     src.append("};")
     src.append("const uint16_t np_item_count = %d;" % len(build.items))
+    src.append("")
+
+    # --- plataformas moviles
+    for i, plat in enumerate(build.platforms):
+        src.append("/* plataforma %d: %s */" % (i, plat.name))
+        src.append(_anim_arrays("np_plat%d" % i, plat))
+    src.append("const NpPlatformDef np_platforms[] = {")
+    if not build.platforms:
+        src.append("    { %s, 0, 0, 0 }" % _actor_vacio())
+    for i, plat in enumerate(build.platforms):
+        pv = platform_values(plat)
+        src.append("    {")
+        src.append(_actor_def("np_plat%d" % i, actor_def_values(plat)) + ",")
+        src.append("        %d, %d, %d" % (pv["speed"], pv["distance"], pv["axis"]))
+        src.append("    }," if i + 1 < len(build.platforms) else "    }")
+    src.append("};")
+    src.append("const uint16_t np_platform_count = %d;" % len(build.platforms))
     src.append("")
 
     # --- capas de fondo (parallax)

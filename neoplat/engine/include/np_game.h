@@ -84,6 +84,16 @@ typedef struct {
     uint8_t repeat;          /* 1 = se repite horizontalmente */
 } NpLayer;
 
+/* Una plataforma movil: va y viene entre donde sale y `distance` pixeles mas
+ * alla, y el que se sube encima va con ella. No hace dano ni se puede matar:
+ * es escenario que se mueve. */
+typedef struct {
+    NpActorDef actor;
+    np_fix speed;                    /* pixeles por frame */
+    uint16_t distance;               /* recorrido, en pixeles */
+    uint8_t axis;                    /* NP_PLAT_X o NP_PLAT_Y */
+} NpPlatformDef;
+
 typedef struct {
     const char *name;
     uint16_t width, height;          /* en tiles */
@@ -102,6 +112,7 @@ typedef struct {
 extern const NpPlayerDef np_player_def;
 extern const NpEnemyDef np_enemies[];
 extern const NpItemDef np_items[];
+extern const NpPlatformDef np_platforms[];
 extern const NpLevel np_levels[];
 extern const NpLayer np_layers[];
 extern const uint8_t np_tile_kind[];     /* tipo de cada tile del proyecto */
@@ -115,6 +126,7 @@ extern const uint16_t np_level_count;
 extern const uint16_t np_layer_count;
 extern const uint16_t np_enemy_count;
 extern const uint16_t np_item_count;
+extern const uint16_t np_platform_count;
 extern const uint16_t np_tile_count;
 extern const uint16_t np_tileset_first_tile;
 extern const uint8_t np_tileset_palette;

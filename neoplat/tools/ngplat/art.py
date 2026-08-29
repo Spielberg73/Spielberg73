@@ -223,6 +223,22 @@ def bala() -> Image:
     return hoja.image
 
 
+def plataforma() -> Image:
+    """La plataforma movil: un tablon de dos tiles de ancho.
+
+    El fotograma es de 32x16 (las maquinas dibujan en bloques de 16) pero el
+    tablon ocupa solo las seis filas de arriba: la caja de colision es esa, y
+    asi el jugador se planta encima y no flotando.
+    """
+    c = Lienzo(32, 16)
+    madera, madera2 = PALETA["madera"], PALETA["madera2"]
+    c.rect(0, 0, 32, 5, madera)
+    c.rect(0, 4, 32, 1, madera2)
+    for x in range(0, 32, 8):        # las juntas entre tablas
+        c.rect(x, 0, 1, 5, madera2)
+    return c.image
+
+
 def _tile_vacio() -> Image:
     return Lienzo(16, 16).image
 
@@ -352,6 +368,7 @@ def todos() -> Dict[str, Image]:
         "graficos/moneda.png": moneda(),
         "graficos/bala.png": bala(),
         "graficos/llave.png": llave(),
+        "graficos/plataforma.png": plataforma(),
         "graficos/tiles.png": tileset(),
         "graficos/cielo.png": cielo(),
         "graficos/arboles.png": arboles(),

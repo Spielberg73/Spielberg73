@@ -37,6 +37,7 @@ function datos(filas, opciones) {
   var celdas = [], spawns = [], start = [16, 16];
   var jugador = actor(opciones.boxW || 12, opciones.boxH || 14);
   var enemigo = actor(12, 12), objeto = actor(10, 10);
+  var tablon = actor(opciones.tablonAncho || 32, 6);
   for (var y = 0; y < alto; y++) {
     for (var x = 0; x < ancho; x++) {
       var ch = filas[y][x];
@@ -45,6 +46,7 @@ function datos(filas, opciones) {
       else if (ch === "v") { spawns.push([x * 16 + 2, y * 16 + 16 - enemigo.box_h, 0, 1]); ch = "."; }
       else if (ch === "o") { spawns.push([x * 16 + 3, y * 16 + 16 - objeto.box_h, 1, 0]); ch = "."; }
       else if (ch === "k") { spawns.push([x * 16 + 3, y * 16 + 16 - objeto.box_h, 1, 1]); ch = "."; }
+      else if (ch === "T") { spawns.push([x * 16, y * 16 + 16 - tablon.box_h, 3, 0]); ch = "."; }
       else if (ch === "J") { spawns.push([x * 16 + 2, y * 16 + 16 - enemigo.box_h, 0, 2]); ch = "."; }
       assert.ok(ch in LEYENDA, "simbolo desconocido: " + ch);
       celdas.push(".#=^G".indexOf(ch));
@@ -95,6 +97,13 @@ function datos(filas, opciones) {
       { actor: objeto, score: 50, effect: 3, amount: opciones.valorLlave || 1,
         name: "llave" }
     ],
+    platforms: [{
+      actor: tablon,
+      speed: fx(opciones.tablonVelocidad === undefined ? 0.5 : opciones.tablonVelocidad),
+      distance: opciones.tablonDistancia === undefined ? 48 : opciones.tablonDistancia,
+      axis: opciones.tablonEje === "vertical" ? 1 : 0,
+      name: "tablon"
+    }],
     tiles: { kind: [0, 1, 2, 3, 4], gfx: [0, 1, 2, 3, 4] },
     levels: [{
       name: "TEST", width: ancho, height: alto, cells: celdas,
@@ -529,6 +538,111 @@ prueba("las llaves no se guardan de un nivel para otro", function () {
   assert.strictEqual(w.keys, 1);
   w.loadLevel(0);
   assert.strictEqual(w.keys, 0, "las llaves han sobrevivido al cambio de nivel");
+});
+
+/* ------------------------------------------------- plataformas moviles */
+
+function tablonDe(w) {
+  for (var i = 0; i < w.entityCount; i++)
+    if (w.entities[i].active && w.entities[i].kind === 3) return w.entities[i];
+  return null;
+}
+
+prueba("la plataforma va y viene entre sus dos extremos", function () {
+  var w = mundo(suelo([[11, 5, "T"], [13, 2, "P"]]), { tablonDistancia: 48 });
+  var t = tablonDe(w);
+  assert.ok(t, "no ha salido la plataforma");
+  var casa = t.homeX, minimo = t.x, maximo = t.x, i;
+  for (i = 0; i < 400; i++) {
+    w.step(0);
+    if (t.x < minimo) minimo = t.x;
+    if (t.x > maximo) maximo = t.x;
+  }
+  assert.strictEqual(minimo, casa, "se ha ido por detras de donde salio");
+  assert.strictEqual(maximo, casa + NP.I2F(48), "no llega al final del recorrido");
+});
+
+prueba("el jugador cae encima de la plataforma y se queda", function () {
+  var w = mundo(suelo([[11, 5, "T"], [9, 5, "P"]]), { tablonVelocidad: 0 });
+  correr(w, 60);
+  var t = tablonDe(w), p = w.players[0];
+  assert.strictEqual(p.onGround, 1, "no se ha plantado encima");
+  assert.strictEqual(p.riding, 1, "no se ha subido a la plataforma");
+  assert.strictEqual(p.y + NP.I2F(w.data.player.actor.box_h), t.y,
+    "no se queda a ras de la plataforma");
+});
+
+prueba("la plataforma se lleva al jugador consigo", function () {
+  var w = mundo(suelo([[11, 5, "T"], [9, 5, "P"]]), { tablonVelocidad: 0.5 });
+  correr(w, 60);                       /* que aterrice */
+  var t = tablonDe(w), p = w.players[0];
+  assert.strictEqual(p.riding, 1, "no se ha subido");
+  var antesP = p.x, antesT = t.x;
+  correr(w, 30);
+  assert.notStrictEqual(t.x, antesT, "la plataforma no se mueve");
+  assert.strictEqual(p.x - antesP, t.x - antesT,
+    "el jugador no se ha movido lo mismo que la plataforma");
+});
+
+prueba("una plataforma vertical sube y baja con el jugador encima", function () {
+  var w = mundo(suelo([[11, 5, "T"], [9, 5, "P"]]),
+                { tablonEje: "vertical", tablonVelocidad: 0.5, tablonDistancia: 32 });
+  correr(w, 60);
+  var t = tablonDe(w), p = w.players[0];
+  assert.strictEqual(p.riding, 1, "no se ha subido");
+  var alturas = {}, i;
+  for (i = 0; i < 300; i++) {
+    w.step(0);
+    alturas[t.y] = 1;
+    assert.strictEqual(p.y + NP.I2F(w.data.player.actor.box_h), t.y,
+      "el jugador se ha despegado de la plataforma en el frame " + i);
+  }
+  assert.ok(Object.keys(alturas).length > 10, "la plataforma no se mueve");
+});
+
+prueba("desde la plataforma se puede saltar", function () {
+  var w = mundo(suelo([[11, 5, "T"], [9, 5, "P"]]), { tablonVelocidad: 0 });
+  correr(w, 60);
+  var t = tablonDe(w), p = w.players[0];
+  assert.strictEqual(p.riding, 1);
+  w.step(NP.IN.JUMP);
+  assert.ok(p.vy < 0, "no salta desde encima de la plataforma");
+  correr(w, 8, NP.IN.JUMP);
+  assert.ok(p.y + NP.I2F(w.data.player.actor.box_h) < t.y,
+    "el salto no le despega de la plataforma");
+  assert.strictEqual(p.riding, 0, "sigue apuntado a la plataforma en el aire");
+});
+
+prueba("por debajo se pasa a traves, como un tile de plataforma", function () {
+  /* el jugador esta justo debajo y salta: tiene que atravesarla */
+  var w = mundo(suelo([[11, 5, "T"], [13, 5, "P"]]),
+                { tablonVelocidad: 0, jump: 6.5 });
+  correr(w, 30);
+  var t = tablonDe(w), p = w.players[0];
+  var arriba = 0, i;
+  for (i = 0; i < 40; i++) {
+    w.step(NP.IN.JUMP);
+    if (p.y + NP.I2F(w.data.player.actor.box_h) < t.y - NP.I2F(2)) arriba = 1;
+  }
+  assert.ok(arriba, "la plataforma le ha frenado por debajo");
+});
+
+prueba("pulsando abajo se deja caer de la plataforma", function () {
+  var w = mundo(suelo([[11, 5, "T"], [9, 5, "P"]]), { tablonVelocidad: 0 });
+  correr(w, 60);
+  assert.strictEqual(w.players[0].riding, 1, "no se ha subido");
+  correr(w, 40, NP.IN.DOWN);
+  assert.strictEqual(w.players[0].riding, 0, "sigue encima de la plataforma");
+  assert.ok(w.players[0].y > tablonDe(w).y, "no se ha dejado caer");
+});
+
+prueba("la plataforma no hace dano ni se puede pisar como a un enemigo", function () {
+  var w = mundo(suelo([[11, 5, "T"], [9, 5, "P"]]), { tablonVelocidad: 0, health: 3 });
+  var vida = w.players[0].health, puntos = w.score;
+  correr(w, 120);
+  assert.strictEqual(w.players[0].health, vida, "la plataforma hace dano");
+  assert.strictEqual(w.score, puntos, "pisar la plataforma da puntos");
+  assert.ok(tablonDe(w), "la plataforma ha desaparecido");
 });
 
 prueba("perder todas las vidas lleva a game over y luego al titulo", function () {

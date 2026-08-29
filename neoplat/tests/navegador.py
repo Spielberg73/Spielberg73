@@ -131,6 +131,29 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
         print("llaves:", json.dumps(llaves))
         exigir(llaves["piden"] > 0, "el ejemplo ya no cierra la meta con llave")
 
+        # La plataforma movil vive en el segundo nivel: se carga y se mira que
+        # este ahi y que se mueva sola.
+        tablon = pagina.evaluate("""async () => {
+            const w = window.NeoPlat.world;
+            w.loadLevel(1);
+            let e = null;
+            for (let i = 0; i < w.entityCount; i++)
+              if (w.entities[i].active && w.entities[i].kind === 3) e = w.entities[i];
+            if (!e) return { hay: false };
+            const antes = e.x;
+            for (let i = 0; i < 60; i++) w.step(0, 0);
+            return { hay: true, movida: e.x !== antes, hoja: w.entityDef(e).actor.sheet };
+        }""")
+        print("plataforma:", json.dumps(tablon))
+        exigir(tablon["hay"], "el ejemplo ya no trae plataforma movil")
+        exigir(tablon["movida"], "la plataforma movil no se mueve")
+        exigir(tablon["hoja"].startswith("plat"),
+               "la plataforma no usa su propio dibujo: %r" % tablon["hoja"])
+        pagina.keyboard.press("r")
+        pagina.wait_for_timeout(150)
+        pagina.keyboard.press("Enter")
+        pagina.wait_for_timeout(250)
+
         # A un jugador, WASD tiene que seguir valiendo como las flechas: a dos
         # pasa a ser el mando del segundo, y es facil llevarselo por delante.
         pagina.keyboard.down("a")

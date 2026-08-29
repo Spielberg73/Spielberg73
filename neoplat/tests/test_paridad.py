@@ -71,13 +71,15 @@ class TestParidad(unittest.TestCase):
         cls.variantes["dos-pantallas"] = cls._preparar("pantallas", dos=True)
         cls.variantes["golpe"] = cls._preparar("scroll", golpe=True)
         cls.variantes["llave"] = cls._preparar("scroll", llave=True)
+        cls.variantes["tablon"] = cls._preparar("scroll", tablon=True)
 
     @classmethod
-    def _preparar(cls, camara, jefe=False, dos=False, golpe=False, llave=False):
+    def _preparar(cls, camara, jefe=False, dos=False, golpe=False, llave=False,
+                  tablon=False):
         proyecto_dir = os.path.join(
             cls.tmp, "juego-" + camara + ("-jefe" if jefe else "")
             + ("-dos" if dos else "") + ("-golpe" if golpe else "")
-            + ("-llave" if llave else ""))
+            + ("-llave" if llave else "") + ("-tablon" if tablon else ""))
         crear_proyecto(proyecto_dir, "PARIDAD", "TEST")
         yaml = os.path.join(proyecto_dir, "game.yaml")
         with open(yaml, encoding="utf-8") as fh:
@@ -101,6 +103,14 @@ class TestParidad(unittest.TestCase):
             marca = "\n      P.......s"
             assert marca in texto, "el primer nivel ya no empieza asi"
             texto = texto.replace(marca, "\n      P.k.....s", 1)
+        if tablon:
+            # el andamiaje pone la plataforma movil en el segundo nivel y la
+            # traza no llega: se pone una a la salida del primero, encima del
+            # jugador, para que se suba a ella y la traza compare tambien eso
+            marca = "\n      ..........c...........c..........c.............."
+            assert marca in texto, "el primer nivel ya no tiene esa fila"
+            texto = texto.replace(
+                marca, "\n      ..T.......c...........c..........c..............", 1)
         if jefe:
             # el jefe del andamiaje vive en el segundo nivel y la traza no llega:
             # se pone uno en el primero, cambiando el enemigo que hay a la salida
@@ -202,6 +212,28 @@ class TestParidad(unittest.TestCase):
             if c[5] == str(ESTADO_FIN_NIVEL):
                 self.assertNotEqual(c[25], "0",
                                     "el nivel se ha acabado sin coger la llave")
+
+    def test_misma_traza_con_plataformas_moviles(self):
+        """Una plataforma movil se mueve antes que los jugadores y se lleva
+        consigo al que va encima: si las dos implementaciones no lo hicieran en
+        el mismo orden, las posiciones se irian a la primera vuelta."""
+        for semilla in (1, 7, 99):
+            self._comparar("tablon", semilla)
+
+    def test_el_jugador_se_sube_a_la_plataforma(self):
+        """Y que se sube de verdad: si nadie se montara, la paridad pasaria
+        comparando una plataforma que va y viene sola."""
+        traza, _ = self._trazas(1, "tablon")
+        sola, _ = self._trazas(1, "scroll")
+        columnas = [linea.split() for linea in traza]
+        sin = [linea.split() for linea in sola]
+        # el hash de entidades tiene que cambiar (hay una plataforma mas) y el
+        # jugador tiene que acabar en otro sitio que sin ella
+        self.assertNotEqual([c[14] for c in columnas], [c[14] for c in sin],
+                            "la plataforma no esta en la lista de entidades")
+        distintos = sum(1 for a, b in zip(columnas, sin) if a[2] != b[2])
+        self.assertGreater(distintos, 20,
+                           "la plataforma no cambia por donde pasa el jugador")
 
     def test_misma_traza_a_dos_jugadores(self):
         """Lo mismo con `jugadores: 2`: dos mandos, dos vidas, la camara en el

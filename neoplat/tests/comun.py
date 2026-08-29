@@ -208,9 +208,13 @@ objetos:
   moneda:
     sprite: o.png
     puntos: 5
+plataformas:
+  tablon:
+    sprite: o.png
 spawns:
   s: bicho
   c: moneda
+  T: tablon
 niveles:
   - nombre: UNO
     mapa: |

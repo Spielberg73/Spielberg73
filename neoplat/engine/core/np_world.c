@@ -200,6 +200,7 @@ const NpActorDef *np_entity_def(const NpEntity *e)
 {
     if (e->kind == NP_KIND_ENEMY) return &np_enemies[e->def].actor;
     if (e->kind == NP_KIND_SHOT) return &np_player_def.attack.actor;
+    if (e->kind == NP_KIND_PLATFORM) return &np_platforms[e->def].actor;
     return &np_items[e->def].actor;
 }
 
@@ -289,6 +290,7 @@ static void np_spawn_entities(NpWorld *w)
         e->def = s->def;
         e->x = NP_I2F(s->x);
         e->y = NP_I2F(s->y);
+        e->home_x = e->x;
         e->home_y = e->y;
         e->vx = 0;
         e->vy = 0;
@@ -307,6 +309,9 @@ static void np_spawn_entities(NpWorld *w)
             e->timer = ed->interval;
             e->vx = ed->speed;       /* empieza andando a la derecha */
             e->facing = 1;
+        } else if (e->kind == NP_KIND_PLATFORM) {
+            e->health = 1;
+            e->facing = 1;           /* sale hacia la derecha o hacia abajo */
         } else {
             e->health = 1;
         }
@@ -332,6 +337,7 @@ static void np_player_reset(NpWorld *w, uint8_t quien)
     p->jumps_left = d->double_jump ? 1 : 0;
     p->attack_timer = 0;
     p->attack_cd = 0;
+    p->riding = 0;
     p->anim = NP_ANIM_IDLE;
     p->anim_frame = 0;
     p->anim_timer = 0;
@@ -536,6 +542,73 @@ static void np_melee_update(NpWorld *w, uint8_t quien)
     }
 }
 
+/* --------------------------------------------------- plataformas moviles */
+
+/* Va y viene entre donde salio y `distance` pixeles mas alla. Se mueve **antes
+ * que los jugadores** (ver np_play_step): el que va encima tiene que ir con
+ * ella, y para eso hay que saber cuanto se ha movido este frame. Eso es lo que
+ * queda en vx/vy, que aqui no es una velocidad sino el desplazamiento de este
+ * frame ya recortado en los extremos del recorrido. */
+static void np_platform_update(NpWorld *w, NpEntity *e)
+{
+    const NpPlatformDef *d = &np_platforms[e->def];
+    np_fix limite = NP_I2F(d->distance);
+    np_fix paso = e->facing ? d->speed : -d->speed;
+    (void)w;
+    e->vx = 0;
+    e->vy = 0;
+    if (d->speed && d->distance) {
+        if (d->axis == NP_PLAT_Y) {
+            np_fix nueva = e->y + paso;
+            if (nueva >= e->home_y + limite) { nueva = e->home_y + limite; e->facing = 0; }
+            else if (nueva <= e->home_y) { nueva = e->home_y; e->facing = 1; }
+            e->vy = nueva - e->y;
+            e->y = nueva;
+        } else {
+            np_fix nueva = e->x + paso;
+            if (nueva >= e->home_x + limite) { nueva = e->home_x + limite; e->facing = 0; }
+            else if (nueva <= e->home_x) { nueva = e->home_x; e->facing = 1; }
+            e->vx = nueva - e->x;
+            e->x = nueva;
+        }
+    }
+    np_anim_set(&e->anim, &e->anim_frame, &e->anim_timer, NP_ANIM_IDLE);
+    np_anim_tick(&d->actor, e->anim, &e->anim_frame, &e->anim_timer);
+}
+
+/* Encima de que plataforma se queda el jugador, si es que se queda en alguna.
+ *
+ * Se mira despues de moverse con los tiles y funciona igual que un tile de
+ * `plataforma`: solo se aterriza **cayendo y desde arriba**, y pulsando abajo
+ * se deja caer. `antes_y` es donde estaba antes de moverse este frame (ya
+ * llevado por la plataforma, si iba montado), que es lo que distingue
+ * aterrizar encima de subir por dentro. */
+static void np_ride_update(NpWorld *w, uint8_t quien, np_fix antes_y, int soltar)
+{
+    const NpActorDef *a = &np_player_def.actor;
+    NpPlayer *p = &w->players[quien];
+    np_fix pies_antes = antes_y + NP_I2F(a->box_h);
+    uint8_t i;
+
+    p->riding = 0;
+    if (soltar || p->vy < 0) return;
+    for (i = 0; i < w->entity_count; i++) {
+        NpEntity *e = &w->entities[i];
+        const NpActorDef *ea;
+        if (!e->active || e->kind != NP_KIND_PLATFORM) continue;
+        ea = &np_platforms[e->def].actor;
+        if (p->x + NP_I2F(a->box_w) <= e->x) continue;
+        if (e->x + NP_I2F(ea->box_w) <= p->x) continue;
+        if (pies_antes > e->y) continue;                   /* venia por debajo */
+        if (p->y + NP_I2F(a->box_h) < e->y) continue;      /* no llega a tocarla */
+        p->y = e->y - NP_I2F(a->box_h);
+        p->vy = 0;
+        p->on_ground = 1;
+        p->riding = (uint8_t)(i + 1);
+        return;
+    }
+}
+
 /* ------------------------------------------------------------- el jugador */
 
 static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
@@ -546,6 +619,24 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
     int dir = 0;
     int hit_x = 0, hit_down = 0, hit_up = 0;
     int pressed_jump;
+    np_fix antes_y;
+
+    /* Si venia montado en una plataforma, se va con ella antes de nada. En
+       horizontal a traves de np_move_x, para que la plataforma no le meta
+       dentro de una pared. */
+    if (p->riding && p->riding <= w->entity_count) {
+        const NpEntity *e = &w->entities[p->riding - 1];
+        if (e->active && e->kind == NP_KIND_PLATFORM) {
+            int llevado = 0;
+            if (e->vx) p->x = np_move_x(w->level, p->x, p->y, a->box_w, a->box_h,
+                                        e->vx, &llevado);
+            (void)llevado;              /* si topa con una pared, se queda ahi */
+            if (e->vy) p->y = np_move_y(w->level, p->x, p->y, a->box_w, a->box_h,
+                                        e->vy, 0, &hit_down, &hit_up);
+        }
+    }
+    hit_down = 0;
+    hit_up = 0;
 
     if (input & NP_IN_RIGHT) dir += 1;
     if (input & NP_IN_LEFT) dir -= 1;
@@ -587,11 +678,13 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
 
     p->x = np_move_x(w->level, p->x, p->y, a->box_w, a->box_h, p->vx, &hit_x);
     if (hit_x) p->vx = 0;
+    antes_y = p->y;
     p->y = np_move_y(w->level, p->x, p->y, a->box_w, a->box_h, p->vy,
                      (input & NP_IN_DOWN) ? 1 : 0, &hit_down, &hit_up);
     p->on_ground = (uint8_t)hit_down;
     if (hit_down && p->vy > 0) p->vy = 0;
     if (hit_up && p->vy < 0) p->vy = 0;
+    np_ride_update(w, quien, antes_y, (input & NP_IN_DOWN) ? 1 : 0);
 
     if (p->invuln) p->invuln--;
 
@@ -767,6 +860,7 @@ static void np_touch_entities(NpWorld *w)
                                   e->x, e->y, ea->box_w, ea->box_h))
                 continue;
             if (e->kind == NP_KIND_SHOT) continue;   /* es tuyo: no te toca */
+            if (e->kind == NP_KIND_PLATFORM) continue;   /* es suelo, no un bicho */
             if (e->kind == NP_KIND_ITEM) {
                 np_collect(w, quien, e);
                 continue;
@@ -910,6 +1004,15 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
 
     mandos[0] = input;
     if (NP_MAX_PLAYERS > 1) mandos[1] = input2;
+
+    /* Las plataformas moviles se mueven antes que nadie: el jugador que va
+       encima se apunta al sitio donde han quedado. Tampoco se pausan fuera de
+       pantalla como los enemigos: el que las lleva siempre esta a la vista. */
+    for (i = 0; i < w->entity_count; i++) {
+        NpEntity *e = &w->entities[i];
+        if (e->active && e->kind == NP_KIND_PLATFORM) np_platform_update(w, e);
+    }
+
     for (quien = 0; quien < NP_MAX_PLAYERS; quien++) {
         NpPlayer *p = &w->players[quien];
         if (!p->playing) continue;
@@ -930,6 +1033,7 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
             if (e->kind == NP_KIND_SHOT) { e->active = 0; continue; }
             if (e->kind == NP_KIND_ENEMY) continue;
         }
+        if (e->kind == NP_KIND_PLATFORM) continue;      /* ya se ha movido */
         if (e->hurt) e->hurt--;
         if (e->kind == NP_KIND_SHOT) np_shot_update(w, e);
         else if (e->kind == NP_KIND_ENEMY) np_enemy_update(w, e);

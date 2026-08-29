@@ -14,7 +14,8 @@ import comun
 from comun import MAPA_MINIMO, YAML_MINIMO, proyecto_minimo
 
 from ngplat.claves import CAMPOS, OPCIONES, RANGOS
-from ngplat.project import BEHAVIORS, ITEM_EFFECTS, load_project
+from ngplat.project import (BEHAVIORS, ITEM_EFFECTS, PLATFORM_AXES,
+                            load_project)
 
 VALORES = {
     "titulo": '"OTRO"', "autor": '"YO"', "vidas": "4", "tiempo": "30",
@@ -30,6 +31,7 @@ VALORES = {
     "amplitud": "40", "periodo": "90", "intervalo": "60",
     "efecto": "vida", "cantidad": "2", "nombre": '"OTRO NIVEL"',
     "musica": "tema", "fondos": "[]", "llaves": "0",
+    "movimiento": "vertical", "distancia": "96",
 }
 
 
@@ -75,6 +77,9 @@ class TestClaves(unittest.TestCase):
     def test_alias_de_los_objetos(self):
         self._probar_seccion("objeto", "  moneda:", "    ")
 
+    def test_alias_de_las_plataformas(self):
+        self._probar_seccion("plataforma", "  tablon:", "    ")
+
     def test_alias_de_los_niveles(self):
         for campo, alias in CAMPOS["nivel"].items():
             if campo in ("musica", "fondos"):
@@ -92,6 +97,8 @@ class TestClaves(unittest.TestCase):
             self.assertIn(valor, BEHAVIORS, "comportamiento '%s' desconocido" % valor)
         for valor in OPCIONES["efecto"]:
             self.assertIn(valor, ITEM_EFFECTS, "efecto '%s' desconocido" % valor)
+        for valor in OPCIONES["movimiento"]:
+            self.assertIn(valor, PLATFORM_AXES, "movimiento '%s' desconocido" % valor)
 
     def test_todos_los_campos_con_rango_son_numeros(self):
         for campo, rango in RANGOS.items():

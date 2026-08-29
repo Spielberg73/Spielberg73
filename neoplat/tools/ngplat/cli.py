@@ -86,6 +86,8 @@ def cmd_comprobar(args: argparse.Namespace) -> int:
               % (level.name, level.width, level.height, len(level.spawns)))
     print("  enemigos        %d" % stats["enemigos"])
     print("  objetos         %d" % stats["objetos"])
+    if stats.get("plataformas"):
+        print("  plataformas     %d" % stats["plataformas"])
     if "tiles_sprite" in stats:
         print("  tiles de sprite %d  (%d KB de ROM C)"
               % (stats["tiles_sprite"], (stats["bytes_c1"] + stats["bytes_c2"]) // 1024))
@@ -169,8 +171,11 @@ def cmd_compilar(args: argparse.Namespace) -> int:
     _info("codigo:   src/ (motor + tu juego)")
     for linea in salida.resumen:
         _info(linea)
-    _info("%d niveles, %d enemigos, %d objetos, %d efectos, %d musicas%s"
+    _info("%d niveles, %d enemigos, %d objetos%s, %d efectos, %d musicas%s"
           % (stats["niveles"], stats["enemigos"], stats["objetos"],
+             (", %d plataforma%s" % (stats["plataformas"],
+                                      "s" if stats["plataformas"] != 1 else ""))
+             if stats.get("plataformas") else "",
              stats["efectos"], stats["musicas"],
              ", a dos jugadores" if build.project.players > 1 else ""))
 

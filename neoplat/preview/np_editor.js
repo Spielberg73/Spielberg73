@@ -170,10 +170,24 @@
       return (nivel && nivel.spawn_chars) || {};
     }
     function esSpawn(ch) { return !!spawnChars()[ch]; }
+    /* La tabla que le toca a cada tipo de spawn: 0 enemigo, 1 objeto,
+       3 plataforma movil (el 2 son los proyectiles, que no se ponen en el
+       mapa). */
+    function tablaDeKind(kind) {
+      if (kind === 0) return DATA.enemies;
+      if (kind === 3) return DATA.platforms || [];
+      return DATA.items;
+    }
+    function nombresDeKind(kind) {
+      if (kind === 0) return DATA.nombres.enemigos;
+      if (kind === 3) return DATA.nombres.plataformas || [];
+      return DATA.nombres.objetos;
+    }
     function actorDe(ch) {
       var s = spawnChars()[ch];
       if (!s) return null;
-      return (s.kind === 0 ? DATA.enemies : DATA.items)[s.def].actor;
+      var d = tablaDeKind(s.kind)[s.def];
+      return d ? d.actor : null;
     }
     function tipoDeTile(ch) {
       var i = DATA.tiles.index[ch];
@@ -505,7 +519,8 @@
     editor.hojasDisponibles = function () {
       var lista = [];
       var vistas = {};
-      DATA.enemies.concat(DATA.items).concat([DATA.player]).forEach(function (a) {
+      DATA.enemies.concat(DATA.items).concat(DATA.platforms || [])
+        .concat([DATA.player]).forEach(function (a) {
         if (!a || !a.actor) return;
         var llave = a.actor.sprite || a.actor.sheet;   // un archivo, una entrada
         if (vistas[llave]) return;
@@ -880,8 +895,14 @@
           var s = chars[ch];
           if (s) {
             celdas.push(vacio);
-            var actor = (s.kind === 0 ? DATA.enemies : DATA.items)[s.def].actor;
-            spawns.push([Math.max(0, x * TILE + Math.floor((TILE - actor.box_w) / 2)),
+            var d = tablaDeKind(s.kind)[s.def];
+            if (!d) { continue; }
+            var actor = d.actor;
+            /* la plataforma movil se pega a la izquierda de la casilla: mide
+               dos tiles y centrarla la dejaria a medio tile */
+            var px = s.kind === 3 ? x * TILE
+                                  : x * TILE + Math.floor((TILE - actor.box_w) / 2);
+            spawns.push([Math.max(0, px),
                          Math.max(0, y * TILE + TILE - actor.box_h), s.kind, s.def]);
             continue;
           }
@@ -1340,7 +1361,10 @@
           var ch = f[y][x];
           var color = null;
           if (ch === "P") color = "#f2b705";
-          else if (esSpawn(ch)) color = spawnChars()[ch].kind ? "#f2d98a" : "#c4453c";
+          else if (esSpawn(ch)) {
+            var k = spawnChars()[ch].kind;
+            color = k === 0 ? "#c4453c" : (k === 3 ? "#b0834a" : "#f2d98a");
+          }
           else {
             var tipo = tipoDeTile(ch);
             if (tipo === 1) color = "#7d8ea8";
@@ -1487,10 +1511,12 @@
       var chars = spawnChars();
       Object.keys(chars).forEach(function (ch) {
         var s = chars[ch];
-        var nombres = s.kind === 0 ? DATA.nombres.enemigos : DATA.nombres.objetos;
-        var actor = (s.kind === 0 ? DATA.enemies : DATA.items)[s.def].actor;
-        lista.push({ char: ch, etiqueta: nombres[s.def] || (s.kind ? "objeto" : "enemigo"),
-                     tipo: s.kind ? "objeto" : "enemigo", hoja: actor.sheet, frame: 0 });
+        var d = tablaDeKind(s.kind)[s.def];
+        if (!d) return;
+        var tipos = { 0: "enemigo", 1: "objeto", 3: "plataforma" };
+        lista.push({ char: ch,
+                     etiqueta: nombresDeKind(s.kind)[s.def] || tipos[s.kind],
+                     tipo: tipos[s.kind], hoja: d.actor.sheet, frame: 0 });
       });
       return lista;
     };

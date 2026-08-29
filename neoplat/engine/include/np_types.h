@@ -53,6 +53,11 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_KIND_ENEMY 0
 #define NP_KIND_ITEM  1
 #define NP_KIND_SHOT  2
+#define NP_KIND_PLATFORM 3
+
+/* Por donde va y viene una plataforma movil. */
+#define NP_PLAT_X 0                  /* de lado */
+#define NP_PLAT_Y 1                  /* arriba y abajo */
 
 /* Comportamientos de enemigo; coinciden con BEHAVIOR_ID de project.py. */
 #define NP_AI_PATROL 0

@@ -51,7 +51,8 @@ Abre `game.yaml` y busca `niveles:`. El mapa son caracteres:
 - `P` dónde empiezas (solo una)
 - `#` suelo, `=` plataforma que se atraviesa desde abajo, `^` pinchos
 - `G` la meta
-- `s` una seta, `c` una moneda (mira `spawns:`)
+- `s` una seta, `c` una moneda, `k` una llave, `T` un tablón que va y viene
+  (mira `spawns:`)
 
 Cambia lo que quieras y vuelve a lanzar `../ngplat probar`. Tarda menos de un
 segundo.

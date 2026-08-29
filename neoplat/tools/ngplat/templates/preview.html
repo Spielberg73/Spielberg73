@@ -1823,6 +1823,14 @@
     (DATA.items || []).forEach(function (o, i) {
       actores.push({ hoja: o.actor.sheet, nombre: o.name || ("objeto " + i) });
     });
+    (DATA.platforms || []).forEach(function (pl, i) {
+      actores.push({ hoja: pl.actor.sheet, nombre: pl.name || ("plataforma " + i) });
+    });
+    // el proyectil solo existe si el juego lleva ataque
+    if (DATA.player && DATA.player.attack && DATA.player.attack.kind &&
+        DATA.player.attack.actor) {
+      actores.push({ hoja: DATA.player.attack.actor.sheet, nombre: "ataque" });
+    }
     grupos.push({ titulo: "actores", dibujos: actores });
     grupos.push({ titulo: "escenario",
                   dibujos: [{ hoja: "__tiles__", nombre: "tiles" }] });

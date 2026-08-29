@@ -16,7 +16,7 @@ from typing import Dict, List
 from . import gfx, sistemas
 from .claves import tabla_para_el_editor
 from .build import (Build, actor_def_values, attack_values, enemy_values,
-                    item_values, player_values, tile_tables)
+                    item_values, platform_values, player_values, tile_tables)
 from .paths import PREVIEW_DIR, TEMPLATES_DIR
 from .png import Image, encode_png, read_png
 
@@ -114,6 +114,13 @@ def build_data(build: Build) -> Dict[str, object]:
         entry["name"] = item.name
         items.append(entry)
 
+    platforms: List[Dict[str, object]] = []
+    for i, plat in enumerate(build.platforms):
+        entry = dict(platform_values(plat))
+        entry["actor"] = actor_json(plat, "plat%d" % i)
+        entry["name"] = plat.name
+        platforms.append(entry)
+
     layers = []
     for i, layer in enumerate(build.layers):
         nombre = "layer%d" % i
@@ -138,6 +145,7 @@ def build_data(build: Build) -> Dict[str, object]:
     tile_index = {t.char: i for i, t in enumerate(build.tiles)}
     enemy_index = {b.name: i for i, b in enumerate(build.enemies)}
     item_index = {b.name: i for i, b in enumerate(build.items)}
+    platform_index = {b.name: i for i, b in enumerate(build.platforms)}
 
     levels = []
     for level in build.levels:
@@ -157,9 +165,12 @@ def build_data(build: Build) -> Dict[str, object]:
         salida["rows"] = list(original.rows)
         salida["spawn_chars"] = {
             char: ({"kind": 0, "def": enemy_index[nombre]} if nombre in enemy_index
+                   else {"kind": 3, "def": platform_index[nombre]}
+                   if nombre in platform_index
                    else {"kind": 1, "def": item_index[nombre]})
             for char, nombre in original.spawns.items()
             if nombre in enemy_index or nombre in item_index
+            or nombre in platform_index
         }
 
     font = {char: list(rows) for char, rows in gfx.FONT_3X5.items()}
@@ -203,6 +214,7 @@ def build_data(build: Build) -> Dict[str, object]:
         "player": player,
         "enemies": enemies,
         "items": items,
+        "platforms": platforms,
         # `gfx` aqui es el numero de tile dentro del tileset (en la ROM se
         # convierte al numero absoluto de la ROM C).
         "tiles": {
@@ -220,6 +232,7 @@ def build_data(build: Build) -> Dict[str, object]:
         "nombres": {
             "enemigos": [b.name for b in build.enemies],
             "objetos": [b.name for b in build.items],
+            "plataformas": [b.name for b in build.platforms],
         },
         "camara_pantallas": 1 if project.camera == "pantallas" else 0,
         "amiga_modo": project.amiga_modo,

@@ -95,6 +95,18 @@ objetos:
     animaciones:
       quieto: {frames: [0, 1], velocidad: 10}
 
+# Plataformas moviles: van y vienen entre donde salen y 'distancia' pixeles mas
+# alla, y el que se sube encima va con ellas. No hacen dano ni se pueden matar:
+# son escenario que se mueve. 'movimiento' es 'horizontal' o 'vertical'.
+plataformas:
+  tablon:
+    sprite: graficos/plataforma.png
+    frame: [32, 16]
+    caja: [32, 6]          # solo la parte de arriba: es donde se pisa
+    movimiento: horizontal
+    velocidad: 0.6
+    distancia: 48
+
 # Capas de fondo con scroll propio (parallax). Van de la mas lejana a la mas
 # cercana. 'velocidad' es la fraccion del scroll del escenario: 0 = quieta,
 # 1 = se mueve igual que el suelo. 'y' es donde empieza en la pantalla.
@@ -142,6 +154,7 @@ spawns:
   m: mosca
   c: moneda
   k: llave
+  T: tablon
 
 niveles:
   - nombre: "BOSQUE"
@@ -182,7 +195,7 @@ niveles:
       ...................m.................m..................
       ....ccc.........................................ccc.....
       ...=====.......................................=====....
-      ........................................................
+      ................................T.......................
       ......c..........c.........c..........c......c..........
       P.......s.........^...........s...........^..........G..
       ########################..#####################..#######

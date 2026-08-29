@@ -73,6 +73,7 @@ class Build:
     items: List[ActorBuild]
     layers: List[LayerBuild]
     levels: List[LevelBuild]
+    platforms: List[ActorBuild] = field(default_factory=list)
     attack: Optional[ActorBuild] = None       # el proyectil, si el juego lo lleva
     music_order: List[str] = field(default_factory=list)   # nombres, en orden
     font: Dict[str, int] = field(default_factory=dict)
@@ -88,10 +89,11 @@ class Build:
 
     def actor_builds(self) -> List[ActorBuild]:
         """Todos los dibujos que hay que empaquetar, en un orden que **no
-        cambia**: el jugador, los enemigos, los objetos y, al final, el
-        proyectil. Va al final para que anadir un ataque no mueva los indices
-        de enemigos y objetos, que es lo que guardan los niveles."""
-        todos = [self.player] + self.enemies + self.items
+        cambia**: el jugador, los enemigos, los objetos, las plataformas
+        moviles y, al final del todo, el proyectil. Lo que se anade va detras
+        para no mover los indices de lo que ya estaba, que es lo que guardan
+        los niveles."""
+        todos = [self.player] + self.enemies + self.items + self.platforms
         if self.attack is not None:
             todos.append(self.attack)
         return todos
@@ -105,6 +107,7 @@ class Build:
             "niveles": len(self.levels),
             "enemigos": len(self.enemies),
             "objetos": len(self.items),
+            "plataformas": len(self.platforms),
             "bytes_mapas": sum(len(lv.cells) for lv in self.levels),
         }
         datos.update(self.info.get("stats", {}))     # lo que anada cada sistema
@@ -232,11 +235,16 @@ def build_project(project: Project) -> Build:
         _load_actor(item, "objetos.%s" % name, project.root)
         for name, item in project.items.items()
     ]
+    platforms = [
+        _load_actor(plat, "plataformas.%s" % name, project.root)
+        for name, plat in project.platforms.items()
+    ]
     attack = (_load_actor(project.player.attack, "jugador.ataque", project.root)
               if project.player.attack is not None
               and project.player.attack.sprite else None)
     enemy_index = {b.name: i for i, b in enumerate(enemies)}
     item_index = {b.name: i for i, b in enumerate(items)}
+    platform_index = {b.name: i for i, b in enumerate(platforms)}
 
     music_order = list(project.sound.musica)
     music_index = {name: i + 1 for i, name in enumerate(music_order)}
@@ -258,6 +266,9 @@ def build_project(project: Project) -> Build:
                     if name in enemy_index:
                         kind, index = 0, enemy_index[name]
                         actor = enemies[index].actor
+                    elif name in platform_index:
+                        kind, index = 3, platform_index[name]
+                        actor = platforms[index].actor
                     else:
                         kind, index = 1, item_index[name]
                         actor = items[index].actor
@@ -288,7 +299,8 @@ def build_project(project: Project) -> Build:
     return Build(
         project=project, rom=rom, tiles=tiles, tile_index=tile_index, tileset=tileset,
         player=player, enemies=enemies, items=items, layers=layers, levels=levels,
-        attack=attack, music_order=music_order, sin_table=_sin_table(),
+        platforms=platforms, attack=attack, music_order=music_order,
+        sin_table=_sin_table(),
     )
 
 
@@ -334,6 +346,15 @@ def enemy_values(build: ActorBuild) -> Dict[str, object]:
 def item_values(build: ActorBuild) -> Dict[str, object]:
     it = build.actor         # type: ignore[assignment]
     return {"score": it.score, "effect": ITEM_EFFECT_ID[it.effect], "amount": it.amount}
+
+
+PLATFORM_AXIS_ID = {"x": 0, "y": 1}
+
+
+def platform_values(build: ActorBuild) -> Dict[str, object]:
+    pl = build.actor         # type: ignore[assignment]
+    return {"speed": to_fixed(pl.speed), "distance": pl.distance,
+            "axis": PLATFORM_AXIS_ID[pl.axis]}
 
 
 def player_values(project: Project) -> Dict[str, object]:

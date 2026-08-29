@@ -96,7 +96,8 @@ def _nivel_2() -> List[str]:
         _poner(a, {19: "m", 37: "m"}),
         _poner(a, {4: "ccc", 48: "ccc"}),
         _poner(a, {3: "=====", 47: "====="}),
-        _fila("", a),
+        # el tablon que va y viene: se sube uno encima y se deja llevar
+        _poner(a, {32: "T"}),
         _poner(a, {6: "c", 17: "c", 27: "c", 38: "c", 45: "c"}),
         _poner(a, {0: "P", 8: "s", 18: "^", 30: "s", 42: "^", 51: "J"}),
         _suelo(a, [(24, 2), (47, 2)]),
@@ -215,6 +216,18 @@ objetos:
     animaciones:
       quieto: {{frames: [0, 1], velocidad: 10}}
 
+# Plataformas moviles: van y vienen entre donde salen y 'distancia' pixeles mas
+# alla, y el que se sube encima va con ellas. No hacen dano ni se pueden matar:
+# son escenario que se mueve. 'movimiento' es 'horizontal' o 'vertical'.
+plataformas:
+  tablon:
+    sprite: graficos/plataforma.png
+    frame: [32, 16]
+    caja: [32, 6]          # solo la parte de arriba: es donde se pisa
+    movimiento: horizontal
+    velocidad: 0.6
+    distancia: 48
+
 # Capas de fondo con scroll propio (parallax). Van de la mas lejana a la mas
 # cercana. 'velocidad' es la fraccion del scroll del escenario: 0 = quieta,
 # 1 = se mueve igual que el suelo. 'y' es donde empieza en la pantalla.
@@ -262,6 +275,7 @@ spawns:
   m: mosca
   c: moneda
   k: llave
+  T: tablon
   J: jefazo
 
 niveles:
@@ -361,6 +375,18 @@ objetos:
     animaciones:
       quieto: {{frames: [0, 1, 2, 3], velocidad: 7}}
 
+# Plataformas moviles: van y vienen entre donde salen y 'distancia' pixeles mas
+# alla, y el que se sube encima va con ellas. Son escenario que se mueve: ni
+# hacen dano ni se pueden matar.
+plataformas:
+  viga:
+    sprite: graficos/plataforma.png
+    frame: [32, 16]
+    caja: [32, 6]          # solo la parte de arriba: es donde se pisa
+    movimiento: horizontal
+    velocidad: 0.6
+    distancia: 48
+
 # Una sola capa: en doble plano el Amiga solo puede mover una, y mide 256
 # pixeles de ancho para poder repetirse dentro del hueco que tiene para correr.
 fondos:
@@ -395,6 +421,7 @@ spawns:
   s: raton
   m: murcielago
   c: gema
+  T: viga
   J: guardian
 
 niveles:

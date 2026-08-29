@@ -286,6 +286,37 @@ vale al otro. Se vacían al empezar cada nivel, y el marcador enseña `KEYS 01/0
 mientras el nivel pida alguna. Si un nivel pide más llaves de las que hay
 puestas en su mapa, `ngplat` no compila: no se podría terminar.
 
+## `plataformas`
+
+```yaml
+plataformas:
+  tablon:
+    sprite: graficos/plataforma.png
+    frame: [32, 16]
+    caja: [32, 6]        # solo la parte de arriba: es donde se pisa
+    movimiento: horizontal   # horizontal | vertical
+    velocidad: 0.6           # pixeles por frame
+    distancia: 48            # recorrido desde donde sale, en pixeles
+```
+
+Una plataforma movil va y viene entre donde la pone el mapa y `distancia`
+pixeles mas alla (a la derecha si `movimiento: horizontal`, hacia abajo si es
+`vertical`), y **el que se sube encima va con ella**. No hace dano, no se puede
+matar y no cuenta como enemigo: es escenario que se mueve.
+
+Se apoya como un tile de `plataforma`: sólo se aterriza **cayendo y desde
+arriba**, por debajo se pasa a través, y pulsando abajo te dejas caer. Se
+colocan en el mapa con su símbolo, igual que los enemigos y los objetos:
+
+```yaml
+spawns:
+  T: tablon
+```
+
+La caja de colisión suele ser sólo la franja de arriba del dibujo (`caja: [32,
+6]` en un fotograma de 32×16): así el jugador se planta sobre la tabla y no
+flotando encima del hueco.
+
 ## `fondos` (parallax)
 
 Capas de fondo con scroll propio. Se escriben de la **mas lejana a la mas
@@ -434,7 +465,7 @@ Reglas del mapa:
 - **`P`** marca dónde empieza el jugador: exactamente una por nivel.
 - Mínimo 20 columnas × 14 filas (lo que ocupa una pantalla), máximo 512 × 256.
 - Las filas más cortas se rellenan con vacío por la derecha.
-- Máximo 64 enemigos y objetos por nivel.
+- Máximo 64 enemigos, objetos y plataformas por nivel.
 - Si un nivel no tiene tile de `meta` ni jefe, `ngplat` te avisa (no se podría
   terminar).
 - Con `llaves: N`, en el mapa tiene que haber al menos N llaves (ver

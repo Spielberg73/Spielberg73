@@ -25,7 +25,9 @@
   var AI_PATROL = 0, AI_FLYER = 1, AI_CHASER = 2, AI_JUMPER = 3;
   var ANIM_IDLE = 0, ANIM_RUN = 1, ANIM_JUMP = 2, ANIM_FALL = 3, ANIM_HURT = 4,
       ANIM_ATTACK = 5;
-  var KIND_ENEMY = 0, KIND_ITEM = 1, KIND_SHOT = 2;
+  var KIND_ENEMY = 0, KIND_ITEM = 1, KIND_SHOT = 2, KIND_PLATFORM = 3;
+  /* por donde va y viene una plataforma movil */
+  var PLAT_X = 0, PLAT_Y = 1;
   var ATTACK_NONE = 0, ATTACK_SHOT = 1, ATTACK_MELEE = 2;
   var STATE = { TITLE: 0, PLAY: 1, DYING: 2, LEVEL_END: 3, GAME_OVER: 4, FINISHED: 5 };
   /* Eventos de sonido; mismos bits que NP_SFX_* en np_types.h. */
@@ -59,7 +61,7 @@
         x: 0, y: 0, vx: 0, vy: 0, animTimer: 0, invuln: 0, dying: 0,
         anim: 0, animFrame: 0, onGround: 0, facing: 1, jumpsLeft: 0,
         health: 1, coyote: 0, buffer: 0, lives: 0, playing: 0,
-        attackTimer: 0, attackCd: 0
+        attackTimer: 0, attackCd: 0, riding: 0
       });
     }
     this.playerCount = data.players || 1;
@@ -186,6 +188,7 @@
   World.prototype.entityDef = function (e) {
     if (e.kind === KIND_ENEMY) return this.data.enemies[e.def];
     if (e.kind === KIND_SHOT) return this.data.player.attack;
+    if (e.kind === KIND_PLATFORM) return this.data.platforms[e.def];
     return this.data.items[e.def];
   };
 
@@ -224,7 +227,8 @@
       var s = lv.spawns[i];
       var e = {
         active: 1, kind: s[2], def: s[3], x: I2F(s[0]), y: I2F(s[1]),
-        homeY: I2F(s[1]), vx: 0, vy: 0, facing: 0, anim: ANIM_IDLE,
+        homeX: I2F(s[0]), homeY: I2F(s[1]), vx: 0, vy: 0, facing: 0,
+        anim: ANIM_IDLE,
         animFrame: 0, animTimer: 0, hurt: 0, timer: 0, health: 1, vida: 0
       };
       if (e.kind === KIND_ENEMY) {
@@ -233,6 +237,8 @@
         e.timer = ed.interval;
         e.vx = ed.speed;
         e.facing = 1;
+      } else if (e.kind === KIND_PLATFORM) {
+        e.facing = 1;             /* sale hacia la derecha o hacia abajo */
       }
       this.entities.push(e);
       this.entityCount++;
@@ -246,7 +252,7 @@
     this.placePlayer(quien);
     p.vx = 0; p.vy = 0; p.onGround = 0; p.facing = 1;
     p.health = d.health; p.invuln = 0; p.coyote = 0; p.buffer = 0;
-    p.dying = 0; p.attackTimer = 0; p.attackCd = 0;
+    p.dying = 0; p.attackTimer = 0; p.attackCd = 0; p.riding = 0;
     p.jumpsLeft = d.double_jump ? 1 : 0;
     p.anim = ANIM_IDLE; p.animFrame = 0; p.animTimer = 0;
   };
@@ -318,7 +324,8 @@
     }
     if (this.entities.length >= MAX_ENTITIES) return -1;
     this.entities.push({
-      active: 0, kind: KIND_SHOT, def: 0, x: 0, y: 0, homeY: 0, vx: 0, vy: 0,
+      active: 0, kind: KIND_SHOT, def: 0, x: 0, y: 0, homeX: 0, homeY: 0,
+      vx: 0, vy: 0,
       facing: 0, anim: ANIM_IDLE, animFrame: 0, animTimer: 0, hurt: 0,
       timer: 0, health: 1, vida: 0
     });
@@ -406,9 +413,76 @@
     }
   };
 
+  /* --------------------------------------------- plataformas moviles */
+
+  /* Va y viene entre donde salio y `distance` pixeles mas alla. Se mueve antes
+     que los jugadores: el que va encima tiene que ir con ella, y para eso hay
+     que saber cuanto se ha movido. Eso es lo que queda en vx/vy, que aqui no
+     es una velocidad sino el desplazamiento de este frame. Igual que
+     np_platform_update en C. */
+  World.prototype.platformUpdate = function (e) {
+    var d = this.data.platforms[e.def];
+    var limite = I2F(d.distance);
+    var paso = e.facing ? d.speed : -d.speed;
+    e.vx = 0;
+    e.vy = 0;
+    if (d.speed && d.distance) {
+      if (d.axis === PLAT_Y) {
+        var ny = e.y + paso;
+        if (ny >= e.homeY + limite) { ny = e.homeY + limite; e.facing = 0; }
+        else if (ny <= e.homeY) { ny = e.homeY; e.facing = 1; }
+        e.vy = ny - e.y;
+        e.y = ny;
+      } else {
+        var nx = e.x + paso;
+        if (nx >= e.homeX + limite) { nx = e.homeX + limite; e.facing = 0; }
+        else if (nx <= e.homeX) { nx = e.homeX; e.facing = 1; }
+        e.vx = nx - e.x;
+        e.x = nx;
+      }
+    }
+    animSet(e, ANIM_IDLE);
+    animTick(d.actor, e);
+  };
+
+  /* Encima de que plataforma se queda el jugador. Funciona igual que un tile
+     de `plataforma`: solo se aterriza cayendo y desde arriba, y pulsando abajo
+     se deja caer. Igual que np_ride_update en C. */
+  World.prototype.rideUpdate = function (quien, antesY, soltar) {
+    var a = this.data.player.actor, p = this.players[quien];
+    var piesAntes = antesY + I2F(a.box_h);
+    var i;
+    p.riding = 0;
+    if (soltar || p.vy < 0) return;
+    for (i = 0; i < this.entityCount; i++) {
+      var e = this.entities[i];
+      if (!e.active || e.kind !== KIND_PLATFORM) continue;
+      var ea = this.data.platforms[e.def].actor;
+      if (p.x + I2F(a.box_w) <= e.x) continue;
+      if (e.x + I2F(ea.box_w) <= p.x) continue;
+      if (piesAntes > e.y) continue;                 /* venia por debajo */
+      if (p.y + I2F(a.box_h) < e.y) continue;        /* no llega a tocarla */
+      p.y = e.y - I2F(a.box_h);
+      p.vy = 0;
+      p.onGround = 1;
+      p.riding = i + 1;
+      return;
+    }
+  };
+
   World.prototype.playerUpdate = function (quien, input) {
     var d = this.data.player, a = d.actor, p = this.players[quien];
     var dir = 0;
+    /* Si venia montado en una plataforma, se va con ella antes de nada. */
+    if (p.riding && p.riding <= this.entityCount) {
+      var montado = this.entities[p.riding - 1];
+      if (montado.active && montado.kind === KIND_PLATFORM) {
+        if (montado.vx)
+          p.x = this.moveX(p.x, p.y, a.box_w, a.box_h, montado.vx, moveOut);
+        if (montado.vy)
+          p.y = this.moveY(p.x, p.y, a.box_w, a.box_h, montado.vy, 0, moveOut);
+      }
+    }
     if (input & IN.RIGHT) dir += 1;
     if (input & IN.LEFT) dir -= 1;
 
@@ -444,10 +518,12 @@
 
     p.x = this.moveX(p.x, p.y, a.box_w, a.box_h, p.vx, moveOut);
     if (moveOut.hit) p.vx = 0;
+    var antesY = p.y;
     p.y = this.moveY(p.x, p.y, a.box_w, a.box_h, p.vy, (input & IN.DOWN) ? 1 : 0, moveOut);
     p.onGround = moveOut.hitDown;
     if (moveOut.hitDown && p.vy > 0) p.vy = 0;
     if (moveOut.hitUp && p.vy < 0) p.vy = 0;
+    this.rideUpdate(quien, antesY, (input & IN.DOWN) ? 1 : 0);
 
     if (p.invuln) p.invuln--;
 
@@ -560,6 +636,7 @@
         var ea = this.entityDef(e).actor;
         if (!overlap(p.x, p.y, pa.box_w, pa.box_h, e.x, e.y, ea.box_w, ea.box_h)) continue;
         if (e.kind === KIND_SHOT) continue;      /* es tuyo: no te toca */
+        if (e.kind === KIND_PLATFORM) continue;  /* es suelo, no un bicho */
         if (e.kind === KIND_ITEM) { this.collect(quien, e); continue; }
         var d = this.data.enemies[e.def];
         /* Misma ventana de pisado que np_world.c: cayendo y con los pies por
@@ -667,6 +744,14 @@
   World.prototype.playStep = function (input, input2) {
     var pa = this.data.player.actor, quien, i;
     var mandos = [input, input2 | 0];
+
+    /* Las plataformas moviles se mueven antes que nadie, y no se pausan fuera
+       de pantalla: igual que en np_play_step. */
+    for (i = 0; i < this.entityCount; i++) {
+      var plat = this.entities[i];
+      if (plat.active && plat.kind === KIND_PLATFORM) this.platformUpdate(plat);
+    }
+
     for (quien = 0; quien < MAX_PLAYERS; quien++) {
       var jugador = this.players[quien];
       if (!jugador.playing) continue;
@@ -684,6 +769,7 @@
         if (e.kind === KIND_SHOT) { e.active = 0; continue; }
         if (e.kind === KIND_ENEMY) continue;
       }
+      if (e.kind === KIND_PLATFORM) continue;        /* ya se ha movido */
       if (e.hurt) e.hurt--;
       if (e.kind === KIND_SHOT) this.shotUpdate(e);
       else if (e.kind === KIND_ENEMY) this.enemyUpdate(e);

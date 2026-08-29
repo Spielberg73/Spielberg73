@@ -278,6 +278,14 @@ class Item(Actor):
 
 
 @dataclass
+class Platform(Actor):
+    """Plataforma movil: va y viene, y el que se sube encima va con ella."""
+    axis: str = "x"          # "x" (de lado) o "y" (arriba y abajo)
+    speed: float = 0.5
+    distance: int = 64       # pixeles de recorrido desde donde sale
+
+
+@dataclass
 class TileDef:
     char: str
     index: int          # numero de tile dentro del tileset
@@ -330,13 +338,14 @@ class Project:
     tiles: Dict[str, TileDef]
     enemies: Dict[str, Enemy]
     items: Dict[str, Item]
+    platforms: Dict[str, "Platform"]
     layers: Dict[str, Layer]
     sound: "sonido_mod.Sonido"
     levels: List[Level]
     warnings: List[str] = field(default_factory=list)
 
     def spawn_names(self) -> List[str]:
-        return list(self.enemies) + list(self.items)
+        return list(self.enemies) + list(self.items) + list(self.platforms)
 
 
 # ------------------------------------------------------------------- lectura
@@ -608,6 +617,28 @@ def _read_item(name: str, data: Any, root: str) -> Item:
         effect=node.choice(["effect", "efecto", "tipo"], ITEM_EFFECTS, "points"),
         score=node.int_(["score", "puntos"], 10, 0, 99999),
         amount=node.int_(["amount", "cantidad"], 1, 1, 9),
+    )
+
+
+PLATFORM_AXES = {
+    "x": "x", "horizontal": "x", "lado": "x", "de_lado": "x",
+    "y": "y", "vertical": "y", "arriba": "y", "arriba_abajo": "y",
+}
+
+
+def _read_platform(name: str, data: Any, root: str) -> Platform:
+    where = "plataformas.%s" % name
+    node = Node(data, where)
+    sprite = node.str_(["sprite", "imagen", "image"], required=True)
+    _require_file(root, sprite, where)
+    fw, fh, bw, bh, bx, by = _actor_geometry(node, where, (16, 16))
+    anims = _read_animations(node.child("animations", "animaciones", "anims"), where)
+    return Platform(
+        name=name, sprite=sprite, frame_w=fw, frame_h=fh,
+        box_w=bw, box_h=bh, box_x=bx, box_y=by, animations=anims,
+        axis=node.choice(["axis", "eje", "movimiento"], PLATFORM_AXES, "x"),
+        speed=node.num(["speed", "velocidad"], 0.5, 0.0, 8.0),
+        distance=node.int_(["distance", "distancia", "recorrido"], 64, 0, 512),
     )
 
 
@@ -1078,13 +1109,19 @@ def load_project(path: str) -> Project:
     items: Dict[str, Item] = {}
     for name, data_item in (top.child("items", "objetos").data or {}).items():
         items[str(name)] = _read_item(str(name), data_item, root)
+    platforms: Dict[str, Platform] = {}
+    for name, data_plat in (top.child("platforms", "plataformas").data or {}).items():
+        platforms[str(name)] = _read_platform(str(name), data_plat, root)
 
-    duplicated = set(enemies) & set(items)
-    if duplicated:
-        raise ProjectError(
-            "'%s' esta definido como enemigo y como objeto" % sorted(duplicated)[0],
-            hint="usa nombres distintos",
-        )
+    for a, b, texto in ((enemies, items, "enemigo y como objeto"),
+                        (enemies, platforms, "enemigo y como plataforma"),
+                        (items, platforms, "objeto y como plataforma")):
+        repetidos = set(a) & set(b)
+        if repetidos:
+            raise ProjectError(
+                "'%s' esta definido como %s" % (sorted(repetidos)[0], texto),
+                hint="usa nombres distintos",
+            )
 
     global_spawns = {str(k): str(v) for k, v in
                      (top.child("spawns", "simbolos", "símbolos").data or {}).items()}
@@ -1100,7 +1137,8 @@ def load_project(path: str) -> Project:
     layers = _read_layers(top.raw("backgrounds", "fondos", "capas"), root)
     sound = _read_sound(top.raw("sound", "sonido", "audio"), root)
     levels = _read_levels(
-        top.raw("levels", "niveles"), tiles, list(enemies) + list(items),
+        top.raw("levels", "niveles"), tiles,
+        list(enemies) + list(items) + list(platforms),
         global_spawns, default_bg, warnings, necesitan_suelo, list(layers),
         list(sound.musica), jefes=jefes, llaves=llaves,
     )
@@ -1108,6 +1146,7 @@ def load_project(path: str) -> Project:
     known_top = {
         "game", "juego", "player", "jugador", "tiles", "tileset", "bloques",
         "enemies", "enemigos", "items", "objetos", "levels", "niveles",
+        "platforms", "plataformas",
         "spawns", "simbolos", "símbolos", "backgrounds", "fondos", "capas",
         "sound", "sonido", "audio",
     }
@@ -1134,6 +1173,7 @@ def load_project(path: str) -> Project:
         root=root, title=title.upper()[:24], author=author[:24], system=sistema,
         lives=lives, players=players, camera=camera, amiga_modo=amiga_modo,
         time_limit=time_limit, hud=hud, player=player, tileset=tileset, tiles=tiles,
-        enemies=enemies, items=items, layers=layers, sound=sound, levels=levels,
+        enemies=enemies, items=items, platforms=platforms, layers=layers,
+        sound=sound, levels=levels,
         warnings=warnings,
     )

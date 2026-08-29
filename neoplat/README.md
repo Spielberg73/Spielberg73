@@ -223,6 +223,11 @@ La meta se puede **cerrar con llave**: un objeto con `efecto: llave` y un nivel
 con `llaves: N` obligan a dar una vuelta antes de salir. El marcador enseña las
 que llevas, y si el mapa no tiene llaves suficientes `ngplat` no compila.
 
+Y hay **plataformas móviles**: con `plataformas:` defines una tabla que va y
+viene, y el que se sube encima va con ella. Se apoya como un tile de
+`plataforma` (por debajo se pasa a través, pulsando abajo te dejas caer) y no
+hace daño: es escenario que se mueve.
+
 Con `jugadores: 2` juegan dos a la vez en la misma pantalla, cada uno con su
 mando y con sus vidas: la cámara va al punto medio y el que se queda atrás se
 para pegado al borde. En cada máquina el segundo mando está donde toca (en el
@@ -541,6 +546,14 @@ Verificado aquí:
   que no se guardan de un nivel para otro), más una variante de la paridad C/JS
   que comprueba en toda la traza que el nivel no se acaba nunca con el contador
   a cero.
+- **Las plataformas móviles llevan al jugador**: ocho pruebas de jugabilidad en
+  JavaScript (que va y viene entre sus dos extremos y no se pasa, que el
+  jugador se planta encima y se mueve exactamente lo mismo que ella, que una
+  vertical le sube y le baja sin despegarle en ningún frame, que se puede
+  saltar desde encima, que por debajo se pasa a través, que pulsando abajo te
+  dejas caer y que no hace daño), más una variante de la paridad C/JS: la
+  plataforma se mueve antes que los jugadores, y si las dos implementaciones no
+  lo hicieran en el mismo orden las posiciones se irían a la primera vuelta.
 - **Los dibujos caen en dirección par**: el Atari ST y el Amiga leen los tiles
   de palabra larga en palabra larga aunque el array sea de bytes, y en el 68000
   hacer eso en una dirección impar para la máquina en seco. Una prueba mira los
@@ -577,8 +590,6 @@ Lo que aún no hace:
   ([docs/atarist.md](docs/atarist.md)).
 - **Eventos guionizados**: hay cinco comportamientos de enemigo fijos y un jefe
   por nivel (`jefe: si`); no hay forma de guionizar una secuencia.
-- **Plataformas móviles**: los tipos de tile son sólido, plataforma, pinchos,
-  meta y decorado; ninguno se mueve.
 - **Checkpoints**: morir devuelve siempre al principio del nivel.
 - **Zoom de sprites** (la Neo Geo lo permite; el motor no lo usa).
 

@@ -64,6 +64,11 @@ CAMPOS: Dict[str, Dict[str, List[str]]] = {
         "efecto": ["efecto", "effect"],
         "cantidad": ["cantidad", "amount"],
     },
+    "plataforma": {
+        "movimiento": ["movimiento", "eje", "axis"],
+        "velocidad": ["velocidad", "speed"],
+        "distancia": ["distancia", "recorrido", "distance"],
+    },
     "nivel": {
         "nombre": ["nombre", "name"],
         "fondo": ["fondo", "background"],
@@ -78,6 +83,7 @@ OPCIONES: Dict[str, List[str]] = {
     "comportamiento": ["patrulla", "volador", "perseguidor", "saltarin", "fijo"],
     "efecto": ["puntos", "vida", "salud", "llave"],
     "camara": ["scroll", "pantallas"],
+    "movimiento": ["horizontal", "vertical"],
     "amiga": ["32colores", "8colores"],
 }
 
@@ -106,6 +112,7 @@ RANGOS: Dict[str, Dict[str, float]] = {
     "intervalo": {"min": 8, "max": 1200, "paso": 10},
     "cantidad": {"min": 1, "max": 9, "paso": 1},
     "llaves": {"min": 0, "max": 99, "paso": 1},
+    "distancia": {"min": 0, "max": 512, "paso": 8},
     "gravedad_enemigo": {"min": 0, "max": 4, "paso": 0.01},
 }
 

@@ -145,6 +145,21 @@ def gema() -> Image:
 
 # --- el escenario ---------------------------------------------------------
 
+def plataforma() -> Image:
+    """La plataforma movil: una viga suelta de dos tiles de ancho.
+
+    El fotograma es de 32x16 porque las maquinas dibujan en bloques de 16, pero
+    la viga ocupa solo las seis filas de arriba: la caja de colision es esa.
+    """
+    c = Lienzo(32, 16)
+    c.rect(0, 0, 32, 5, ROCA)
+    c.rect(0, 0, 32, 1, CLARO)
+    c.rect(0, 4, 32, 1, LINEA)
+    for x in (3, 11, 20, 28):        # los remaches
+        c.px(x, 2, LINEA)
+    return c.image
+
+
 def _tile_vacio() -> Image:
     return Lienzo(16, 16).image
 
@@ -270,6 +285,7 @@ def todos() -> Dict[str, Image]:
         "graficos/heroe.png": heroe(),
         "graficos/enemigo.png": enemigo(),
         "graficos/gema.png": gema(),
+        "graficos/plataforma.png": plataforma(),
         "graficos/tiles.png": tileset(),
         "graficos/cueva.png": cueva(),
     }
