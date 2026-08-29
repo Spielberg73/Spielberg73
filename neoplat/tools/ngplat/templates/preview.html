@@ -123,6 +123,19 @@
   .tira canvas { image-rendering: pixelated; border: 1px solid #2b3245; border-radius: 4px;
                  cursor: pointer; background: #11141d; }
   .tira canvas.elegido { border-color: #f2b705; }
+  /* --- guardado y copias --------------------------------------------- */
+  .estado .guardado { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  .estado .guardado b { font-weight: normal; }
+  .estado .guardado b.pendiente { color: #f2b705; }
+  .estado .guardado b.malo { color: #e0574f; }
+  .lista-copias { display: flex; flex-direction: column; gap: 2px;
+                  max-height: 260px; overflow: auto; margin: 6px 0; }
+  .lista-copias .fila { display: flex; align-items: center; gap: 8px;
+                        padding: 3px 6px; background: #171b24; border-radius: 3px; }
+  .lista-copias .fila span { color: #cfd6e4; font-size: 11px; }
+  .lista-copias .fila .cual { color: #f2d98a; min-width: 46px; }
+  .lista-copias .fila .peso { color: #7d8799; margin-left: auto; }
+
   /* --- editor de dibujos --------------------------------------------- */
   .dibujos { display: flex; gap: 12px; align-items: flex-start; }
   .dibujos .izquierda { display: flex; flex-direction: column; gap: 6px;
@@ -221,6 +234,10 @@
     <span>casilla <b id="es-pos">-</b></span>
     <span>tamaño <b id="es-tam">-</b></span>
     <span class="mensaje" id="es-mensaje"></span>
+    <span class="guardado">
+      <button type="button" id="ed-guardar">guardar</button>
+      <b id="es-guardado">sin cambios</b>
+    </span>
   </div>
 
   <div class="pestanas" id="pestanas">
@@ -232,6 +249,7 @@
     <button type="button" data-panel="revisar">revisar<span class="contador" id="es-problemas" hidden>0</span></button>
     <button type="button" data-panel="yaml">game.yaml</button>
     <button type="button" data-panel="rom">compilar</button>
+    <button type="button" data-panel="copias">copias</button>
   </div>
 
   <div class="panel visible" id="panel-mapa">
@@ -416,6 +434,17 @@
     </div>
     <div class="nota" id="rom-ayuda"></div>
     <pre class="registro" id="rom-registro"></pre>
+  </div>
+
+  <div class="panel exportar" id="panel-copias">
+    <div class="barra">
+      <button type="button" id="copias-guardar">guardar una copia ahora</button>
+      <button type="button" id="copias-refrescar">actualizar la lista</button>
+      <span class="nota" id="copias-estado"></span>
+    </div>
+    <div class="nota" id="copias-ayuda"></div>
+    <div class="lista-copias" id="copias-lista"></div>
+    <pre class="registro" id="copias-registro"></pre>
   </div>
 
   <div class="panel exportar" id="panel-yaml">
@@ -2637,21 +2666,24 @@
 
   /* --- pestanas ------------------------------------------------------- */
 
-  Array.prototype.forEach.call(document.querySelectorAll("#pestanas button"), function (boton) {
-    boton.addEventListener("click", function () {
-      Array.prototype.forEach.call(document.querySelectorAll("#pestanas button"), function (b) {
-        b.className = b === boton ? "elegida" : "";
-      });
-      Array.prototype.forEach.call(document.querySelectorAll(".panel"), function (panel) {
-        panel.classList.toggle("visible", panel.id === "panel-" + boton.dataset.panel);
-      });
-      if (boton.dataset.panel === "yaml") {
-        elTexto.value = editor.exportarYaml();
-        refrescarPendientes();
-      }
-      if (boton.dataset.panel === "revisar") { editor.revisar(); refrescarProblemas(); }
-      if (boton.dataset.panel === "rom") document.getElementById("rom-estado").textContent = "";
+  function verPanel(cual) {
+    Array.prototype.forEach.call(document.querySelectorAll("#pestanas button"), function (b) {
+      b.className = b.dataset.panel === cual ? "elegida" : "";
     });
+    Array.prototype.forEach.call(document.querySelectorAll(".panel"), function (panel) {
+      panel.classList.toggle("visible", panel.id === "panel-" + cual);
+    });
+    if (cual === "yaml") {
+      elTexto.value = editor.exportarYaml();
+      refrescarPendientes();
+    }
+    if (cual === "revisar") { editor.revisar(); refrescarProblemas(); }
+    if (cual === "rom") document.getElementById("rom-estado").textContent = "";
+    if (cual === "copias") copias.cargar();
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll("#pestanas button"), function (boton) {
+    boton.addEventListener("click", function () { verPanel(boton.dataset.panel); });
   });
 
   /* --- botones -------------------------------------------------------- */
@@ -2780,8 +2812,10 @@
 
       var ayuda = document.getElementById("rom-ayuda");
       if (this.disponible) {
-        ayuda.textContent = "Guarda el game.yaml en el proyecto (deja una copia "
-          + "en game.yaml.bak) y compila. Tarda unos segundos.";
+        ayuda.textContent = "Guarda el game.yaml y compila. Tarda unos segundos, "
+          + "y exige que el proyecto este entero. Para ir guardando mientras "
+          + "trabajas usa el boton 'guardar' de arriba (o Ctrl+S): eso escribe "
+          + "aunque el juego este a medias.";
       } else {
         ayuda.textContent = "Esta pagina esta abierta como archivo, y un archivo "
           + "no puede compilar nada. Arranca 'ngplat probar' sin --no-servidor y "
@@ -2862,6 +2896,211 @@
   };
   rom.arrancar();
   conClic("rom-generar", function () { rom.generar(); });
+
+  /* --- guardar en el proyecto ------------------------------------------
+   *
+   * Guardar y compilar son dos cosas distintas, y esa es la diferencia que
+   * permite hacer un juego grande sin perder nada: compilar tarda y exige que
+   * el proyecto este entero, mientras que guardar escribe el game.yaml y los
+   * dibujos tal y como esten, aunque falte medio nivel. Cada guardado deja
+   * ademas una copia en el historial, asi que tampoco se pierde lo anterior.
+   */
+  var disco = {
+    trabajando: false,
+    ultimo: 0,
+    AUTO_MS: 20000,          /* cada cuanto se mira si hay algo que guardar */
+
+    estado: function (texto, clase) {
+      var b = document.getElementById("es-guardado");
+      if (!b) return;
+      b.textContent = texto;
+      b.className = clase || "";
+    },
+
+    /* Que aspecto tiene el indicador cuando no esta pasando nada. */
+    refrescar: function () {
+      if (this.trabajando) return;
+      if (!rom.disponible) {
+        this.estado("sin servidor: descarga el yaml", "pendiente");
+        return;
+      }
+      if (editor.sinGuardar) this.estado("sin guardar", "pendiente");
+      else if (this.ultimo) this.estado("guardado " + horaDe(this.ultimo));
+      else this.estado("sin cambios");
+    },
+
+    guardar: function (automatico) {
+      if (this.trabajando) return;
+      if (!rom.disponible) {
+        if (!automatico) {
+          rom.escribir(["esta pagina esta abierta como archivo y no puede "
+                        + "escribir en el proyecto",
+                        "arranca 'ngplat probar' y abre la direccion que "
+                        + "imprime, o descarga el game.yaml desde la pestana "
+                        + "'game.yaml'"], "mal");
+          verPanel("copias");
+        }
+        this.refrescar();
+        return;
+      }
+      if (automatico && !editor.sinGuardar) return;
+      var yo = this;
+      this.trabajando = true;
+      this.estado("guardando...");
+      fetch("/guardar?t=" + encodeURIComponent(rom.clave), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-NeoPlat": rom.clave },
+        body: JSON.stringify({
+          yaml: editor.exportarYaml(),
+          dibujos: editor.imagenesPendientes()
+        })
+      }).then(function (r) { return r.json(); }).then(function (datos) {
+        yo.trabajando = false;
+        if (datos.ok) {
+          editor.marcarGuardadoEnDisco();
+          yo.ultimo = Date.now();
+          yo.estado("guardado " + horaDe(yo.ultimo));
+        } else {
+          yo.estado("no se ha guardado", "malo");
+        }
+        escribirEn("copias-registro", datos.lineas || [], datos.ok ? "bien" : "mal");
+        if (!automatico) copias.cargar();
+      })["catch"](function (error) {
+        yo.trabajando = false;
+        yo.estado("sin servidor", "malo");
+        escribirEn("copias-registro",
+                   ["no he podido hablar con ngplat: " + error], "mal");
+      });
+    }
+  };
+
+  function horaDe(ms) {
+    var d = new Date(ms), dos = function (n) { return (n < 10 ? "0" : "") + n; };
+    return dos(d.getHours()) + ":" + dos(d.getMinutes());
+  }
+
+  function escribirEn(id, lineas, clase) {
+    var caja = document.getElementById(id);
+    if (!caja) return;
+    caja.textContent = "";
+    for (var i = 0; i < lineas.length; i++) {
+      var linea = document.createElement("div");
+      linea.textContent = lineas[i];
+      if (/^aviso:/.test(lineas[i])) linea.className = "aviso";
+      else if (clase) linea.className = clase;
+      caja.appendChild(linea);
+    }
+    caja.scrollTop = caja.scrollHeight;
+  }
+
+  conClic("ed-guardar", function () { disco.guardar(false); });
+  conClic("copias-guardar", function () { disco.guardar(false); });
+  setInterval(function () { disco.guardar(true); }, disco.AUTO_MS);
+  setInterval(function () { disco.refrescar(); }, 1000);
+
+  /* Ctrl+S, que es lo que todo el mundo pulsa sin pensar. */
+  document.addEventListener("keydown", function (evento) {
+    if ((evento.ctrlKey || evento.metaKey) && evento.key.toLowerCase() === "s") {
+      evento.preventDefault();
+      disco.guardar(false);
+    }
+  });
+
+  /* Y el aviso del navegador si te vas con cambios sin escribir. */
+  window.addEventListener("beforeunload", function (evento) {
+    if (!editor.sinGuardar || !rom.disponible) return;
+    evento.preventDefault();
+    evento.returnValue = "";
+  });
+
+  /* --- las copias del proyecto ----------------------------------------- */
+
+  var copias = {
+    cargar: function () {
+      var lista = document.getElementById("copias-lista");
+      var estado = document.getElementById("copias-estado");
+      if (!lista) return;
+      if (!rom.disponible) {
+        lista.textContent = "";
+        estado.textContent = "hace falta 'ngplat probar' en marcha";
+        return;
+      }
+      estado.textContent = "cargando...";
+      fetch("/historial?t=" + encodeURIComponent(rom.clave), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-NeoPlat": rom.clave },
+        body: "{}"
+      }).then(function (r) { return r.json(); }).then(function (datos) {
+        copias.pintar(datos.copias || []);
+        estado.textContent = (datos.copias || []).length + " copias";
+      })["catch"](function (error) {
+        estado.textContent = "sin respuesta: " + error;
+      });
+    },
+
+    pintar: function (todas) {
+      var lista = document.getElementById("copias-lista");
+      lista.textContent = "";
+      if (!todas.length) {
+        var vacio = crearElemento(lista, "div", "nota");
+        vacio.textContent = "todavia no hay copias: se hacen solas al guardar";
+        return;
+      }
+      todas.forEach(function (c) {
+        var fila = crearElemento(lista, "div", "fila");
+        crearElemento(fila, "span", "cual").textContent =
+          ("000" + c.numero).slice(-4);
+        crearElemento(fila, "span").textContent = cuandoLegible(c.cuando);
+        crearElemento(fila, "span").textContent = c.motivo;
+        crearElemento(fila, "span", "peso").textContent =
+          Math.round(c.bytes / 1024) + " KB";
+        var boton = crearElemento(fila, "button");
+        boton.type = "button";
+        boton.textContent = "volver a esta";
+        boton.addEventListener("click", function () { copias.recuperar(c.numero); });
+      });
+    },
+
+    recuperar: function (numero) {
+      if (!window.confirm("El proyecto volvera a la copia " + numero
+                          + ". Lo de ahora se guarda antes como otra copia."))
+        return;
+      var estado = document.getElementById("copias-estado");
+      estado.textContent = "recuperando...";
+      fetch("/recuperar?t=" + encodeURIComponent(rom.clave), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-NeoPlat": rom.clave },
+        body: JSON.stringify({ copia: numero })
+      }).then(function (r) { return r.json(); }).then(function (datos) {
+        estado.textContent = datos.ok ? "recuperado" : "no se ha podido";
+        escribirEn("copias-registro", datos.lineas || [], datos.ok ? "bien" : "mal");
+        if (datos.ok) {
+          editor.descartarGuardado();     /* el borrador ya no vale */
+          copias.cargar();
+        }
+      })["catch"](function (error) {
+        estado.textContent = "sin respuesta: " + error;
+      });
+    }
+  };
+
+  function cuandoLegible(texto) {
+    if (!texto || texto.length !== 15) return texto || "";
+    return texto.slice(0, 4) + "-" + texto.slice(4, 6) + "-" + texto.slice(6, 8)
+           + " " + texto.slice(9, 11) + ":" + texto.slice(11, 13);
+  }
+
+  conClic("copias-refrescar", function () { copias.cargar(); });
+  (function () {
+    var ayuda = document.getElementById("copias-ayuda");
+    if (!ayuda) return;
+    ayuda.textContent = rom.disponible
+      ? "Cada vez que se guarda queda una copia del proyecto entero (menos lo "
+        + "que se genera solo). Se guardan las 40 ultimas. Desde la terminal: "
+        + "ngplat historial / ngplat recuperar N."
+      : "Esta pagina esta abierta como archivo y no puede leer las copias. "
+        + "Arranca 'ngplat probar' y abre la direccion que imprime.";
+  })();
 
   /* --- recuperar lo que se estaba editando ---------------------------- */
 

@@ -144,8 +144,14 @@ edites; <kbd>Enter</kbd> y lo estás jugando otra vez.
   el registro ahí mismo. Lo hace el `ngplat probar` que tienes abierto (una
   página web no compila nada), así que el botón solo está vivo si el preview lo
   está sirviendo él.
-- **Guarda solo** en el navegador: si cierras sin exportar, te ofrece recuperar
-  lo que estabas haciendo.
+- **Guarda en el proyecto** con un botón o <kbd>Ctrl</kbd>+<kbd>S</kbd>, y solo
+  cada 20 segundos. Guardar no es compilar: escribe el `game.yaml` y los dibujos
+  **aunque el juego esté a medias**, que es justo lo que antes no se podía
+  dejar escrito.
+- **Historial de copias**: cada guardado deja antes una copia del proyecto
+  entero, y se guardan las 40 últimas. Desde la pestaña «copias» o desde la
+  terminal (`ngplat historial`, `ngplat recuperar N`). Recuperar también deja
+  copia, así que equivocarse de versión tampoco pierde nada.
 
 Todo en [docs/editor.md](docs/editor.md).
 
@@ -286,6 +292,9 @@ archivo nuevo y que el `.exe` se quede sin él; así salta antes de repartirlo.
 | `ngplat probar [proyecto]` | Abre el preview y el editor, y se queda sirviéndolo |
 | `ngplat compilar [proyecto]` | Genera `build/<máquina>/` con el C, los gráficos y el Makefile |
 | `ngplat compilar --make` | Además construye la ROM o el disquete |
+| `ngplat copia [proyecto]` | Guarda una copia del proyecto en su historial |
+| `ngplat historial [proyecto]` | Lista las copias guardadas, de la más nueva a la más vieja |
+| `ngplat recuperar N [proyecto]` | Devuelve el proyecto a la copia N (guardando antes cómo está) |
 | `ngplat sistemas` | Lista las máquinas, lo que aguanta cada una, cómo suena y qué hace con el parallax |
 
 Cualquier orden acepta `--sistema neogeo|megadrive|amiga` para trabajar con una

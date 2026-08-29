@@ -181,6 +181,55 @@ El archivo completo con tus cambios. **Copiar al portapapeles** o **descargar**.
 Si estás en el preview publicado en claude.ai, la descarga pasa por el visor y
 llega como `game.yaml.txt`: solo hay que renombrarlo.
 
+## Guardar
+
+Arriba a la derecha, al lado del estado, hay un botón **guardar** que escribe lo
+que estás editando en la carpeta del proyecto: el `game.yaml` y los dibujos que
+tengas pendientes. También va con <kbd>Ctrl</kbd>+<kbd>S</kbd>, y el editor
+guarda solo cada 20 segundos si has tocado algo.
+
+Guardar y compilar son **dos cosas distintas**, y esa diferencia es la que
+permite hacer un juego grande sin perder trabajo:
+
+| | guardar | compilar |
+|---|---|---|
+| qué hace | escribe el `game.yaml` y los dibujos | eso, y además genera el código y las ROMs |
+| cuánto tarda | inmediato | segundos |
+| ¿exige que el juego esté entero? | **no** | sí |
+
+Un nivel a medias, un enemigo colocado pero sin definir, una meta que pide más
+llaves de las que hay: nada de eso compila, y antes era justo lo que no se podía
+dejar escrito. Ahora se guarda igual y el registro te dice qué falta. Lo único
+que no se guarda es un `game.yaml` que no se pueda leer ni como YAML: eso sería
+un fallo del editor, no algo que hayas escrito tú.
+
+El indicador de al lado del botón dice en qué punto estás: *sin cambios*,
+*sin guardar*, *guardando…* o la hora del último guardado. Si intentas cerrar la
+pestaña con cambios sin escribir, el navegador te pregunta.
+
+## Copias
+
+Cada vez que se guarda —a mano, con Ctrl+S o solo— queda antes una **copia del
+proyecto entero** en `.neoplat/historial/`, con todo menos lo que se puede
+volver a generar (`build/`, `preview.html`). Se guardan las **40 últimas**, y
+dos guardados seguidos sin tocar nada no hacen dos copias.
+
+La pestaña **copias** las lista y cualquiera se puede recuperar con un botón.
+Recuperar **también deja copia** de cómo estaba antes, así que equivocarse de
+versión tampoco pierde nada.
+
+Lo mismo desde la terminal, que funciona sin navegador:
+
+```bash
+ngplat copia              # guarda una copia ahora mismo
+ngplat copia --motivo antes-del-jefe
+ngplat historial          # lista las copias, de la más nueva a la más vieja
+ngplat recuperar 12       # devuelve el proyecto a la copia 0012
+```
+
+`.neoplat/` son copias locales: el andamiaje ya lo pone en el `.gitignore` del
+proyecto, porque si usas git ese trabajo ya lo hace git.
+
 ## Compilar
 
 La pestaña **compilar** construye el juego sin salir del editor: eliges máquina
@@ -213,9 +262,11 @@ exportar el `game.yaml` desde la pestaña de al lado y compilar con
 Detalles que conviene saber:
 
 - **Guarda de verdad.** El `game.yaml` del proyecto se sobrescribe con lo que
-  tengas en el editor, dejando el anterior en `game.yaml.bak`.
-- **Si lo que mandas no se puede leer, no se guarda.** El archivo vuelve a como
-  estaba y el registro dice qué línea falla.
+  tengas en el editor, dejando el anterior en `game.yaml.bak` y una copia en el
+  historial.
+- **Si lo que mandas no compila, el archivo vuelve a como estaba** y el registro
+  dice qué falla. Para dejar escrito un juego a medias está el botón de guardar
+  (y, si de todas formas lo pierdes, `ngplat historial`).
 - **Si no hay compilador de 68000**, el proyecto se genera igual (código C,
   ROMs de gráficos, ROM de sonido) y el registro te dice qué falta instalar.
 - El servidor escucha **solo en 127.0.0.1** y exige una clave que se genera al
@@ -225,9 +276,18 @@ Detalles que conviene saber:
 
 ## No se pierde nada
 
-El editor **guarda solo** en el navegador cada vez que tocas algo. Si cierras
-sin exportar, la próxima vez que abras el preview te ofrece recuperar lo que
-estabas haciendo. El botón «olvidar cambios guardados» lo borra.
+Hay tres redes, y cada una tapa lo que se le escapa a la anterior:
+
+1. **El borrador del navegador.** El editor guarda solo en `localStorage` cada
+   vez que tocas algo. Si cierras la pestaña de golpe, la próxima vez que abras
+   el preview te ofrece recuperar lo que estabas haciendo. El botón «olvidar
+   cambios guardados» lo borra. Esto vive en tu navegador, no en tu disco.
+2. **El guardado en el proyecto.** El botón *guardar*, <kbd>Ctrl</kbd>+<kbd>S</kbd>
+   y el autoguardado cada 20 segundos escriben en la carpeta de verdad. Esto es
+   lo que sobrevive a cambiar de ordenador, de navegador o de mes.
+3. **El historial.** Cada guardado deja antes una copia recuperable, y hay 40.
+   Es lo que te salva de haberte cargado algo *tú*, que es lo que ninguna de las
+   otras dos puede ver.
 
 ## Por qué puedes fiarte
 
@@ -243,3 +303,7 @@ estabas haciendo. El botón «olvidar cambios guardados» lo borra.
   compilar y comprueban que no se ha perdido ni un comentario. La prueba de
   navegador llega a dibujar un enemigo con el ratón, colocarlo, jugarlo y
   comprobar que su PNG queda listo para guardar.
+- Y el guardado se prueba entero, con el servidor de verdad detrás: una prueba
+  de navegador edita, pulsa <kbd>Ctrl</kbd>+<kbd>S</kbd>, comprueba que **el
+  archivo del disco ha cambiado**, que ha quedado la copia, y vuelve a ella
+  desde la pestaña de copias comprobando que el archivo queda como estaba.

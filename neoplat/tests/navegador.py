@@ -700,10 +700,144 @@ def comprobar_dos(capturas: str = "capturas") -> int:
     return 0
 
 
+def comprobar_guardado(capturas: str = "capturas") -> int:
+    """El bucle de guardar y recuperar, con el servidor de verdad detras.
+
+    Es lo unico que comprueba el camino entero: se edita en la pagina, se pulsa
+    Ctrl+S, y **el archivo del proyecto en disco tiene que cambiar** y quedar
+    una copia en el historial de la que se pueda volver. Las pruebas de
+    servidor hablan por HTTP sin navegador, y las de navegador abren la pagina
+    como archivo, donde no hay a quien guardar: en medio queda justo lo que le
+    importa a quien hace un juego grande.
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        print("Playwright no esta instalado: se salta la prueba de navegador")
+        return 0
+    import shutil
+    import tempfile
+    import threading
+
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from comun import cargar_demo
+    from ngplat import historial, servidor
+    from ngplat.preview import write_preview
+    from ngplat.scaffold import crear_proyecto
+
+    os.makedirs(capturas, exist_ok=True)
+    fallos = []
+
+    def exigir(condicion, mensaje):
+        if not condicion:
+            fallos.append(mensaje)
+
+    carpeta = tempfile.mkdtemp(prefix="neoplat-guardado-")
+    raiz = os.path.join(carpeta, "juego")
+    crear_proyecto(raiz, "GUARDADO", "TEST")
+    preview = write_preview(cargar_demo(raiz), os.path.join(carpeta, "preview.html"))
+    yaml = servidor.ruta_del_yaml(raiz)
+
+    def texto_del_yaml():
+        with open(yaml, encoding="utf-8") as fh:
+            return fh.read()
+
+    original = texto_del_yaml()
+    servidor_local, direccion = servidor.crear(raiz, preview)
+    hilo = threading.Thread(target=servidor_local.serve_forever, daemon=True)
+    hilo.start()
+    try:
+        with sync_playwright() as pw:
+            navegador = _lanzar(pw)
+            pagina = navegador.new_page(viewport={"width": 1280, "height": 900})
+            errores = []
+            pagina.on("pageerror", lambda e: errores.append(str(e)))
+            pagina.goto(direccion)
+            pagina.wait_for_timeout(700)
+            pagina.keyboard.press("Enter")        # salir del titulo
+            pagina.wait_for_timeout(200)
+            pagina.keyboard.press("e")            # y entrar a editar
+            pagina.wait_for_timeout(500)
+
+            estado = pagina.evaluate(
+                "() => document.querySelector('#es-guardado').textContent")
+            print("al abrir:", json.dumps(estado))
+            exigir("servidor" not in estado,
+                   "con el servidor en marcha dice que no lo hay: %r" % estado)
+
+            # se cambia algo de verdad: el nombre del nivel
+            pagina.click("#pestanas button[data-panel=nivel]")
+            pagina.wait_for_timeout(300)
+            pagina.evaluate("""() => {
+                window.NeoPlat.editor.ponerPropiedad('nivel', 'nombre', 'GUARDADO');
+            }""")
+            pagina.wait_for_timeout(200)
+            sucio = pagina.evaluate("() => window.NeoPlat.editor.sinGuardar")
+            exigir(sucio, "tras cambiar algo no se entera de que hay que guardar")
+
+            # Ctrl+S, que es lo que se pulsa sin pensar
+            pagina.keyboard.press("Control+s")
+            pagina.wait_for_timeout(1500)
+            despues = texto_del_yaml()
+            print("guardado:", json.dumps({
+                "cambia": despues != original,
+                "nombre": "GUARDADO" in despues,
+                "estado": pagina.evaluate(
+                    "() => document.querySelector('#es-guardado').textContent")}))
+            exigir(despues != original, "Ctrl+S no ha escrito nada en el proyecto")
+            exigir('nombre: "GUARDADO"' in despues,
+                   "el nombre del nivel no ha llegado al game.yaml")
+            exigir(not pagina.evaluate("() => window.NeoPlat.editor.sinGuardar"),
+                   "sigue diciendo que hay cambios sin guardar")
+
+            copias = historial.listar(raiz)
+            print("copias:", json.dumps([(c["numero"], c["motivo"]) for c in copias]))
+            exigir(len(copias) >= 1, "guardar no ha dejado ninguna copia")
+            exigir(any(c["motivo"] == "editor" for c in copias),
+                   "la copia no dice que la hizo el editor")
+
+            # la pestana de copias las ensena
+            pagina.click("#pestanas button[data-panel=copias]")
+            pagina.wait_for_timeout(800)
+            filas = pagina.eval_on_selector_all(
+                "#copias-lista .fila", "n => n.length")
+            exigir(filas >= 1, "la pestana de copias sale vacia")
+            pagina.locator("#panel-copias").screenshot(
+                path=os.path.join(capturas, "copias.png"))
+
+            # y se puede volver a la de antes
+            pagina.on("dialog", lambda d: d.accept())
+            pagina.click("#copias-lista .fila button")
+            pagina.wait_for_timeout(2000)
+            vuelto = texto_del_yaml()
+            print("recuperado:", json.dumps({"vuelve": vuelto == original}))
+            exigir(vuelto == original,
+                   "recuperar no ha devuelto el game.yaml a como estaba")
+            exigir(len(historial.listar(raiz)) > len(copias),
+                   "recuperar no ha guardado antes como estaba")
+
+            if errores:
+                fallos.append("errores de JavaScript: %s" % errores[:3])
+            navegador.close()
+    finally:
+        servidor_local.shutdown()
+        servidor_local.server_close()
+        shutil.rmtree(carpeta, ignore_errors=True)
+
+    if fallos:
+        for fallo in fallos:
+            print("FALLO:", fallo)
+        return 1
+    print("guardar y recuperar funcionan desde el navegador")
+    return 0
+
+
 if __name__ == "__main__":
     destino = [a for a in sys.argv[1:] if not a.startswith("--")]
     capturas = destino[1] if len(destino) > 1 else "capturas"
     if "--dos" in sys.argv[1:]:
         raise SystemExit(comprobar_dos(capturas))
+    if "--guardado" in sys.argv[1:]:
+        raise SystemExit(comprobar_guardado(capturas))
     preview = destino[0] if destino else "examples/bosque-magico/preview.html"
     raise SystemExit(comprobar(preview, capturas))

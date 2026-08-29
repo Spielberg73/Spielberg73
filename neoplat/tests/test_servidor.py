@@ -83,6 +83,17 @@ class TestServidor(unittest.TestCase):
         except urllib.error.HTTPError as error:
             return error.code, json.load(error)
 
+    def _post(self, camino, cuerpo, clave=None):
+        datos = json.dumps(cuerpo).encode("utf-8")
+        peticion = urllib.request.Request(
+            self._url(camino, clave), data=datos,
+            headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(peticion, timeout=120) as respuesta:
+                return respuesta.status, json.load(respuesta)
+        except urllib.error.HTTPError as error:
+            return error.code, json.load(error)
+
     def _codigo(self, hacer):
         try:
             hacer()
@@ -129,6 +140,103 @@ class TestServidor(unittest.TestCase):
         with open(ruta, "r", encoding="utf-8") as fh:
             self.assertEqual(fh.read(), bueno,
                              "ha dejado escrito un game.yaml que no se puede leer")
+
+    # --- guardar sin compilar -------------------------------------------
+
+    def test_guardar_escribe_el_yaml_sin_compilar(self):
+        """Guardar y compilar son dos cosas distintas: esta escribe y ya."""
+        ruta = servidor.ruta_del_yaml(self.raiz)
+        with open(ruta, encoding="utf-8") as fh:
+            original = fh.read()
+        codigo, datos = self._post("/guardar",
+                                   {"yaml": original + "\n# guardado a secas\n"})
+        self.assertEqual(codigo, 200)
+        self.assertTrue(datos["ok"], datos["lineas"])
+        with open(ruta, encoding="utf-8") as fh:
+            self.assertIn("guardado a secas", fh.read())
+
+    def test_guardar_deja_copia_en_el_historial(self):
+        from ngplat import historial
+        antes = len(historial.listar(self.raiz))
+        ruta = servidor.ruta_del_yaml(self.raiz)
+        with open(ruta, encoding="utf-8") as fh:
+            texto = fh.read()
+        # marcadores raros a proposito: "# uno" o "# dos" aparecen en los
+        # comentarios del andamiaje y la prueba pasaria (o fallaria) sola
+        self._post("/guardar", {"yaml": texto + "\n#MARCA-PRIMERA\n"})
+        self._post("/guardar", {"yaml": texto + "\n#MARCA-SEGUNDA\n"})
+        copias = historial.listar(self.raiz)
+        self.assertGreater(len(copias), antes, "guardar no ha dejado copia")
+        # y de esa copia se puede volver al texto anterior
+        numero = int(copias[0]["numero"])
+        _codigo, datos = self._post("/recuperar", {"copia": numero})
+        self.assertTrue(datos["ok"], datos["lineas"])
+        with open(ruta, encoding="utf-8") as fh:
+            recuperado = fh.read()
+        self.assertIn("#MARCA-PRIMERA", recuperado)
+        self.assertNotIn("#MARCA-SEGUNDA", recuperado)
+
+    def test_se_guarda_un_juego_a_medias_que_todavia_no_compila(self):
+        """Esta es la razon de ser de /guardar: un nivel empezado no compila, y
+        antes era justo lo que no se podia dejar escrito."""
+        ruta = servidor.ruta_del_yaml(self.raiz)
+        with open(ruta, encoding="utf-8") as fh:
+            texto = fh.read()
+        # una meta que pide mas llaves de las que hay: el proyecto no carga
+        roto = texto.replace("    llaves: 1", "    llaves: 9", 1)
+        self.assertNotEqual(roto, texto, "el andamiaje ya no trae 'llaves: 1'")
+        codigo, datos = self._post("/guardar", {"yaml": roto})
+        self.assertEqual(codigo, 200)
+        self.assertTrue(datos["ok"], datos["lineas"])
+        with open(ruta, encoding="utf-8") as fh:
+            self.assertIn("llaves: 9", fh.read(),
+                          "no ha guardado un proyecto a medias")
+        self.assertTrue(any("todavia no compila" in l for l in datos["lineas"]),
+                        datos["lineas"])
+        # y se puede volver a dejar como estaba
+        self._post("/guardar", {"yaml": texto})
+
+    def test_guardar_tambien_escribe_los_dibujos(self):
+        codigo, datos = self._post("/guardar", {
+            "yaml": "",
+            "dibujos": [{"ruta": "graficos/desde-guardar.png",
+                         "datos": _png_de_prueba()}]})
+        self.assertEqual(codigo, 200)
+        self.assertTrue(datos["ok"], datos["lineas"])
+        self.assertTrue(os.path.isfile(
+            os.path.join(self.raiz, "graficos", "desde-guardar.png")))
+
+    def test_un_yaml_que_no_es_yaml_no_se_guarda(self):
+        """Trabajo a medias si; un archivo roto no: eso seria un fallo del
+        editor, no algo que el usuario haya escrito."""
+        ruta = servidor.ruta_del_yaml(self.raiz)
+        with open(ruta, encoding="utf-8") as fh:
+            bueno = fh.read()
+        codigo, datos = self._post("/guardar", {"yaml": "juego:\n\tmal: [1,\n"})
+        self.assertEqual(codigo, 200)
+        self.assertFalse(datos["ok"], datos["lineas"])
+        with open(ruta, encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), bueno)
+
+    def test_el_historial_se_puede_pedir(self):
+        _codigo, datos = self._post("/historial", {})
+        self.assertTrue(datos["ok"])
+        self.assertIsInstance(datos["copias"], list)
+        for copia in datos["copias"]:
+            self.assertIn("numero", copia)
+            self.assertIn("motivo", copia)
+
+    def test_no_se_recupera_una_copia_inventada(self):
+        _codigo, datos = self._post("/recuperar", {"copia": 4321})
+        self.assertFalse(datos["ok"])
+
+    def test_sin_clave_no_se_guarda(self):
+        codigo, _datos = self._post("/guardar", {"yaml": "# no"}, clave="mentira")
+        self.assertEqual(codigo, 403)
+
+    def test_sin_clave_no_se_recupera(self):
+        codigo, _datos = self._post("/recuperar", {"copia": 1}, clave="mentira")
+        self.assertEqual(codigo, 403)
 
     # --- lo que tiene que rebotar ---------------------------------------
 

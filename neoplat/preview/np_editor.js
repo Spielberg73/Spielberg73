@@ -1180,7 +1180,18 @@
       return "neoplat:" + (DATA.title || "juego");
     }
 
+    /* Cambios que todavia no estan escritos en la carpeta del proyecto.
+       El borrador de localStorage se guarda solo, pero eso vive en el
+       navegador: lo que cuenta para no perder trabajo es el disco. */
+    editor.sinGuardar = false;
+
+    editor.marcarGuardadoEnDisco = function () {
+      editor.sinGuardar = false;
+      editor.guardadoEnDisco = Date.now();
+    };
+
     function guardar() {
+      editor.sinGuardar = true;
       if (!almacen) return;
       try {
         almacen.setItem(llaveGuardado(), JSON.stringify({

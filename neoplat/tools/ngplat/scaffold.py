@@ -502,6 +502,9 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
 
     with open(os.path.join(destino, ".gitignore"), "w", encoding="utf-8",
               newline="\n") as fh:
-        fh.write("build/\npreview.html\n")
+        # .neoplat/ son las copias locales del historial: utiles en tu disco,
+        # ruido en un repositorio (para eso ya esta el propio control de
+        # versiones)
+        fh.write("build/\npreview.html\n.neoplat/\n")
     creados.append(".gitignore")
     return creados

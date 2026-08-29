@@ -14,6 +14,7 @@ from . import sistemas
 from .build import build_project
 from .codegen import generar_para_sistema
 from .errors import ProjectError
+from . import historial as hist
 from .preview import write_preview
 from .project import load_project
 from .scaffold import ESTILOS, crear_proyecto
@@ -136,17 +137,19 @@ def _abrir(direccion: str) -> None:
 
 
 def _servir(raiz: str, preview: str, puerto: int) -> int:
-    """Sirve el preview desde localhost para que el editor pueda compilar.
+    """Sirve el preview desde localhost para que el editor pueda guardar y compilar.
 
     Abierto como file://, el editor solo puede exportar el game.yaml: una
-    pagina no compila nada. Servido desde aqui, el boton "generar ROM" manda lo
-    que estas editando y este proceso hace el trabajo.
+    pagina no escribe en tu disco ni compila nada. Servido desde aqui, el boton
+    "guardar" (o Ctrl+S) escribe en el proyecto y el de compilar genera las
+    ROMs; este proceso hace el trabajo.
     """
     from .servidor import crear
 
     servidor, direccion = crear(raiz, preview, puerto)
     _ok("servidor en %s" % direccion)
-    _info("desde el editor, la pestana ROM guarda el game.yaml y compila")
+    _info("en el editor: 'guardar' (o Ctrl+S) escribe en el proyecto y deja copia")
+    _info("y la pestana 'compilar' genera las ROMs")
     _info("Ctrl+C para parar")
     _abrir(direccion)
     try:
@@ -238,6 +241,58 @@ def _ayuda_sistemas() -> str:
     return "maquina de destino: %s" % ", ".join(s.nombre for s in sistemas.disponibles())
 
 
+def _cuando_legible(cuando: str) -> str:
+    """'20260829-174501' -> '2026-08-29 17:45'."""
+    if len(cuando) != 15:
+        return cuando
+    return "%s-%s-%s %s:%s" % (cuando[0:4], cuando[4:6], cuando[6:8],
+                               cuando[9:11], cuando[11:13])
+
+
+def cmd_copia(args: argparse.Namespace) -> int:
+    """Guarda una copia del proyecto tal y como esta ahora."""
+    ficha = hist.copiar(args.proyecto, args.motivo)
+    if ficha is None:
+        _info("no ha cambiado nada desde la ultima copia: no hace falta otra")
+        return 0
+    _ok("copia %04d guardada (%d archivos, %d KB)"
+        % (ficha["numero"], ficha["archivos"], int(ficha["bytes"]) // 1024))
+    _info("en %s" % os.path.join(args.proyecto, hist.HISTORIAL, str(ficha["archivo"])))
+    return 0
+
+
+def cmd_historial(args: argparse.Namespace) -> int:
+    """Lista las copias que hay guardadas."""
+    copias = hist.listar(args.proyecto)
+    if not copias:
+        _info("todavia no hay ninguna copia de este proyecto")
+        _info("se hacen solas al guardar desde el editor, o con 'ngplat copia'")
+        return 0
+    print()
+    print("  %-6s %-17s %-18s %8s  %s"
+          % ("copia", "cuando", "motivo", "tamano", "archivos"))
+    for copia in copias:
+        roto = "  (rota)" if copia.get("roto") else ""
+        print("  %04d   %-17s %-18s %6d KB  %d%s"
+              % (copia["numero"], _cuando_legible(str(copia["cuando"])),
+                 copia["motivo"], int(copia["bytes"]) // 1024,
+                 copia["archivos"], roto))
+    print()
+    _info("para volver a una: ngplat recuperar %04d" % copias[0]["numero"])
+    return 0
+
+
+def cmd_recuperar(args: argparse.Namespace) -> int:
+    """Devuelve el proyecto a como estaba en una copia."""
+    escritos, sobrantes = hist.recuperar(args.proyecto, args.copia)
+    _ok("proyecto devuelto a la copia %04d" % args.copia)
+    _info("%d archivos restaurados" % len(escritos))
+    for relativo in sobrantes:
+        _info("quitado (no estaba en esa copia): %s" % relativo)
+    _info("como estaba antes ha quedado guardado: ngplat historial")
+    return 0
+
+
 def cmd_sistemas(args: argparse.Namespace) -> int:
     print("Sistemas que puede compilar NeoPlat:")
     print()
@@ -312,6 +367,24 @@ def build_parser() -> argparse.ArgumentParser:
                          help="ejecuta make para construir el binario")
     p_build.set_defaults(func=cmd_compilar)
 
+    p_copia = sub.add_parser("copia", aliases=["save", "guardar"],
+                             help="guarda una copia del proyecto en su historial")
+    p_copia.add_argument("proyecto", nargs="?", default=".")
+    p_copia.add_argument("--motivo", default="manual",
+                         help="una palabra para reconocerla en la lista")
+    p_copia.set_defaults(func=cmd_copia)
+
+    p_hist = sub.add_parser("historial", aliases=["history", "copias"],
+                            help="lista las copias guardadas del proyecto")
+    p_hist.add_argument("proyecto", nargs="?", default=".")
+    p_hist.set_defaults(func=cmd_historial)
+
+    p_rec = sub.add_parser("recuperar", aliases=["restore"],
+                           help="devuelve el proyecto a una copia anterior")
+    p_rec.add_argument("copia", type=int, help="numero que sale en 'ngplat historial'")
+    p_rec.add_argument("proyecto", nargs="?", default=".")
+    p_rec.set_defaults(func=cmd_recuperar)
+
     p_sistemas = sub.add_parser("sistemas", aliases=["systems"],
                                 help="lista las maquinas de destino")
     p_sistemas.set_defaults(func=cmd_sistemas)
@@ -329,6 +402,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         return args.func(args)
     except ProjectError as exc:
         print(_color(exc.render(), ROJO), file=sys.stderr)
+        return 2
+    except hist.ErrorHistorial as exc:
+        print(_color("  error " + str(exc), ROJO), file=sys.stderr)
         return 2
     except KeyboardInterrupt:
         return 130

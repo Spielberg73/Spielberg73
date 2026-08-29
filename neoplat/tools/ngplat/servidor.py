@@ -26,7 +26,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Dict, List, Tuple
 from urllib.parse import parse_qs, urlparse
 
-from . import sistemas
+from . import historial, miniyaml, sistemas
 from .build import build_project
 from .codegen import generar_para_sistema
 from .errors import ProjectError
@@ -35,6 +35,8 @@ from .project import load_project
 
 MAX_YAML = 4 * 1024 * 1024      # un game.yaml de mas de 4 MB es un error, no un juego
 MAX_DIBUJO = 2 * 1024 * 1024    # y un PNG de mas de 2 MB tampoco es un sprite
+MAX_GUARDADO = 32 * 1024 * 1024  # el yaml mas todos los dibujos de una tacada
+MAX_DIBUJOS_POR_GUARDADO = 64
 
 
 def compilador_de(sistema) -> str:
@@ -78,6 +80,74 @@ def deshacer_guardado(raiz: str) -> bool:
         return False
     shutil.copyfile(ruta + ".bak", ruta)
     return True
+
+
+def guardar_proyecto(raiz: str, texto: str, dibujos: List[Dict]) -> Tuple[bool, List[str]]:
+    """Escribe el game.yaml y los dibujos **sin compilar nada**.
+
+    Esta es la diferencia que hace que un juego grande no pierda trabajo: antes
+    la unica forma de escribir en disco desde el editor era el boton de
+    compilar, que ademas deshacia el guardado si el proyecto no compilaba. Un
+    juego a medias -un nivel empezado, un enemigo sin colocar- no compila, y era
+    justo lo que no se podia guardar.
+
+    Aqui se guarda igual. Lo unico que se rechaza es un yaml que no se pueda ni
+    leer como yaml: eso no seria trabajo a medias sino un archivo roto, y el
+    editor no deberia generarlo nunca. Lo que si se avisa, sin dejar de
+    guardar, es de los problemas del proyecto: que le falta la meta, que un
+    nivel pide mas llaves de las que hay, lo que sea.
+
+    Antes de escribir nada se deja una copia de como estaba todo, asi que
+    tambien se puede volver atras (ver historial.py).
+    """
+    lineas: List[str] = []
+    if texto:
+        try:
+            miniyaml.loads(texto)
+        except miniyaml.YamlError as error:
+            return (False, ["el game.yaml no se puede leer: %s" % error,
+                            "no se ha escrito nada"])
+
+    try:
+        copia = historial.copiar(raiz, "editor")
+    except historial.ErrorHistorial as error:
+        copia = None
+        lineas.append("aviso: no se ha podido guardar copia (%s)" % error)
+    if copia is not None:
+        lineas.append("copia %04d guardada por si acaso (ngplat historial)"
+                      % copia["numero"])
+
+    escritos: List[str] = []
+    try:
+        if texto:
+            guardar_yaml(raiz, texto)
+            escritos.append(os.path.basename(ruta_del_yaml(raiz)))
+        for dibujo in dibujos:
+            destino = ruta_de_dibujo(raiz, str(dibujo.get("ruta") or ""))
+            crudo = png_de_data_uri(str(dibujo.get("datos") or ""))
+            os.makedirs(os.path.dirname(destino), exist_ok=True)
+            with open(destino, "wb") as fh:
+                fh.write(crudo)
+            escritos.append(str(dibujo.get("ruta")))
+    except ValueError as error:
+        lineas.append("un dibujo no se ha podido guardar: %s" % error)
+        return (False, lineas)
+    except OSError as error:
+        lineas.append("no se ha podido escribir: %s" % error)
+        return (False, lineas)
+
+    lineas.append("guardado: " + ", ".join(escritos) if escritos
+                  else "no habia nada nuevo que guardar")
+
+    # Se guarda igual, pero se dice si el proyecto esta entero o no.
+    try:
+        proyecto = load_project(raiz)
+        lineas.extend("aviso: " + a for a in proyecto.warnings)
+    except ProjectError as error:
+        lineas.append("guardado, pero todavia no compila: %s" % error)
+        if getattr(error, "hint", ""):
+            lineas.append(error.hint)
+    return (True, lineas)
 
 
 def compilar(raiz: str, nombre_sistema: str, hacer_make: bool = True
@@ -227,18 +297,31 @@ class _Manejador(BaseHTTPRequestHandler):
         if not self._clave_ok() or not self._origen_ok():
             return self._json(403, {"ok": False, "lineas": ["clave incorrecta"]})
         camino = urlparse(self.path).path
-        if camino not in ("/compilar", "/dibujo"):
+        if camino not in ("/compilar", "/dibujo", "/guardar", "/historial",
+                          "/recuperar"):
             return self._json(404, {"ok": False, "lineas": ["no hay nada aqui"]})
         largo = int(self.headers.get("Content-Length") or 0)
-        tope = MAX_DIBUJO if camino == "/dibujo" else MAX_YAML
-        if largo <= 0 or largo > tope:
+        topes = {"/dibujo": MAX_DIBUJO, "/guardar": MAX_GUARDADO}
+        tope = topes.get(camino, MAX_YAML)
+        if camino in ("/historial", "/recuperar") and largo == 0:
+            largo = 0                      # estas dos pueden venir sin cuerpo
+        if largo > tope or (largo <= 0 and camino not in ("/historial", "/recuperar")):
             return self._json(400, {"ok": False, "lineas": ["peticion vacia o enorme"]})
         try:
-            peticion = json.loads(self.rfile.read(largo).decode("utf-8"))
+            crudo = self.rfile.read(largo) if largo > 0 else b"{}"
+            peticion = json.loads(crudo.decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
+            return self._json(400, {"ok": False, "lineas": ["no entiendo la peticion"]})
+        if not isinstance(peticion, dict):
             return self._json(400, {"ok": False, "lineas": ["no entiendo la peticion"]})
         if camino == "/dibujo":
             return self._guardar_dibujo(peticion)
+        if camino == "/guardar":
+            return self._guardar(peticion)
+        if camino == "/historial":
+            return self._historial()
+        if camino == "/recuperar":
+            return self._recuperar(peticion)
 
         texto = peticion.get("yaml") or ""
         nombre = str(peticion.get("sistema") or "")
@@ -247,6 +330,11 @@ class _Manejador(BaseHTTPRequestHandler):
         with self.server.candado:
             try:
                 if texto:
+                    # copia antes de pisar nada, igual que en /guardar
+                    try:
+                        historial.copiar(self.server.raiz, "compilar")
+                    except historial.ErrorHistorial:
+                        pass
                     guardar_yaml(self.server.raiz, texto)
                 ok, lineas = compilar(self.server.raiz, nombre,
                                       bool(peticion.get("make", True)))
@@ -264,6 +352,62 @@ class _Manejador(BaseHTTPRequestHandler):
             except Exception as error:                    # noqa: BLE001
                 ok, lineas = False, ["error inesperado: %s" % error]
         self._json(200, {"ok": ok, "lineas": lineas})
+
+    def _guardar(self, peticion) -> None:
+        """Guardar de verdad: el yaml y los dibujos, y sin compilar."""
+        texto = peticion.get("yaml") or ""
+        dibujos = peticion.get("dibujos") or []
+        if not isinstance(dibujos, list) or len(dibujos) > MAX_DIBUJOS_POR_GUARDADO:
+            return self._json(400, {"ok": False,
+                                    "lineas": ["demasiados dibujos de una vez"]})
+        dibujos = [d for d in dibujos if isinstance(d, dict)]
+        with self.server.candado:
+            try:
+                ok, lineas = guardar_proyecto(self.server.raiz, texto, dibujos)
+            except Exception as error:                    # noqa: BLE001
+                ok, lineas = False, ["error inesperado: %s" % error]
+        self._json(200, {"ok": ok, "lineas": lineas})
+
+    def _historial(self) -> None:
+        """Las copias que hay, para que el editor las pueda ensenar."""
+        with self.server.candado:
+            try:
+                copias = historial.listar(self.server.raiz)
+            except Exception as error:                    # noqa: BLE001
+                return self._json(200, {"ok": False, "lineas": [str(error)],
+                                        "copias": []})
+        self._json(200, {"ok": True, "copias": copias})
+
+    def _recuperar(self, peticion) -> None:
+        """Devuelve el proyecto a una copia y regenera el preview."""
+        try:
+            numero = int(peticion.get("copia"))
+        except (TypeError, ValueError):
+            return self._json(400, {"ok": False, "lineas": ["falta el numero de copia"]})
+        with self.server.candado:
+            try:
+                escritos, sobrantes = historial.recuperar(self.server.raiz, numero)
+            except historial.ErrorHistorial as error:
+                return self._json(200, {"ok": False, "lineas": [str(error)]})
+            except Exception as error:                    # noqa: BLE001
+                return self._json(200, {"ok": False,
+                                        "lineas": ["error inesperado: %s" % error]})
+            lineas = ["proyecto devuelto a la copia %04d (%d archivos)"
+                      % (numero, len(escritos))]
+            for relativo in sobrantes:
+                lineas.append("quitado: %s" % relativo)
+            # el preview se rehace con lo recuperado; si esa version no
+            # compilaba, se dice y ya, que para eso se ha recuperado
+            try:
+                project = load_project(self.server.raiz)
+                build = build_project(project)
+                sistema = sistemas.obtener(project.system)
+                sistema.preparar(build)
+                write_preview(build, self.server.preview)
+                lineas.append("recarga la pagina para verlo")
+            except ProjectError as error:
+                lineas.append("ojo: esa copia todavia no compila: %s" % error)
+        self._json(200, {"ok": True, "lineas": lineas})
 
     def _guardar_dibujo(self, peticion) -> None:
         """Guarda un PNG del editor de dibujos dentro del proyecto."""

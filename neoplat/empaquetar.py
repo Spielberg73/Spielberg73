@@ -29,7 +29,8 @@ DIST = os.path.join(RAIZ, "dist")
 FECHA = (2025, 1, 1, 0, 0, 0)          # para que el ZIP sea repetible
 
 # Lo que nunca va en un paquete: lo generado, lo temporal y el historial.
-FUERA = {".git", "__pycache__", "build", "dist", "capturas", ".pytest_cache"}
+FUERA = {".git", "__pycache__", "build", "dist", "capturas", ".pytest_cache",
+         ".neoplat"}          # las copias locales del historial no se reparten
 FUERA_EXT = {".pyc", ".pyo", ".adf", ".st", ".j64", ".bin", ".elf", ".o"}
 
 DOCS = ["README.md", "docs", "LICENSE"]

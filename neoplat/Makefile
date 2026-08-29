@@ -16,10 +16,12 @@ test-rapido:
 
 # Prueba el preview en un navegador de verdad (necesita Playwright).
 # La segunda vuelta genera un proyecto con 'jugadores: 2' y comprueba que cada
-# teclado mueve al suyo.
+# teclado mueve al suyo; la tercera levanta el servidor de verdad y comprueba
+# el bucle de guardar y recuperar contra la carpeta del proyecto.
 test-navegador: ejemplo
 	$(PYTHON) tests/navegador.py $(EJEMPLO)/preview.html capturas
 	$(PYTHON) tests/navegador.py --dos capturas
+	$(PYTHON) tests/navegador.py --guardado capturas
 
 # Arranca lo compilado en emuladores de verdad y deja capturas. Necesita los
 # cores de libretro; si no estan, cada prueba se salta sola:
