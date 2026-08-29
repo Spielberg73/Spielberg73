@@ -9,3 +9,4 @@ from . import megadrive  # noqa: F401
 from . import amiga      # noqa: F401
 from . import jaguar     # noqa: F401
 from . import atarist    # noqa: F401
+from . import x68000     # noqa: F401

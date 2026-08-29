@@ -114,3 +114,67 @@ def decodificar_patron(datos: Sequence[int]) -> List[int]:
                     pixeles[y * TILE_PX + cuadrante_x + x + 1] = byte & 0xF
                     origen += 1
     return pixeles
+
+
+class BancoX68k:
+    """La RAM de patrones del X68000: 256 patrones de 16x16.
+
+    De aqui comen los sprites **y** las dos capas BG, asi que 256 es el limite
+    de verdad de esta maquina. Los patrones de un actor van seguidos y sin
+    compartir, porque el motor cuenta con que los fotogramas de una hoja estan
+    uno detras de otro; los de las capas de fondo si se comparten, que ahi se
+    repite mucho.
+    """
+
+    def __init__(self) -> None:
+        self.patrones: List[bytes] = []
+        self.paletas: List[Palette] = []
+        self._por_nombre: Dict[str, int] = {}
+        self._compartidos: Dict[bytes, int] = {}
+
+    # --- paletas -------------------------------------------------------
+
+    def anadir_paleta(self, paleta: Palette) -> int:
+        if paleta.name in self._por_nombre:
+            return self._por_nombre[paleta.name]
+        indice = len(self.paletas)
+        self.paletas.append(paleta)
+        self._por_nombre[paleta.name] = indice
+        return indice
+
+    def palabras(self) -> List[List[int]]:
+        """Las paletas en formato del hardware, listas para escribir."""
+        salida = []
+        for paleta in self.paletas:
+            colores = [x68k_color(c[:3]) for c in paleta.colors]
+            colores += [0] * (COLORES_POR_PALETA - len(colores))
+            # el color 0 de cada bloque es el transparente
+            colores[0] = 0
+            salida.append(colores[:COLORES_POR_PALETA])
+        return salida
+
+    # --- patrones ------------------------------------------------------
+
+    def anadir(self, pixeles: Sequence[int], compartir: bool = False) -> int:
+        datos = codificar_patron(pixeles)
+        if compartir and datos in self._compartidos:
+            return self._compartidos[datos]
+        indice = len(self.patrones)
+        self.patrones.append(datos)
+        if compartir:
+            self._compartidos[datos] = indice
+        return indice
+
+    def empaquetar_hoja(self, hoja) -> None:
+        """Mete una hoja entera: sus patrones seguidos y su paleta."""
+        hoja.palette_index = self.anadir_paleta(hoja.palette)
+        hoja.first_tile = len(self.patrones)
+        for tile in hoja.tiles:
+            self.anadir(tile)
+
+    @property
+    def cuantos(self) -> int:
+        return len(self.patrones)
+
+    def datos(self) -> bytes:
+        return b"".join(self.patrones)

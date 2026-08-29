@@ -5,10 +5,19 @@ El motor en C se comprueba compilandolo (test_sistemas) y en el emulador
 que se puede mirar en seco.
 """
 
+import os
+import shutil
 import struct
+import subprocess
+import tempfile
 import unittest
 
 import comun  # noqa: F401  (pone tools/ en el path)
+from comun import cargar_demo
+
+from ngplat import sistemas
+from ngplat.codegen import generar_para_sistema
+from ngplat.scaffold import crear_proyecto
 
 from ngplat.art import PALETA as PALETA_BOSQUE
 from ngplat.art_hierro import PALETA as PALETA_HIERRO
@@ -115,6 +124,89 @@ class TestEjecutable(unittest.TestCase):
         se colara, la maquina se para con un error de direccion."""
         with self.assertRaises(ErrorX):
             tabla_de_correcciones([4, 7])
+
+
+class TestCompilaDeVerdad(unittest.TestCase):
+    """Que el proyecto de X68000 se construya entero con el cross-compilador y
+    salga un .X que Human68k pueda cargar."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cc = ""
+        for nombre in ("m68k-elf-gcc", "m68k-linux-gnu-gcc"):
+            if shutil.which(nombre):
+                cls.cc = nombre
+                break
+        if not cls.cc:
+            raise unittest.SkipTest("no hay un compilador de 68000")
+        cls.tmp = tempfile.mkdtemp(prefix="neoplat-x68k-")
+        proyecto = os.path.join(cls.tmp, "juego")
+        crear_proyecto(proyecto, "X68K", "TEST")
+        build = cargar_demo(proyecto, "x68000")
+        sistema = sistemas.obtener("x68000")
+        sistema.comprobar(build)
+        cls.salida = os.path.join(cls.tmp, "build")
+        generar_para_sistema(build, cls.salida, sistema, "202")
+        hecho = subprocess.run(["make", "-C", cls.salida],
+                               capture_output=True, text=True)
+        if hecho.returncode:
+            raise AssertionError("no compila:\n" + hecho.stdout + hecho.stderr)
+        cls.build = build
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(getattr(cls, "tmp", ""), ignore_errors=True)
+
+    def _ejecutable(self):
+        disco = os.path.join(self.salida, "disco")
+        nombres = [n for n in os.listdir(disco) if n.endswith(".X")]
+        self.assertEqual(len(nombres), 1, nombres)
+        with open(os.path.join(disco, nombres[0]), "rb") as fh:
+            return fh.read()
+
+    def test_la_cabecera_del_x_cuadra(self):
+        datos = self._ejecutable()
+        self.assertEqual(datos[:4], b"HU\0\0")
+        (base, entrada, texto, seccion_datos, bss, reloc,
+         simbolos) = struct.unpack(">7I", datos[4:32])
+        self.assertEqual(datos[32:64], b"\0" * 32, "el relleno no esta a cero")
+        self.assertEqual(len(datos), 64 + texto + reloc,
+                         "los tamanos de la cabecera no suman el archivo")
+        self.assertEqual(entrada, 0, "no se entra por el principio")
+        self.assertEqual(seccion_datos, 0, "los datos van dentro de TEXT")
+        self.assertGreater(texto, 1024)
+        self.assertGreater(bss, 0)
+        self.assertGreater(reloc, 0, "sin correcciones el juego no se puede "
+                                     "montar en cualquier direccion")
+        self.assertEqual(simbolos, 0)
+
+    def test_se_entra_por_el_arranque(self):
+        """La primera instruccion tiene que ser la que limpia la BSS, y con
+        direccionamiento absoluto: relativo al PC se queda corto en cuanto el
+        juego pasa de 32 KB, que es enseguida."""
+        datos = self._ejecutable()
+        self.assertEqual(datos[64:66], b"\x20\x7c",
+                         "la primera instruccion no es 'move.l #x, a0'")
+
+    def test_los_graficos_caben_en_la_pcg(self):
+        banco = self.build.info["banco"]
+        self.assertLessEqual(banco.cuantos, 256)
+        self.assertGreater(banco.cuantos, 16, "no se ha empaquetado casi nada")
+        self.assertLessEqual(len(banco.paletas), 16)
+
+    def test_el_juego_esta_dentro_del_ejecutable(self):
+        """Si los graficos no entraran, el .X saldria enano y el juego no se
+        veria. Se mira un trozo del **final** de los patrones, no del
+        principio: mirando solo el principio, un empaquetado que se dejara la
+        mitad por el camino pasaria igual."""
+        datos = self._ejecutable()
+        pcg = self.build.info["banco"].datos()
+        self.assertIn(pcg[:64], datos,
+                      "los patrones de la PCG no estan en el ejecutable")
+        self.assertIn(pcg[-64:], datos,
+                      "los patrones estan cortados: falta el final")
+        self.assertIn(pcg[len(pcg) // 2:len(pcg) // 2 + 64], datos,
+                      "los patrones estan cortados por la mitad")
 
 
 if __name__ == "__main__":

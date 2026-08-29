@@ -148,6 +148,8 @@ void np_wait_vblank(void);
 uint16_t np_input_read(void);
 uint16_t np_input_read2(void);
 
+extern const uint8_t np_font_data[];    /* fuente de 8x8, un bit por pixel */
+
 /* marcador (np_hud.c) */
 void np_hud_clear(void);
 void np_hud_print(uint8_t col, uint8_t fila, const char *texto);

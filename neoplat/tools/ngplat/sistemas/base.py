@@ -120,6 +120,8 @@ def obtener(nombre: str) -> Sistema:
         "jaguar": "jaguar", "atarijaguar": "jaguar", "jag": "jaguar", "j64": "jaguar",
         "atarist": "atarist", "st": "atarist", "520st": "atarist",
         "1040st": "atarist", "stf": "atarist", "ste": "atarist",
+        "x68000": "x68000", "x68k": "x68000", "sharpx68000": "x68000",
+        "x68030": "x68000",
     }
     clave = alias.get(clave, clave)
     if clave not in _SISTEMAS:

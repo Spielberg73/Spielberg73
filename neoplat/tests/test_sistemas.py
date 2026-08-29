@@ -115,7 +115,7 @@ class TestColores(unittest.TestCase):
             self.assertLessEqual(valor, 0x0FFF)
 
     def test_cada_maquina_ve_su_propio_color(self):
-        for nombre in ("neogeo", "megadrive", "amiga", "jaguar", "atarist"):
+        for nombre in ("neogeo", "megadrive", "amiga", "jaguar", "atarist", "x68000"):
             visible = sistemas.obtener(nombre).color_visible((200, 12, 90))
             self.assertEqual(len(visible), 3)
             for canal in visible:
@@ -253,7 +253,7 @@ class TestListado(unittest.TestCase):
     """Lo que cuenta `ngplat sistemas` tiene que seguir siendo verdad."""
 
     def test_cada_maquina_dice_como_suena_y_que_hace_con_el_parallax(self):
-        for nombre in ("neogeo", "megadrive", "amiga", "jaguar", "atarist"):
+        for nombre in ("neogeo", "megadrive", "amiga", "jaguar", "atarist", "x68000"):
             sistema = sistemas.obtener(nombre)
             texto = " ".join(sistema.notas).lower()
             self.assertTrue(sistema.notas, "%s no cuenta nada de si" % nombre)
@@ -620,7 +620,7 @@ class TestProyectoGenerado(unittest.TestCase):
         """El ST ensena 200 lineas y las demas 224. Lo que **no** puede cambiar
         es el mundo: si el motor viera otra pantalla, el juego seria otro."""
         self.assertEqual(sistemas.obtener("atarist").pantalla, (320, 200))
-        for nombre in ("neogeo", "megadrive", "amiga", "jaguar"):
+        for nombre in ("neogeo", "megadrive", "amiga", "jaguar", "x68000"):
             self.assertEqual(sistemas.obtener(nombre).pantalla, (320, 224), nombre)
         cabecera = os.path.join(KIT, "engine", "include", "np_types.h")
         with open(cabecera, encoding="utf-8") as fh:
@@ -631,7 +631,7 @@ class TestProyectoGenerado(unittest.TestCase):
     def test_los_sistemas_describen_el_mismo_juego(self):
         """Cambiar de maquina no cambia el juego: niveles, enemigos y mapas."""
         referencia = None
-        for nombre in ("neogeo", "megadrive", "amiga", "jaguar", "atarist"):
+        for nombre in ("neogeo", "megadrive", "amiga", "jaguar", "atarist", "x68000"):
             build = cargar_demo(self.proyecto, nombre)
             resumen = [(n.name, n.width, n.height, n.cells, n.spawns)
                        for n in build.levels]
@@ -954,7 +954,7 @@ class TestCompilacionReal(unittest.TestCase):
             self.skipTest("no hay %s" % objdump)
         patron = re.compile(
             r"\b(?!lea|pea)[a-z]+[wl]\s+\S*%(?:a\d|sp|fp)@\((\d+)\)")
-        for sistema in ("neogeo", "megadrive", "amiga", "jaguar", "atarist"):
+        for sistema in ("neogeo", "megadrive", "amiga", "jaguar", "atarist", "x68000"):
             build = cargar_demo(self.proyecto, sistema)
             out = os.path.join(self.tmp, "estatico-" + sistema)
             generar_para_sistema(build, out, sistemas.obtener(sistema), "202")

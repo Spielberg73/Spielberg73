@@ -35,7 +35,7 @@ PREVIEW_DIR = os.path.join(KIT_ROOT, "preview")
 # que su `make` se valga solo sin tener NeoPlat instalado (el Amiga y el Atari
 # ST arman su ejecutable y su disquete con ellos). En el .exe van dentro como
 # datos, porque de un modulo congelado ya no se puede leer el fuente.
-FUENTES_COPIADAS = ("hunk.py", "adf.py", "prg.py", "st_disk.py")
+FUENTES_COPIADAS = ("hunk.py", "adf.py", "prg.py", "st_disk.py", "x68k.py")
 
 
 def fuente_del_kit(modulo: str) -> str:
