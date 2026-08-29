@@ -157,6 +157,7 @@ class X68000(Sistema):
         salida.archivos["src/graficos.c"] = _graficos_c(build, banco)
         salida.archivos["Makefile"] = _makefile(build, nombre)
         salida.archivos["hacer_x.py"] = fuente_del_kit("x68k.py")
+        salida.archivos["hacer_disco.py"] = fuente_del_kit("x68k_disk.py")
         salida.resumen.append(
             "graficos: %d patrones de 16x16 de los %d de la PCG (%d KB)"
             % (banco.cuantos, MAX_PATRONES,
@@ -165,7 +166,8 @@ class X68000(Sistema):
             "colores:  %d bloques de 16 de los %d que hay"
             % (len(banco.paletas), MAX_BLOQUES))
         salida.resumen.append(
-            "ejecutable: disco/%s.X (Human68k)" % nombre)
+            "ejecutable: disco/%s.X, y disco/%s.xdf con el dentro"
+            % (nombre, nombre.lower()))
         return salida
 
 
@@ -254,9 +256,10 @@ SRC := src/main.c src/np_video.c src/np_hud.c src/np_sound.c \\
        src/np_world.c src/np_aritmetica.c src/gamedata.c src/graficos.c
 OBJ := $(SRC:.c=.o) src/arranque.o
 JUEGO := disco/%s.X
+DISCO := disco/%s.xdf
 
-all: $(JUEGO)
-\t@echo "ejecutable listo: $(JUEGO)"
+all: $(DISCO)
+\t@echo "listo: $(JUEGO) y $(DISCO)"
 
 %%.o: %%.c
 \t$(CC) $(CFLAGS) -c $< -o $@
@@ -271,11 +274,16 @@ $(JUEGO): juego.elf
 \t@mkdir -p disco
 \t$(PYTHON) hacer_x.py $< $@
 
+# El .xdf es la copia de un disquete de Human68k: se mete en el emulador (o se
+# escribe en un disco de verdad) y el juego se arranca desde el con su nombre.
+$(DISCO): $(JUEGO)
+\t$(PYTHON) hacer_disco.py $< $@
+
 clean:
-\trm -f $(OBJ) juego.elf $(JUEGO)
+\trm -f $(OBJ) juego.elf $(JUEGO) $(DISCO)
 
 .PHONY: all clean
-""" % (build.project.title, nombre)
+""" % (build.project.title, nombre, nombre.lower())
 
 
 registrar(X68000())

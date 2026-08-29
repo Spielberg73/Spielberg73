@@ -18,6 +18,8 @@ from comun import cargar_demo
 from ngplat import sistemas
 from ngplat.codegen import generar_para_sistema
 from ngplat.scaffold import crear_proyecto
+from ngplat.x68k_disk import (ErrorDisco, crear_disquete, leer_archivo,
+                              leer_directorio)
 
 from ngplat.art import PALETA as PALETA_BOSQUE
 from ngplat.art_hierro import PALETA as PALETA_HIERRO
@@ -126,6 +128,66 @@ class TestEjecutable(unittest.TestCase):
             tabla_de_correcciones([4, 7])
 
 
+class TestDisquete(unittest.TestCase):
+    """El disquete de Human68k: un FAT12 con sectores de 1024 bytes.
+
+    Sin un X68000 delante, la unica forma de saber que esta bien montado es
+    releerlo siguiendo la FAT como haria el sistema, que es lo que se hace
+    aqui.
+    """
+
+    def test_mide_lo_que_mide_un_2hd_japones(self):
+        disco = crear_disquete({"JUEGO.X": b"hola"})
+        self.assertEqual(len(disco), 77 * 2 * 8 * 1024)
+
+    def test_lleva_la_firma_y_el_bpb(self):
+        """La firma en el nombre del fabricante y el BPB son lo que distingue un
+        disquete del X68000 de uno de PC: si se pierden, no lo lee nadie."""
+        disco = crear_disquete({"JUEGO.X": b"hola"})
+        self.assertEqual(disco[0:3], b"\x60\x3c\x90", "falta el salto")
+        self.assertEqual(disco[3:11], b"X68IPL30")
+        self.assertEqual(struct.unpack("<H", disco[11:13])[0], 1024,
+                         "los sectores de esta maquina son de 1024 bytes")
+        self.assertEqual(disco[13], 1)          # un sector por agrupacion
+        self.assertEqual(disco[16], 2)          # dos FAT
+        self.assertEqual(struct.unpack("<H", disco[17:19])[0], 192)
+        self.assertEqual(struct.unpack("<H", disco[19:21])[0], 1232)
+        self.assertEqual(disco[21], 0xFE)
+        self.assertEqual(struct.unpack("<H", disco[24:26])[0], 8)
+        self.assertEqual(struct.unpack("<H", disco[26:28])[0], 2)
+
+    def test_un_archivo_vuelve_igual(self):
+        datos = bytes(range(256)) * 3
+        disco = crear_disquete({"JUEGO.X": datos})
+        self.assertEqual(leer_archivo(disco, "JUEGO.X"), datos)
+
+    def test_uno_grande_encadena_agrupaciones(self):
+        """Mas de un sector quiere decir mas de una agrupacion, y ahi es donde
+        se rompe una FAT mal escrita: si la cadena no se sigue, vuelve cortado
+        o con basura de otro archivo."""
+        datos = bytes((i * 7) % 251 for i in range(50 * 1024))
+        disco = crear_disquete({"GRANDE.X": datos})
+        self.assertGreater(len(datos), 1024, "la prueba no encadena nada")
+        self.assertEqual(leer_archivo(disco, "GRANDE.X"), datos)
+
+    def test_dos_archivos_no_se_pisan(self):
+        uno = b"A" * 5000
+        dos = b"B" * 3000
+        disco = crear_disquete({"UNO.X": uno, "DOS.TXT": dos})
+        self.assertEqual(leer_archivo(disco, "UNO.X"), uno)
+        self.assertEqual(leer_archivo(disco, "DOS.TXT"), dos)
+        nombres = [n for n, _, _ in leer_directorio(disco)]
+        self.assertEqual(sorted(nombres), ["DOS.TXT", "UNO.X"])
+
+    def test_un_nombre_que_no_cabe_no_cuela(self):
+        with self.assertRaises(ErrorDisco):
+            crear_disquete({"NOMBREDEMASIADOLARGO.X": b"x"})
+
+    def test_lo_que_no_cabe_en_el_disquete_avisa(self):
+        with self.assertRaises(ErrorDisco):
+            crear_disquete({"ENORME.X": b"\0" * (2 * 1024 * 1024)})
+
+
 class TestCompilaDeVerdad(unittest.TestCase):
     """Que el proyecto de X68000 se construya entero con el cross-compilador y
     salga un .X que Human68k pueda cargar."""
@@ -207,6 +269,21 @@ class TestCompilaDeVerdad(unittest.TestCase):
                       "los patrones estan cortados: falta el final")
         self.assertIn(pcg[len(pcg) // 2:len(pcg) // 2 + 64], datos,
                       "los patrones estan cortados por la mitad")
+
+
+    def test_el_juego_vuelve_entero_del_disquete(self):
+        """El .X que monta el make tiene que salir del .xdf byte a byte: es lo
+        que va a leer Human68k."""
+        disco_dir = os.path.join(self.salida, "disco")
+        xdf = [n for n in os.listdir(disco_dir) if n.endswith(".xdf")]
+        self.assertEqual(len(xdf), 1, xdf)
+        with open(os.path.join(disco_dir, xdf[0]), "rb") as fh:
+            imagen = fh.read()
+        dentro = leer_directorio(imagen)
+        self.assertEqual(len(dentro), 1, dentro)
+        nombre = dentro[0][0]
+        self.assertEqual(leer_archivo(imagen, nombre), self._ejecutable(),
+                         "el ejecutable no sale igual del disquete")
 
 
 if __name__ == "__main__":
