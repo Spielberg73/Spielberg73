@@ -688,6 +688,92 @@ def _simbolos_del_elf(ruta):
     return salida
 
 
+class TestSpritesNeoGeo(unittest.TestCase):
+    """El aviso de sprites de la Neo Geo.
+
+    El motor no se queja si un nivel se pasa: np_draw_actor deja de dibujar y ya
+    esta. La Mega Drive avisaba desde el principio y la Neo Geo no miraba nada,
+    asi que un nivel cargado salia a medias sin que nadie lo dijera.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix="neoplat-sprites-")
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def _proyecto(self, nombre, filas=None):
+        from ngplat.scaffold import crear_proyecto
+        raiz = os.path.join(self.tmp, nombre)
+        crear_proyecto(raiz, "SPRITES", "TEST")
+        if filas is not None:
+            yaml = os.path.join(raiz, "game.yaml")
+            with open(yaml, encoding="utf-8") as fh:
+                texto = fh.read()
+            mapa = "\n".join("      " + f for f in filas)
+            corte = texto.index("niveles:")
+            texto = (texto[:corte] + 'niveles:\n  - nombre: "LLENO"\n'
+                     '    fondo: "#101830"\n    mapa: |\n' + mapa + "\n")
+            with open(yaml, "w", encoding="utf-8") as fh:
+                fh.write(texto)
+        return cargar_demo(raiz, "neogeo")
+
+    def test_el_andamiaje_no_da_falsa_alarma(self):
+        """Lo primero que tiene que hacer un aviso es no saltar cuando no toca:
+        si saltara con el proyecto de partida, se aprenderia a ignorarlo."""
+        build = self._proyecto("normal")
+        self.assertEqual(sistemas.obtener("neogeo").comprobar(build), [])
+
+    def test_avisa_cuando_un_nivel_no_cabe_en_pantalla(self):
+        ancho = 24
+        filas = ["." * ancho for _ in range(10)]
+        # cuatro filas de dieciseis tablones: cada uno mide 32 px, o sea dos
+        # columnas de sprite, y los sesenta y cuatro caben en una pantalla
+        for _ in range(4):
+            filas.append(("T" * 16).ljust(ancho, "."))
+        filas.append("P" + "." * (ancho - 3) + "G.")
+        filas.append("#" * ancho)
+        build = self._proyecto("lleno", filas)
+        self.assertEqual(len(build.levels[0].spawns), 64,
+                         "el nivel de prueba no tiene los spawns que se creia")
+        avisos = sistemas.obtener("neogeo").comprobar(build)
+        self.assertEqual(len(avisos), 1, avisos)
+        self.assertIn("129", avisos[0], "la cuenta no sale: %s" % avisos[0])
+        self.assertIn("96", avisos[0])
+        self.assertIn("LLENO", avisos[0])
+
+    def test_cada_actor_cuesta_por_su_ancho(self):
+        """Un actor de 32 px gasta dos columnas y uno de 16 gasta una: es lo que
+        hace np_draw_actor, y contar actores a secas se equivocaria al doble."""
+        from ngplat.sistemas.neogeo import _columnas_a_la_vez
+        ancho = 24
+        setas = ["." * ancho for _ in range(12)]
+        setas.append(("s" * 10).ljust(ancho, "."))
+        setas.append("P" + "." * (ancho - 3) + "G.")
+        setas.append("#" * ancho)
+        tablones = list(setas)
+        tablones[12] = ("T" * 10).ljust(ancho, ".")
+        # diez setas de 16 px = 10 columnas; diez tablones de 32 = 20
+        self.assertEqual(_columnas_a_la_vez(self._proyecto("setas", setas))[0], 11)
+        self.assertEqual(_columnas_a_la_vez(self._proyecto("tablones", tablones))[0], 21)
+
+    def test_lo_que_esta_lejos_no_cuenta(self):
+        """Solo se miran los que caben en una pantalla a la vez: si contara el
+        nivel entero, cualquier nivel largo avisaria siempre."""
+        from ngplat.sistemas.neogeo import _columnas_a_la_vez
+        juntos = ["." * 60 for _ in range(12)]
+        juntos.append(("T" * 20).ljust(60, "."))
+        juntos.append("P" + "." * 57 + "G.")
+        juntos.append("#" * 60)
+        # los mismos veinte tablones, pero repartidos por todo el nivel
+        lejos = list(juntos)
+        lejos[12] = "".join("T" if i % 3 == 0 else "." for i in range(60))
+        self.assertGreater(_columnas_a_la_vez(self._proyecto("juntos", juntos))[0],
+                           _columnas_a_la_vez(self._proyecto("lejos", lejos))[0])
+
+
 class TestCompilacionReal(unittest.TestCase):
     """Con un compilador de 68000 instalado, se construye de verdad."""
 

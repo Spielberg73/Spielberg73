@@ -1587,6 +1587,54 @@ void np_extras_bar(char *out, const NpWorld *w)
     }
 }
 
+/* La vida del jugador, para el marcador: "LIFE ##..".
+ *
+ * Los llenos son los golpes que le quedan y los puntos los que ha perdido, asi
+ * que de un vistazo se ve cuanto aguanta **y** cuanto aguantaba entero. Sale
+ * entera en blanco cuando el juego se juega a un golpe (`vida: 1`), igual que
+ * la municion sale en blanco sin arma secundaria: ahi no hay nada que mirar.
+ *
+ * Los cuadrados arrancan siempre en la posicion 5, se llame como se llame la
+ * etiqueta, para que a dos jugadores las dos barras queden alineadas.
+ *
+ * Fuera de la partida sale en blanco a proposito: en el Amiga, el Jaguar y el
+ * Atari ST el marcador es una banda de tres filas y la tercera -la de la barra-
+ * es la que usan el titulo y el "game over". Decidirlo aqui y no en cada
+ * maquina deja los cinco marcadores iguales.
+ *
+ * Ocupa **lo que necesita**, no siempre lo maximo: escribir el marcador cuesta
+ * una escritura de VRAM por letra y esta barra se repinta justo en el frame del
+ * golpe, que es el mas caro de la partida. Cuando no hay nada que ensenar si
+ * sale entera de espacios, porque entonces lo que hace falta es borrar. */
+void np_life_bar(char *out, const NpWorld *w, uint8_t quien)
+{
+    const NpPlayer *p = &w->players[quien];
+    const char *titulo;
+    uint8_t i, capacidad, llenos;
+
+    if (w->state != NP_STATE_PLAY || np_player_def.health <= 1 || !p->playing) {
+        for (i = 0; i < 5 + NP_LIFE_BAR; i++) out[i] = ' ';
+        out[5 + NP_LIFE_BAR] = 0;
+        return;
+    }
+    titulo = (np_player_count > 1) ? (quien ? "2P   " : "1P   ") : "LIFE ";
+    capacidad = np_life_pips();
+    llenos = (p->health > capacidad) ? capacidad : p->health;
+    for (i = 0; i < 5; i++) out[i] = titulo[i];
+    for (i = 0; i < capacidad; i++) out[5 + i] = (i < llenos) ? '#' : '.';
+    out[5 + capacidad] = 0;
+}
+
+/* Cuantos cuadrados tiene la barra de este juego. Es fijo durante toda la
+   partida (sale de `vida:`), asi que el marcador puede pintar la etiqueta una
+   vez y repintar solo los cuadrados. */
+uint8_t np_life_pips(void)
+{
+    if (np_player_def.health <= 1) return 0;
+    return (np_player_def.health > NP_LIFE_BAR)
+         ? NP_LIFE_BAR : np_player_def.health;
+}
+
 void np_world_step(NpWorld *w, uint16_t input, uint16_t input2)
 {
     /* Start vale desde cualquiera de los dos mandos: en la maquina recreativa

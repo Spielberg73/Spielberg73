@@ -963,6 +963,19 @@
     if (DATA.player.sub && DATA.player.sub.kind) {
       text(31, 2, "AMMO " + pad(Math.min(world.hearts, 99), 2));
     }
+    /* La vida, igual que np_life_bar en C: los llenos son los golpes que
+       quedan y los puntos los perdidos. Con `vida: 1` no sale (no hay nada que
+       mirar) y fuera de la partida tampoco: ahi la fila es de los mensajes. */
+    if (DATA.player.health > 1 && world.state === NPCore.STATE.PLAY) {
+      var cabe = Math.min(DATA.player.health, 9);
+      for (var j = 0; j < (DOS_JUGADORES ? 2 : 1); j++) {
+        var q = world.players[j];
+        if (!q.playing) continue;
+        var pips = "";
+        for (var k = 0; k < cabe; k++) pips += (k < Math.min(q.health, cabe)) ? "#" : ".";
+        text(2 + j * 18, 3, (DOS_JUGADORES ? (j ? "2P   " : "1P   ") : "LIFE ") + pips);
+      }
+    }
     if (world.state === NPCore.STATE.TITLE) {
       text(12, 12, DATA.title);
       text(12, 14, "PRESS START");

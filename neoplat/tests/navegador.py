@@ -158,6 +158,37 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
         pagina.keyboard.press("Enter")
         pagina.wait_for_timeout(250)
 
+        # La vida en el marcador: el ejemplo trae `vida: 2`, asi que la barra
+        # tiene que estar dibujada y tiene que cambiar al recibir un golpe. Se
+        # miran los pixeles de su fila, que es lo unico que prueba que se
+        # dibuja de verdad y no solo que el dato esta.
+        barra = pagina.evaluate("""async () => {
+            const w = window.NeoPlat.world;
+            const ctx = document.querySelector("canvas").getContext("2d");
+            // el marcador lo pinta el bucle de dibujo, no w.step(): hay que
+            // dejar pasar un fotograma de verdad para verlo
+            const pintado = () => new Promise(function (listo) {
+                requestAnimationFrame(function () {
+                    requestAnimationFrame(function () {
+                        listo(Array.from(
+                            ctx.getImageData(0, 24, 200, 8).data).join(","));
+                    });
+                });
+            });
+            const salud = w.data.player.health;
+            w.players[0].health = salud;
+            const llena = await pintado();
+            w.players[0].health = 1;      // un golpe
+            const tocada = await pintado();
+            w.players[0].health = salud;
+            return { salud: salud, cambia: llena !== tocada }; }""")
+        print("vida en el marcador:", json.dumps(barra))
+        exigir(barra["salud"] > 1, "el ejemplo ya no trae 'vida:' mayor que 1")
+        # solo se mira que cambie: en esa fila tambien se ve el juego de fondo,
+        # asi que "hay pixeles encendidos" saldria verde sin barra ninguna
+        exigir(barra["cambia"],
+               "la barra de vida no cambia al perder un golpe")
+
         # La plataforma movil vive en el segundo nivel: se carga y se mira que
         # este ahi y que se mueva sola.
         tablon = pagina.evaluate("""async () => {

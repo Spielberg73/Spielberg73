@@ -60,6 +60,7 @@ void np_hud_draw(const NpWorld *w)
     static uint8_t rotulos = 0;
     static uint8_t ultimo_jefe = 0xFF;
     static uint32_t ultimas_llaves = 0xFFFFFFFFu;
+    static uint32_t ultima_vida = 0xFFFFFFFFu;
     uint16_t segundos = (uint16_t)(w->time_left / 60);
 
     if (!rotulos) {
@@ -116,6 +117,27 @@ void np_hud_draw(const NpWorld *w)
             np_extras_bar(llaves, w);
             np_hud_print(20, 2, llaves, NP_HUD_PALETTE);
             ultimas_llaves = ahora;
+        }
+    }
+
+    /* La vida del jugador. Va en la fila 0: la ventana del VDP son tres
+       filas (0 a 2) y el marcador solo usa la 1 y la 2, asi que la de arriba
+       estaba libre y no hay que agrandar la ventana ni tapar mas juego.
+       Fuera de la partida np_life_bar la deja en blanco sola, asi que aqui no
+       hay que saber nada del estado: se escribe lo que salga. */
+    {
+        uint32_t ahora = ((uint32_t)w->state << 16)
+                       | ((uint32_t)w->players[0].health << 8)
+                       | (uint32_t)w->players[1].health;
+        if (ahora != ultima_vida) {
+            char vida[NP_LIFE_BAR + 6];
+            ultima_vida = ahora;
+            np_life_bar(vida, w, 0);
+            np_hud_print(2, 0, vida, NP_HUD_PALETTE);
+            if (np_player_count > 1) {
+                np_life_bar(vida, w, 1);
+                np_hud_print(20, 0, vida, NP_HUD_PALETTE);
+            }
         }
     }
 

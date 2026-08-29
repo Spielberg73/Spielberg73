@@ -252,6 +252,11 @@ se baja con abajo. Es un modo de movimiento aparte —sin gravedad, sin saltos y
 sin choques— del que se sale solo por los dos extremos, y del que un golpe te
 tira.
 
+El marcador enseña **la vida**: `LIFE ###.` con los golpes que te quedan y los
+que has perdido, y a dos jugadores una barra por cabeza. Sale sola en cuanto el
+juego tiene `vida:` mayor que 1 —con un golpe no hay nada que mirar— y se apaga
+fuera de la partida, que es cuando esa fila la usan el título y el *game over*.
+
 Y hay **puntos de control**: con `tipo: control` en la leyenda pones una marca
 que no estorba —se pasa por delante— pero que apunta su casilla al tocarla. Si
 te matan y te quedan vidas, reapareces ahí de pie en vez de al principio del
@@ -665,12 +670,6 @@ Lo que aún no hace:
   ([docs/atarist.md](docs/atarist.md)).
 - **Eventos guionizados**: hay cinco comportamientos de enemigo fijos y un jefe
   por nivel (`jefe: si`); no hay forma de guionizar una secuencia.
-- **La vida no se ve**: el marcador enseña puntos, vidas, tiempo, llaves,
-  munición y la barra del jefe, pero no los golpes que te quedan. Con `vida: 1`
-  daba igual; con `vida: 4` (el género de látigo) se juega a ciegas.
-- **Aviso de sprites en Neo Geo**: la Mega Drive avisa al pasar de 40 spawns
-  por nivel; la Neo Geo no mira nada, y si un nivel se pasa de las 96 columnas
-  de sprite el motor deja de dibujar sin decirlo.
 - **Zoom de sprites** (la Neo Geo lo permite; el motor no lo usa).
 
 ## Licencia

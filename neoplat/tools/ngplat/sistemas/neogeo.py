@@ -11,7 +11,7 @@ Particularidades que se resuelven aqui:
 from __future__ import annotations
 
 import os
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from .. import gfx
 from .. import m1 as m1_mod
@@ -20,6 +20,51 @@ from ..errors import ProjectError
 from .base import Limites, Salida, Sistema, registrar
 
 M1_ROM = "m1"
+
+
+# Columnas de sprite que la Neo Geo reserva para los actores: NP_ACTOR_SPRITES
+# en engine/neogeo/np_video.h. El resto de los 381 del hardware se los llevan el
+# escenario (21) y cada capa de parallax (21 mas).
+COLUMNAS_ACTOR = 96
+
+# Las tablas de actores por tipo de spawn, en el orden de NP_KIND_* .
+_TABLAS = {0: "enemies", 1: "items", 3: "platforms", 4: "breakables"}
+
+
+def _columnas_de(build: Build, kind: int, indice: int) -> int:
+    """Lo que gasta un actor: una columna por cada 16 px de ancho del fotograma.
+
+    Es la cuenta que hace np_draw_actor: recorre `cols` sprites y el alto sale
+    gratis, porque un sprite de Neo Geo es una tira vertical.
+    """
+    tabla = getattr(build, _TABLAS.get(kind, ""), None) if kind in _TABLAS else None
+    if not tabla or indice >= len(tabla):
+        return 1
+    return max(1, tabla[indice].sheet.cols)
+
+
+def _columnas_a_la_vez(build: Build) -> Tuple[int, str]:
+    """La pantalla peor de todo el juego, en columnas de sprite.
+
+    Se prueban las ventanas de 320x224 apoyadas en cada spawn (la que mas coja
+    siempre se puede correr hasta tocar alguno por arriba y por la izquierda),
+    y a lo que salga se le suman los jugadores, que estan siempre en pantalla.
+    """
+    peor, donde = 0, ""
+    jugadores = max(1, build.project.players) * max(1, build.player.sheet.cols)
+    for nivel in build.levels:
+        cuesta = [(x, y, _columnas_de(build, kind, indice))
+                  for x, y, kind, indice in nivel.spawns]
+        mayor = 0
+        for x0, _, _ in cuesta:
+            for _, y0, _ in cuesta:
+                cabe = sum(c for x, y, c in cuesta
+                           if x0 <= x < x0 + 320 and y0 <= y < y0 + 224)
+                if cabe > mayor:
+                    mayor = cabe
+        if mayor + jugadores > peor:
+            peor, donde = mayor + jugadores, nivel.name
+    return peor, donde
 
 
 class NeoGeo(Sistema):
@@ -101,6 +146,14 @@ class NeoGeo(Sistema):
         if len(build.paletas) > self.limites.paletas:
             self.error("el juego usa %d paletas y la Neo Geo tiene %d"
                        % (len(build.paletas), self.limites.paletas))
+        peor, donde = _columnas_a_la_vez(build)
+        if peor > COLUMNAS_ACTOR:
+            avisos.append(
+                "en '%s' pueden caber %d columnas de sprite en una pantalla y la "
+                "Neo Geo dibuja %d: lo que pase de ahi no se dibuja, sin avisar. "
+                "Cada actor gasta una columna por cada 16 px de ancho (el alto "
+                "sale gratis), y los disparos gastan tambien"
+                % (donde, peor, COLUMNAS_ACTOR))
         return avisos
 
     # --- generacion -----------------------------------------------------

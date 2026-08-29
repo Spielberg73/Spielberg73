@@ -102,4 +102,17 @@ void np_boss_bar(char *out, const NpWorld *w);
 #define NP_EXTRAS_BAR 20
 void np_extras_bar(char *out, const NpWorld *w);
 
+/* La vida del jugador para el marcador: "LIFE ##...". Los llenos son los
+   golpes que le quedan y los puntos los que ha perdido, asi que se ve de un
+   vistazo cuanto aguanta y cuanto aguantaba entero. Sale en blanco con
+   `vida: 1` (ahi no hay nada que mirar) y para un jugador que no juega. Hace
+   falta un buffer de NP_LIFE_BAR + 6 caracteres. */
+#define NP_LIFE_BAR 9
+#define NP_LIFE_LABEL 5     /* lo que ocupa la etiqueta, antes de los cuadrados */
+void np_life_bar(char *out, const NpWorld *w, uint8_t quien);
+/* Cuantos cuadrados lleva la barra en este juego (0 = no hay barra). No cambia
+   en toda la partida, asi que el marcador puede pintar la etiqueta una sola vez
+   y repintar solo los cuadrados, que es lo unico que se mueve. */
+uint8_t np_life_pips(void);
+
 #endif /* NP_WORLD_H */

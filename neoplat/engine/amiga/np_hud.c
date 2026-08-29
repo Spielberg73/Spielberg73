@@ -83,6 +83,7 @@ void np_hud_draw(const NpWorld *w)
 {
     static uint8_t ultimo_jefe = 0xFF;
     static uint32_t ultimas_llaves = 0xFFFFFFFFu;
+    static uint32_t ultima_vida = 0xFFFFFFFFu;
     uint16_t segundos;
 
     if (!np_hud_etiquetas) {            /* las palabras fijas, una sola vez */
@@ -144,8 +145,29 @@ void np_hud_draw(const NpWorld *w)
         }
     }
 
+    /* La vida del jugador. Va en la fila 2, la ultima de la banda: es
+       la de los mensajes, que solo salen fuera de la partida.
+       Fuera de la partida np_life_bar la deja en blanco sola, asi que aqui no
+       hay que saber nada del estado: se escribe lo que salga. */
+    {
+        uint32_t ahora = ((uint32_t)w->state << 16)
+                       | ((uint32_t)w->players[0].health << 8)
+                       | (uint32_t)w->players[1].health;
+        if (ahora != ultima_vida) {
+            char vida[NP_LIFE_BAR + 6];
+            ultima_vida = ahora;
+            np_life_bar(vida, w, 0);
+            np_hud_print(2, 2, vida);
+            if (np_player_count > 1) {
+                np_life_bar(vida, w, 1);
+                np_hud_print(20, 2, vida);
+            }
+        }
+    }
+
     if (w->state == np_hud_estado) return;    /* el mensaje sigue igual */
     np_hud_borrar_fila(2);
+    ultima_vida = 0xFFFFFFFFu;   /* la fila que se acaba de borrar */
     np_hud_estado = w->state;
     switch (w->state) {
     case NP_STATE_TITLE:

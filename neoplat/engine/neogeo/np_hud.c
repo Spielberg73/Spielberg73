@@ -21,12 +21,20 @@ void np_hud_clear(void)
     }
 }
 
+/* Una linea de texto en el plano fix.
+ *
+ * El fix se direcciona por columnas, asi que dos letras seguidas estan a 32
+ * words una de otra: con el modulo de la VRAM puesto a 32 se busca la direccion
+ * **una vez** y luego solo se escribe. Buscarla por letra costaba tres
+ * escrituras de registro en vez de una, y el marcador es lo unico que se
+ * escribe en el peor frame de todos (el del golpe, que repinta la vida). */
 void np_hud_print(uint8_t col, uint8_t row, const char *text, uint8_t palette)
 {
+    if (!*text || col >= NP_FIX_COLS) return;
+    np_vram_seek((uint16_t)(NP_FIXMAP + col * 32 + row), 32);
     while (*text && col < NP_FIX_COLS) {
         uint8_t c = (uint8_t)*text++;
         uint16_t tile = (c < 128) ? np_font_index[c] : 0;
-        np_vram_seek((uint16_t)(NP_FIXMAP + col * 32 + row), 1);
         np_vram_write((uint16_t)((palette << 12) | tile));
         col++;
     }
@@ -60,6 +68,15 @@ static void np_hud_blank(uint8_t col, uint8_t row, uint8_t count)
 void np_hud_draw(const NpWorld *w)
 {
     static uint16_t last_state = 0xFFFF;
+    /* Estado por pintar. El frame en el que cambia el estado es tambien el de
+       la carga del nivel -se crean todas las entidades y se redibujan todos
+       los sprites- y es, con diferencia, el mas caro de la partida: 206.000
+       ciclos frente a los 160.000 del siguiente peor, medido con
+       tests/maquina_neogeo.py. Repintar ademas el marcador entero ahi es lo
+       que lo saca de los 200.000 que da la consola, y no hace falta: se
+       aparta para el frame siguiente, que va sobrado. Los caches de cada
+       campo se quedan viejos, asi que se repintan solos. */
+    static uint16_t estado_pendiente = 0xFFFF;
     static uint32_t ultimo_tanteo = 0xFFFFFFFFu;
     static uint16_t ultimas_vidas = 0xFFFF;
     static uint16_t ultimas_vidas2 = 0xFFFF;
@@ -67,7 +84,14 @@ void np_hud_draw(const NpWorld *w)
     static uint8_t rotulos = 0;
     static uint8_t ultimo_jefe = 0xFF;
     static uint32_t ultimas_llaves = 0xFFFFFFFFu;
+    static uint32_t ultima_vida = 0xFFFFFFFFu;
     uint16_t segundos = (uint16_t)(w->time_left / 60);
+
+    if (w->state != last_state) {
+        last_state = w->state;
+        estado_pendiente = w->state;
+        return;                   /* el frame de la carga se deja en paz */
+    }
 
     if (!rotulos) {
         np_hud_print(2, 1, "SCORE", NP_HUD_PALETTE);
@@ -126,14 +150,43 @@ void np_hud_draw(const NpWorld *w)
         }
     }
 
-    if (w->state != last_state) {
+    /* La vida del jugador. Va en la fila 3, que en el plano fix esta libre:
+       aqui el marcador no es una banda, se dibuja encima del juego. Fuera de la
+       partida np_life_bar la deja en blanco sola, asi que aqui no hay que saber
+       nada del estado: se escribe lo que salga.
+   
+       Esta es la unica parte del marcador que se repinta en el frame del golpe,
+       que es el mas caro de la partida (y la Neo Geo va justa de ciclos), asi
+       que cuando lo unico que ha cambiado es la salud se saltan las letras de
+       la etiqueta y se escriben solo los cuadrados. */
+    {
+        uint32_t ahora = ((uint32_t)w->state << 16)
+                       | ((uint32_t)w->players[0].health << 8)
+                       | (uint32_t)w->players[1].health;
+        if (ahora != ultima_vida) {
+            /* la etiqueta solo hace falta cuando cambia el estado: dentro de la
+               partida no se mueve */
+            uint8_t solo_salud = ((ahora >> 16) == (ultima_vida >> 16));
+            uint8_t desde = solo_salud ? NP_LIFE_LABEL : 0;
+            char vida[NP_LIFE_BAR + 6];
+            uint8_t quien;
+            ultima_vida = ahora;
+            for (quien = 0; quien < np_player_count; quien++) {
+                np_life_bar(vida, w, quien);
+                np_hud_print((uint8_t)(2 + quien * 18 + desde), 3, vida + desde,
+                             NP_HUD_PALETTE);
+            }
+        }
+    }
+
+    if (estado_pendiente != 0xFFFF) {
         /* Se borran todas las filas donde puede caer un mensaje (12 a 16), no
            solo las de en medio: si no, el titulo de la fila 12 y el autor de
            la 16 se quedaban pegados encima del juego al pulsar start. */
         uint8_t row;
         for (row = 12; row <= 16; row++)
             np_hud_blank(10, row, 20);
-        last_state = w->state;
+        estado_pendiente = 0xFFFF;
     }
 
     switch (w->state) {

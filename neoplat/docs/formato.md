@@ -583,6 +583,27 @@ sonido:
         - "do3 -   do3 -    | fa3 -   fa3 -"      # canal B: acompañamiento
 ```
 
+### Lo que enseña el marcador
+
+Sale solo, sin configurar nada, y cada trozo aparece únicamente si el juego lo
+usa:
+
+| trozo | cuándo sale |
+|---|---|
+| `SCORE`, `LIVES` | siempre |
+| `TIME` | con `tiempo:` distinto de 0 |
+| `KEYS 01/03` | en los niveles con `llaves:` |
+| `AMMO 05` | con arma `secundaria:` |
+| `BOSS ####` | con un jefe en pantalla |
+| `LIFE ###.` | con `vida:` mayor que 1 |
+
+La barra de vida lleva un cuadrado por golpe: los llenos (`#`) son los que te
+quedan y los puntos (`.`) los que has perdido, así que se ve a la vez cuánto
+aguantas y cuánto aguantabas entero. A dos jugadores sale una por cabeza
+(`1P ###` y `2P ###`). Fuera de la partida se apaga: en el Amiga, la Jaguar y
+el Atari ST el marcador es una banda de tres filas y esa tercera fila es la que
+usan el título y el *game over*.
+
 **Momentos que puedes sonorizar** (los produce el juego solo): `empezar`,
 `salto`, `doble_salto`, `moneda`, `pisar`, `golpe`, `muerte`, `meta`, `vida`,
 `disparo`, `romper` (un rompible) y `control` (tocar un punto de control).
