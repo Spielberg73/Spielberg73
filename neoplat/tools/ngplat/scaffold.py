@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import os
-from typing import List
+from dataclasses import dataclass
+from typing import Dict, List
 
 from . import art, art_hierro, art_sonido
 from .errors import ProjectError
@@ -50,16 +51,35 @@ def _suelo(ancho: int, huecos: List[tuple]) -> str:
 #     rebotado hacia delante y no puedes caer sobre pinchos
 #   - los pinchos van de uno en uno y con suelo llano antes y despues
 
-def _nivel_1(llave: bool = False) -> List[str]:
+def _nivel_1(llave: bool = False, escalera: bool = False) -> List[str]:
     """Nivel de entrada: saltar, coger monedas, pisar un enemigo, esquivar pinchos.
 
     Con `llave`, en mitad del camino aparece la llave que pide la meta: se coge
     de paso, pero sin ella el final del nivel no se abre.
+
+    Con `escalera` se anade una que sube desde el suelo hasta la plataforma
+    alta: es lo que hace falta para ver de que va ese modo nada mas empezar.
+    Cada escalon sube una fila y avanza una columna, que es como los lee el
+    motor, y el agujero del suelo se tapa porque con el salto sin correccion
+    del genero de latigo no se cruza.
     """
     a = ANCHO_1
     suelo_1 = {0: "P", 8: "s", 12: "V", 18: "^", 28: "s", 40: "c", 44: "G"}
     if llave:
         suelo_1[22] = "k"
+    escalones = {}
+    if escalera:
+        for i, fila in enumerate((14, 13, 12)):
+            escalones[fila] = {34 + i: "/"}
+        suelo_1.pop(40, None)
+
+    def con_escalon(fila, base):
+        if fila not in escalones:
+            return base
+        mezcla = dict(base)
+        mezcla.update(escalones[fila])
+        return mezcla
+
     return [
         _fila("", a),
         _fila("", a),
@@ -73,13 +93,13 @@ def _nivel_1(llave: bool = False) -> List[str]:
         _fila("", a),
         _poner(a, {5: "ccc", 38: "ccc"}),
         _poner(a, {4: "=====", 37: "====="}),
-        _fila("", a),
+        _poner(a, con_escalon(12, {})),
         # el candelabro baja a la fila del suelo (para poder pegarle andando) y
         # a cambio se quita la moneda de arriba: cada sprite de mas en pantalla
         # se paga, y este nivel ya iba al limite de la Neo Geo
-        _poner(a, {22: "c", 33: "c"}),
-        _poner(a, suelo_1),
-        _suelo(a, [(34, 2)]),
+        _poner(a, con_escalon(13, {22: "c", 33: "c"})),
+        _poner(a, con_escalon(14, suelo_1)),
+        _suelo(a, [] if escalera else [(34, 2)]),
     ]
 
 
@@ -134,41 +154,13 @@ jugador:
   friccion: 0.35
   salto: 4.3
   gravedad: 0.28
-  vida: 2              # golpes que aguanta antes de perder una vida
   doble_salto: no
-  pisar_enemigos: si
-  animaciones:
+{fisica}  animaciones:
     quieto: {{frames: [0], velocidad: 30}}
     correr: {{frames: [1, 2, 3, 2], velocidad: 6}}
     saltar: {{frames: [4]}}
     caer:   {{frames: [5]}}
-  # El boton de accion. Quitalo entero y el jugador solo podra pisar enemigos.
-  ataque:
-    tipo: disparo            # disparo (sale un proyectil) o golpe (cuerpo a cuerpo)
-    sprite: graficos/bala.png
-    frame: [16, 16]
-    caja: [6, 6]
-    desplazamiento: [5, 5]   # la caja, centrada en el fotograma
-    velocidad: 3.5           # pixeles por frame que vuela el disparo
-    alcance: 96              # px que recorre antes de apagarse
-    espera: 18               # frames entre un disparo y el siguiente
-    dano: 1
-    animaciones:
-      quieto: {{frames: [0, 1, 2, 1], velocidad: 4}}
-  # El arma secundaria: se tira con **arriba + accion** y gasta municion (los
-  # corazones). 'tipo: arco' la haria caer describiendo una parabola.
-  secundaria:
-    tipo: recta
-    sprite: graficos/cuchillo.png
-    frame: [16, 16]
-    caja: [10, 4]
-    desplazamiento: [3, 6]
-    velocidad: 4.0
-    alcance: 200
-    espera: 24
-    coste: 1               # corazones que gasta cada tirada
-    dano: 1
-
+{armas}
 tiles:
   imagen: graficos/tiles.png
   leyenda:
@@ -178,7 +170,7 @@ tiles:
     '=': {{tile: 2, tipo: plataforma}}
     '^': {{tile: 3, tipo: peligro}}
     'G': {{tile: 4, tipo: meta}}
-
+{escaleras}
 enemigos:
   seta:
     sprite: graficos/enemigo.png
@@ -231,24 +223,14 @@ objetos:
     cantidad: 1
     animaciones:
       quieto: {{frames: [0, 1], velocidad: 10}}
-  # 'efecto: municion' recarga el arma secundaria. Ojo: 'efecto: corazon' a
-  # secas es salud, que es otra cosa.
-  corazon:
-    sprite: graficos/corazon.png
-    caja: [10, 8]
-    puntos: 0
-    efecto: municion
-    cantidad: 5
-    animaciones:
-      quieto: {{frames: [0, 1], velocidad: 12}}
-
+{municion}
 # Rompibles: no hacen nada hasta que les pegas, y entonces sueltan lo que
 # lleven dentro. Es el bucle de los clasicos de latigo: pegarle a todo.
 rompibles:
   candelabro:
     sprite: graficos/candelabro.png
     caja: [8, 12]
-    suelta: corazon        # el objeto que aparece al romperlo
+    suelta: {suelta}        # el objeto que aparece al romperlo
     puntos: 100
     vida: 1                # golpes que aguanta
     animaciones:
@@ -353,15 +335,13 @@ jugador:
   friccion: 0.35
   salto: 4.3
   gravedad: 0.28
-  vida: 2
   doble_salto: no
-  pisar_enemigos: si
-  animaciones:
+{fisica}  animaciones:
     quieto: {{frames: [0], velocidad: 30}}
     correr: {{frames: [1, 2, 3, 2], velocidad: 6}}
     saltar: {{frames: [4]}}
     caer:   {{frames: [5]}}
-
+{armas}
 tiles:
   imagen: graficos/tiles.png
   leyenda:
@@ -371,7 +351,7 @@ tiles:
     '=': {{tile: 2, tipo: plataforma}}
     '^': {{tile: 3, tipo: peligro}}
     'G': {{tile: 4, tipo: meta}}
-
+{escaleras}
 enemigos:
   raton:
     sprite: graficos/enemigo.png
@@ -414,24 +394,14 @@ objetos:
     puntos: 10
     animaciones:
       quieto: {{frames: [0, 1, 2, 3], velocidad: 7}}
-  # 'efecto: municion' recarga el arma secundaria
-  chispa:
-    sprite: graficos/corazon.png
-    caja: [10, 8]
-    puntos: 0
-    efecto: municion
-    cantidad: 5
-    animaciones:
-      quieto: {{frames: [0, 1], velocidad: 12}}
-
-# Plataformas moviles: van y vienen entre donde salen y 'distancia' pixeles mas
-# alla, y el que se sube encima va con ellas. Son escenario que se mueve: ni
-# hacen dano ni se pueden matar.
+{municion}
+# Rompibles: no hacen nada hasta que les pegas, y entonces sueltan lo que
+# lleven dentro.
 rompibles:
   brasero:
     sprite: graficos/candelabro.png
     caja: [8, 12]
-    suelta: chispa
+    suelta: {suelta}
     puntos: 100
     vida: 1
     animaciones:
@@ -506,19 +476,185 @@ def _nivel_yaml(nombre: str, filas: List[str], fondo: str, capas: str = "",
 ESTILOS = ("bosque", "hierro")
 
 
+# --------------------------------------------------------------- generos
+#
+# El **genero** decide como se juega y el **estilo** como se ve: son dos ejes
+# distintos y se eligen por separado. Cada genero es un punado de trozos de
+# yaml que se meten en los huecos de la plantilla, no una plantilla aparte:
+# duplicar el game.yaml entero por cada combinacion seria imposible de
+# mantener y las dos copias se irian separando a la primera.
+
+@dataclass
+class Genero:
+    """Un tipo de juego: que se puede hacer y como se siente."""
+    nombre: str
+    titulo: str
+    resumen: str
+    fisica: str                  # lineas sueltas de la seccion `jugador:`
+    armas: str                   # los bloques `ataque:` y `secundaria:`
+    escaleras: str               # las filas de escalera de la leyenda
+    municion: str                # el objeto de `efecto: municion`, si lo hay
+    suelta: str                  # que suelta el rompible
+    con_escaleras: bool          # si los niveles llevan una
+
+
+def _genero_plataformas(nombres: Dict[str, str]) -> Genero:
+    return Genero(
+        nombre="plataformas",
+        titulo="plataformas",
+        resumen=("saltar, pisar enemigos y disparar. El salto se corrige en el "
+                 "aire. Lo de toda la vida."),
+        fisica=("  vida: 2              # golpes que aguanta antes de perder una vida\n"
+                "  control_aire: 0.16   # cuanto se corrige el salto en el aire\n"
+                "  pisar_enemigos: si\n"
+                "  rebote: 3.6          # impulso al pisar un enemigo\n"),
+        armas=("  # El boton de accion. Quitalo entero y el jugador solo podra\n"
+               "  # pisar enemigos.\n"
+               "  ataque:\n"
+               "    tipo: disparo            # disparo o golpe (cuerpo a cuerpo)\n"
+               "    sprite: graficos/bala.png\n"
+               "    frame: [16, 16]\n"
+               "    caja: [6, 6]\n"
+               "    desplazamiento: [5, 5]\n"
+               "    velocidad: 3.5           # pixeles por frame que vuela\n"
+               "    alcance: 96              # px que recorre antes de apagarse\n"
+               "    espera: 18               # frames entre un disparo y el siguiente\n"
+               "    dano: 1\n"
+               "    animaciones:\n"
+               "      quieto: {frames: [0, 1, 2, 1], velocidad: 4}\n"),
+        escaleras="",
+        municion="",
+        suelta=nombres["moneda"],
+        con_escaleras=False,
+    )
+
+
+def _genero_castlevania(nombres: Dict[str, str]) -> Genero:
+    return Genero(
+        nombre="castlevania",
+        titulo="castlevania",
+        resumen=("latigo, escaleras y municion. El salto NO se corrige en el "
+                 "aire y un golpe te tira al vacio."),
+        fisica=("  vida: 4              # aqui no se pisa a nadie: hace falta aguante\n"
+                "  control_aire: 0.0    # el salto no se corrige: sale como sale\n"
+                "  pisar_enemigos: no   # aqui se pega, no se pisa\n"
+                "  retroceso: 3.0       # con cuanta fuerza sales despedido\n"
+                "  aturdido: 24         # frames sin control despues del golpe\n"
+                "  velocidad_escalera: 0.8\n"),
+        armas=("  # El latigo. `preparacion` son los frames en los que el brazo\n"
+               "  # todavia sale y no hace dano, y `clavado` te planta en el sitio\n"
+               "  # mientras pegas: es lo que obliga a medir la distancia.\n"
+               "  ataque:\n"
+               "    tipo: golpe\n"
+               "    alcance: 26\n"
+               "    duracion: 14\n"
+               "    preparacion: 5\n"
+               "    clavado: si\n"
+               "    espera: 18\n"
+               "    dano: 1\n"
+               "  # El arma secundaria: se tira con **arriba + accion** y gasta\n"
+               "  # municion. 'tipo: arco' la haria caer describiendo una parabola.\n"
+               "  secundaria:\n"
+               "    tipo: recta\n"
+               "    sprite: graficos/cuchillo.png\n"
+               "    frame: [16, 16]\n"
+               "    caja: [10, 4]\n"
+               "    desplazamiento: [3, 6]\n"
+               "    velocidad: 4.0\n"
+               "    alcance: 200\n"
+               "    espera: 24\n"
+               "    coste: 1               # municion que gasta cada tirada\n"
+               "    dano: 1\n"),
+        escaleras=("    '/': {tile: 6, tipo: escalera}\n"
+                   "    '|': {tile: 7, tipo: escalera_izquierda}\n"),
+        municion=("  # 'efecto: municion' recarga el arma secundaria. Ojo:\n"
+                  "  # 'efecto: corazon' a secas es salud, que es otra cosa.\n"
+                  "  %s:\n"
+                  "    sprite: graficos/corazon.png\n"
+                  "    caja: [10, 8]\n"
+                  "    puntos: 0\n"
+                  "    efecto: municion\n"
+                  "    cantidad: 5\n"
+                  "    animaciones:\n"
+                  "      quieto: {frames: [0, 1], velocidad: 12}\n"
+                  % nombres["municion"]),
+        suelta=nombres["municion"],
+        con_escaleras=True,
+    )
+
+
+GENEROS = ("plataformas", "castlevania")
+
+# Como se llama cada cosa en cada estilo de dibujo.
+_NOMBRES = {
+    "bosque": {"moneda": "moneda", "municion": "corazon"},
+    "hierro": {"moneda": "gema", "municion": "chispa"},
+}
+
+
+def genero_de(nombre: str, estilo: str) -> Genero:
+    nombres = _NOMBRES[estilo]
+    if nombre == "castlevania":
+        return _genero_castlevania(nombres)
+    return _genero_plataformas(nombres)
+
+
+def menu_de_generos(entrada=None, salida=None) -> str:
+    """Pregunta que tipo de juego se quiere hacer y devuelve su nombre.
+
+    Solo se usa cuando `ngplat nuevo` se lanza sin `--genero` y hay alguien
+    delante: en un guion o en las pruebas no se pregunta nada y sale el de por
+    defecto, que es el primero de la lista.
+    """
+    import sys as _sys
+    entrada = entrada or _sys.stdin
+    salida = salida or _sys.stdout
+    opciones = [genero_de(n, "bosque") for n in GENEROS]
+    salida.write("\n  Que tipo de juego quieres hacer?\n\n")
+    for i, g in enumerate(opciones):
+        salida.write("    %d) %-13s %s\n" % (i + 1, g.titulo, g.resumen))
+    salida.write("\n  elige [1]: ")
+    salida.flush()
+    try:
+        elegido = (entrada.readline() or "").strip()
+    except (OSError, ValueError):
+        elegido = ""
+    if not elegido:
+        return GENEROS[0]
+    if elegido.isdigit() and 1 <= int(elegido) <= len(GENEROS):
+        return GENEROS[int(elegido) - 1]
+    for nombre in GENEROS:
+        if nombre.startswith(elegido.lower()):
+            return nombre
+    salida.write("  no conozco '%s': me quedo con %s\n" % (elegido, GENEROS[0]))
+    return GENEROS[0]
+
+
 def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
-                   estilo: str = "bosque") -> List[str]:
+                   estilo: str = "bosque", genero: str = "plataformas") -> List[str]:
     """Crea la carpeta del proyecto con game.yaml y graficos de ejemplo.
 
-    `estilo` elige con que dibujos empiezas: 'bosque' es el de siempre, y
-    'hierro' viene dibujado con seis colores y listo para el modo de doble
-    plano del Amiga.
+    Son dos ejes que se eligen por separado:
+
+      `genero` decide **como se juega**: 'plataformas' salta, pisa enemigos y
+      dispara, con el salto corregible en el aire; 'castlevania' pega con
+      latigo, sube escaleras, gasta municion y no corrige el salto, asi que un
+      golpe al borde de una plataforma te tira al vacio.
+
+      `estilo` decide **como se ve**: 'bosque' es el de siempre y 'hierro'
+      viene dibujado con seis colores, listo para el doble plano del Amiga.
     """
     if estilo not in ESTILOS:
         raise ProjectError(
             "no conozco el estilo '%s'" % estilo,
             hint="los que hay son: %s" % ", ".join(ESTILOS),
         )
+    if genero not in GENEROS:
+        raise ProjectError(
+            "no conozco el genero '%s'" % genero,
+            hint="los que hay son: %s" % ", ".join(GENEROS),
+        )
+    g = genero_de(genero, estilo)
     if os.path.exists(destino) and os.listdir(destino):
         raise ProjectError(
             "la carpeta '%s' ya existe y no esta vacia" % destino,
@@ -541,20 +677,23 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
 
     if estilo == "bosque":
         niveles = (
-            _nivel_yaml("BOSQUE", _nivel_1(llave=True), "#101830",
-                        musica="bosque", llaves=1)
+            _nivel_yaml("BOSQUE", _nivel_1(llave=True, escalera=g.con_escaleras),
+                        "#101830", musica="bosque", llaves=1)
             # el segundo nivel usa solo la capa lejana: se puede elegir por nivel
             + _nivel_yaml("CUEVA", _nivel_2(), "#180c20", capas="cielo", musica="cueva")
         )
         plantilla = GAME_YAML
     else:
         niveles = (
-            _nivel_yaml("GALERIA", _nivel_1(), "#14121e", musica="galeria")
+            _nivel_yaml("GALERIA", _nivel_1(escalera=g.con_escaleras), "#14121e",
+                        musica="galeria")
             + _nivel_yaml("EL POZO", _nivel_2(), "#0e1018", musica="pozo")
         )
         plantilla = GAME_YAML_HIERRO
-    contenido = plantilla.format(titulo=titulo.upper()[:24], autor=autor[:24],
-                                 niveles=niveles)
+    contenido = plantilla.format(
+        titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles,
+        fisica=g.fisica, armas=g.armas, escaleras=g.escaleras,
+        municion=g.municion, suelta=g.suelta)
     with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
               newline="\n") as fh:
         fh.write(contenido)

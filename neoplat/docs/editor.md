@@ -36,7 +36,10 @@ Un **trazo entero cuenta como un solo paso de deshacer**, no uno por casilla.
 
 La **paleta** se construye desde tu propio `game.yaml`: sale un botón por cada
 símbolo de la leyenda (con su dibujo real) y otro por cada enemigo u objeto que
-hayas definido en `spawns`, más la salida del jugador.
+hayas definido en `spawns`, más la salida del jugador. Si el juego tiene
+**escaleras** (`tipo: escalera` y `escalera_izquierda`), salen como un símbolo
+más: se pintan casilla a casilla, subiendo una fila y avanzando una columna por
+escalón, que es como las recorre el motor.
 
 Debajo del lienzo hay un **minimapa**: enseña el nivel entero y el recuadro de
 lo que estás viendo; haz clic para ir a cualquier parte. Las **guías** marcan
@@ -58,7 +61,7 @@ Título, autor, vidas, tiempo límite, la **máquina** para la que se compila
 jugador con
 deslizadores: velocidad, salto, gravedad, aceleración, fricción, control en el
 aire, corte del salto, caída máxima, rebote, coyote, buffer de salto, vida,
-invulnerabilidad, doble salto y pisar enemigos.
+invulnerabilidad, doble salto, pisar enemigos y velocidad al subir escaleras.
 
 Cada cambio se aplica **al momento**: pulsa <kbd>Enter</kbd> y lo pruebas. Debajo
 te dice lo que consigue tu salto con esos números, por ejemplo:

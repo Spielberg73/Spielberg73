@@ -7,6 +7,28 @@
 cd mijuego
 ```
 
+Lo primero que te pregunta es el **género**, con un menú:
+
+```
+que tipo de juego quieres hacer?
+
+  1) plataformas   salto controlado en el aire, disparo y pisar enemigos
+  2) castlevania   salto sin control, latigo, escaleras y arma secundaria
+
+elige [1]:
+```
+
+El género no es un adorno: cambia la física del salto, el arma, si puedes
+pisar enemigos y hasta el mapa del primer nivel. Si ya lo tienes claro, pásalo
+directo y se salta el menú:
+
+```bash
+./ngplat nuevo mijuego --genero castlevania
+```
+
+Puedes cambiar de idea luego: todo lo que elige el menú son campos normales de
+`game.yaml` que puedes tocar a mano.
+
 Ya tienes un juego completo: dos niveles, un héroe, dos enemigos y monedas.
 
 ## 2. Pruébalo
@@ -53,6 +75,9 @@ Abre `game.yaml` y busca `niveles:`. El mapa son caracteres:
 - `G` la meta
 - `s` una seta, `c` una moneda, `k` una llave, `T` un tablón que va y viene
   (mira `spawns:`)
+- `/` y `|` escaleras (en el género castlevania): te subes pulsando arriba
+  encima de ellas y subes en diagonal, paso a paso
+
 
 Cambia lo que quieras y vuelve a lanzar `../ngplat probar`. Tarda menos de un
 segundo.

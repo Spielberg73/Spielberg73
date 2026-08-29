@@ -353,10 +353,37 @@ def _tile_meta() -> Image:
     return c.image
 
 
+def _tile_escalera(derecha: bool) -> Image:
+    """Un tramo de escalera en diagonal, con sus dos largueros y su peldano.
+
+    El dibujo va de esquina a esquina para que dos casillas seguidas encajen y
+    la escalera se lea como una linea continua.
+    """
+    c = Lienzo(16, 16)
+    madera, madera2 = PALETA["madera"], PALETA["madera2"]
+    for i in range(16):
+        x = i if derecha else 15 - i
+        y = 15 - i
+        c.px(x, y, madera2)
+        if x + 1 < 16:
+            c.px(x + 1, y, madera)
+        if y - 1 >= 0:
+            c.px(x, y - 1, madera)
+    # el peldano de en medio, cruzado
+    medio = 8
+    for d in range(-3, 4):
+        x = (medio + d) if derecha else (medio - d)
+        y = 15 - medio + d
+        if 0 <= x < 16 and 0 <= y < 16:
+            c.px(x, y, madera)
+    return c.image
+
+
 def tileset() -> Image:
     tiles = [
         _tile_vacio(), _tile_suelo(), _tile_plataforma(),
         _tile_pinchos(), _tile_meta(), _tile_tierra(),
+        _tile_escalera(True), _tile_escalera(False),
     ]
     hoja = Lienzo(16 * len(tiles), 16)
     for i, tile in enumerate(tiles):

@@ -252,9 +252,54 @@ def _tile_puerta() -> Image:
     return c.image
 
 
+def _bala_frame(fase: int) -> Image:
+    """El proyectil del estilo hierro: una chispa de energia que late."""
+    c = Lienzo(16, 16)
+    fuera, dentro = [(4, 2), (3, 2), (3, 1)][fase]
+    c.rect(8 - fuera, 8 - fuera, fuera * 2, fuera * 2, ORO)
+    c.rect(8 - dentro, 8 - dentro, dentro * 2, dentro * 2, CLARO)
+    return c.image
+
+
+def bala() -> Image:
+    hoja = Lienzo(16 * 3, 16)
+    for i in range(3):
+        hoja.blit(i * 16, 0, _bala_frame(i))
+    return hoja.image
+
+
+def cuchillo() -> Image:
+    """Lo que tira el arma secundaria: una pieza de hierro afilada."""
+    c = Lienzo(16, 16)
+    c.rect(2, 7, 4, 2, ROCA2)
+    c.rect(6, 7, 8, 2, ROCA)
+    c.rect(6, 8, 8, 1, CLARO)
+    return c.image
+
+
+def _tile_escalera(derecha: bool) -> Image:
+    """Escalera de hierro en diagonal: dos largueros y un peldano."""
+    c = Lienzo(16, 16)
+    for i in range(16):
+        x = i if derecha else 15 - i
+        y = 15 - i
+        c.px(x, y, ROCA2)
+        if x + 1 < 16:
+            c.px(x + 1, y, ROCA)
+        if y - 1 >= 0:
+            c.px(x, y - 1, ROCA)
+    for d in range(-3, 4):
+        x = (8 + d) if derecha else (8 - d)
+        y = 7 + d
+        if 0 <= x < 16 and 0 <= y < 16:
+            c.px(x, y, CLARO)
+    return c.image
+
+
 def tileset() -> Image:
     tiles = [_tile_vacio(), _tile_roca(), _tile_viga(),
-             _tile_pinchos(), _tile_puerta(), _tile_fondo()]
+             _tile_pinchos(), _tile_puerta(), _tile_fondo(),
+             _tile_escalera(True), _tile_escalera(False)]
     hoja = Lienzo(16 * len(tiles), 16)
     for i, tile in enumerate(tiles):
         hoja.blit(i * 16, 0, tile)
@@ -323,6 +368,8 @@ def todos() -> Dict[str, Image]:
         "graficos/plataforma.png": plataforma(),
         "graficos/candelabro.png": brasero(),
         "graficos/corazon.png": chispa(),
+        "graficos/bala.png": bala(),
+        "graficos/cuchillo.png": cuchillo(),
         "graficos/tiles.png": tileset(),
         "graficos/cueva.png": cueva(),
     }

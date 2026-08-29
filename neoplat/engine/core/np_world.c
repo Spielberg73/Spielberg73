@@ -83,6 +83,18 @@ void np_tile_gfx_column(const NpLevel *level, int32_t tx, int32_t ty,
 
 static int np_blocks(uint8_t kind) { return kind == NP_TILE_SOLID; }
 
+/* La escalera que hay en ese punto del mundo, o 0 si no hay ninguna.
+ *
+ * Las escaleras no frenan a nadie: se pasa por delante andando, igual que por
+ * un decorado. Solo cuentan cuando el jugador decide subirse, y por eso no
+ * aparecen en np_blocks ni en np_move_*. */
+static uint8_t np_stair_at(const NpLevel *lv, np_fix x, np_fix y)
+{
+    uint8_t kind = np_tile_kind_at(lv, NP_F2I(x) >> NP_TILE_SHIFT,
+                                   NP_F2I(y) >> NP_TILE_SHIFT);
+    return (kind == NP_TILE_STAIR_R || kind == NP_TILE_STAIR_L) ? kind : 0;
+}
+
 static int np_boxes_overlap(np_fix ax, np_fix ay, int aw, int ah,
                             np_fix bx, np_fix by, int bw, int bh)
 {
@@ -343,6 +355,8 @@ static void np_player_reset(NpWorld *w, uint8_t quien)
     p->attack_cd = 0;
     p->stun = 0;
     p->riding = 0;
+    p->stairs = 0;
+    p->stair_dir = 1;
     p->anim = NP_ANIM_IDLE;
     p->anim_frame = 0;
     p->anim_timer = 0;
@@ -413,6 +427,7 @@ static void np_player_hurt(NpWorld *w, uint8_t quien, uint8_t damage)
        donde te lleve. Con `aturdido: 0` se recupera el control al momento. */
     p->stun = np_player_def.stun;
     p->attack_timer = 0;
+    p->stairs = 0;              /* un golpe te tira de la escalera */
 }
 
 static void np_finish_level(NpWorld *w);
@@ -781,6 +796,138 @@ static void np_ride_update(NpWorld *w, uint8_t quien, np_fix antes_y, int soltar
     }
 }
 
+/* El boton de accion. Va aparte porque se usa igual andando que subido a una
+   escalera: en los clasicos se pega desde la escalera, y no poder hacerlo
+   convertiria cada escalera en una trampa. */
+static void np_player_action(NpWorld *w, uint8_t quien, uint16_t input)
+{
+    NpPlayer *p = &w->players[quien];
+    if (p->attack_cd) p->attack_cd--;
+    if ((input & NP_IN_ACTION) && !(w->prev_input[quien] & NP_IN_ACTION)) {
+        /* arriba + accion tira el arma secundaria; el boton a secas, el
+           ataque de siempre. Si no hay arma o no queda municion, se pega. */
+        if ((input & NP_IN_UP) && np_player_def.sub.kind != NP_SUB_NONE
+            && w->hearts >= np_player_def.sub.cost)
+            np_player_sub(w, quien);
+        else
+            np_player_attack(w, quien);
+    }
+    np_melee_update(w, quien);
+}
+
+/* ------------------------------------------------------------- escaleras */
+/*
+ * Una escalera es un **segundo modo de movimiento**, no un tile mas: mientras
+ * estas subido no hay gravedad, ni saltos, ni choques con el escenario. Se
+ * avanza en diagonal, un paso por frame, y se sale por arriba o por abajo.
+ *
+ * Todo se apoya en un solo punto de referencia: el **pixel de abajo del centro
+ * de la caja del jugador** (los pies, un pixel por dentro). Mientras ese punto
+ * caiga en una casilla de escalera, se sigue subido; en cuanto sale, el
+ * jugador se planta de pie en la fila donde haya acabado. La misma regla vale
+ * para llegar arriba y para llegar abajo, y por eso no hay dos casos que
+ * mantener.
+ */
+
+static np_fix np_ref_x(const NpPlayer *p, const NpActorDef *a)
+{
+    return p->x + NP_I2F(a->box_w / 2);
+}
+
+static np_fix np_ref_y(const NpPlayer *p, const NpActorDef *a)
+{
+    return p->y + NP_I2F(a->box_h - 1);
+}
+
+/* Coloca al jugador con el punto de referencia en el centro de esa casilla:
+   subirse a una escalera te centra en ella, como en los clasicos. */
+static void np_stair_place(NpPlayer *p, const NpActorDef *a,
+                           int32_t tx, int32_t ty)
+{
+    p->x = NP_I2F(tx * NP_TILE + NP_TILE / 2 - a->box_w / 2);
+    p->y = NP_I2F(ty * NP_TILE + NP_TILE / 2 - (a->box_h - 1));
+    p->vx = 0;
+    p->vy = 0;
+}
+
+/* Intenta subirse a una escalera. Devuelve 1 si se ha subido.
+ *
+ * Hacia arriba basta con que los pies esten dentro de una escalera: es la
+ * casilla en la que estas cuando andas por delante de ella. Hacia abajo hay
+ * que mirar **en diagonal**, porque el primer escalon de bajada no esta debajo
+ * de los pies sino un paso hacia el lado: la escalera arranca donde acaba el
+ * suelo. */
+static int np_stair_mount(NpWorld *w, uint8_t quien, uint16_t input)
+{
+    const NpActorDef *a = &np_player_def.actor;
+    NpPlayer *p = &w->players[quien];
+    int32_t tx = NP_F2I(np_ref_x(p, a)) >> NP_TILE_SHIFT;
+    uint8_t kind;
+
+    if (!p->on_ground || np_player_def.stair_speed <= 0) return 0;
+
+    if (input & NP_IN_UP) {
+        int32_t ty = NP_F2I(np_ref_y(p, a)) >> NP_TILE_SHIFT;
+        kind = np_stair_at(w->level, np_ref_x(p, a), np_ref_y(p, a));
+        if (kind) {
+            p->stairs = 1;
+            p->stair_dir = (kind == NP_TILE_STAIR_R) ? 1 : -1;
+            np_stair_place(p, a, tx, ty);
+            return 1;
+        }
+    }
+    if (input & NP_IN_DOWN) {
+        /* la fila del suelo que estas pisando; el escalon esta una mas abajo */
+        int32_t ty = (NP_F2I(p->y + NP_I2F(a->box_h)) >> NP_TILE_SHIFT) + 1;
+        int32_t bx;
+        for (bx = -1; bx <= 1; bx += 2) {
+            uint8_t esperado = (bx < 0) ? NP_TILE_STAIR_R : NP_TILE_STAIR_L;
+            kind = np_tile_kind_at(w->level, tx + bx, ty);
+            if (kind != esperado) continue;
+            p->stairs = 1;
+            p->stair_dir = (kind == NP_TILE_STAIR_R) ? 1 : -1;
+            np_stair_place(p, a, tx + bx, ty);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* Un frame subido a la escalera. Devuelve 1 si sigue en ella. */
+static int np_stair_update(NpWorld *w, uint8_t quien, uint16_t input)
+{
+    const NpPlayerDef *d = &np_player_def;
+    const NpActorDef *a = &d->actor;
+    NpPlayer *p = &w->players[quien];
+    int moviendo = 0;
+
+    p->vx = 0;
+    p->vy = 0;
+    p->on_ground = 0;
+    if (input & NP_IN_UP) {
+        p->x += (np_fix)p->stair_dir * d->stair_speed;
+        p->y -= d->stair_speed;
+        moviendo = 1;
+    } else if (input & NP_IN_DOWN) {
+        p->x -= (np_fix)p->stair_dir * d->stair_speed;
+        p->y += d->stair_speed;
+        moviendo = 1;
+    }
+    if (!np_stair_at(w->level, np_ref_x(p, a), np_ref_y(p, a))) {
+        /* se ha acabado la escalera: de pie en la fila donde han quedado los
+           pies, que es el suelo de arriba subiendo y el de abajo bajando */
+        int32_t ty = NP_F2I(np_ref_y(p, a)) >> NP_TILE_SHIFT;
+        p->y = NP_I2F(ty * NP_TILE - a->box_h);
+        p->stairs = 0;
+        p->on_ground = 1;
+        return 0;
+    }
+    np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer, NP_ANIM_STAIR);
+    /* quieto en la escalera se queda quieto el dibujo: solo anima al avanzar */
+    if (moviendo) np_anim_tick(a, p->anim, &p->anim_frame, &p->anim_timer);
+    return 1;
+}
+
 /* ------------------------------------------------------------- el jugador */
 
 static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
@@ -821,6 +968,23 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
         if (input & NP_IN_LEFT) dir -= 1;
     }
 
+    /* --- escaleras -------------------------------------------------------
+     *
+     * Subido a una escalera manda la escalera: ni gravedad, ni saltos, ni
+     * choques con el escenario. Lo unico que sigue funcionando es el boton de
+     * accion. Al salirse (por arriba o por abajo) se acaba el frame ahi y el
+     * siguiente ya es uno normal, de pie. */
+    if (p->stairs) {
+        np_player_action(w, quien, input);
+        if (!np_stair_update(w, quien, input))
+            np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer, NP_ANIM_IDLE);
+        return;
+    }
+    if (!p->stun && np_stair_mount(w, quien, input)) {
+        np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer, NP_ANIM_STAIR);
+        return;
+    }
+
     /* Mientras dura un golpe con `clavado: si` te quedas plantado: ni andas ni
        te giras, que es lo que obliga a elegir cuando pegas. En el aire si se
        conserva el impulso, como en los clasicos: saltas y pegas de camino. */
@@ -834,17 +998,7 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
 
     /* El ataque va por flanco: mantener el boton no dispara sin parar, y la
        cadencia la marca `espera:` del game.yaml. */
-    if (p->attack_cd) p->attack_cd--;
-    if ((input & NP_IN_ACTION) && !(w->prev_input[quien] & NP_IN_ACTION)) {
-        /* arriba + accion tira el arma secundaria; el boton a secas, el
-           ataque de siempre. Si no hay arma o no queda municion, se pega. */
-        if ((input & NP_IN_UP) && np_player_def.sub.kind != NP_SUB_NONE
-            && w->hearts >= np_player_def.sub.cost)
-            np_player_sub(w, quien);
-        else
-            np_player_attack(w, quien);
-    }
-    np_melee_update(w, quien);
+    np_player_action(w, quien, input);
 
     pressed_jump = (input & NP_IN_JUMP) && !(w->prev_input[quien] & NP_IN_JUMP);
     if (pressed_jump) p->buffer = (uint8_t)(d->jump_buffer + 1);

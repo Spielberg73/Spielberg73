@@ -88,11 +88,28 @@ cd build/neogeo && make     # construye la ROM (necesita ngdevkit)
 make run                    # la arranca en el emulador
 ```
 
-Si vas a por el Amiga con parallax, empieza por el otro juego de dibujos, que
-ya viene con los seis colores contados que caben en el doble plano:
+`ngplat nuevo` **te pregunta qué tipo de juego quieres hacer**, porque no es lo
+mismo un juego de saltar que uno de látigo: cambia la física, el ataque y hasta
+el nivel de partida.
+
+| género | cómo se juega |
+|---|---|
+| `plataformas` | saltas, pisas enemigos y disparas, y el salto se corrige en el aire. Lo de toda la vida |
+| `castlevania` | pegas con látigo, subes escaleras y gastas munición. El salto **no** se corrige y un golpe te tira al vacío |
+
+Si prefieres decirlo de una:
 
 ```bash
-./ngplat nuevo micueva --estilo hierro
+./ngplat nuevo micastillo --genero castlevania
+```
+
+El **género** decide cómo se juega y el **estilo** cómo se ve: son dos ejes
+distintos. Si vas a por el Amiga con parallax, empieza por el otro juego de
+dibujos, que ya viene con los seis colores contados que caben en el doble
+plano:
+
+```bash
+./ngplat nuevo micueva --estilo hierro --genero castlevania
 ```
 
 Para otra máquina, solo cambia una palabra:
@@ -229,6 +246,12 @@ La meta se puede **cerrar con llave**: un objeto con `efecto: llave` y un nivel
 con `llaves: N` obligan a dar una vuelta antes de salir. El marcador enseña las
 que llevas, y si el mapa no tiene llaves suficientes `ngplat` no compila.
 
+Y hay **escaleras**: con `tipo: escalera` en la leyenda y
+`velocidad_escalera:` en el jugador, un tile en diagonal se sube con arriba y
+se baja con abajo. Es un modo de movimiento aparte —sin gravedad, sin saltos y
+sin choques— del que se sale solo por los dos extremos, y del que un golpe te
+tira.
+
 Y hay **candelabros**: con `rompibles:` defines algo que no hace nada hasta que
 le pegas y entonces suelta lo que lleve dentro. Con un objeto de
 `efecto: municion` y un arma `secundaria:` (arriba + acción) tienes el bucle
@@ -296,7 +319,8 @@ archivo nuevo y que el `.exe` se quede sin él; así salta antes de repartirlo.
 
 | Orden | Qué hace |
 |---|---|
-| `ngplat nuevo <carpeta>` | Crea un proyecto jugable con gráficos de ejemplo |
+| `ngplat nuevo <carpeta>` | Crea un proyecto jugable con gráficos de ejemplo, preguntando el género |
+| `ngplat nuevo <carpeta> --genero castlevania` | Lo mismo, con látigo, escaleras y munición en vez de saltar y pisar |
 | `ngplat nuevo <carpeta> --estilo hierro` | Lo mismo, pero dibujado con seis colores y listo para el doble plano del Amiga |
 | `ngplat comprobar [proyecto]` | Valida el `game.yaml` y dice cuánto ocupa el juego |
 | `ngplat probar [proyecto]` | Abre el preview y el editor, y se queda sirviéndolo |
@@ -620,10 +644,7 @@ Lo que aún no hace:
 - **Eventos guionizados**: hay cinco comportamientos de enemigo fijos y un jefe
   por nivel (`jefe: si`); no hay forma de guionizar una secuencia.
 - **Checkpoints**: morir devuelve siempre al principio del nivel.
-- **Escaleras** de las que se suben con arriba y abajo: el jugador tiene un
-  solo modo de movimiento, y una escalera es un segundo modo entero (montarse,
-  desmontarse, quedarse pegado al eje). Es lo que más se echa de menos para un
-  juego de castillo.
+
 - **Zoom de sprites** (la Neo Geo lo permite; el motor no lo usa).
 
 ## Licencia

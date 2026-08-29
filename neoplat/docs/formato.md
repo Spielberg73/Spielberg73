@@ -149,8 +149,9 @@ transparente por imagen.
 
 **Animaciones**: `frames` es la lista de fotogramas y `velocidad` los frames de
 juego que dura cada uno (más alto = más lento). Ranuras que entiende el motor:
-`quieto`, `correr`, `saltar`, `caer`, `hurt`, `atacar`. Si falta alguna, se usa
-la más parecida (`caer` cae en `saltar`, y todo lo demás en `quieto`).
+`quieto`, `correr`, `saltar`, `caer`, `hurt`, `atacar`, `subir`. Si falta
+alguna, se usa la más parecida (`caer` cae en `saltar`, y todo lo demás en
+`quieto`). `subir` es la de la escalera.
 
 **La caja de colisión** se centra horizontalmente en el fotograma y se apoya en
 su borde inferior. Hazla algo más estrecha que el dibujo: se juega mejor.
@@ -254,6 +255,49 @@ que es otra cosa; la munición es `municion`, `municiones` o `hearts`.
 La munición se vacía al empezar cada nivel, igual que las llaves, y el marcador
 la enseña como `AMMO 05` mientras el juego lleve arma secundaria.
 
+### Escaleras
+
+```yaml
+tiles:
+  leyenda:
+    '/': {tile: 6, tipo: escalera}             # sube hacia la derecha
+    '|': {tile: 7, tipo: escalera_izquierda}   # sube hacia la izquierda
+
+jugador:
+  velocidad_escalera: 0.8    # 0 = el juego no tiene escaleras
+```
+
+Una escalera es un **segundo modo de movimiento**, no un tile más: mientras
+estás subido no hay gravedad, ni saltos, ni choques con el escenario. Se avanza
+en diagonal con arriba y abajo, y no se puede andar de lado.
+
+Se dibujan en diagonal, un escalón por casilla:
+
+```
+      ......####      suelo de arriba
+      ...../....
+      ..../.....
+      .../......
+      ##########      suelo de abajo
+```
+
+- **Subirse**: estando de pie, pulsando arriba cuando estás en la casilla del
+  escalón; o pulsando abajo cuando el primer escalón está en diagonal justo
+  debajo (que es como se baja desde el suelo de arriba).
+- **Bajarse**: se sale sola por los dos extremos. Al salirse, el jugador se
+  queda **de pie en la fila donde acaba**, así que el escalón de arriba tiene
+  que llegar hasta el suelo de arriba y el de abajo hasta el de abajo; si la
+  escalera acaba en el aire, te caes.
+- Desde la escalera **se puede atacar** (en los clásicos también), pero no
+  saltar.
+- **Un golpe te tira de la escalera**: el empujón te lleva y pierdes el control
+  igual que en el suelo.
+- Las escaleras **no frenan a nadie**: se pasa por delante andando, como por un
+  decorado. Sólo cuentan cuando decides subirte.
+
+Sin `velocidad_escalera` se sube a la mitad de lo que se anda. Con `0` el juego
+no tiene escaleras y los tiles se quedan de adorno.
+
 ## `rompibles`
 
 ```yaml
@@ -315,6 +359,8 @@ Tipos:
 | `plataforma` | solo frena si caes encima; se atraviesa saltando desde abajo y se baja con ↓ |
 | `peligro` | mata al tocarlo (pinchos, lava) |
 | `meta` | termina el nivel |
+| `escalera` | escalera que **sube hacia la derecha** |
+| `escalera_izquierda` | escalera que **sube hacia la izquierda** |
 | `decor` | se dibuja, no estorba |
 
 Atajos: `'#': 3` equivale a `{tile: 3, tipo: solido}`, y `'#': [3, plataforma]`

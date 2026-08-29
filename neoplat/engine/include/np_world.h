@@ -28,6 +28,8 @@ typedef struct {
     uint16_t attack_cd;      /* frames hasta poder atacar otra vez */
     uint16_t stun;           /* frames sin control tras recibir un golpe */
     uint8_t riding;          /* plataforma que le lleva: indice + 1, 0 = ninguna */
+    uint8_t stairs;          /* 1 = subido a una escalera */
+    int8_t stair_dir;        /* hacia donde avanza en x al subir: +1 o -1 */
     uint8_t lives;           /* las vidas son de cada uno */
     uint8_t playing;         /* 0 = fuera (segundo jugador de una partida a uno,
                                 o el que se ha quedado sin vidas) */

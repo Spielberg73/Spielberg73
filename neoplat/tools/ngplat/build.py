@@ -20,7 +20,7 @@ from .project import (
     Actor, Animation, BEHAVIOR_ID, ITEM_EFFECT_ID, Layer, Project, TILE_KIND_ID, TileDef,
 )
 
-ANIM_SLOTS = ["idle", "run", "jump", "fall", "hurt", "attack"]
+ANIM_SLOTS = ["idle", "run", "jump", "fall", "hurt", "attack", "stair"]
 SIN_STEPS = 64
 
 
@@ -411,6 +411,7 @@ def player_values(project: Project) -> Dict[str, object]:
         "gravity": to_fixed(p.gravity), "max_fall": to_fixed(p.max_fall),
         "bounce": to_fixed(p.bounce), "invuln": p.invuln,
         "knockback": to_fixed(p.knockback), "stun": p.stun,
+        "stair_speed": to_fixed(p.stair_speed),
         "coyote": p.coyote, "jump_buffer": p.jump_buffer,
         "double_jump": 1 if p.double_jump else 0, "stomp": 1 if p.stomp else 0,
         "health": p.health,

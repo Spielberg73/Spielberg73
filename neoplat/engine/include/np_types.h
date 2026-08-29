@@ -43,6 +43,12 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_TILE_HAZARD   3
 #define NP_TILE_GOAL     4
 #define NP_TILE_DECOR    5
+/* Escaleras: se suben con arriba y se bajan con abajo, en diagonal. Hay dos
+ * porque una escalera tiene sentido: la que sube hacia la derecha y la que
+ * sube hacia la izquierda. No frenan a nadie -se pasa por delante andando- y
+ * solo cuentan cuando el jugador se sube a ellas. */
+#define NP_TILE_STAIR_R  6       /* sube hacia la derecha */
+#define NP_TILE_STAIR_L  7       /* sube hacia la izquierda */
 
 /* Tipos de ataque del jugador (NpAttackDef.kind). */
 #define NP_ATTACK_NONE  0
@@ -87,7 +93,8 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_ANIM_FALL 3
 #define NP_ANIM_HURT 4
 #define NP_ANIM_ATTACK 5
-#define NP_ANIM_SLOTS 6
+#define NP_ANIM_STAIR 6          /* subiendo una escalera */
+#define NP_ANIM_SLOTS 7
 
 /* Eventos de sonido que produce la simulacion (un bit cada uno). Coinciden con
  * EVENTO_BIT de tools/ngplat/sonido.py. La simulacion solo los marca; quien los

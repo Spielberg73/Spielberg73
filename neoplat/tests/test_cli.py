@@ -76,6 +76,41 @@ class TestCli(unittest.TestCase):
         self.assertEqual(self._ejecutar("check", self.proyecto)[0], 0)
         self.assertEqual(self._ejecutar("build", self.proyecto)[0], 0)
 
+    def test_el_genero_cambia_como_se_juega(self):
+        """`--genero` no es un adorno: cambia la fisica, el ataque y el nivel."""
+        from ngplat.project import load_project
+        salidas = {}
+        for genero in ("plataformas", "castlevania"):
+            destino = os.path.join(self.tmp, "g-" + genero)
+            codigo, salida = self._ejecutar("nuevo", destino, "--genero", genero)
+            self.assertEqual(codigo, 0, salida)
+            salidas[genero] = load_project(destino)
+
+        plat, cast = salidas["plataformas"], salidas["castlevania"]
+        self.assertEqual(plat.player.attack.kind, "shot")
+        self.assertEqual(cast.player.attack.kind, "melee")
+        self.assertTrue(plat.player.stomp, "el de plataformas no pisa enemigos")
+        self.assertFalse(cast.player.stomp, "el de latigo pisa enemigos")
+        self.assertGreater(plat.player.air_accel, 0,
+                           "el de plataformas no corrige el salto")
+        self.assertEqual(cast.player.air_accel, 0.0,
+                         "el de latigo corrige el salto en el aire")
+        self.assertEqual(cast.player.stun, 24, "el de latigo no aturde")
+        self.assertIsNone(plat.player.sub, "el de plataformas trae arma secundaria")
+        self.assertIsNotNone(cast.player.sub, "el de latigo no trae arma secundaria")
+        # y las escaleras: solo el de latigo las lleva, en la leyenda y en el mapa
+        tipos = {t.kind for t in cast.tiles.values()}
+        self.assertIn("stair_r", tipos, "el de latigo no tiene escaleras")
+        self.assertNotIn("stair_r", {t.kind for t in plat.tiles.values()})
+        self.assertIn("/", cast.levels[0].rows[14],
+                      "el nivel del de latigo no trae escalera")
+
+    def test_un_genero_que_no_existe_no_cuela(self):
+        destino = os.path.join(self.tmp, "inventado")
+        with self.assertRaises(SystemExit):
+            self._ejecutar("nuevo", destino, "--genero", "shmup")
+        self.assertFalse(os.path.exists(os.path.join(destino, "game.yaml")))
+
     def test_no_pisa_una_carpeta_con_contenido(self):
         os.makedirs(self.proyecto)
         with open(os.path.join(self.proyecto, "algo.txt"), "w") as fh:

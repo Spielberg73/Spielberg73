@@ -44,6 +44,7 @@ CAMPOS: Dict[str, Dict[str, List[str]]] = {
         "invulnerable": ["invulnerable", "invuln"],
         "retroceso": ["retroceso", "knockback"],
         "aturdido": ["aturdido", "stun"],
+        "velocidad_escalera": ["velocidad_escalera", "stair_speed"],
     },
     "ataque": {
         "velocidad": ["velocidad", "speed"],
@@ -118,6 +119,7 @@ RANGOS: Dict[str, Dict[str, float]] = {
     "invulnerable": {"min": 0, "max": 600, "paso": 10},
     "retroceso": {"min": 0.0, "max": 12, "paso": 0.1},
     "aturdido": {"min": 0, "max": 120, "paso": 2},
+    "velocidad_escalera": {"min": 0.0, "max": 8, "paso": 0.1},
     "alcance": {"min": 4, "max": 512, "paso": 4},
     "duracion": {"min": 1, "max": 120, "paso": 1},
     "preparacion": {"min": 0, "max": 120, "paso": 1},

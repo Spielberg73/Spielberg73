@@ -17,7 +17,8 @@ from .errors import ProjectError
 from . import historial as hist
 from .preview import write_preview
 from .project import load_project
-from .scaffold import ESTILOS, crear_proyecto
+from .scaffold import (ESTILOS, GENEROS, crear_proyecto, genero_de,
+                       menu_de_generos)
 
 VERDE = "\033[32m"
 AMARILLO = "\033[33m"
@@ -60,10 +61,17 @@ def _cargar(ruta: str, sistema_nombre: str = ""):
 # ------------------------------------------------------------------ ordenes
 
 def cmd_nuevo(args: argparse.Namespace) -> int:
+    # Sin `--genero` y con alguien delante, se pregunta. En un guion o en las
+    # pruebas no hay a quien preguntar, asi que sale el de por defecto y nada
+    # se queda esperando en una tuberia.
+    genero = getattr(args, "genero", None)
+    if not genero:
+        genero = menu_de_generos() if sys.stdin.isatty() else GENEROS[0]
     creados = crear_proyecto(args.carpeta,
                              args.titulo or os.path.basename(args.carpeta.rstrip("/")),
-                             args.autor or "", args.estilo)
+                             args.autor or "", args.estilo, genero)
     _ok("proyecto creado en '%s'" % args.carpeta)
+    _info("genero: %s -- %s" % (genero, genero_de(genero, args.estilo).resumen))
     for nombre in creados:
         _info(nombre)
     print()
@@ -345,6 +353,10 @@ def build_parser() -> argparse.ArgumentParser:
                          help="dibujos de partida: 'bosque' (colores libres) o "
                               "'hierro' (seis colores, listo para el doble plano "
                               "del Amiga)")
+    p_nuevo.add_argument("--genero", choices=GENEROS, default=None,
+                         help="como se juega: 'plataformas' (saltar, pisar y "
+                              "disparar) o 'castlevania' (latigo, escaleras y "
+                              "municion). Sin esto, se pregunta")
     p_nuevo.set_defaults(func=cmd_nuevo)
 
     p_check = sub.add_parser("comprobar", aliases=["check"],

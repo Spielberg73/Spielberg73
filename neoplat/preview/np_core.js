@@ -22,9 +22,11 @@
 
   var IN = { LEFT: 1, RIGHT: 2, UP: 4, DOWN: 8, JUMP: 16, ACTION: 32, START: 64 };
   var TILE_EMPTY = 0, TILE_SOLID = 1, TILE_PLATFORM = 2, TILE_HAZARD = 3, TILE_GOAL = 4;
+  /* escaleras: la que sube a la derecha y la que sube a la izquierda */
+  var TILE_STAIR_R = 6, TILE_STAIR_L = 7;
   var AI_PATROL = 0, AI_FLYER = 1, AI_CHASER = 2, AI_JUMPER = 3;
   var ANIM_IDLE = 0, ANIM_RUN = 1, ANIM_JUMP = 2, ANIM_FALL = 3, ANIM_HURT = 4,
-      ANIM_ATTACK = 5;
+      ANIM_ATTACK = 5, ANIM_STAIR = 6;
   var KIND_ENEMY = 0, KIND_ITEM = 1, KIND_SHOT = 2, KIND_PLATFORM = 3;
   var KIND_BREAKABLE = 4, KIND_SUBSHOT = 5;
   /* el arma secundaria: 0 ninguna, 1 recta, 2 en arco */
@@ -64,7 +66,8 @@
         x: 0, y: 0, vx: 0, vy: 0, animTimer: 0, invuln: 0, dying: 0,
         anim: 0, animFrame: 0, onGround: 0, facing: 1, jumpsLeft: 0,
         health: 1, coyote: 0, buffer: 0, lives: 0, playing: 0,
-        attackTimer: 0, attackCd: 0, riding: 0, stun: 0
+        attackTimer: 0, attackCd: 0, riding: 0, stun: 0,
+        stairs: 0, stairDir: 1
       });
     }
     this.playerCount = data.players || 1;
@@ -260,6 +263,7 @@
     p.vx = 0; p.vy = 0; p.onGround = 0; p.facing = 1;
     p.health = d.health; p.invuln = 0; p.coyote = 0; p.buffer = 0;
     p.dying = 0; p.attackTimer = 0; p.attackCd = 0; p.riding = 0; p.stun = 0;
+    p.stairs = 0; p.stairDir = 1;
     p.jumpsLeft = d.double_jump ? 1 : 0;
     p.anim = ANIM_IDLE; p.animFrame = 0; p.animTimer = 0;
   };
@@ -312,6 +316,7 @@
        que el empujon te lleva donde te lleve. Igual que np_player_hurt. */
     p.stun = d.stun;
     p.attackTimer = 0;
+    p.stairs = 0;               /* un golpe te tira de la escalera */
   };
 
   var moveOut = { hit: 0, hitDown: 0, hitUp: 0 };
@@ -591,6 +596,99 @@
     }
   };
 
+  /* ------------------------------------------------------------ escaleras
+   *
+   * Traduccion literal de np_stair_at / np_stair_mount / np_stair_update. Una
+   * escalera es un segundo modo de movimiento: sin gravedad, sin saltos y sin
+   * choques, y todo se apoya en el pixel de abajo del centro de la caja. */
+
+  World.prototype.stairAt = function (x, y) {
+    var kind = this.tileKindAt(F2I(x) >> TILE_SHIFT, F2I(y) >> TILE_SHIFT);
+    return (kind === TILE_STAIR_R || kind === TILE_STAIR_L) ? kind : 0;
+  };
+
+  function refX(p, a) { return p.x + I2F(idiv(a.box_w, 2)); }
+  function refY(p, a) { return p.y + I2F(a.box_h - 1); }
+
+  function stairPlace(p, a, tx, ty) {
+    p.x = I2F(tx * TILE + idiv(TILE, 2) - idiv(a.box_w, 2));
+    p.y = I2F(ty * TILE + idiv(TILE, 2) - (a.box_h - 1));
+    p.vx = 0;
+    p.vy = 0;
+  }
+
+  World.prototype.stairMount = function (quien, input) {
+    var a = this.data.player.actor, p = this.players[quien];
+    var tx = F2I(refX(p, a)) >> TILE_SHIFT;
+    var kind;
+    if (!p.onGround || this.data.player.stair_speed <= 0) return 0;
+
+    if (input & IN.UP) {
+      var ty = F2I(refY(p, a)) >> TILE_SHIFT;
+      kind = this.stairAt(refX(p, a), refY(p, a));
+      if (kind) {
+        p.stairs = 1;
+        p.stairDir = (kind === TILE_STAIR_R) ? 1 : -1;
+        stairPlace(p, a, tx, ty);
+        return 1;
+      }
+    }
+    if (input & IN.DOWN) {
+      var tb = (F2I(p.y + I2F(a.box_h)) >> TILE_SHIFT) + 1;
+      for (var bx = -1; bx <= 1; bx += 2) {
+        var esperado = (bx < 0) ? TILE_STAIR_R : TILE_STAIR_L;
+        kind = this.tileKindAt(tx + bx, tb);
+        if (kind !== esperado) continue;
+        p.stairs = 1;
+        p.stairDir = (kind === TILE_STAIR_R) ? 1 : -1;
+        stairPlace(p, a, tx + bx, tb);
+        return 1;
+      }
+    }
+    return 0;
+  };
+
+  World.prototype.stairUpdate = function (quien, input) {
+    var d = this.data.player, a = d.actor, p = this.players[quien];
+    var moviendo = 0;
+    p.vx = 0;
+    p.vy = 0;
+    p.onGround = 0;
+    if (input & IN.UP) {
+      p.x += p.stairDir * d.stair_speed;
+      p.y -= d.stair_speed;
+      moviendo = 1;
+    } else if (input & IN.DOWN) {
+      p.x -= p.stairDir * d.stair_speed;
+      p.y += d.stair_speed;
+      moviendo = 1;
+    }
+    if (!this.stairAt(refX(p, a), refY(p, a))) {
+      var ty = F2I(refY(p, a)) >> TILE_SHIFT;
+      p.y = I2F(ty * TILE - a.box_h);
+      p.stairs = 0;
+      p.onGround = 1;
+      return 0;
+    }
+    animSet(p, ANIM_STAIR);
+    if (moviendo) animTick(a, p);
+    return 1;
+  };
+
+  /* El boton de accion, aparte porque vale igual andando que en la escalera. */
+  World.prototype.playerAction = function (quien, input) {
+    var p = this.players[quien];
+    if (p.attackCd) p.attackCd--;
+    if ((input & IN.ACTION) && !(this.prevInput[quien] & IN.ACTION)) {
+      var sb = this.data.player.sub;
+      if ((input & IN.UP) && sb && sb.kind !== SUB_NONE && this.hearts >= sb.cost)
+        this.playerSub(quien);
+      else
+        this.playerAttack(quien);
+    }
+    this.meleeUpdate(quien);
+  };
+
   World.prototype.playerUpdate = function (quien, input) {
     var d = this.data.player, a = d.actor, p = this.players[quien];
     var dir = 0;
@@ -613,6 +711,18 @@
       if (input & IN.LEFT) dir -= 1;
     }
 
+    /* Subido a una escalera manda la escalera: ni gravedad, ni saltos, ni
+       choques. Igual que en np_player_update. */
+    if (p.stairs) {
+      this.playerAction(quien, input);
+      if (!this.stairUpdate(quien, input)) animSet(p, ANIM_IDLE);
+      return;
+    }
+    if (!p.stun && this.stairMount(quien, input)) {
+      animSet(p, ANIM_STAIR);
+      return;
+    }
+
     /* Con `clavado: si` te quedas plantado mientras dura el golpe: ni andas ni
        te giras. Igual que en np_player_update. */
     if (p.attackTimer && d.attack.locks && p.onGround) {
@@ -624,17 +734,7 @@
     else if (p.onGround) p.vx = approach(p.vx, 0, d.friction);
 
     /* El ataque va por flanco: mantener el boton no dispara sin parar. */
-    if (p.attackCd) p.attackCd--;
-    if ((input & IN.ACTION) && !(this.prevInput[quien] & IN.ACTION)) {
-      /* arriba + accion tira el arma secundaria; el boton a secas, el ataque
-         de siempre. Sin arma o sin municion, se pega. */
-      var sb = this.data.player.sub;
-      if ((input & IN.UP) && sb && sb.kind !== SUB_NONE && this.hearts >= sb.cost)
-        this.playerSub(quien);
-      else
-        this.playerAttack(quien);
-    }
-    this.meleeUpdate(quien);
+    this.playerAction(quien, input);
 
     var pressedJump = (input & IN.JUMP) && !(this.prevInput[quien] & IN.JUMP);
     if (pressedJump) p.buffer = d.jump_buffer + 1;

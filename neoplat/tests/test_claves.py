@@ -34,6 +34,7 @@ VALORES = {
     "movimiento": "vertical", "distancia": "96",
     "retroceso": "2.5", "aturdido": "20", "alcance": "40", "duracion": "12",
     "preparacion": "4", "clavado": "si", "espera": "25",
+    "velocidad_escalera": "0.9",
 }
 
 

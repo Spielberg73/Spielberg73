@@ -176,7 +176,7 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("    %d, %d, %d, %d," % (pv["speed"], pv["accel"], pv["friction"], pv["air_accel"]))
     src.append("    %d, %d, %d, %d, %d," % (pv["jump"], pv["jump_cut"], pv["gravity"],
                                             pv["max_fall"], pv["bounce"]))
-    src.append("    %d," % pv["knockback"])
+    src.append("    %d, %d," % (pv["knockback"], pv["stair_speed"]))
     src.append("    %d, %d," % (pv["invuln"], pv["stun"]))
     src.append("    %d, %d, %d, %d, %d," % (pv["coyote"], pv["jump_buffer"],
                                             pv["double_jump"], pv["stomp"], pv["health"]))

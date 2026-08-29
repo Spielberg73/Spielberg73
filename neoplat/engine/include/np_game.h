@@ -72,6 +72,10 @@ typedef struct {
      * quedas `stun` frames sin control. Es lo que convierte un roce en una
      * caida al vacio, y de eso vive medio diseno de niveles clasico. */
     np_fix knockback;
+    /* Lo que se avanza por cada frame en una escalera, en diagonal. Va aparte
+     * de `speed` porque en los clasicos se sube despacio, y esa lentitud es la
+     * que hace que una escalera sea un sitio donde te pueden cazar. */
+    np_fix stair_speed;
     uint16_t invuln, stun;
     uint8_t coyote, jump_buffer, double_jump, stomp, health;
     NpAttackDef attack;

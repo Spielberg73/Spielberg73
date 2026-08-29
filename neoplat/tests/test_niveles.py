@@ -62,6 +62,18 @@ class TestNivelesJugables(unittest.TestCase):
                          "el bot no puede terminar el proyecto recien creado:\n"
                          + resultado.stdout)
 
+    def test_el_proyecto_de_castlevania_tambien_se_termina(self):
+        """El genero de latigo cambia la fisica entera -sin correccion del
+        salto, sin pisar enemigos y con escaleras- asi que su nivel de partida
+        hay que comprobarlo aparte: el bot no sabe subir escaleras, y si el
+        camino dependiera de una no habria forma de pasar."""
+        destino = os.path.join(self.tmp, "castillo")
+        crear_proyecto(destino, "CASTILLO", "TEST", genero="castlevania")
+        resultado = self._jugar(destino)
+        self.assertEqual(resultado.returncode, 0,
+                         "el bot no puede terminar el proyecto de castlevania:\n"
+                         + resultado.stdout)
+
     def test_avisa_cuando_la_llave_no_esta_en_el_camino(self):
         """El bot solo anda hacia la derecha. Si la llave que abre la meta esta
         donde el no llega, tiene que decirlo con esas palabras y no soltar un

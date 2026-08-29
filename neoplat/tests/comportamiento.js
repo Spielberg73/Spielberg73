@@ -15,8 +15,11 @@ var NP = require(path.join(__dirname, "..", "preview", "np_core.js"));
 var F = NP.FIX_ONE;
 function fx(v) { return Math.round(v * F); }
 
-/* tipos de tile: 0 vacio, 1 solido, 2 plataforma, 3 peligro, 4 meta */
-var LEYENDA = { ".": 0, "#": 1, "=": 2, "^": 3, "G": 4 };
+/* El simbolo del mapa -> su hueco en la leyenda; y la leyenda -> el tipo de
+   tile que entiende el motor (0 vacio, 1 solido, 2 plataforma, 3 peligro,
+   4 meta, 6 escalera que sube a la derecha, 7 la que sube a la izquierda). */
+var LEYENDA = { ".": 0, "#": 1, "=": 2, "^": 3, "G": 4, "/": 5, "\\": 6 };
+var TIPOS = [0, 1, 2, 3, 4, 6, 7];
 
 function anim(frames, speed) {
   return { frames: frames, count: frames.length, speed: speed || 8, loop: 1 };
@@ -27,7 +30,8 @@ function actor(boxW, boxH) {
     first_tile: 0, palette: 0, cols: 1, rows: 1,
     box_x: 0, box_y: 0, box_w: boxW, box_h: boxH,
     frames: 1, frame_w: 16, frame_h: 16, sheet: "x",
-    anims: [anim([0]), anim([0]), anim([0]), anim([0]), anim([0]), anim([0])]
+    anims: [anim([0]), anim([0]), anim([0]), anim([0]), anim([0]), anim([0]),
+            anim([0])]
   };
 }
 
@@ -52,7 +56,7 @@ function datos(filas, opciones) {
       else if (ch === "V") { spawns.push([x * 16 + 2, y * 16 + 16 - candelabro.box_h, 4, 1]); ch = "."; }
       else if (ch === "J") { spawns.push([x * 16 + 2, y * 16 + 16 - enemigo.box_h, 0, 2]); ch = "."; }
       assert.ok(ch in LEYENDA, "simbolo desconocido: " + ch);
-      celdas.push(".#=^G".indexOf(ch));
+      celdas.push(LEYENDA[ch]);
     }
   }
   var sin = [];
@@ -70,6 +74,8 @@ function datos(filas, opciones) {
       knockback: fx(opciones.retroceso === undefined ? (opciones.speed || 1.6)
                                                      : opciones.retroceso),
       stun: opciones.aturdido || 0,
+      /* lo que se avanza por frame en una escalera; 0 = no se pueden subir */
+      stair_speed: fx(opciones.escalera === undefined ? 0.8 : opciones.escalera),
       coyote: opciones.coyote === undefined ? 6 : opciones.coyote,
       jump_buffer: opciones.buffer === undefined ? 6 : opciones.buffer,
       double_jump: opciones.doubleJump ? 1 : 0,
@@ -136,7 +142,7 @@ function datos(filas, opciones) {
       axis: opciones.tablonEje === "vertical" ? 1 : 0,
       name: "tablon"
     }],
-    tiles: { kind: [0, 1, 2, 3, 4], gfx: [0, 1, 2, 3, 4] },
+    tiles: { kind: TIPOS, gfx: [0, 1, 2, 3, 4, 5, 6] },
     levels: [{
       name: "TEST", width: ancho, height: alto, cells: celdas,
       spawns: spawns, start: start, background: "#000000",
@@ -699,6 +705,173 @@ prueba("el golpe recibido corta el ataque a medias", function () {
   for (i = 0; i < 300 && w.players[0].health === 3; i++) w.step(NP.IN.RIGHT);
   assert.strictEqual(w.players[0].attackTimer, 0,
     "sigue pegando despues de que le hayan dado");
+});
+
+/* --------------------------------------------------------- escaleras */
+
+/* Una escalera de tres escalones que sube a la derecha, entre dos suelos:
+ *
+ *   fila  9   ......####      suelo de arriba
+ *   fila 10   ...../....
+ *   fila 11   ..../.....
+ *   fila 12   .../......
+ *   fila 13   ##########      suelo de abajo (el de suelo())
+ */
+function conEscalera(subeDerecha) {
+  var filas = [];
+  for (var y = 0; y < 13; y++) filas.push(".".repeat(24));
+  filas.push("#".repeat(24));       /* fila 13: el suelo de abajo */
+  function pon(fila, col, ch) {
+    var f = filas[fila].split("");
+    f[col] = ch;
+    filas[fila] = f.join("");
+  }
+  if (subeDerecha) {
+    pon(12, 3, "/"); pon(11, 4, "/"); pon(10, 5, "/");
+    for (var c = 6; c < 10; c++) pon(9, c, "#");     /* suelo de arriba */
+  } else {
+    pon(12, 8, "\\"); pon(11, 7, "\\"); pon(10, 6, "\\");
+    for (var d = 1; d < 6; d++) pon(9, d, "#");
+  }
+  return filas;
+}
+
+function ponerP(filas, fila, col) {
+  var f = filas[fila].split("");
+  f[col] = "P";
+  filas[fila] = f.join("");
+  return filas;
+}
+
+/* Planta al jugador de pie encima de `filaSuelo`, centrado en `col`.
+ *
+ * Hace falta porque para subirse a una escalera hay que estar **dentro** de su
+ * casilla, y el simbolo 'P' del mapa la borraria: la salida y el primer
+ * escalon quieren la misma celda. */
+function plantar(w, col, filaSuelo) {
+  var p = w.players[0], a = w.data.player.actor;
+  p.x = NP.I2F(col * 16 + 8 - Math.floor(a.box_w / 2));
+  p.y = NP.I2F(filaSuelo * 16 - a.box_h);
+  p.vx = 0;
+  p.vy = 0;
+  w.step(0);                      /* un frame para que se apoye */
+  return p;
+}
+
+prueba("pulsando arriba en la base te subes a la escalera", function () {
+  var w = mundo(ponerP(conEscalera(true), 12, 1));
+  plantar(w, 3, 13);                 /* al pie de la escalera */
+  assert.strictEqual(w.players[0].stairs, 0, "se ha subido sin pedirlo");
+  w.step(NP.IN.UP);
+  assert.strictEqual(w.players[0].stairs, 1, "no se ha subido a la escalera");
+  assert.strictEqual(w.players[0].stairDir, 1, "no ha cogido el sentido");
+});
+
+prueba("subiendo se llega al suelo de arriba y se sale de la escalera", function () {
+  var w = mundo(ponerP(conEscalera(true), 12, 1));
+  plantar(w, 3, 13);
+  var i;
+  for (i = 0; i < 200 && w.players[0].stairs === 0; i++) w.step(NP.IN.UP);
+  assert.strictEqual(w.players[0].stairs, 1, "no ha llegado a subirse");
+  for (i = 0; i < 300 && w.players[0].stairs; i++) w.step(NP.IN.UP);
+  assert.strictEqual(w.players[0].stairs, 0, "no sale nunca de la escalera");
+  var p = w.players[0];
+  assert.strictEqual(p.onGround, 1, "no ha quedado de pie al salir");
+  /* de pie encima de la fila 9, que es el suelo de arriba */
+  assert.strictEqual(NP.F2I(p.y) + w.data.player.actor.box_h, 9 * 16,
+    "no ha quedado plantado en el suelo de arriba");
+  correr(w, 40);
+  assert.strictEqual(p.onGround, 1, "se ha caido despues de salir");
+});
+
+prueba("bajando desde arriba se llega al suelo de abajo", function () {
+  var w = mundo(ponerP(conEscalera(true), 8, 1));
+  plantar(w, 6, 9);                  /* de pie en el suelo de arriba */
+  assert.strictEqual(w.players[0].onGround, 1);
+  w.step(NP.IN.DOWN);
+  assert.strictEqual(w.players[0].stairs, 1, "no se ha bajado a la escalera");
+  var i;
+  for (i = 0; i < 300 && w.players[0].stairs; i++) w.step(NP.IN.DOWN);
+  var p = w.players[0];
+  assert.strictEqual(p.stairs, 0, "no sale de la escalera");
+  assert.strictEqual(NP.F2I(p.y) + w.data.player.actor.box_h, 13 * 16,
+    "no ha quedado plantado en el suelo de abajo");
+});
+
+prueba("la escalera que sube a la izquierda va al otro lado", function () {
+  var w = mundo(ponerP(conEscalera(false), 12, 1));
+  plantar(w, 8, 13);
+  var x0 = w.players[0].x;
+  w.step(NP.IN.UP);
+  assert.strictEqual(w.players[0].stairs, 1, "no se ha subido");
+  assert.strictEqual(w.players[0].stairDir, -1, "el sentido esta al reves");
+  correr(w, 20, NP.IN.UP);
+  assert.ok(w.players[0].x < x0, "sube hacia la derecha en vez de a la izquierda");
+});
+
+prueba("en la escalera no hay gravedad ni saltos", function () {
+  var w = mundo(ponerP(conEscalera(true), 12, 1));
+  plantar(w, 3, 13);
+  w.step(NP.IN.UP);
+  correr(w, 6, NP.IN.UP);
+  var y = w.players[0].y;
+  correr(w, 30);                     /* sin tocar nada: no se cae */
+  assert.strictEqual(w.players[0].y, y, "se ha caido estando en la escalera");
+  correr(w, 20, NP.IN.JUMP);
+  assert.strictEqual(w.players[0].stairs, 1, "el salto le ha sacado");
+  assert.strictEqual(w.players[0].y, y, "ha saltado desde la escalera");
+});
+
+prueba("izquierda y derecha no hacen nada en la escalera", function () {
+  var w = mundo(ponerP(conEscalera(true), 12, 1));
+  plantar(w, 3, 13);
+  w.step(NP.IN.UP);
+  correr(w, 4, NP.IN.UP);
+  var x = w.players[0].x;
+  correr(w, 30, NP.IN.RIGHT);
+  assert.strictEqual(w.players[0].x, x, "se mueve de lado en la escalera");
+});
+
+prueba("un golpe te tira de la escalera", function () {
+  var filas = conEscalera(true);
+  filas = ponerP(filas, 12, 1);
+  var f = filas[12].split(""); f[6] = "v"; filas[12] = f.join("");  /* volador */
+  var w = mundo(filas, { health: 3, aturdido: 20 });
+  plantar(w, 3, 13);
+  w.step(NP.IN.UP);
+  assert.strictEqual(w.players[0].stairs, 1);
+  var i;
+  for (i = 0; i < 400 && w.players[0].health === 3; i++) w.step(NP.IN.UP);
+  assert.ok(w.players[0].health < 3, "el volador no le ha tocado");
+  assert.strictEqual(w.players[0].stairs, 0, "sigue en la escalera tras el golpe");
+});
+
+prueba("desde la escalera se puede pegar", function () {
+  var w = mundo(ponerP(conEscalera(true), 12, 1),
+                { ataque: "golpe", espera: 60, duracion: 12 });
+  plantar(w, 3, 13);
+  w.step(NP.IN.UP);
+  assert.strictEqual(w.players[0].stairs, 1);
+  w.step(NP.IN.ACTION);
+  assert.ok(w.players[0].attackTimer > 0, "no se puede pegar en la escalera");
+  assert.strictEqual(w.players[0].stairs, 1, "pegar le ha sacado de la escalera");
+});
+
+prueba("con velocidad_escalera a cero no hay escaleras", function () {
+  var w = mundo(ponerP(conEscalera(true), 12, 1), { escalera: 0 });
+  plantar(w, 3, 13);
+  correr(w, 20, NP.IN.UP);
+  assert.strictEqual(w.players[0].stairs, 0,
+    "se sube a una escalera en un juego que no las lleva");
+});
+
+prueba("la escalera no frena a nadie: se pasa por delante andando", function () {
+  var w = mundo(ponerP(conEscalera(true), 12, 1));
+  correr(w, 10);
+  var x = w.players[0].x;
+  correr(w, 90, NP.IN.RIGHT);        /* pasa por delante de la escalera */
+  assert.ok(w.players[0].x > x + NP.I2F(40), "la escalera le ha frenado");
+  assert.strictEqual(w.players[0].stairs, 0, "se ha subido solo al pasar");
 });
 
 /* ------------------------------------ candelabros: pegarles y que suelten */

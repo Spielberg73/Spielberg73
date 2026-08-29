@@ -175,9 +175,15 @@ TILE_KINDS = {
     "peligro": "hazard", "hazard": "hazard", "pinchos": "hazard", "spikes": "hazard",
     "meta": "goal", "goal": "goal", "salida": "goal", "exit": "goal",
     "decorado": "decor", "decor": "decor", "fondo": "decor",
+    # escaleras: hay dos porque una escalera tiene sentido de subida
+    "escalera": "stair_r", "escalera_derecha": "stair_r", "stair_r": "stair_r",
+    "escalera_sube_derecha": "stair_r", "stairs": "stair_r",
+    "escalera_izquierda": "stair_l", "stair_l": "stair_l",
+    "escalera_sube_izquierda": "stair_l",
 }
 
-TILE_KIND_ID = {"empty": 0, "solid": 1, "platform": 2, "hazard": 3, "goal": 4, "decor": 5}
+TILE_KIND_ID = {"empty": 0, "solid": 1, "platform": 2, "hazard": 3, "goal": 4,
+                "decor": 5, "stair_r": 6, "stair_l": 7}
 
 BEHAVIORS = {
     "patrulla": "patrol", "patrol": "patrol", "andar": "patrol", "walker": "patrol",
@@ -244,6 +250,7 @@ class Player(Actor):
     invuln: int = 90
     knockback: float = 0.0        # 0 = tanto como la velocidad de andar
     stun: int = 0                 # frames sin control tras un golpe
+    stair_speed: float = 0.0      # 0 = la mitad de la velocidad de andar
     attack: Optional["Attack"] = None
     sub: Optional["Sub"] = None
 
@@ -388,6 +395,8 @@ ANIM_ALIASES = {
     "saltar": "jump", "salto": "jump", "jump": "jump",
     "caer": "fall", "caida": "fall", "caída": "fall", "fall": "fall",
     "morir": "hurt", "dano": "hurt", "daño": "hurt", "hurt": "hurt",
+    "atacar": "attack", "ataque": "attack", "attack": "attack", "pegar": "attack",
+    "subir": "stair", "escalera": "stair", "trepar": "stair", "stair": "stair",
     "girar": "turn", "turn": "turn",
 }
 
@@ -663,6 +672,8 @@ def _read_player(node: Node, root: str) -> Player:
         knockback=node.num(["knockback", "retroceso", "empujon", "empujón"], 0.0,
                            0.0, 12.0),
         stun=node.int_(["stun", "aturdido", "aturdimiento"], 0, 0, 120),
+        stair_speed=node.num(["stair_speed", "velocidad_escalera", "escalera"],
+                             0.0, 0.0, 8.0),
         attack=_read_attack(node.child("attack", "ataque"), root),
         sub=_read_sub(node.child("sub", "secundaria", "arma_secundaria"), root),
     )
@@ -670,6 +681,10 @@ def _read_player(node: Node, root: str) -> Player:
     # un proyecto que no lo pone se comporta exactamente igual que antes.
     if not player.knockback:
         player.knockback = player.speed
+    # Y sin `velocidad_escalera:` se sube a la mitad de lo que se anda, que es
+    # lo que hace que una escalera sea un sitio incomodo donde te pueden cazar.
+    if not player.stair_speed:
+        player.stair_speed = player.speed / 2.0
     _warn_unknown(node, where, [
         "sprite", "imagen", "image", "frame", "fotograma", "tamano_frame",
         "hitbox", "caja", "colision", "colisión", "tamano", "tamaño", "size",
@@ -685,6 +700,7 @@ def _read_player(node: Node, root: str) -> Player:
         "invulnerabilidad", "attack", "ataque",
         "knockback", "retroceso", "empujon", "empujón",
         "stun", "aturdido", "aturdimiento",
+        "stair_speed", "velocidad_escalera", "escalera",
         "sub", "secundaria", "arma_secundaria",
     ])
     return player
