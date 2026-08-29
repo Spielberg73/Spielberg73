@@ -665,8 +665,12 @@ Lo que aún no hace:
   ([docs/atarist.md](docs/atarist.md)).
 - **Eventos guionizados**: hay cinco comportamientos de enemigo fijos y un jefe
   por nivel (`jefe: si`); no hay forma de guionizar una secuencia.
-- **Checkpoints**: morir devuelve siempre al principio del nivel.
-
+- **La vida no se ve**: el marcador enseña puntos, vidas, tiempo, llaves,
+  munición y la barra del jefe, pero no los golpes que te quedan. Con `vida: 1`
+  daba igual; con `vida: 4` (el género de látigo) se juega a ciegas.
+- **Aviso de sprites en Neo Geo**: la Mega Drive avisa al pasar de 40 spawns
+  por nivel; la Neo Geo no mira nada, y si un nivel se pasa de las 96 columnas
+  de sprite el motor deja de dibujar sin decirlo.
 - **Zoom de sprites** (la Neo Geo lo permite; el motor no lo usa).
 
 ## Licencia
