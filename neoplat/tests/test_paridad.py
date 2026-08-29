@@ -72,14 +72,16 @@ class TestParidad(unittest.TestCase):
         cls.variantes["golpe"] = cls._preparar("scroll", golpe=True)
         cls.variantes["llave"] = cls._preparar("scroll", llave=True)
         cls.variantes["tablon"] = cls._preparar("scroll", tablon=True)
+        cls.variantes["latigo"] = cls._preparar("scroll", latigo=True)
 
     @classmethod
     def _preparar(cls, camara, jefe=False, dos=False, golpe=False, llave=False,
-                  tablon=False):
+                  tablon=False, latigo=False):
         proyecto_dir = os.path.join(
             cls.tmp, "juego-" + camara + ("-jefe" if jefe else "")
             + ("-dos" if dos else "") + ("-golpe" if golpe else "")
-            + ("-llave" if llave else "") + ("-tablon" if tablon else ""))
+            + ("-llave" if llave else "") + ("-tablon" if tablon else "")
+            + ("-latigo" if latigo else ""))
         crear_proyecto(proyecto_dir, "PARIDAD", "TEST")
         yaml = os.path.join(proyecto_dir, "game.yaml")
         with open(yaml, encoding="utf-8") as fh:
@@ -103,6 +105,15 @@ class TestParidad(unittest.TestCase):
             marca = "\n      P.......s"
             assert marca in texto, "el primer nivel ya no empieza asi"
             texto = texto.replace(marca, "\n      P.k.....s", 1)
+        if latigo:
+            # el juego "de latigo": golpe con preparacion, clavado en el sitio,
+            # y un empujon serio al recibir dano
+            texto = texto.replace("    tipo: disparo", "    tipo: golpe", 1)
+            texto = texto.replace(
+                "    dano: 1\n",
+                "    dano: 1\n    preparacion: 5\n    clavado: si\n", 1)
+            texto = texto.replace("  vida: 2",
+                                  "  vida: 2\n  retroceso: 3.0\n  aturdido: 24", 1)
         if tablon:
             # el andamiaje pone la plataforma movil en el segundo nivel y la
             # traza no llega: se pone una a la salida del primero, encima del
@@ -234,6 +245,23 @@ class TestParidad(unittest.TestCase):
         distintos = sum(1 for a, b in zip(columnas, sin) if a[2] != b[2])
         self.assertGreater(distintos, 20,
                            "la plataforma no cambia por donde pasa el jugador")
+
+    def test_misma_traza_con_latigo(self):
+        """El ataque con preparacion y clavado, y el empujon con aturdimiento:
+        son tres cosas que tocan el control del jugador frame a frame, que es
+        donde una diferencia entre C y JS se nota antes."""
+        for semilla in (1, 7, 99):
+            self._comparar("latigo", semilla)
+
+    def test_el_aturdimiento_cambia_la_partida(self):
+        """Si el aturdimiento no llegara al motor, la traza del latigo saldria
+        igual que la del golpe normal y la paridad no comprobaria nada."""
+        con, _ = self._trazas(1, "latigo")
+        sin, _ = self._trazas(1, "golpe")
+        distintos = sum(1 for a, b in zip(con, sin)
+                        if a.split()[1] != b.split()[1])
+        self.assertGreater(distintos, len(con) // 4,
+                           "el latigo se juega igual que el golpe de siempre")
 
     def test_misma_traza_a_dos_jugadores(self):
         """Lo mismo con `jugadores: 2`: dos mandos, dos vidas, la camara en el

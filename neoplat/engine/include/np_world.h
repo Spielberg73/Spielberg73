@@ -26,6 +26,7 @@ typedef struct {
     uint8_t coyote, buffer;
     uint16_t attack_timer;   /* frames que le quedan al golpe (cuerpo a cuerpo) */
     uint16_t attack_cd;      /* frames hasta poder atacar otra vez */
+    uint16_t stun;           /* frames sin control tras recibir un golpe */
     uint8_t riding;          /* plataforma que le lleva: indice + 1, 0 = ninguna */
     uint8_t lives;           /* las vidas son de cada uno */
     uint8_t playing;         /* 0 = fuera (segundo jugador de una partida a uno,

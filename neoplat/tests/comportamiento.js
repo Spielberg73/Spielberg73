@@ -63,6 +63,10 @@ function datos(filas, opciones) {
       speed: fx(opciones.speed || 1.6), accel: fx(0.3), friction: fx(0.35),
       air_accel: fx(0.16), jump: fx(opciones.jump || 4.3), jump_cut: fx(1.6),
       gravity: fx(0.28), max_fall: fx(6), bounce: fx(3.6), invuln: 90,
+      /* el empujon al recibir un golpe y los frames sin control de despues */
+      knockback: fx(opciones.retroceso === undefined ? (opciones.speed || 1.6)
+                                                     : opciones.retroceso),
+      stun: opciones.aturdido || 0,
       coyote: opciones.coyote === undefined ? 6 : opciones.coyote,
       jump_buffer: opciones.buffer === undefined ? 6 : opciones.buffer,
       double_jump: opciones.doubleJump ? 1 : 0,
@@ -75,6 +79,8 @@ function datos(filas, opciones) {
         range: opciones.alcance || 64,
         cooldown: opciones.espera === undefined ? 10 : opciones.espera,
         duration: opciones.duracion || 6,
+        windup: opciones.preparacion || 0,
+        locks: opciones.clavado ? 1 : 0,
         damage: opciones.dano || 1,
         actor: actor(6, 6)
       }
@@ -538,6 +544,135 @@ prueba("las llaves no se guardan de un nivel para otro", function () {
   assert.strictEqual(w.keys, 1);
   w.loadLevel(0);
   assert.strictEqual(w.keys, 0, "las llaves han sobrevivido al cambio de nivel");
+});
+
+/* --------------------------------------- el golpe recibido: empujon y susto */
+
+prueba("recibir un golpe te empuja hacia atras", function () {
+  var w = mundo(suelo([[13, 8, "e"], [13, 2, "P"]]), { health: 3, retroceso: 3 });
+  var p = w.players[0], i;
+  /* se mira en el frame del golpe: un par de frames despues el propio mando
+     ya le esta acelerando otra vez hacia delante */
+  for (i = 0; i < 400 && p.health === 3; i++) w.step(NP.IN.RIGHT);
+  assert.ok(p.health < 3, "el enemigo no ha hecho dano");
+  assert.ok(p.vx < 0, "el golpe no le ha empujado hacia atras: vx=" + p.vx);
+  assert.strictEqual(p.vx, -w.data.player.knockback, "el empujon no es el pedido");
+});
+
+prueba("con retroceso grande sales mas lejos", function () {
+  function donde(retroceso) {
+    var w = mundo(suelo([[13, 8, "e"], [13, 2, "P"]]),
+                  { health: 3, retroceso: retroceso, aturdido: 30 });
+    var i;
+    for (i = 0; i < 400 && w.players[0].health === 3; i++) w.step(NP.IN.RIGHT);
+    var x = w.players[0].x;
+    correr(w, 30);                    /* que le lleve el empujon */
+    return x - w.players[0].x;        /* cuanto ha retrocedido */
+  }
+  var poco = donde(1), mucho = donde(4);
+  assert.ok(mucho > poco, "el retroceso no cambia nada: " + mucho + " vs " + poco);
+});
+
+prueba("aturdido no se puede andar ni saltar", function () {
+  var w = mundo(suelo([[13, 8, "e"], [13, 2, "P"]]),
+                { health: 3, aturdido: 40, retroceso: 2 });
+  var i;
+  for (i = 0; i < 400 && w.players[0].health === 3; i++) w.step(NP.IN.RIGHT);
+  assert.strictEqual(w.players[0].stun, 40, "no se ha quedado aturdido");
+  var p = w.players[0];
+  var vxAntes = p.vx;
+  w.step(NP.IN.RIGHT | NP.IN.JUMP);
+  assert.strictEqual(p.vx, vxAntes, "aturdido sigue acelerando con el mando");
+  assert.ok(p.vy >= 0 || p.onGround === 0, "aturdido ha saltado");
+  correr(w, 60);
+  assert.strictEqual(p.stun, 0, "el aturdimiento no se acaba nunca");
+  correr(w, 30, NP.IN.RIGHT);
+  assert.ok(p.vx > 0, "no recupera el control al pasarsele el aturdimiento");
+});
+
+prueba("sin aturdimiento se recupera el control al momento", function () {
+  var w = mundo(suelo([[13, 8, "e"], [13, 2, "P"]]), { health: 3, aturdido: 0 });
+  var i;
+  for (i = 0; i < 400 && w.players[0].health === 3; i++) w.step(NP.IN.RIGHT);
+  assert.strictEqual(w.players[0].stun, 0);
+  correr(w, 20, NP.IN.RIGHT);
+  assert.ok(w.players[0].vx > 0, "no puede moverse justo despues del golpe");
+});
+
+/* ------------------------------------------- el ataque: preparacion y clavarse */
+
+prueba("con preparacion el golpe no toca en los primeros frames", function () {
+  function vivoTras(preparacion, frames) {
+    /* el enemigo, pegado: patrulla y se va alejando, y con preparacion el
+       golpe tarda seis frames en tocar */
+    var w = mundo(suelo([[13, 3, "e"], [13, 2, "P"]]),
+                  { ataque: "golpe", alcance: 24, duracion: 10,
+                    preparacion: preparacion, espera: 60 });
+    correr(w, 4);                     /* que caiga al suelo, y poco mas: el
+                                         enemigo patrulla y se aleja */
+    w.step(NP.IN.ACTION);
+    correr(w, frames);
+    return w.entities[0].active;
+  }
+  /* sin preparacion el enemigo cae en cuanto empieza el golpe */
+  assert.strictEqual(vivoTras(0, 1), 0, "sin preparacion no ha matado");
+  /* con preparacion de 6, al segundo frame todavia esta vivo */
+  assert.strictEqual(vivoTras(6, 1), 1, "la preparacion no retrasa el golpe");
+  /* pero acaba cayendo cuando el brazo llega */
+  assert.strictEqual(vivoTras(6, 9), 0, "el golpe no llega nunca a tocar");
+});
+
+function avanzaPegando(clavado) {
+  var w = mundo(suelo([[13, 2, "P"]]),
+                { ataque: "golpe", duracion: 20, espera: 60, clavado: clavado });
+  correr(w, 30, NP.IN.RIGHT);         /* llega a velocidad de crucero */
+  var x = w.players[0].x;
+  w.step(NP.IN.ACTION | NP.IN.RIGHT);
+  correr(w, 15, NP.IN.RIGHT);
+  return { avance: w.players[0].x - x, mundo: w, desde: x };
+}
+
+prueba("con 'clavado' el golpe te planta en el sitio", function () {
+  var con = avanzaPegando(true);
+  var sin = avanzaPegando(false);
+  assert.ok(con.avance < sin.avance / 3,
+    "clavado avanza casi lo mismo que sin clavar: " + con.avance + " vs " + sin.avance);
+  /* y al acabar el golpe vuelve a andar */
+  correr(con.mundo, 40, NP.IN.RIGHT);
+  assert.ok(con.mundo.players[0].x > con.desde + con.avance,
+    "no vuelve a andar al acabar el golpe");
+});
+
+prueba("sin 'clavado' se puede andar pegando", function () {
+  var sin = avanzaPegando(false);
+  assert.ok(sin.avance > 0, "clavado sin pedirlo");
+});
+
+prueba("clavado en el aire no te frena: saltas y pegas de camino", function () {
+  var w = mundo(suelo([[13, 2, "P"]]),
+                { ataque: "golpe", duracion: 20, espera: 60, clavado: true });
+  correr(w, 30, NP.IN.RIGHT);
+  w.step(NP.IN.JUMP | NP.IN.RIGHT);
+  correr(w, 4, NP.IN.RIGHT);
+  var x = w.players[0].x;
+  assert.strictEqual(w.players[0].onGround, 0, "no esta en el aire");
+  w.step(NP.IN.ACTION | NP.IN.RIGHT);
+  correr(w, 8, NP.IN.RIGHT);
+  assert.ok(w.players[0].x > x + NP.I2F(4),
+    "el golpe le ha frenado en el aire");
+});
+
+prueba("el golpe recibido corta el ataque a medias", function () {
+  var w = mundo(suelo([[13, 5, "e"], [13, 2, "P"]]),
+                { ataque: "golpe", duracion: 40, espera: 90, health: 3,
+                  alcance: 4, aturdido: 20 });
+  correr(w, 30);
+  w.step(NP.IN.ACTION);
+  assert.ok(w.players[0].attackTimer > 0, "no ha empezado a pegar");
+  var i;
+  for (i = 0; i < 300 && w.players[0].health === 3; i++) w.step(NP.IN.RIGHT);
+  assert.strictEqual(w.players[0].attackTimer, 0,
+    "sigue pegando despues de que le hayan dado");
 });
 
 /* ------------------------------------------------- plataformas moviles */

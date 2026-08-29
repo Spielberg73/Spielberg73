@@ -39,15 +39,24 @@ typedef struct {
     uint16_t range;          /* pixeles que recorre, o alcance del golpe */
     uint16_t cooldown;       /* frames entre un ataque y el siguiente */
     uint16_t duration;       /* frames que dura el golpe */
+    /* Frames de preparacion antes de que el golpe haga dano. En un latigo el
+     * brazo tarda en llegar, y es lo que obliga a medir la distancia en vez de
+     * pegar botones. 0 = el golpe vale desde el primer frame. */
+    uint16_t windup;
     uint8_t kind;            /* NP_ATTACK_* */
     uint8_t damage;
+    uint8_t locks;           /* 1 = mientras pegas no te puedes mover */
 } NpAttackDef;
 
 typedef struct {
     NpActorDef actor;
     np_fix speed, accel, friction, air_accel;
     np_fix jump, jump_cut, gravity, max_fall, bounce;
-    uint16_t invuln;
+    /* Al recibir un golpe sales despedido hacia atras con esta fuerza y te
+     * quedas `stun` frames sin control. Es lo que convierte un roce en una
+     * caida al vacio, y de eso vive medio diseno de niveles clasico. */
+    np_fix knockback;
+    uint16_t invuln, stun;
     uint8_t coyote, jump_buffer, double_jump, stomp, health;
     NpAttackDef attack;
 } NpPlayerDef;

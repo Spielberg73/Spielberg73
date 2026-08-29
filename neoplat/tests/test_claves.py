@@ -32,12 +32,17 @@ VALORES = {
     "efecto": "vida", "cantidad": "2", "nombre": '"OTRO NIVEL"',
     "musica": "tema", "fondos": "[]", "llaves": "0",
     "movimiento": "vertical", "distancia": "96",
+    "retroceso": "2.5", "aturdido": "20", "alcance": "40", "duracion": "12",
+    "preparacion": "4", "clavado": "si", "espera": "25",
 }
 
 
 def _yaml(reemplazos):
     texto = YAML_MINIMO % "\n".join("      " + f for f in MAPA_MINIMO.split("\n"))
     for viejo, nuevo in reemplazos:
+        # sin esto, un ancla que ya no exista deja la prueba pasando en vacio:
+        # se cargaria el yaml sin la linea que se queria comprobar
+        assert viejo in texto, "el ancla %r ya no esta en el yaml minimo" % viejo
         texto = texto.replace(viejo, nuevo, 1)
     return texto
 
@@ -76,6 +81,28 @@ class TestClaves(unittest.TestCase):
 
     def test_alias_de_los_objetos(self):
         self._probar_seccion("objeto", "  moneda:", "    ")
+
+    ATAQUE = ("jugador:", "jugador:\n"
+              "  ataque:\n"
+              "    tipo: golpe\n")
+
+    def test_alias_del_ataque(self):
+        """El ataque no viene en el proyecto minimo, asi que se le pone uno."""
+        for campo, alias in CAMPOS["ataque"].items():
+            for nombre in alias:
+                linea = "    %s: %s\n" % (nombre, VALORES[campo])
+                texto = _yaml([(self.ATAQUE[0], self.ATAQUE[1] + linea)])
+                try:
+                    self._cargar(texto)
+                except Exception as exc:       # noqa: BLE001
+                    self.fail("'%s' en el ataque no lo acepta el lector (%s)"
+                              % (nombre, exc))
+
+    def test_el_ancla_del_ataque_existe_de_verdad(self):
+        """Y que ese ataque llega al proyecto: si no, lo de arriba no prueba nada."""
+        proyecto = self._cargar(_yaml([(self.ATAQUE[0], self.ATAQUE[1])]))
+        self.assertIsNotNone(proyecto.player.attack, "no ha leido el ataque")
+        self.assertEqual(proyecto.player.attack.kind, "melee")
 
     def test_alias_de_las_plataformas(self):
         self._probar_seccion("plataforma", "  tablon:", "    ")

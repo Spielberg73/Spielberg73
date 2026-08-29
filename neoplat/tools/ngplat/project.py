@@ -238,6 +238,8 @@ class Player(Actor):
     bounce: float = 3.6
     health: int = 1
     invuln: int = 90
+    knockback: float = 0.0        # 0 = tanto como la velocidad de andar
+    stun: int = 0                 # frames sin control tras un golpe
     attack: Optional["Attack"] = None
 
 
@@ -249,6 +251,8 @@ class Attack(Actor):
     range: int = 64                # px que recorre, o alcance del golpe
     cooldown: int = 20             # frames entre ataques
     duration: int = 8              # frames que dura el golpe
+    windup: int = 0                # frames de preparacion antes de hacer dano
+    locks: bool = False            # mientras pegas, no te mueves
     damage: int = 1
 
 
@@ -518,8 +522,16 @@ def _read_attack(node: Node, root: str) -> Optional["Attack"]:
         range=node.int_(["range", "alcance"], 64 if kind == "shot" else 12, 4, 512),
         cooldown=node.int_(["cooldown", "espera", "cadencia"], 20, 1, 300),
         duration=node.int_(["duration", "duracion", "duración"], 8, 1, 120),
+        windup=node.int_(["windup", "preparacion", "preparación", "aviso"], 0, 0, 120),
+        locks=node.bool_(["locks", "clavado", "sin_moverse"], False),
         damage=node.int_(["damage", "dano", "daño"], 1, 1, 99),
     )
+    if ataque.windup >= ataque.duration:
+        raise ProjectError(
+            "la preparacion del ataque (%d) se come su duracion entera (%d): "
+            "no llegaria a hacer dano nunca" % (ataque.windup, ataque.duration),
+            hint="baja 'preparacion:' o sube 'duracion:'",
+            where=where)
     _warn_unknown(node, where, [
         "type", "tipo", "sprite", "imagen", "image",
         "frame", "fotograma", "tamano_frame", "hitbox", "caja", "colision",
@@ -527,6 +539,8 @@ def _read_attack(node: Node, root: str) -> Optional["Attack"]:
         "desplazamiento", "animations", "animaciones", "anims",
         "speed", "velocidad", "range", "alcance", "cooldown", "espera",
         "cadencia", "duration", "duracion", "duración",
+        "windup", "preparacion", "preparación", "aviso",
+        "locks", "clavado", "sin_moverse",
         "damage", "dano", "daño",
     ])
     return ataque
@@ -556,8 +570,15 @@ def _read_player(node: Node, root: str) -> Player:
         bounce=node.num(["bounce", "rebote"], 3.6, 0.0, 12.0),
         health=node.int_(["health", "salud", "vida"], 1, 1, 9),
         invuln=node.int_(["invuln", "invulnerable", "invulnerabilidad"], 90, 0, 600),
+        knockback=node.num(["knockback", "retroceso", "empujon", "empujón"], 0.0,
+                           0.0, 12.0),
+        stun=node.int_(["stun", "aturdido", "aturdimiento"], 0, 0, 120),
         attack=_read_attack(node.child("attack", "ataque"), root),
     )
+    # Sin `retroceso:` el empujon es el de siempre: lo que anda el jugador. Asi
+    # un proyecto que no lo pone se comporta exactamente igual que antes.
+    if not player.knockback:
+        player.knockback = player.speed
     _warn_unknown(node, where, [
         "sprite", "imagen", "image", "frame", "fotograma", "tamano_frame",
         "hitbox", "caja", "colision", "colisión", "tamano", "tamaño", "size",
@@ -571,6 +592,8 @@ def _read_player(node: Node, root: str) -> Player:
         "jump_buffer", "buffer_salto", "stomp", "pisar", "pisar_enemigos",
         "bounce", "rebote", "health", "salud", "vida", "invuln", "invulnerable",
         "invulnerabilidad", "attack", "ataque",
+        "knockback", "retroceso", "empujon", "empujón",
+        "stun", "aturdido", "aturdimiento",
     ])
     return player
 

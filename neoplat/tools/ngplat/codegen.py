@@ -173,7 +173,8 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("    %d, %d, %d, %d," % (pv["speed"], pv["accel"], pv["friction"], pv["air_accel"]))
     src.append("    %d, %d, %d, %d, %d," % (pv["jump"], pv["jump_cut"], pv["gravity"],
                                             pv["max_fall"], pv["bounce"]))
-    src.append("    %d," % pv["invuln"])
+    src.append("    %d," % pv["knockback"])
+    src.append("    %d, %d," % (pv["invuln"], pv["stun"]))
     src.append("    %d, %d, %d, %d, %d," % (pv["coyote"], pv["jump_buffer"],
                                             pv["double_jump"], pv["stomp"], pv["health"]))
     # el ataque: su dibujo es el ultimo de la lista de actores, si lo hay
@@ -184,9 +185,9 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
         src.append(_actor_def("np_attack", actor_def_values(build.attack)) + ",")
     else:
         src.append("    " + _actor_vacio() + ",")
-    src.append("        %d, %d, %d, %d, %d, %d"
+    src.append("        %d, %d, %d, %d, %d, %d, %d, %d"
                % (av["speed"], av["range"], av["cooldown"], av["duration"],
-                  av["kind"], av["damage"]))
+                  av["windup"], av["kind"], av["damage"], av["locks"]))
     src.append("    }")
     src.append("};")
     src.append("")

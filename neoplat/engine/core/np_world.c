@@ -337,6 +337,7 @@ static void np_player_reset(NpWorld *w, uint8_t quien)
     p->jumps_left = d->double_jump ? 1 : 0;
     p->attack_timer = 0;
     p->attack_cd = 0;
+    p->stun = 0;
     p->riding = 0;
     p->anim = NP_ANIM_IDLE;
     p->anim_frame = 0;
@@ -401,7 +402,12 @@ static void np_player_hurt(NpWorld *w, uint8_t quien, uint8_t damage)
     w->sfx |= NP_SFX_HURT;
     p->invuln = np_player_def.invuln;
     p->vy = -np_player_def.bounce / 2;
-    p->vx = p->facing ? -np_player_def.speed : np_player_def.speed;
+    p->vx = p->facing ? -np_player_def.knockback : np_player_def.knockback;
+    /* El aturdimiento es lo que hace que el golpe duela de verdad: mientras
+       dura no se frena ni se cambia de sentido, asi que el empujon te lleva
+       donde te lleve. Con `aturdido: 0` se recupera el control al momento. */
+    p->stun = np_player_def.stun;
+    p->attack_timer = 0;
 }
 
 static void np_finish_level(NpWorld *w);
@@ -459,10 +465,11 @@ static void np_player_attack(NpWorld *w, uint8_t quien)
     p->attack_cd = at->cooldown;
     w->sfx |= NP_SFX_SHOOT;
 
-    if (at->kind == NP_ATTACK_MELEE) {
-        p->attack_timer = at->duration;
-        return;
-    }
+    /* La pose de atacar dura lo mismo se pegue o se dispare: es lo que ve el
+       jugador y lo que cuenta para `clavado:`. El golpe en si solo lo mira
+       np_melee_update, que se desentiende si el ataque es de disparo. */
+    p->attack_timer = at->duration;
+    if (at->kind == NP_ATTACK_MELEE) return;
     {
         int hueco = np_hueco_libre(w);
         NpEntity *e;
@@ -528,6 +535,11 @@ static void np_melee_update(NpWorld *w, uint8_t quien)
 
     if (!p->attack_timer) return;
     p->attack_timer--;
+    if (at->kind != NP_ATTACK_MELEE) return;   /* un disparo no pega de cerca */
+    /* Los primeros `preparacion:` frames el golpe se ve pero no toca: el brazo
+       todavia esta saliendo. Es la diferencia entre medir la distancia y
+       machacar el boton. */
+    if (p->attack_timer + at->windup >= at->duration) return;
     gx = p->facing ? p->x + NP_I2F(pa->box_w) : p->x - NP_I2F(at->range);
     gy = p->y;
     for (i = 0; i < w->entity_count; i++) {
@@ -638,10 +650,25 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
     hit_down = 0;
     hit_up = 0;
 
-    if (input & NP_IN_RIGHT) dir += 1;
-    if (input & NP_IN_LEFT) dir -= 1;
+    /* Aturdido: el mando no se lee. Ni andar, ni saltar, ni pegar; la
+       velocidad que traiga se respeta tal cual para que el empujon del golpe
+       llegue hasta el final. La gravedad y los choques siguen su curso. */
+    if (p->stun) {
+        p->stun--;
+        input = 0;
+    } else {
+        if (input & NP_IN_RIGHT) dir += 1;
+        if (input & NP_IN_LEFT) dir -= 1;
+    }
 
-    if (dir > 0) { p->vx = np_approach(p->vx, d->speed, p->on_ground ? d->accel : d->air_accel); p->facing = 1; }
+    /* Mientras dura un golpe con `clavado: si` te quedas plantado: ni andas ni
+       te giras, que es lo que obliga a elegir cuando pegas. En el aire si se
+       conserva el impulso, como en los clasicos: saltas y pegas de camino. */
+    if (p->attack_timer && d->attack.locks && p->on_ground) {
+        p->vx = 0;
+    } else if (p->stun) {
+        /* ni acelerar ni frenar: el empujon del golpe llega hasta el final */
+    } else if (dir > 0) { p->vx = np_approach(p->vx, d->speed, p->on_ground ? d->accel : d->air_accel); p->facing = 1; }
     else if (dir < 0) { p->vx = np_approach(p->vx, -d->speed, p->on_ground ? d->accel : d->air_accel); p->facing = 0; }
     else if (p->on_ground) p->vx = np_approach(p->vx, 0, d->friction);
 

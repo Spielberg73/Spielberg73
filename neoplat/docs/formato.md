@@ -133,6 +133,8 @@ jugador:
   rebote: 3.6          # impulso al pisar un enemigo
   vida: 1              # golpes que aguanta
   invulnerable: 90     # frames de parpadeo tras un golpe
+  retroceso: 3.0       # con cuánta fuerza sales despedido al recibir un golpe
+  aturdido: 24         # frames sin control después del golpe (0 = ninguno)
   animaciones:
     quieto: {frames: [0], velocidad: 30}
     correr: {frames: [1, 2, 3, 2], velocidad: 6}
@@ -153,6 +155,21 @@ la más parecida (`caer` cae en `saltar`, y todo lo demás en `quieto`).
 **La caja de colisión** se centra horizontalmente en el fotograma y se apoya en
 su borde inferior. Hazla algo más estrecha que el dibujo: se juega mejor.
 
+### El golpe recibido: `retroceso` y `aturdido`
+
+Al recibir daño sales despedido hacia atrás con fuerza `retroceso` y te quedas
+`aturdido` frames **sin control**: no aceleras, no frenas, no saltas y no
+atacas. El empujón te lleva donde te lleve.
+
+Es una diferencia de género entera. Con `aturdido: 0` (el valor por defecto)
+recuperas el mando al momento y un roce es un rasguño; con `aturdido: 24` y un
+`retroceso` alto, un roce al borde de una plataforma **te tira al vacío**, y de
+eso vive el diseño de niveles de los clásicos de látigo. Si no pones
+`retroceso`, se usa tu `velocidad`, que es como se comportaba el kit antes.
+
+Mientras estás aturdido el ataque también se corta: no puedes pegar y cobrar en
+el mismo momento.
+
 ### `ataque`
 
 Sin esta sección el jugador **sólo puede pisar enemigos** y el botón de acción
@@ -169,6 +186,9 @@ jugador:
     velocidad: 3.5           # píxeles por frame que vuela el disparo
     alcance: 96              # px que recorre antes de apagarse
     espera: 18               # frames entre un ataque y el siguiente
+    duracion: 8              # frames que dura la pose (y el golpe)
+    preparacion: 0           # frames de esos en los que todavía no hace daño
+    clavado: no              # si sí, mientras pegas no te mueves
     dano: 1
     animaciones:
       quieto: {frames: [0, 1, 2, 1], velocidad: 4}
@@ -180,8 +200,17 @@ jugador:
 | `golpe` | no sale nada: durante `duracion` frames hay una caja de `alcance` píxeles delante del jugador que hace daño a lo que toque. No necesita dibujo |
 
 El botón va **por flanco**: mantenerlo pulsado no dispara sin parar, y la
-cadencia la marca `espera`. Mientras dura un `golpe`, el jugador usa la
-animación `atacar` si la has puesto.
+cadencia la marca `espera`. Mientras dura el ataque —pegando o disparando— el
+jugador usa la animación `atacar` si la has puesto.
+
+**`preparacion`** son los primeros frames del golpe en los que el brazo todavía
+está saliendo: se ve, pero no hace daño. Es lo que separa medir la distancia de
+machacar el botón. Tiene que ser menor que `duracion` (si no, el golpe no
+llegaría a tocar nunca, y `ngplat` no compila).
+
+**`clavado: si`** te planta en el sitio mientras dura el golpe: en el suelo no
+andas ni te giras. **En el aire no**: si saltas y pegas, conservas el impulso,
+que es como se juega en los clásicos.
 
 Los proyectiles viven en la misma lista que enemigos y objetos, así que caben
 64 cosas a la vez en pantalla contándolos; si no queda hueco, el disparo se

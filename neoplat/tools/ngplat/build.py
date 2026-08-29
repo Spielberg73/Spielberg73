@@ -365,6 +365,7 @@ def player_values(project: Project) -> Dict[str, object]:
         "jump": to_fixed(p.jump), "jump_cut": to_fixed(p.jump_cut),
         "gravity": to_fixed(p.gravity), "max_fall": to_fixed(p.max_fall),
         "bounce": to_fixed(p.bounce), "invuln": p.invuln,
+        "knockback": to_fixed(p.knockback), "stun": p.stun,
         "coyote": p.coyote, "jump_buffer": p.jump_buffer,
         "double_jump": 1 if p.double_jump else 0, "stomp": 1 if p.stomp else 0,
         "health": p.health,
@@ -380,14 +381,16 @@ def attack_values(project: Project) -> Dict[str, object]:
     a = project.player.attack
     if a is None:
         return {"kind": 0, "speed": 0, "range": 0, "cooldown": 0,
-                "duration": 0, "damage": 0}
+                "duration": 0, "windup": 0, "damage": 0, "locks": 0}
     return {
         "kind": ATTACK_KIND_ID[a.kind],
         "speed": to_fixed(a.speed),
         "range": a.range,
         "cooldown": a.cooldown,
         "duration": a.duration,
+        "windup": a.windup,
         "damage": a.damage,
+        "locks": 1 if a.locks else 0,
     }
 
 

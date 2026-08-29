@@ -61,7 +61,7 @@
         x: 0, y: 0, vx: 0, vy: 0, animTimer: 0, invuln: 0, dying: 0,
         anim: 0, animFrame: 0, onGround: 0, facing: 1, jumpsLeft: 0,
         health: 1, coyote: 0, buffer: 0, lives: 0, playing: 0,
-        attackTimer: 0, attackCd: 0, riding: 0
+        attackTimer: 0, attackCd: 0, riding: 0, stun: 0
       });
     }
     this.playerCount = data.players || 1;
@@ -252,7 +252,7 @@
     this.placePlayer(quien);
     p.vx = 0; p.vy = 0; p.onGround = 0; p.facing = 1;
     p.health = d.health; p.invuln = 0; p.coyote = 0; p.buffer = 0;
-    p.dying = 0; p.attackTimer = 0; p.attackCd = 0; p.riding = 0;
+    p.dying = 0; p.attackTimer = 0; p.attackCd = 0; p.riding = 0; p.stun = 0;
     p.jumpsLeft = d.double_jump ? 1 : 0;
     p.anim = ANIM_IDLE; p.animFrame = 0; p.animTimer = 0;
   };
@@ -299,7 +299,11 @@
     this.sfx |= SFX.HURT;
     p.invuln = d.invuln;
     p.vy = -idiv(d.bounce, 2);
-    p.vx = p.facing ? -d.speed : d.speed;
+    p.vx = p.facing ? -d.knockback : d.knockback;
+    /* El aturdimiento: mientras dura no se frena ni se cambia de sentido, asi
+       que el empujon te lleva donde te lleve. Igual que np_player_hurt. */
+    p.stun = d.stun;
+    p.attackTimer = 0;
   };
 
   var moveOut = { hit: 0, hitDown: 0, hitUp: 0 };
@@ -354,7 +358,9 @@
     if (!at || at.kind === ATTACK_NONE || p.attackCd) return;
     p.attackCd = at.cooldown;
     this.sfx |= SFX.SHOOT;
-    if (at.kind === ATTACK_MELEE) { p.attackTimer = at.duration; return; }
+    /* La pose de atacar dura lo mismo se pegue o se dispare. */
+    p.attackTimer = at.duration;
+    if (at.kind === ATTACK_MELEE) return;
 
     var hueco = this.huecoLibre();
     if (hueco < 0) return;
@@ -401,6 +407,9 @@
     var pa = this.data.player.actor, i;
     if (!p.attackTimer) return;
     p.attackTimer--;
+    if (at.kind !== ATTACK_MELEE) return;     /* un disparo no pega de cerca */
+    /* Los primeros `preparacion:` frames el golpe se ve pero no toca. */
+    if (p.attackTimer + at.windup >= at.duration) return;
     var gx = p.facing ? p.x + I2F(pa.box_w) : p.x - I2F(at.range);
     var gy = p.y;
     for (i = 0; i < this.entityCount; i++) {
@@ -483,10 +492,22 @@
           p.y = this.moveY(p.x, p.y, a.box_w, a.box_h, montado.vy, 0, moveOut);
       }
     }
-    if (input & IN.RIGHT) dir += 1;
-    if (input & IN.LEFT) dir -= 1;
+    /* Aturdido: el mando no se lee. Igual que en np_player_update. */
+    if (p.stun) {
+      p.stun--;
+      input = 0;
+    } else {
+      if (input & IN.RIGHT) dir += 1;
+      if (input & IN.LEFT) dir -= 1;
+    }
 
-    if (dir > 0) { p.vx = approach(p.vx, d.speed, p.onGround ? d.accel : d.air_accel); p.facing = 1; }
+    /* Con `clavado: si` te quedas plantado mientras dura el golpe: ni andas ni
+       te giras. Igual que en np_player_update. */
+    if (p.attackTimer && d.attack.locks && p.onGround) {
+      p.vx = 0;
+    } else if (p.stun) {
+      /* ni acelerar ni frenar */
+    } else if (dir > 0) { p.vx = approach(p.vx, d.speed, p.onGround ? d.accel : d.air_accel); p.facing = 1; }
     else if (dir < 0) { p.vx = approach(p.vx, -d.speed, p.onGround ? d.accel : d.air_accel); p.facing = 0; }
     else if (p.onGround) p.vx = approach(p.vx, 0, d.friction);
 
