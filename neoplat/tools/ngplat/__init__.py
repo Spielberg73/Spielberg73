@@ -10,7 +10,7 @@ Modulos principales:
 """
 
 # La version del kit. Sube cada vez que se cambia algo que se reparte, y va en
-# el nombre de los paquetes (neoplat-kit-1.2.zip) y en `ngplat --version`, para
+# el nombre de los paquetes (neoplat-kit-1.3.zip) y en `ngplat --version`, para
 # saber sin abrir nada que version se esta probando. El historial de cada una
 # esta en CAMBIOS.md.
-__version__ = "1.2"
+__version__ = "1.3"

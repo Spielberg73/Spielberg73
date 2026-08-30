@@ -2,8 +2,23 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.2.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.3.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.3
+
+**Abrir NeoPlat con doble clic ya sirve para algo.** En Windows, hacer doble
+clic en `ngplat.exe` abria una ventana negra que se cerraba sola: sin ninguna
+orden escrita, el programa soltaba su lista de ordenes y salia, y la consola
+desaparecia con ella antes de que diera tiempo a leer nada.
+
+- Sin ordenes y con alguien delante sale un **asistente**: dice que juegos hay
+  en la carpeta y ofrece crear uno nuevo, abrir el editor de uno que ya exista
+  o compilarlo para su maquina.
+- La ventana **espera a que se pulse Enter** antes de cerrarse, tambien cuando
+  algo falla, asi que el error se puede leer.
+- En una tuberia o dentro de un guion no ha cambiado nada: sigue saliendo la
+  ayuda de siempre y no se queda nada esperando una respuesta.
 
 ## 1.2
 

@@ -253,6 +253,163 @@ def _ejecutar_make(out_dir: str, sistema) -> int:
     return 0
 
 
+# ----------------------------------------------------------------- asistente
+
+def _nombre_de(ruta: str) -> str:
+    return os.path.basename(os.path.abspath(ruta)) or ruta
+
+
+def _proyectos_cerca(raiz: str = ".") -> List[str]:
+    """Carpetas con un game.yaml dentro: la actual, si lo tiene, y las de dentro."""
+    encontrados = []
+    if os.path.isfile(os.path.join(raiz, "game.yaml")):
+        encontrados.append(raiz)
+    try:
+        nombres = sorted(os.listdir(raiz))
+    except OSError:
+        nombres = []
+    for nombre in nombres:
+        ruta = os.path.join(raiz, nombre)
+        if os.path.isfile(os.path.join(ruta, "game.yaml")):
+            encontrados.append(ruta)
+    return encontrados
+
+
+def _leer(salida, entrada, pregunta: str, por_defecto: str = "") -> str:
+    """Escribe la pregunta y devuelve lo tecleado, o el valor por defecto."""
+    salida.write(pregunta)
+    salida.flush()
+    if entrada is None:
+        salida.write("\n")
+        return por_defecto
+    try:
+        respuesta = (entrada.readline() or "").strip()
+    except (OSError, ValueError):
+        respuesta = ""
+    return respuesta or por_defecto
+
+
+def _elegir_proyecto(proyectos: List[str], salida, entrada) -> str:
+    """Con un solo juego no pregunta nada; con varios, los numera."""
+    if len(proyectos) == 1:
+        return proyectos[0]
+    salida.write("\n  Cual?\n\n")
+    for i, ruta in enumerate(proyectos):
+        salida.write("    %d) %s\n" % (i + 1, _nombre_de(ruta)))
+    elegido = _leer(salida, entrada, "\n  elige [1]: ", "1")
+    if elegido.isdigit() and 1 <= int(elegido) <= len(proyectos):
+        return proyectos[int(elegido) - 1]
+    for ruta in proyectos:
+        if _nombre_de(ruta).lower() == elegido.lower():
+            return ruta
+    return proyectos[0]
+
+
+def _abrir_editor(ruta: str) -> int:
+    """El editor es el preview servido desde aqui, con guardar y compilar."""
+    return cmd_probar(argparse.Namespace(proyecto=ruta, salida=None,
+                                         no_abrir=False, no_servidor=False,
+                                         puerto=0, sistema=""))
+
+
+def _asistente_nuevo(salida, entrada) -> int:
+    carpeta = _leer(salida, entrada,
+                    "\n  Nombre de la carpeta del juego [mijuego]: ", "mijuego")
+    titulo = _leer(salida, entrada,
+                   "  Titulo que saldra en pantalla [%s]: " % carpeta.upper(),
+                   carpeta.upper())
+    genero = menu_de_generos(entrada, salida)
+    print()
+    cmd_nuevo(argparse.Namespace(carpeta=carpeta, titulo=titulo, autor="",
+                                 estilo="bosque", genero=genero))
+    salida.write("\n  Abro el editor de '%s'...\n" % carpeta)
+    return _abrir_editor(carpeta)
+
+
+def _asistente_compilar(proyectos: List[str], salida, entrada) -> int:
+    ruta = _elegir_proyecto(proyectos, salida, entrada)
+    disponibles = sistemas.disponibles()
+    salida.write("\n  Para que maquina? (Enter = la que ponga el game.yaml)\n\n")
+    for i, sistema in enumerate(disponibles):
+        salida.write("    %d) %-11s %s\n" % (i + 1, sistema.nombre, sistema.titulo))
+    elegido = _leer(salida, entrada, "\n  elige: ")
+    nombre = ""
+    if elegido.isdigit() and 1 <= int(elegido) <= len(disponibles):
+        nombre = disponibles[int(elegido) - 1].nombre
+    elif elegido:
+        nombre = elegido
+    print()
+    return cmd_compilar(argparse.Namespace(proyecto=ruta, salida=None,
+                                           rom_id="202", sistema=nombre,
+                                           make=False))
+
+
+def asistente(entrada=None, salida=None) -> int:
+    """Lo que sale al abrir NeoPlat sin escribir ninguna orden.
+
+    En Windows se abre con doble clic y no hay donde escribir nada: antes
+    salia la lista de ordenes de argparse y la ventana se cerraba sola sin dar
+    tiempo ni a leerla. Ahora pregunta que se quiere hacer.
+    """
+    entrada = sys.stdin if entrada is None else entrada
+    salida = sys.stdout if salida is None else salida
+    proyectos = _proyectos_cerca(".")
+
+    salida.write("\n  NeoPlat %s -- juegos de plataformas 2D para maquinas de 68000\n"
+                 % __version__)
+    if proyectos:
+        salida.write("  juegos en esta carpeta: %s\n"
+                     % ", ".join(_nombre_de(p) for p in proyectos))
+    else:
+        salida.write("  aqui no hay ningun juego todavia\n")
+
+    opciones = []
+    if proyectos:
+        opciones.append(("abrir el editor de un juego que ya existe", "editor"))
+    opciones.append(("crear un juego nuevo y abrir su editor", "nuevo"))
+    if proyectos:
+        opciones.append(("compilar un juego para su maquina", "compilar"))
+    opciones.append(("salir", "salir"))
+
+    salida.write("\n  Que quieres hacer?\n\n")
+    for i, (texto, _) in enumerate(opciones):
+        salida.write("    %d) %s\n" % (i + 1, texto))
+    elegido = _leer(salida, entrada, "\n  elige [1]: ", "1")
+    accion = opciones[0][1]
+    if elegido.isdigit() and 1 <= int(elegido) <= len(opciones):
+        accion = opciones[int(elegido) - 1][1]
+
+    if accion == "salir":
+        return 0
+    if accion == "nuevo":
+        return _asistente_nuevo(salida, entrada)
+    if accion == "compilar":
+        return _asistente_compilar(proyectos, salida, entrada)
+    return _abrir_editor(_elegir_proyecto(proyectos, salida, entrada))
+
+
+def _hay_alguien_delante() -> bool:
+    """Si el programa se ha abierto a mano (o con doble clic), no en un guion."""
+    if getattr(sys, "frozen", False):
+        return True
+    try:
+        return bool(sys.stdin is not None and sys.stdin.isatty())
+    except (OSError, ValueError):
+        return False
+
+
+def _esperar_para_cerrar() -> None:
+    """Deja la ventana abierta hasta que se pulse Enter.
+
+    Con doble clic en Windows la consola se cierra en cuanto acaba el
+    programa: sin esto no da tiempo a leer ni el resultado ni el error.
+    """
+    try:
+        input("\n  pulsa Enter para cerrar esta ventana ")
+    except (EOFError, KeyboardInterrupt, OSError, ValueError):
+        pass
+
+
 # ------------------------------------------------------------------- parser
 
 def _ayuda_sistemas() -> str:
@@ -416,6 +573,24 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = build_parser()
+    if argv is None:
+        argv = sys.argv[1:]
+    if not argv and _hay_alguien_delante():
+        # doble clic en Windows: no hay donde escribir una orden, asi que
+        # preguntamos, y al acabar esperamos a que se pulse Enter para que la
+        # ventana no se cierre sola
+        try:
+            codigo = asistente()
+        except ProjectError as exc:
+            print(_color(exc.render(), ROJO), file=sys.stderr)
+            codigo = 2
+        except hist.ErrorHistorial as exc:
+            print(_color("  error " + str(exc), ROJO), file=sys.stderr)
+            codigo = 2
+        except KeyboardInterrupt:
+            codigo = 130
+        _esperar_para_cerrar()
+        return codigo
     args = parser.parse_args(argv)
     if not getattr(args, "func", None):
         parser.print_help()

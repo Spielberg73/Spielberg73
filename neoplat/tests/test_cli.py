@@ -11,6 +11,7 @@ from contextlib import redirect_stdout, redirect_stderr
 import comun
 from comun import KIT
 
+from ngplat import cli
 from ngplat.cli import main
 
 
@@ -136,6 +137,123 @@ class TestCli(unittest.TestCase):
         self.assertEqual(codigo, 2)
         self.assertIn("error", salida)
         self.assertNotIn("Traceback", salida)
+
+
+class TestAsistente(unittest.TestCase):
+    """Lo que ve quien abre NeoPlat con doble clic, sin escribir ordenes."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="neoplat-asis-")
+        self.antes = os.getcwd()
+        os.chdir(self.tmp)
+        self.abiertos = []
+        self.editor_real = cli._abrir_editor
+        # abrir el editor levanta un servidor que no acaba nunca: aqui solo
+        # anotamos que juego se habria abierto
+        cli._abrir_editor = lambda ruta: self.abiertos.append(ruta) or 0
+
+    def tearDown(self):
+        cli._abrir_editor = self.editor_real
+        os.chdir(self.antes)
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _asistente(self, *lineas):
+        salida = io.StringIO()
+        with redirect_stdout(salida):
+            codigo = cli.asistente(io.StringIO("".join(l + "\n" for l in lineas)),
+                                   salida)
+        return codigo, salida.getvalue()
+
+    def _crear(self, nombre):
+        salida = io.StringIO()
+        with redirect_stdout(salida), redirect_stderr(salida):
+            main(["nuevo", nombre, "--titulo", nombre.upper(),
+                  "--genero", "plataformas"])
+
+    def test_sin_juegos_ofrece_crear_uno_y_abre_su_editor(self):
+        codigo, salida = self._asistente("1", "prueba", "", "")
+        self.assertEqual(codigo, 0, salida)
+        self.assertIn("Que quieres hacer", salida)
+        self.assertTrue(os.path.isfile(os.path.join("prueba", "game.yaml")), salida)
+        self.assertEqual(self.abiertos, ["prueba"])
+
+    def test_con_un_juego_delante_abre_su_editor_sin_preguntar_cual(self):
+        self._crear("mijuego")
+        codigo, salida = self._asistente("1")
+        self.assertEqual(codigo, 0, salida)
+        self.assertIn("mijuego", salida)
+        self.assertEqual(self.abiertos, [os.path.join(".", "mijuego")])
+
+    def test_con_varios_juegos_pregunta_cual(self):
+        self._crear("uno")
+        self._crear("dos")
+        codigo, salida = self._asistente("1", "2")
+        self.assertEqual(codigo, 0, salida)
+        self.assertIn("Cual?", salida)
+        # los lista en orden alfabetico: dos, uno
+        self.assertEqual(self.abiertos, [os.path.join(".", "uno")])
+
+    def test_compila_el_juego_elegido(self):
+        self._crear("mijuego")
+        # la maquina se puede elegir por numero o escribiendo su nombre
+        codigo, salida = self._asistente("3", "megadrive")
+        self.assertEqual(codigo, 0, salida)
+        self.assertTrue(os.path.isfile(
+            os.path.join("mijuego", "build", "megadrive", "src", "gamedata.c")), salida)
+
+    def test_salir_no_toca_nada(self):
+        self._crear("mijuego")
+        codigo, salida = self._asistente("4")
+        self.assertEqual(codigo, 0, salida)
+        self.assertEqual(self.abiertos, [])
+
+    def test_una_respuesta_que_no_existe_se_queda_con_la_primera(self):
+        self._crear("mijuego")
+        codigo, salida = self._asistente("melon")
+        self.assertEqual(codigo, 0, salida)
+        self.assertEqual(self.abiertos, [os.path.join(".", "mijuego")])
+
+
+class TestVentanaQueNoSeCierra(unittest.TestCase):
+    """Sin ordenes y con alguien delante sale el asistente, no la ayuda.
+
+    El fallo era este: al doble clic, argparse escupia su lista de ordenes,
+    devolvia 1 y la ventana se cerraba sin que diera tiempo a leerla.
+    """
+
+    class _Consola(io.StringIO):
+        def isatty(self):
+            return True
+
+    def setUp(self):
+        self.stdin = sys.stdin
+        self.llamadas = []
+        self.asistente_real = cli.asistente
+        self.pausa_real = cli._esperar_para_cerrar
+        cli.asistente = lambda: self.llamadas.append("asistente") or 0
+        cli._esperar_para_cerrar = lambda: self.llamadas.append("pausa")
+
+    def tearDown(self):
+        cli.asistente = self.asistente_real
+        cli._esperar_para_cerrar = self.pausa_real
+        sys.stdin = self.stdin
+
+    def test_con_consola_sale_el_asistente_y_espera_al_enter(self):
+        sys.stdin = self._Consola()
+        salida = io.StringIO()
+        with redirect_stdout(salida):
+            codigo = main([])
+        self.assertEqual(codigo, 0)
+        self.assertEqual(self.llamadas, ["asistente", "pausa"])
+
+    def test_en_una_tuberia_sigue_saliendo_la_ayuda(self):
+        sys.stdin = io.StringIO()
+        salida = io.StringIO()
+        with redirect_stdout(salida):
+            codigo = main([])
+        self.assertEqual(codigo, 1)
+        self.assertIn("usage", salida.getvalue())
+        self.assertEqual(self.llamadas, [])
 
 
 if __name__ == "__main__":
