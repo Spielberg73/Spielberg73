@@ -178,8 +178,9 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
                                             pv["max_fall"], pv["bounce"]))
     src.append("    %d, %d," % (pv["knockback"], pv["stair_speed"]))
     src.append("    %d, %d," % (pv["invuln"], pv["stun"]))
-    src.append("    %d, %d, %d, %d, %d," % (pv["coyote"], pv["jump_buffer"],
-                                            pv["double_jump"], pv["stomp"], pv["health"]))
+    src.append("    %d, %d, %d, %d, %d, %d," % (pv["coyote"], pv["jump_buffer"],
+                                                pv["double_jump"], pv["stomp"],
+                                                pv["health"], pv["crouch_drop"]))
     # el ataque: su dibujo es el ultimo de la lista de actores, si lo hay
     av = attack_values(project)
     src.append("    /* ataque */")

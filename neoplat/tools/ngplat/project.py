@@ -258,6 +258,8 @@ class Player(Actor):
     knockback: float = 0.0        # 0 = tanto como la velocidad de andar
     stun: int = 0                 # frames sin control tras un golpe
     stair_speed: float = 0.0      # 0 = la mitad de la velocidad de andar
+    crouch: bool = False          # si se puede agachar con abajo
+    crouch_h: int = 0             # alto de la caja agachado (0 = tres cuartos)
     attack: Optional["Attack"] = None
     sub: Optional["Sub"] = None
 
@@ -406,6 +408,8 @@ ANIM_ALIASES = {
     "morir": "hurt", "dano": "hurt", "daño": "hurt", "hurt": "hurt",
     "atacar": "attack", "ataque": "attack", "attack": "attack", "pegar": "attack",
     "subir": "stair", "escalera": "stair", "trepar": "stair", "stair": "stair",
+    "agachado": "crouch", "agacharse": "crouch", "crouch": "crouch",
+    "agachar": "crouch",
     "girar": "turn", "turn": "turn",
 }
 
@@ -688,6 +692,8 @@ def _read_player(node: Node, root: str) -> Player:
         stun=node.int_(["stun", "aturdido", "aturdimiento"], 0, 0, 120),
         stair_speed=node.num(["stair_speed", "velocidad_escalera", "escalera"],
                              0.0, 0.0, 8.0),
+        crouch=node.bool_(["crouch", "agachado", "agacharse", "agachar"], False),
+        crouch_h=node.int_(["crouch_h", "caja_agachado", "alto_agachado"], 0, 0, 64),
         attack=_read_attack(node.child("attack", "ataque"), root),
         sub=_read_sub(node.child("sub", "secundaria", "arma_secundaria"), root),
     )
@@ -699,6 +705,18 @@ def _read_player(node: Node, root: str) -> Player:
     # lo que hace que una escalera sea un sitio incomodo donde te pueden cazar.
     if not player.stair_speed:
         player.stair_speed = player.speed / 2.0
+    # Agachado, la caja baja una cuarta parte por arriba: los pies se quedan
+    # donde estan y lo que pasa por encima ya no te toca. Es lo que hace que
+    # agacharse sirva para algo mas que para la pose.
+    if player.crouch and not player.crouch_h:
+        player.crouch_h = player.box_h - player.box_h // 4
+    if player.crouch and player.crouch_h >= player.box_h:
+        raise ProjectError(
+            "'caja_agachado' es %d y la caja de pie mide %d: agachado hay que "
+            "ocupar menos" % (player.crouch_h, player.box_h),
+            hint="quitalo y sale solo (tres cuartas partes de la caja)",
+            where=where,
+        )
     _warn_unknown(node, where, [
         "sprite", "imagen", "image", "frame", "fotograma", "tamano_frame",
         "hitbox", "caja", "colision", "colisión", "tamano", "tamaño", "size",
@@ -715,6 +733,8 @@ def _read_player(node: Node, root: str) -> Player:
         "knockback", "retroceso", "empujon", "empujón",
         "stun", "aturdido", "aturdimiento",
         "stair_speed", "velocidad_escalera", "escalera",
+        "crouch", "agachado", "agacharse", "agachar",
+        "crouch_h", "caja_agachado", "alto_agachado",
         "sub", "secundaria", "arma_secundaria",
     ])
     return player

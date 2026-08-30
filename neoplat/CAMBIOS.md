@@ -2,8 +2,28 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.5.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.6.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.6
+
+**Agacharse.** Faltaba entero: en un juego de látigo uno se agacha para pegar
+bajo y para esquivar lo que vuela a la altura de la cabeza, y el kit no lo
+tenía en ninguna parte.
+
+Con `agachado: si`, pulsar abajo en el suelo agacha al jugador: no anda y no
+salta, pero **sí pega**, y el golpe sale a la altura de la rodilla. Lo que baja
+es el **techo** de su caja —los pies se quedan donde están— así que lo que pasa
+por encima deja de tocarle.
+
+Esa decisión (bajar el techo en vez de mover al jugador) es la que hace que no
+haya que tocar el dibujo en ninguna de las seis máquinas: todas pintan al
+jugador en el mismo sitio de siempre y el fotograma de agachado ya viene
+dibujado más abajo dentro del cuadro.
+
+Sobre una plataforma de las de atravesar abajo sigue siendo para bajarse, en la
+escalera manda la escalera, y al recibir un golpe se levanta. El género de
+látigo lo trae puesto; el de plataformas, no, y ahí abajo hace lo de siempre.
 
 ## 1.5
 

@@ -55,7 +55,8 @@ inputs.forEach(function (par) {
     world.keys, world.hearts,
     world.checkOn, world.checkX, world.checkY, p0.power,
     /* el dibujo del latigo: 0 = no hay ninguno en la lista */
-    p0.whip ? 1 : 0
+    p0.whip ? 1 : 0,
+    p0.crouch
   ].join(" "));
 });
 process.stdout.write(out.join("\n") + "\n");

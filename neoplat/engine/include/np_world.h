@@ -31,6 +31,7 @@ typedef struct {
     uint8_t whip;            /* el dibujo del latigo: indice + 1, 0 = ninguno */
     uint8_t power;           /* mejoras del arma recogidas (0 = sin mejorar) */
     uint8_t stairs;          /* 1 = subido a una escalera */
+    uint8_t crouch;          /* 1 = agachado */
     int8_t stair_dir;        /* hacia donde avanza en x al subir: +1 o -1 */
     uint8_t lives;           /* las vidas son de cada uno */
     uint8_t playing;         /* 0 = fuera (segundo jugador de una partida a uno,

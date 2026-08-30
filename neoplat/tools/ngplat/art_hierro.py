@@ -122,14 +122,41 @@ def _heroe_de_espaldas() -> Image:
     return c.image
 
 
-HEROE_POSES = 10
+def _heroe_agachado() -> Image:
+    """Agachado: el cuerpo baja tres pixeles, lo mismo que baja el techo de su
+    caja, y el brazo se queda a la altura de la rodilla."""
+    c = Lienzo(16, 16)
+    top = 5
+    c.rect(5, top, 6, 1, LINEA)                    # capucha
+    c.rect(4, top + 1, 8, 3, ROJO)
+    c.rect(6, top + 2, 4, 1, CLARO)                # cara
+    c.px(6, top + 2, LINEA)
+    c.px(9, top + 2, LINEA)
+
+    c.rect(4, top + 4, 8, 4, ROJO)                 # tronco encogido
+    c.rect(4, top + 4, 1, 4, LINEA)
+    c.rect(6, top + 5, 4, 1, CLARO)
+    c.rect(12, top + 5, 2, 2, CLARO)               # brazo hacia delante
+    c.rect(3, top + 5, 1, 2, CLARO)
+
+    c.rect(3, top + 8, 4, 2, LINEA)                # piernas dobladas
+    c.rect(8, top + 8, 4, 2, LINEA)
+    return c.image
+
+
+HEROE_POSES = 11
 
 
 def heroe() -> Image:
     hoja = Lienzo(16 * HEROE_POSES, 16)
     for i in range(HEROE_POSES):
-        hoja.blit(i * 16, 0,
-                  _heroe_de_espaldas() if i == 8 else _heroe_frame(i))
+        if i == 8:
+            dibujo = _heroe_de_espaldas()
+        elif i == 10:
+            dibujo = _heroe_agachado()
+        else:
+            dibujo = _heroe_frame(i)
+        hoja.blit(i * 16, 0, dibujo)
     return hoja.image
 
 

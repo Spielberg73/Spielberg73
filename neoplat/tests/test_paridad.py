@@ -386,6 +386,18 @@ class TestParidad(unittest.TestCase):
         self.assertIn(1, [int(linea.split()[31]) for linea in traza],
                       "el golpe con dibujo no ensena nada")
 
+    def test_agacharse_pasa_de_verdad(self):
+        """El mando aleatorio pulsa abajo, asi que la traza ya compara la caja
+        mas baja frame a frame; esto comprueba que se llega a usar."""
+        traza, _ = self._trazas(1, "castillo")
+        agachado = [int(linea.split()[32]) for linea in traza]
+        self.assertGreater(sum(agachado), 20,
+                           "en toda la traza no se agacha nadie")
+        # y en el genero de plataformas no se agacha nadie: no lo lleva
+        otra, _ = self._trazas(1, "scroll")
+        self.assertEqual({int(linea.split()[32]) for linea in otra}, {0},
+                         "el de plataformas se agacha sin tenerlo puesto")
+
     def test_misma_traza_a_dos_jugadores(self):
         """Lo mismo con `jugadores: 2`: dos mandos, dos vidas, la camara en el
         punto medio y el que se queda atras pegado al borde."""
@@ -398,7 +410,7 @@ class TestParidad(unittest.TestCase):
         en su sitio y la prueba de paridad pasaria sin comprobar nada."""
         traza, _ = self._trazas(1, "dos")
         columnas = [linea.split() for linea in traza]
-        self.assertTrue(all(len(c) == 32 for c in columnas),
+        self.assertTrue(all(len(c) == 33 for c in columnas),
                         "la traza no trae las columnas del segundo jugador")
         # al empezar los dos estan dentro; luego el mando aleatorio puede
         # dejarlo sin vidas, y eso tambien tiene que salir igual en las dos

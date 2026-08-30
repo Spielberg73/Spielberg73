@@ -100,7 +100,8 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_ANIM_HURT 4
 #define NP_ANIM_ATTACK 5
 #define NP_ANIM_STAIR 6          /* subiendo una escalera */
-#define NP_ANIM_SLOTS 7
+#define NP_ANIM_CROUCH 7         /* agachado */
+#define NP_ANIM_SLOTS 8
 
 /* Eventos de sonido que produce la simulacion (un bit cada uno). Coinciden con
  * EVENTO_BIT de tools/ngplat/sonido.py. La simulacion solo los marca; quien los

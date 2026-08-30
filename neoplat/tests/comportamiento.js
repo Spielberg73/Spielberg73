@@ -32,7 +32,7 @@ function actor(boxW, boxH) {
     box_x: 0, box_y: 0, box_w: boxW, box_h: boxH,
     frames: 1, frame_w: 16, frame_h: 16, sheet: "x",
     anims: [anim([0]), anim([0]), anim([0]), anim([0]), anim([0]), anim([0]),
-            anim([0])]
+            anim([0]), anim([0])]
   };
 }
 
@@ -83,6 +83,8 @@ function datos(filas, opciones) {
       double_jump: opciones.doubleJump ? 1 : 0,
       stomp: opciones.stomp === false ? 0 : 1,
       health: opciones.health || 1,
+      /* cuanto baja el techo de la caja al agacharse; 0 = no se puede */
+      crouch_drop: opciones.agachado || 0,
       /* el ataque: por defecto ninguno, como un proyecto sin `ataque:` */
       attack: {
         kind: opciones.ataque === "golpe" ? 2 : (opciones.ataque ? 1 : 0),
@@ -97,6 +99,8 @@ function datos(filas, opciones) {
         levels: opciones.mejoras || 0,
         range_step: opciones.alcanceMejora === undefined ? 12
                                                          : opciones.alcanceMejora,
+        /* 1 = el ataque trae dibujo propio (el latigo) y se ve al pegar */
+        fx: opciones.latigo ? 1 : 0,
         actor: actor(6, 6)
       },
       /* el arma secundaria: por defecto ninguna, como un juego sin
@@ -323,6 +327,80 @@ prueba("pulsar abajo deja caer desde la plataforma", function () {
   correr(w, 20, NP.IN.DOWN);
   assert.ok(NP.F2I(w.players[0].y) + w.data.player.actor.box_h > 9 * 16,
     "sigue encima de la plataforma");
+});
+
+/* --------------------------------------------------------------- agacharse */
+
+prueba("agachado no se anda", function () {
+  var w = mundo(suelo([[13, 3, "P"]]), { agachado: 5 });
+  correr(w, 30);
+  var x = w.players[0].x;
+  correr(w, 30, NP.IN.DOWN | NP.IN.RIGHT);
+  assert.strictEqual(w.players[0].crouch, 1, "no se ha agachado");
+  assert.strictEqual(w.players[0].x, x, "agachado se ha movido");
+  /* y al soltar abajo, vuelve a andar */
+  correr(w, 30, NP.IN.RIGHT);
+  assert.strictEqual(w.players[0].crouch, 0, "sigue agachado");
+  assert.ok(w.players[0].x > x, "levantado no anda");
+});
+
+prueba("agachado no se salta", function () {
+  var w = mundo(suelo([[13, 3, "P"]]), { agachado: 5 });
+  correr(w, 30);
+  var y = w.players[0].y;
+  correr(w, 20, NP.IN.DOWN | NP.IN.JUMP);
+  assert.strictEqual(w.players[0].y, y, "agachado ha saltado");
+  /* el salto va por flanco: se suelta todo y se vuelve a pulsar */
+  correr(w, 2, 0);
+  correr(w, 6, NP.IN.JUMP);
+  assert.ok(w.players[0].y < y, "de pie no salta");
+});
+
+prueba("agachado, lo que pasa por encima ya no toca", function () {
+  /* Un volador que llega a la altura de la cabeza: de pie te da y agachado
+     -seis pixeles mas bajo- te pasa por encima. Es para lo que sirve
+     agacharse, y sin la caja mas baja las dos partidas saldrian iguales. */
+  function partida(input) {
+    var w = mundo(suelo([[13, 3, "P"], [12, 14, "v"]]),
+                  { boxH: 20, agachado: 6, health: 3 });
+    w.data.enemies[1].amplitude = 0;    /* que venga recto, sin ondular */
+    correr(w, 4);                       /* que aterrice: agachado es de suelo */
+    w.entities[0].facing = 0;           /* y que venga hacia el jugador */
+    correr(w, 400, input);
+    return w.players[0].health;
+  }
+  assert.ok(partida(0) < 3, "de pie el volador no le da");
+  assert.strictEqual(partida(NP.IN.DOWN), 3, "agachado le sigue dando");
+});
+
+prueba("agachado, el golpe sale por abajo", function () {
+  var w = mundo(suelo([[13, 3, "P"]]),
+                { ataque: "golpe", latigo: 1, duracion: 10, alcance: 20 });
+  correr(w, 20);
+  var arriba = w.players[0].y;
+  correr(w, 2, NP.IN.ACTION);
+  var latigo = w.entities.filter(function (e) { return e.active && e.kind === 6; });
+  assert.strictEqual(latigo.length, 1, "no sale el latigo");
+  assert.strictEqual(latigo[0].y, arriba, "de pie el latigo no sale a su altura");
+
+  var v = mundo(suelo([[13, 3, "P"]]),
+                { ataque: "golpe", latigo: 1, duracion: 10, alcance: 20,
+                  agachado: 5 });
+  correr(v, 20, NP.IN.DOWN);
+  correr(v, 2, NP.IN.DOWN | NP.IN.ACTION);
+  var bajo = v.entities.filter(function (e) { return e.active && e.kind === 6; });
+  assert.strictEqual(bajo.length, 1, "agachado no sale el latigo");
+  assert.strictEqual(bajo[0].y, v.players[0].y + 5 * F,
+    "agachado el latigo no baja los cinco pixeles de la caja");
+});
+
+prueba("sin 'agachado' el boton de abajo no agacha a nadie", function () {
+  var w = mundo(suelo([[13, 3, "P"]]));
+  correr(w, 30);
+  var x = w.players[0].x;
+  correr(w, 30, NP.IN.DOWN | NP.IN.RIGHT);
+  assert.strictEqual(w.players[0].crouch, 0, "se agacha sin poder");
+  assert.ok(w.players[0].x > x, "no anda con abajo pulsado");
 });
 
 /* --------------------------------------------------------------- enemigos */

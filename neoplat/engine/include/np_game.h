@@ -88,6 +88,17 @@ typedef struct {
     np_fix stair_speed;
     uint16_t invuln, stun;
     uint8_t coyote, jump_buffer, double_jump, stomp, health;
+    /* Cuanto baja el techo de la caja al agacharse, en pixeles. Cero quiere
+     * decir que el juego no lleva agacharse, y el boton de abajo solo sirve
+     * para bajarse de las plataformas y de las escaleras.
+     *
+     * Baja el techo y **no** los pies: la caja se encoge por arriba, asi que
+     * lo que pasa por encima deja de tocarte y el golpe sale a la altura de la
+     * rodilla, pero el jugador sigue apoyado donde estaba. Se hizo asi para
+     * que el dibujo se coloque igual que siempre en las seis maquinas: todas
+     * pintan al jugador en p->y - box_y, y el fotograma de agachado ya viene
+     * dibujado mas abajo dentro del cuadro. */
+    uint8_t crouch_drop;
     NpAttackDef attack;
     NpSubDef sub;
 } NpPlayerDef;

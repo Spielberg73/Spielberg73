@@ -20,7 +20,7 @@ from .project import (
     Actor, Animation, BEHAVIOR_ID, ITEM_EFFECT_ID, Layer, Project, TILE_KIND_ID, TileDef,
 )
 
-ANIM_SLOTS = ["idle", "run", "jump", "fall", "hurt", "attack", "stair"]
+ANIM_SLOTS = ["idle", "run", "jump", "fall", "hurt", "attack", "stair", "crouch"]
 SIN_STEPS = 64
 
 
@@ -415,6 +415,8 @@ def player_values(project: Project) -> Dict[str, object]:
         "coyote": p.coyote, "jump_buffer": p.jump_buffer,
         "double_jump": 1 if p.double_jump else 0, "stomp": 1 if p.stomp else 0,
         "health": p.health,
+        # cuanto baja el techo de la caja al agacharse; 0 = no se puede
+        "crouch_drop": (p.box_h - p.crouch_h) if p.crouch else 0,
     }
 
 

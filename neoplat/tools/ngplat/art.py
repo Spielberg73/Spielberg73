@@ -65,7 +65,7 @@ class Lienzo:
 
 def _heroe_frame(pose: int) -> Image:
     """16x16. 0 quieto, 1-3 correr, 4 saltar, 5 caer, 6 y 7 pegar, 8 subir,
-    9 golpeado.
+    9 golpeado, 10 agachado.
 
     Las cuatro ultimas son las que faltaban: sin ellas, pegar con el latigo,
     subir una escalera y recibir un golpe se dibujaban **con la pose de estar
@@ -167,13 +167,46 @@ def _heroe_de_espaldas() -> Image:
     return c.image
 
 
-HEROE_POSES = 10
+def _heroe_agachado() -> Image:
+    """Agachado: el cuerpo baja tres pixeles -lo mismo que baja el techo de su
+    caja- y el brazo se queda a la altura de la rodilla, que es por donde sale
+    el latigo cuando pegas asi."""
+    c = Lienzo(16, 16)
+    piel, pelo, camisa, panta, bota, linea = (
+        PALETA["piel"], PALETA["pelo"], PALETA["camisa"],
+        PALETA["panta"], PALETA["bota"], PALETA["linea"],
+    )
+    top = 4
+    c.rect(5, top, 6, 2, pelo)                     # cabeza, tres filas mas abajo
+    c.rect(5, top + 2, 6, 3, piel)
+    c.px(6, top + 3, linea)
+    c.px(9, top + 3, linea)
+
+    c.rect(4, top + 5, 8, 4, camisa)               # tronco encogido
+    # el brazo, en las filas 11 y 12 del cuadro: es justo donde el motor pone
+    # el latigo cuando se pega agachado (la caja baja tres pixeles)
+    c.rect(11, top + 7, 3, 2, piel)
+    c.rect(3, top + 6, 1, 2, piel)                 # y el otro, apoyado
+
+    c.rect(4, top + 9, 3, 2, panta)                # piernas dobladas
+    c.rect(8, top + 9, 4, 2, panta)
+    c.rect(3, top + 11, 4, 1, bota)
+    c.rect(8, top + 11, 4, 1, bota)
+    return c.image
+
+
+HEROE_POSES = 11
 
 
 def heroe() -> Image:
     hoja = Lienzo(16 * HEROE_POSES, 16)
     for pose in range(HEROE_POSES):
-        dibujo = _heroe_de_espaldas() if pose == 8 else _heroe_frame(pose)
+        if pose == 8:
+            dibujo = _heroe_de_espaldas()
+        elif pose == 10:
+            dibujo = _heroe_agachado()
+        else:
+            dibujo = _heroe_frame(pose)
         hoja.blit(pose * 16, 0, dibujo)
     return hoja.image
 

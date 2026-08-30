@@ -151,7 +151,8 @@ transparente por imagen.
 
 **Animaciones**: `frames` es la lista de fotogramas y `velocidad` los frames de
 juego que dura cada uno (más alto = más lento). Ranuras que entiende el motor:
-`quieto`, `correr`, `saltar`, `caer`, `dano`, `atacar`, `subir`. Si falta
+`quieto`, `correr`, `saltar`, `caer`, `dano`, `atacar`, `subir`,
+`agachado`. Si falta
 alguna, se usa la más parecida (`caer` cae en `saltar`, y todo lo demás en
 `quieto`). `subir` es la de la escalera y `dano` la de recibir un golpe.
 
@@ -325,6 +326,32 @@ que es otra cosa; la munición es `municion`, `municiones` o `hearts`.
 
 La munición se vacía al empezar cada nivel, igual que las llaves, y el marcador
 la enseña como `AMMO 05` mientras el juego lleve arma secundaria.
+
+### Agacharse
+
+```yaml
+jugador:
+  agachado: si         # con abajo, en el suelo
+  caja_agachado: 11    # alto de la caja agachado (por defecto, tres cuartos)
+```
+
+Con **`agachado: si`**, pulsar abajo en el suelo agacha al jugador: **no anda y
+no salta**, pero **sí pega**, y el golpe sale a la altura de la rodilla. Lo que
+baja es el **techo** de su caja —los pies se quedan donde están— así que lo que
+pasa por encima deja de tocarle. Es lo que hace que agacharse sirva para algo
+más que para la pose: esquivar lo que vuela a la altura de la cabeza y llegar a
+lo que va rastrero.
+
+- Sobre una **plataforma de las de atravesar**, abajo sigue siendo para bajarse:
+  ahí no se agacha nadie.
+- En una **escalera** tampoco: manda la escalera.
+- Al recibir un golpe, al morir y al reaparecer se levanta.
+- La pose es la animación `agachado`. Dibújala **más abajo dentro del
+  fotograma**, tanto como baje la caja: el motor no mueve el dibujo, sólo la
+  caja.
+
+Sin `agachado:` (lo de por defecto) el botón de abajo hace lo de siempre y
+nada más: bajarse de las plataformas y de las escaleras.
 
 ### Escaleras
 

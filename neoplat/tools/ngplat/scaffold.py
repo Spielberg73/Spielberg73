@@ -678,7 +678,10 @@ def _genero_castlevania(nombres: Dict[str, str]) -> Genero:
                 "  pisar_enemigos: no   # aqui se pega, no se pisa\n"
                 "  retroceso: 3.0       # con cuanta fuerza sales despedido\n"
                 "  aturdido: 24         # frames sin control despues del golpe\n"
-                "  velocidad_escalera: 0.8\n"),
+                "  velocidad_escalera: 0.8\n"
+                "  agachado: si         # con abajo: no andas ni saltas, pero\n"
+                "                       # pegas por abajo y lo que pasa por\n"
+                "                       # encima ya no te toca\n"),
         armas=("  # El latigo. `preparacion` son los frames en los que el brazo\n"
                "  # todavia sale y no hace dano, y `clavado` te planta en el sitio\n"
                "  # mientras pegas: es lo que obliga a medir la distancia.\n"
@@ -749,7 +752,8 @@ def _genero_castlevania(nombres: Dict[str, str]) -> Genero:
         # 'bucle: no' la segunda se queda hasta el final, en vez de volver a
         # la primera a mitad del latigazo.
         animos=("    atacar: {frames: [6, 7], velocidad: 5, bucle: no}\n"
-                "    subir:  {frames: [8]}   # de espaldas, en la escalera\n"),
+                "    subir:  {frames: [8]}   # de espaldas, en la escalera\n"
+                "    agachado: {frames: [10]}\n"),
         musica=_MUSICA_LATIGO,
         canciones=("castillo", "cripta"),
         # La antorcha del punto de control tenia el sonido sin poner: se

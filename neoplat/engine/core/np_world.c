@@ -348,6 +348,24 @@ static void np_spawn_entities(NpWorld *w)
     }
 }
 
+/* La caja del jugador ahora mismo. Agachado, el techo baja `crouch_drop`
+ * pixeles y los pies se quedan donde estan: lo que pasa por encima deja de
+ * tocarte y el latigo sale a la altura de la rodilla.
+ *
+ * Va por aqui, y no bajando p->y, para que el dibujo se coloque igual que
+ * siempre en las seis maquinas: todas pintan al jugador en p->y - box_y, y el
+ * fotograma de agachado ya viene dibujado mas abajo dentro del cuadro. */
+static np_fix np_player_top(const NpPlayer *p)
+{
+    return p->crouch ? p->y + NP_I2F(np_player_def.crouch_drop) : p->y;
+}
+
+static int16_t np_player_height(const NpPlayer *p)
+{
+    const NpActorDef *a = &np_player_def.actor;
+    return p->crouch ? (int16_t)(a->box_h - np_player_def.crouch_drop) : a->box_h;
+}
+
 /* Quita de la lista el dibujo del latigo, si lo habia. Se llama en cuanto el
    golpe deja de hacer dano, y tambien al recibir uno o al morir: si no, el
    latigo se quedaria colgado en el aire mientras el jugador sale despedido. */
@@ -381,6 +399,7 @@ static void np_player_reset(NpWorld *w, uint8_t quien)
     p->stun = 0;
     p->power = 0;               /* el arma vuelve a la de serie */
     p->riding = 0;
+    p->crouch = 0;
     np_whip_off(w, quien);
     p->stairs = 0;
     p->stair_dir = 1;
@@ -605,7 +624,7 @@ static void np_player_attack(NpWorld *w, uint8_t quien)
         e->facing = p->facing;
         /* sale a la altura del centro del jugador y por el lado que mira */
         e->x = p->x + NP_I2F(p->facing ? pa->box_w : -at->actor.box_w);
-        e->y = p->y + NP_I2F((pa->box_h - at->actor.box_h) / 2);
+        e->y = np_player_top(p) + NP_I2F((np_player_height(p) - at->actor.box_h) / 2);
         e->vx = p->facing ? at->speed : -at->speed;
         e->vy = 0;
         e->home_y = e->y;
@@ -649,7 +668,7 @@ static void np_player_sub(NpWorld *w, uint8_t quien)
         e->def = 0;
         e->facing = p->facing;
         e->x = p->x + NP_I2F(p->facing ? pa->box_w : -sb->actor.box_w);
-        e->y = p->y + NP_I2F((pa->box_h - sb->actor.box_h) / 2);
+        e->y = np_player_top(p) + NP_I2F((np_player_height(p) - sb->actor.box_h) / 2);
         e->vx = p->facing ? sb->speed : -sb->speed;
         e->vy = (sb->kind == NP_SUB_ARC) ? -sb->jump : 0;
         e->home_x = e->x;
@@ -791,7 +810,7 @@ static void np_whip_on(NpWorld *w, uint8_t quien)
     e->facing = p->facing;
     e->x = p->facing ? p->x + NP_I2F(pa->box_w)
                      : p->x - NP_I2F(at->actor.cols * NP_TILE);
-    e->y = p->y;
+    e->y = np_player_top(p);          /* agachado, el latigo va por abajo */
     e->anim_frame = np_attack_level(p);
 }
 
@@ -819,7 +838,7 @@ static void np_melee_update(NpWorld *w, uint8_t quien)
     np_whip_on(w, quien);
     alcance = np_attack_range(p);
     gx = p->facing ? p->x + NP_I2F(pa->box_w) : p->x - NP_I2F(alcance);
-    gy = p->y;
+    gy = np_player_top(p);
     for (i = 0; i < w->entity_count; i++) {
         NpEntity *e = &w->entities[i];
         const NpActorDef *ea;
@@ -832,7 +851,7 @@ static void np_melee_update(NpWorld *w, uint8_t quien)
            cuerpo. */
         if (e->hurt) continue;
         ea = np_entity_def(e);
-        if (!np_boxes_overlap(gx, gy, alcance, pa->box_h,
+        if (!np_boxes_overlap(gx, gy, alcance, np_player_height(p),
                               e->x, e->y, ea->box_w, ea->box_h))
             continue;
         np_hit_entity(w, e, at->damage);
@@ -1085,6 +1104,7 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
      * accion. Al salirse (por arriba o por abajo) se acaba el frame ahi y el
      * siguiente ya es uno normal, de pie. */
     if (p->stairs) {
+        p->crouch = 0;              /* en la escalera no se agacha nadie */
         np_player_action(w, quien, input);
         if (!np_stair_update(w, quien, input))
             np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer, NP_ANIM_IDLE);
@@ -1093,6 +1113,22 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
     if (!p->stun && np_stair_mount(w, quien, input)) {
         np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer, NP_ANIM_STAIR);
         return;
+    }
+
+    /* --- agacharse -------------------------------------------------------
+     *
+     * Con abajo, en el suelo: no se anda ni se salta, pero se pega, y el golpe
+     * sale por abajo. Encima de una plataforma de las de atravesar, abajo
+     * sigue siendo para bajarse (de eso se encarga np_move_y): no se puede
+     * uno agachar en el aire, asi que al frame siguiente ya no esta agachado.
+     *
+     * Se mira antes de moverse porque decide si se anda; lo de si sigue en el
+     * suelo es lo que quedo del frame anterior, igual que el salto. */
+    if (d->crouch_drop && p->on_ground && (input & NP_IN_DOWN)) {
+        p->crouch = 1;
+        dir = 0;
+    } else {
+        p->crouch = 0;
     }
 
     /* Mientras dura un golpe con `clavado: si` te quedas plantado: ni andas ni
@@ -1110,7 +1146,9 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
        cadencia la marca `espera:` del game.yaml. */
     np_player_action(w, quien, input);
 
-    pressed_jump = (input & NP_IN_JUMP) && !(w->prev_input[quien] & NP_IN_JUMP);
+    /* agachado no se salta: hay que levantarse primero */
+    pressed_jump = !p->crouch
+        && (input & NP_IN_JUMP) && !(w->prev_input[quien] & NP_IN_JUMP);
     if (pressed_jump) p->buffer = (uint8_t)(d->jump_buffer + 1);
     if (p->buffer) p->buffer--;
 
@@ -1146,7 +1184,11 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
 
     if (p->invuln) p->invuln--;
 
-    if (p->attack_timer)
+    /* Agachado manda la pose de agachado, tambien pegando: el golpe sale por
+       abajo y con la pose de pie el dibujo no cuadraria con lo que pega. */
+    if (p->crouch)
+        np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer, NP_ANIM_CROUCH);
+    else if (p->attack_timer)
         np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer, NP_ANIM_ATTACK);
     else if (!p->on_ground)
         np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer,
@@ -1350,7 +1392,8 @@ static void np_touch_entities(NpWorld *w)
             const NpActorDef *ea;
             if (!e->active) continue;
             ea = np_entity_def(e);
-            if (!np_boxes_overlap(p->x, p->y, pa->box_w, pa->box_h,
+            if (!np_boxes_overlap(p->x, np_player_top(p), pa->box_w,
+                                  np_player_height(p),
                                   e->x, e->y, ea->box_w, ea->box_h))
                 continue;
             if (e->kind == NP_KIND_SHOT || e->kind == NP_KIND_SUBSHOT)
@@ -1582,9 +1625,9 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
         if (!p->playing || p->dying) continue;
         if (np_box_touches(w->level,
                            p->x + NP_I2F(NP_HAZARD_INSET_X),
-                           p->y + NP_I2F(NP_HAZARD_INSET_Y),
+                           np_player_top(p) + NP_I2F(NP_HAZARD_INSET_Y),
                            pa->box_w - NP_HAZARD_INSET_X * 2,
-                           pa->box_h - NP_HAZARD_INSET_Y,
+                           np_player_height(p) - NP_HAZARD_INSET_Y,
                            NP_TILE_HAZARD)) {
             np_player_hurt(w, quien, 99);
             continue;

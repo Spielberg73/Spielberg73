@@ -28,7 +28,7 @@
   var TILE_CHECK = 8;
   var AI_PATROL = 0, AI_FLYER = 1, AI_CHASER = 2, AI_JUMPER = 3;
   var ANIM_IDLE = 0, ANIM_RUN = 1, ANIM_JUMP = 2, ANIM_FALL = 3, ANIM_HURT = 4,
-      ANIM_ATTACK = 5, ANIM_STAIR = 6;
+      ANIM_ATTACK = 5, ANIM_STAIR = 6, ANIM_CROUCH = 7;
   var KIND_ENEMY = 0, KIND_ITEM = 1, KIND_SHOT = 2, KIND_PLATFORM = 3;
   var KIND_BREAKABLE = 4, KIND_SUBSHOT = 5, KIND_MELEE = 6;
   /* el arma secundaria: 0 ninguna, 1 recta, 2 en arco */
@@ -69,7 +69,8 @@
         x: 0, y: 0, vx: 0, vy: 0, animTimer: 0, invuln: 0, dying: 0,
         anim: 0, animFrame: 0, onGround: 0, facing: 1, jumpsLeft: 0,
         health: 1, coyote: 0, buffer: 0, lives: 0, playing: 0,
-        attackTimer: 0, attackCd: 0, riding: 0, whip: 0, stun: 0, power: 0,
+        attackTimer: 0, attackCd: 0, riding: 0, whip: 0, crouch: 0,
+        stun: 0, power: 0,
         stairs: 0, stairDir: 1
       });
     }
@@ -280,6 +281,7 @@
     p.health = d.health; p.invuln = 0; p.coyote = 0; p.buffer = 0;
     p.dying = 0; p.attackTimer = 0; p.attackCd = 0; p.riding = 0; p.stun = 0;
     p.power = 0;                /* el arma vuelve a la de serie */
+    p.crouch = 0;
     this.whipOff(quien);
     p.stairs = 0; p.stairDir = 1;
     p.jumpsLeft = d.double_jump ? 1 : 0;
@@ -423,6 +425,19 @@
 
   /* El alcance del arma ahora mismo: el de siempre mas lo que suman las
      mejoras recogidas. Igual que np_attack_range en C. */
+  /* La caja del jugador ahora mismo: agachado, el techo baja `crouch_drop`
+     pixeles y los pies se quedan donde estan. Igual que np_player_top y
+     np_player_height. */
+  World.prototype.playerTop = function (quien) {
+    var p = this.players[quien];
+    return p.crouch ? p.y + I2F(this.data.player.crouch_drop) : p.y;
+  };
+
+  World.prototype.playerHeight = function (quien) {
+    var d = this.data.player, p = this.players[quien];
+    return p.crouch ? d.actor.box_h - d.crouch_drop : d.actor.box_h;
+  };
+
   World.prototype.attackLevel = function (quien) {
     var at = this.data.player.attack, p = this.players[quien];
     return p.power < at.levels ? p.power : at.levels;
@@ -463,7 +478,7 @@
        el ancho entero: el latigo empieza por el borde derecho del fotograma */
     e.x = p.facing ? p.x + I2F(pa.box_w)
                    : p.x - I2F(at.actor.cols * TILE);
-    e.y = p.y;
+    e.y = this.playerTop(quien);      /* agachado, el latigo va por abajo */
     e.animFrame = this.attackLevel(quien);   /* cada mejora, su fotograma */
   };
 
@@ -485,7 +500,8 @@
     e.def = 0;
     e.facing = p.facing;
     e.x = p.x + I2F(p.facing ? pa.box_w : -at.actor.box_w);
-    e.y = p.y + I2F(idiv(pa.box_h - at.actor.box_h, 2));
+    e.y = this.playerTop(quien)
+        + I2F(idiv(this.playerHeight(quien) - at.actor.box_h, 2));
     e.vx = p.facing ? at.speed : -at.speed;
     e.vy = 0;
     e.homeY = e.y;
@@ -531,7 +547,7 @@
     this.whipOn(quien);
     var alcance = this.attackRange(quien);
     var gx = p.facing ? p.x + I2F(pa.box_w) : p.x - I2F(alcance);
-    var gy = p.y;
+    var gy = this.playerTop(quien);
     for (i = 0; i < this.entityCount; i++) {
       var e = this.entities[i];
       if (!e.active) continue;
@@ -540,7 +556,7 @@
          varios frames y acertaria en todos. Igual que np_melee_update. */
       if (e.hurt) continue;
       var ea = this.entityDef(e).actor;
-      if (!overlap(gx, gy, alcance, pa.box_h,
+      if (!overlap(gx, gy, alcance, this.playerHeight(quien),
                         e.x, e.y, ea.box_w, ea.box_h)) continue;
       this.hitEntity(e, at.damage);
     }
@@ -568,7 +584,8 @@
     e.def = 0;
     e.facing = p.facing;
     e.x = p.x + I2F(p.facing ? pa.box_w : -sb.actor.box_w);
-    e.y = p.y + I2F(idiv(pa.box_h - sb.actor.box_h, 2));
+    e.y = this.playerTop(quien)
+        + I2F(idiv(this.playerHeight(quien) - sb.actor.box_h, 2));
     e.vx = p.facing ? sb.speed : -sb.speed;
     e.vy = (sb.kind === SUB_ARC) ? -sb.jump : 0;
     e.homeX = e.x; e.homeY = e.y;
@@ -787,6 +804,7 @@
     /* Subido a una escalera manda la escalera: ni gravedad, ni saltos, ni
        choques. Igual que en np_player_update. */
     if (p.stairs) {
+      p.crouch = 0;                 /* en la escalera no se agacha nadie */
       this.playerAction(quien, input);
       if (!this.stairUpdate(quien, input)) animSet(p, ANIM_IDLE);
       return;
@@ -794,6 +812,15 @@
     if (!p.stun && this.stairMount(quien, input)) {
       animSet(p, ANIM_STAIR);
       return;
+    }
+
+    /* Con abajo, en el suelo: ni se anda ni se salta, pero se pega y el golpe
+       sale por abajo. Igual que en np_player_update. */
+    if (d.crouch_drop && p.onGround && (input & IN.DOWN)) {
+      p.crouch = 1;
+      dir = 0;
+    } else {
+      p.crouch = 0;
     }
 
     /* Con `clavado: si` te quedas plantado mientras dura el golpe: ni andas ni
@@ -809,7 +836,9 @@
     /* El ataque va por flanco: mantener el boton no dispara sin parar. */
     this.playerAction(quien, input);
 
-    var pressedJump = (input & IN.JUMP) && !(this.prevInput[quien] & IN.JUMP);
+    /* agachado no se salta: hay que levantarse primero */
+    var pressedJump = !p.crouch
+      && (input & IN.JUMP) && !(this.prevInput[quien] & IN.JUMP);
     if (pressedJump) p.buffer = d.jump_buffer + 1;
     if (p.buffer) p.buffer--;
 
@@ -840,7 +869,9 @@
 
     if (p.invuln) p.invuln--;
 
-    if (p.attackTimer) animSet(p, ANIM_ATTACK);
+    /* Agachado manda la pose de agachado, tambien pegando. Igual que en C. */
+    if (p.crouch) animSet(p, ANIM_CROUCH);
+    else if (p.attackTimer) animSet(p, ANIM_ATTACK);
     else if (!p.onGround) animSet(p, p.vy < 0 ? ANIM_JUMP : ANIM_FALL);
     else if (p.vx > idiv(FIX_ONE, 8) || p.vx < -idiv(FIX_ONE, 8)) animSet(p, ANIM_RUN);
     else animSet(p, ANIM_IDLE);
@@ -976,7 +1007,9 @@
         var e = this.entities[i];
         if (!e.active) continue;
         var ea = this.entityDef(e).actor;
-        if (!overlap(p.x, p.y, pa.box_w, pa.box_h, e.x, e.y, ea.box_w, ea.box_h)) continue;
+        if (!overlap(p.x, this.playerTop(quien), pa.box_w,
+                     this.playerHeight(quien),
+                     e.x, e.y, ea.box_w, ea.box_h)) continue;
         if (e.kind === KIND_SHOT || e.kind === KIND_SUBSHOT)
           continue;                              /* es tuyo: no te toca */
         if (e.kind === KIND_MELEE) continue;     /* es tu propio latigo */
@@ -1145,8 +1178,10 @@
     for (quien = 0; quien < MAX_PLAYERS; quien++) {
       var q = this.players[quien];
       if (!q.playing || q.dying) continue;
-      if (this.boxTouches(q.x + I2F(HAZARD_INSET_X), q.y + I2F(HAZARD_INSET_Y),
-                          pa.box_w - HAZARD_INSET_X * 2, pa.box_h - HAZARD_INSET_Y,
+      if (this.boxTouches(q.x + I2F(HAZARD_INSET_X),
+                          this.playerTop(quien) + I2F(HAZARD_INSET_Y),
+                          pa.box_w - HAZARD_INSET_X * 2,
+                          this.playerHeight(quien) - HAZARD_INSET_Y,
                           TILE_HAZARD)) {
         this.playerHurt(quien, 99);
         continue;
