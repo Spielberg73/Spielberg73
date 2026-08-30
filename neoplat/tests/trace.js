@@ -53,7 +53,9 @@ inputs.forEach(function (par) {
     p1.x, p1.y, p1.vx, p1.vy, p1.health, p1.lives,
     p0.playing, p0.dying, p1.playing, p1.dying,
     world.keys, world.hearts,
-    world.checkOn, world.checkX, world.checkY, p0.power
+    world.checkOn, world.checkX, world.checkY, p0.power,
+    /* el dibujo del latigo: 0 = no hay ninguno en la lista */
+    p0.whip ? 1 : 0
   ].join(" "));
 });
 process.stdout.write(out.join("\n") + "\n");

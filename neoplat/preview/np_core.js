@@ -30,7 +30,7 @@
   var ANIM_IDLE = 0, ANIM_RUN = 1, ANIM_JUMP = 2, ANIM_FALL = 3, ANIM_HURT = 4,
       ANIM_ATTACK = 5, ANIM_STAIR = 6;
   var KIND_ENEMY = 0, KIND_ITEM = 1, KIND_SHOT = 2, KIND_PLATFORM = 3;
-  var KIND_BREAKABLE = 4, KIND_SUBSHOT = 5;
+  var KIND_BREAKABLE = 4, KIND_SUBSHOT = 5, KIND_MELEE = 6;
   /* el arma secundaria: 0 ninguna, 1 recta, 2 en arco */
   var SUB_NONE = 0, SUB_LINE = 1, SUB_ARC = 2;
   /* por donde va y viene una plataforma movil */
@@ -69,7 +69,7 @@
         x: 0, y: 0, vx: 0, vy: 0, animTimer: 0, invuln: 0, dying: 0,
         anim: 0, animFrame: 0, onGround: 0, facing: 1, jumpsLeft: 0,
         health: 1, coyote: 0, buffer: 0, lives: 0, playing: 0,
-        attackTimer: 0, attackCd: 0, riding: 0, stun: 0, power: 0,
+        attackTimer: 0, attackCd: 0, riding: 0, whip: 0, stun: 0, power: 0,
         stairs: 0, stairDir: 1
       });
     }
@@ -212,6 +212,7 @@
     if (e.kind === KIND_PLATFORM) return this.data.platforms[e.def];
     if (e.kind === KIND_BREAKABLE) return this.data.breakables[e.def];
     if (e.kind === KIND_SUBSHOT) return this.data.player.sub;
+    if (e.kind === KIND_MELEE) return this.data.player.attack;
     return this.data.items[e.def];
   };
 
@@ -279,6 +280,7 @@
     p.health = d.health; p.invuln = 0; p.coyote = 0; p.buffer = 0;
     p.dying = 0; p.attackTimer = 0; p.attackCd = 0; p.riding = 0; p.stun = 0;
     p.power = 0;                /* el arma vuelve a la de serie */
+    this.whipOff(quien);
     p.stairs = 0; p.stairDir = 1;
     p.jumpsLeft = d.double_jump ? 1 : 0;
     p.anim = ANIM_IDLE; p.animFrame = 0; p.animTimer = 0;
@@ -315,6 +317,8 @@
     p.dying = DYING_TIME;
     p.vy = -this.data.player.jump;
     p.vx = 0;
+    p.attackTimer = 0;
+    this.whipOff(quien);        /* muriendo no se pega, y el latigo no se queda */
     p.anim = ANIM_HURT;
     p.animFrame = 0;
     if (!this.playersUp()) { this.state = STATE.DYING; this.stateTimer = DYING_TIME; }
@@ -334,6 +338,7 @@
        que el empujon te lleva donde te lleve. Igual que np_player_hurt. */
     p.stun = d.stun;
     p.attackTimer = 0;
+    this.whipOff(quien);
     p.stairs = 0;               /* un golpe te tira de la escalera */
   };
 
@@ -418,10 +423,48 @@
 
   /* El alcance del arma ahora mismo: el de siempre mas lo que suman las
      mejoras recogidas. Igual que np_attack_range en C. */
-  World.prototype.attackRange = function (quien) {
+  World.prototype.attackLevel = function (quien) {
     var at = this.data.player.attack, p = this.players[quien];
-    var niveles = p.power < at.levels ? p.power : at.levels;
-    return at.range + niveles * at.range_step;
+    return p.power < at.levels ? p.power : at.levels;
+  };
+
+  World.prototype.attackRange = function (quien) {
+    var at = this.data.player.attack;
+    return at.range + this.attackLevel(quien) * at.range_step;
+  };
+
+  /* Apaga el dibujo del latigo. Igual que np_whip_off. */
+  World.prototype.whipOff = function (quien) {
+    var p = this.players[quien];
+    if (p.whip && p.whip <= this.entities.length)
+      this.entities[p.whip - 1].active = 0;
+    p.whip = 0;
+  };
+
+  /* El latigo que se ve: una entidad mas de la lista, para que la dibuje el
+     preview igual que las seis maquinas. Igual que np_whip_on. */
+  World.prototype.whipOn = function (quien) {
+    var at = this.data.player.attack, p = this.players[quien];
+    var pa = this.data.player.actor, e;
+    if (!at.fx) return;                   /* el ataque no trae dibujo */
+    if (!p.whip) {
+      var hueco = this.huecoLibre();
+      if (hueco < 0) return;              /* no cabe: se pega sin verse */
+      p.whip = hueco + 1;
+      e = this.entities[hueco];
+      e.active = 1; e.kind = KIND_MELEE; e.def = 0;
+      e.vx = 0; e.vy = 0; e.homeX = 0; e.homeY = 0;
+      e.vida = 0; e.timer = 0; e.health = 1; e.hurt = 0;
+      e.anim = ANIM_IDLE; e.animTimer = 0;
+    }
+    e = this.entities[p.whip - 1];
+    e.facing = p.facing;
+    /* mirando a la izquierda el dibujo sale espejado, asi que hay que restar
+       el ancho entero: el latigo empieza por el borde derecho del fotograma */
+    e.x = p.facing ? p.x + I2F(pa.box_w)
+                   : p.x - I2F(at.actor.cols * TILE);
+    e.y = p.y;
+    e.animFrame = this.attackLevel(quien);   /* cada mejora, su fotograma */
   };
 
   World.prototype.playerAttack = function (quien) {
@@ -479,11 +522,13 @@
   World.prototype.meleeUpdate = function (quien) {
     var at = this.data.player.attack, p = this.players[quien];
     var pa = this.data.player.actor, i;
-    if (!p.attackTimer) return;
+    if (!p.attackTimer) { this.whipOff(quien); return; }
     p.attackTimer--;
     if (at.kind !== ATTACK_MELEE) return;     /* un disparo no pega de cerca */
-    /* Los primeros `preparacion:` frames el golpe se ve pero no toca. */
-    if (p.attackTimer + at.windup >= at.duration) return;
+    /* Los primeros `preparacion:` frames el golpe se ve pero no toca. El
+       latigo aparece justo cuando empieza a hacer dano. */
+    if (p.attackTimer + at.windup >= at.duration) { this.whipOff(quien); return; }
+    this.whipOn(quien);
     var alcance = this.attackRange(quien);
     var gx = p.facing ? p.x + I2F(pa.box_w) : p.x - I2F(alcance);
     var gy = p.y;
@@ -934,6 +979,7 @@
         if (!overlap(p.x, p.y, pa.box_w, pa.box_h, e.x, e.y, ea.box_w, ea.box_h)) continue;
         if (e.kind === KIND_SHOT || e.kind === KIND_SUBSHOT)
           continue;                              /* es tuyo: no te toca */
+        if (e.kind === KIND_MELEE) continue;     /* es tu propio latigo */
         if (e.kind === KIND_PLATFORM) continue;  /* es suelo, no un bicho */
         if (e.kind === KIND_BREAKABLE) continue; /* hay que pegarle */
         if (e.kind === KIND_ITEM) { this.collect(quien, e); continue; }
@@ -1072,6 +1118,7 @@
         if (e.kind === KIND_ENEMY) continue;
       }
       if (e.kind === KIND_PLATFORM) continue;        /* ya se ha movido */
+      if (e.kind === KIND_MELEE) continue;          /* lo lleva el jugador */
       if (e.hurt) e.hurt--;
       if (e.kind === KIND_SHOT) this.shotUpdate(e);
       else if (e.kind === KIND_SUBSHOT) this.subshotUpdate(e);

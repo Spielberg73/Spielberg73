@@ -151,9 +151,18 @@ transparente por imagen.
 
 **Animaciones**: `frames` es la lista de fotogramas y `velocidad` los frames de
 juego que dura cada uno (más alto = más lento). Ranuras que entiende el motor:
-`quieto`, `correr`, `saltar`, `caer`, `hurt`, `atacar`, `subir`. Si falta
+`quieto`, `correr`, `saltar`, `caer`, `dano`, `atacar`, `subir`. Si falta
 alguna, se usa la más parecida (`caer` cae en `saltar`, y todo lo demás en
-`quieto`). `subir` es la de la escalera.
+`quieto`). `subir` es la de la escalera y `dano` la de recibir un golpe.
+
+Con **`bucle: no`** la animación se queda en el último fotograma en vez de
+volver a empezar. Es lo que hace falta en `atacar` cuando el ataque tiene
+`preparacion`: el primer fotograma es el brazo saliendo y el segundo el golpe,
+y sin `bucle: no` volvería al primero a mitad del latigazo.
+
+```yaml
+    atacar: {frames: [6, 7], velocidad: 5, bucle: no}
+```
 
 **La caja de colisión** se centra horizontalmente en el fotograma y se apoya en
 su borde inferior. Hazla algo más estrecha que el dibujo: se juega mejor.
@@ -202,11 +211,45 @@ jugador:
 | tipo | qué hace |
 |---|---|
 | `disparo` | sale un proyectil que vuela de frente hasta chocar con una pared, dar a un enemigo o agotar su `alcance`. Necesita `sprite` |
-| `golpe` | no sale nada: durante `duracion` frames hay una caja de `alcance` píxeles delante del jugador que hace daño a lo que toque. No necesita dibujo |
+| `golpe` | durante `duracion` frames hay una caja de `alcance` píxeles delante del jugador que hace daño a lo que toque. Con `sprite` se **ve** (el látigo); sin él, el golpe es invisible |
 
 El botón va **por flanco**: mantenerlo pulsado no dispara sin parar, y la
 cadencia la marca `espera`. Mientras dura el ataque —pegando o disparando— el
 jugador usa la animación `atacar` si la has puesto.
+
+#### El arma que se ve
+
+Con `tipo: golpe`, **`sprite:` es el arma**: el látigo, la espada o lo que sea.
+Se dibuja pegado al costado del jugador **sólo mientras el golpe hace daño**
+—o sea, pasada la `preparacion`— así que lo que se ve en pantalla es
+exactamente lo que pega. Al mirar a la izquierda sale espejado y sigue saliendo
+del mango.
+
+```yaml
+jugador:
+  ataque:
+    tipo: golpe
+    sprite: graficos/latigo.png
+    frame: [48, 16]          # el fotograma entero es el arma
+    caja: [48, 16]
+    desplazamiento: [0, 0]   # sin desplazar: arranca donde acaba el jugador
+    alcance: 24
+    mejoras: 2
+    alcance_mejora: 12       # 24 -> 36 -> 48 px
+    animaciones:
+      quieto: {frames: [0, 1, 2]}   # un fotograma por nivel del arma
+```
+
+**Cada fotograma es un nivel de mejora**: el motor enseña el 0 con el arma de
+serie, el 1 con una mejora y el 2 con dos. Dibuja cada uno de lo que mide su
+alcance (aquí 24, 36 y 48 px) y la mejora se verá, además de notarse. Si la
+hoja tiene menos fotogramas que niveles, se queda en el último.
+
+El arma es una entidad más de la lista mientras se ve, así que ocupa uno de los
+64 huecos; si no queda ninguno, el golpe pega igual pero sin dibujarse.
+
+Sin `sprite:` el golpe no dibuja nada, que es como funcionaba el kit antes: el
+jugador cambia a la pose `atacar` y ya.
 
 **`preparacion`** son los primeros frames del golpe en los que el brazo todavía
 está saliendo: se ve, pero no hace daño. Es lo que separa medir la distancia de
@@ -235,8 +278,8 @@ de alcance, hasta el tope que marque `mejoras`.
 jugador:
   ataque:
     tipo: golpe
-    alcance: 26              # de serie
-    mejoras: 2               # dos mejoras: 26 -> 38 -> 50 px
+    alcance: 24              # de serie
+    mejoras: 2               # dos mejoras: 24 -> 36 -> 48 px
     alcance_mejora: 12
 ```
 

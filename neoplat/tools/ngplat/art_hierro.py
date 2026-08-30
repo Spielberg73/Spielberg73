@@ -46,7 +46,10 @@ PALETA: Dict[str, RGBA] = {
 # --- el heroe -------------------------------------------------------------
 
 def _heroe_frame(pose: int) -> Image:
-    """16x16. pose: 0 quieto, 1-3 correr, 4 saltar, 5 caer."""
+    """16x16. 0 quieto, 1-3 correr, 4 saltar, 5 caer, 6 y 7 pegar, 8 subir,
+    9 golpeado. Las cuatro ultimas, igual que en el estilo de bosque: sin
+    ellas el latigo, la escalera y el golpe recibido se dibujaban con la pose
+    de estar quieto."""
     c = Lienzo(16, 16)
     sube = 1 if pose == 2 else 0                   # el cuerpo bota al correr
     top = 2 - sube
@@ -64,7 +67,16 @@ def _heroe_frame(pose: int) -> Image:
     if pose in (1, 3):                             # brazos al correr
         c.rect(2, top + 5, 2, 2, CLARO)
         c.rect(12, top + 5, 2, 2, CLARO)
-    elif pose >= 4:                                # brazos arriba al saltar
+    elif pose == 6:                                # tomando impulso: atras
+        c.rect(1, top + 4, 4, 2, CLARO)
+        c.rect(12, top + 6, 1, 2, CLARO)
+    elif pose == 7:                                # pegando: brazo estirado
+        c.rect(12, top + 5, 2, 2, CLARO)
+        c.rect(3, top + 6, 1, 2, CLARO)
+    elif pose == 9:                                # golpeado: brazos en cruz
+        c.rect(1, top + 3, 3, 2, CLARO)
+        c.rect(12, top + 3, 3, 2, CLARO)
+    elif pose in (4, 5):                           # brazos arriba al saltar
         c.rect(2, top + 3, 2, 3, CLARO)
         c.rect(12, top + 3, 2, 3, CLARO)
     else:
@@ -83,16 +95,67 @@ def _heroe_frame(pose: int) -> Image:
     elif pose == 5:                                # estiradas al caer
         c.rect(4, piernas, 3, 4, LINEA)
         c.rect(9, piernas, 3, 4, LINEA)
+    elif pose in (6, 7):                           # plantado para pegar
+        c.rect(3, piernas, 4, 4, LINEA)
+        c.rect(9, piernas, 4, 4, LINEA)
+    elif pose == 9:                                # golpeado: piernas sueltas
+        c.rect(3, piernas, 3, 3, LINEA)
+        c.rect(10, piernas, 3, 3, LINEA)
     else:
         c.rect(5, piernas, 2, 4, LINEA)
         c.rect(9, piernas, 2, 4, LINEA)
     return c.image
 
 
+def _heroe_de_espaldas() -> Image:
+    """Subiendo la escalera: se le ve la espalda, no la cara."""
+    c = Lienzo(16, 16)
+    top = 2
+    c.rect(5, top, 6, 1, LINEA)                    # capucha
+    c.rect(4, top + 1, 8, 3, ROJO)                 # cogote, sin cara
+    c.rect(4, top + 4, 8, 5, ROJO)                 # espalda
+    c.rect(6, top + 5, 4, 2, LINEA)                # la correa cruzada
+    c.rect(2, top + 2, 2, 4, CLARO)                # brazos agarrados arriba
+    c.rect(12, top + 2, 2, 4, CLARO)
+    c.rect(5, top + 9, 3, 4, LINEA)                # piernas juntas
+    c.rect(8, top + 9, 3, 4, LINEA)
+    return c.image
+
+
+HEROE_POSES = 10
+
+
 def heroe() -> Image:
-    hoja = Lienzo(16 * 6, 16)
-    for i in range(6):
-        hoja.blit(i * 16, 0, _heroe_frame(i))
+    hoja = Lienzo(16 * HEROE_POSES, 16)
+    for i in range(HEROE_POSES):
+        hoja.blit(i * 16, 0,
+                  _heroe_de_espaldas() if i == 8 else _heroe_frame(i))
+    return hoja.image
+
+
+# --- el latigo, un fotograma por nivel del arma --------------------------
+
+LATIGO_ANCHO = 48
+LATIGO_LARGOS = (24, 36, 48)
+
+
+def _latigo_frame(largo: int) -> Image:
+    """Mide lo que alcanza el golpe: 24, 36 o 48 pixeles. Con seis colores el
+    cuero es la roca clara y el chasquido, el oro."""
+    c = Lienzo(LATIGO_ANCHO, 16)
+    grueso = largo * 2 // 3
+    c.rect(0, 7, grueso, 2, ROCA2)
+    c.rect(0, 7, grueso, 1, ROCA)
+    c.rect(grueso, 8, largo - grueso - 3, 1, ROCA2)
+    c.rect(largo - 3, 9, 3, 1, ROCA2)
+    c.px(largo - 1, 10, ORO)
+    return c.image
+
+
+def latigo() -> Image:
+    hoja = Lienzo(LATIGO_ANCHO * len(LATIGO_LARGOS), 16)
+    for i, largo in enumerate(LATIGO_LARGOS):
+        hoja.blit(i * LATIGO_ANCHO, 0, _latigo_frame(largo))
     return hoja.image
 
 
@@ -413,6 +476,7 @@ def todos() -> Dict[str, Image]:
         "graficos/corazon.png": chispa(),
         "graficos/bala.png": bala(),
         "graficos/cuchillo.png": cuchillo(),
+        "graficos/latigo.png": latigo(),
         "graficos/mejora.png": mejora(),
         "graficos/tiles.png": tileset(),
         "graficos/cueva.png": cueva(),

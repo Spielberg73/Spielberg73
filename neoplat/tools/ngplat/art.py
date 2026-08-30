@@ -64,7 +64,18 @@ class Lienzo:
 
 
 def _heroe_frame(pose: int) -> Image:
-    """16x16. pose: 0 quieto, 1-3 correr, 4 saltar, 5 caer."""
+    """16x16. 0 quieto, 1-3 correr, 4 saltar, 5 caer, 6 y 7 pegar, 8 subir,
+    9 golpeado.
+
+    Las cuatro ultimas son las que faltaban: sin ellas, pegar con el latigo,
+    subir una escalera y recibir un golpe se dibujaban **con la pose de estar
+    quieto**, porque el generador rellena las ranuras que faltan con el
+    fotograma 0. El latigo se veia funcionar en los numeros y no en pantalla.
+
+    La 6 es el brazo echado atras (los frames de `preparacion:`, cuando el
+    golpe todavia no hace dano) y la 7 el brazo estirado hacia delante: el
+    dibujo del latigo arranca justo donde acaba esa mano.
+    """
     c = Lienzo(16, 16)
     piel, pelo, camisa, panta, bota, linea = (
         PALETA["piel"], PALETA["pelo"], PALETA["camisa"],
@@ -89,11 +100,30 @@ def _heroe_frame(pose: int) -> Image:
     elif pose == 5:                                 # cayendo: brazos abiertos
         c.rect(3, top + 7, 1, 3, piel)
         c.rect(12, top + 7, 1, 3, piel)
+    elif pose == 6:                                 # tomando impulso: atras
+        c.rect(1, top + 6, 4, 2, piel)
+        c.rect(11, top + 9, 1, 2, piel)
+    elif pose == 7:                                 # pegando: brazo estirado
+        c.rect(11, top + 7, 3, 2, piel)
+        c.rect(4, top + 9, 1, 2, piel)
+    elif pose == 9:                                 # golpeado: brazos en cruz
+        c.rect(2, top + 5, 2, 2, piel)
+        c.rect(12, top + 5, 2, 2, piel)
     else:
         c.rect(4, top + 9, 1, 2, piel)
         c.rect(11, top + 9, 1, 2, piel)
 
-    if pose in (1, 3):                              # zancada
+    if pose in (6, 7):                              # plantado para pegar
+        c.rect(4, top + 11, 3, 4, panta)
+        c.rect(9, top + 11, 3, 4, panta)
+        c.rect(3, top + 15, 4, 1, bota)
+        c.rect(9, top + 15, 4, 1, bota)
+    elif pose == 9:                                 # golpeado: piernas sueltas
+        c.rect(4, top + 11, 2, 3, panta)
+        c.rect(10, top + 11, 2, 3, panta)
+        c.rect(3, top + 14, 3, 1, bota)
+        c.rect(10, top + 14, 3, 1, bota)
+    elif pose in (1, 3):                            # zancada
         c.rect(4, top + 11, 3, 3, panta)
         c.rect(9, top + 11, 3, 2, panta)
         c.rect(3, top + 14, 4, 1, bota)
@@ -116,10 +146,69 @@ def _heroe_frame(pose: int) -> Image:
     return c.image
 
 
+def _heroe_de_espaldas() -> Image:
+    """La pose de subir la escalera: se ve la nuca, no la cara."""
+    c = Lienzo(16, 16)
+    piel, pelo, camisa, panta, bota = (
+        PALETA["piel"], PALETA["pelo"], PALETA["camisa"],
+        PALETA["panta"], PALETA["bota"],
+    )
+    top = 1
+    c.rect(5, top, 6, 6, pelo)                     # la nuca, todo pelo
+    c.rect(5, top + 6, 6, 5, camisa)               # espalda
+    c.rect(4, top + 4, 1, 4, piel)                 # brazos agarrados arriba
+    c.rect(11, top + 4, 1, 4, piel)
+    c.rect(4, top + 6, 1, 4, camisa)               # mangas
+    c.rect(11, top + 6, 1, 4, camisa)
+    c.rect(6, top + 11, 2, 4, panta)               # piernas juntas
+    c.rect(8, top + 11, 2, 4, panta)
+    c.rect(5, top + 15, 3, 1, bota)
+    c.rect(8, top + 15, 3, 1, bota)
+    return c.image
+
+
+HEROE_POSES = 10
+
+
 def heroe() -> Image:
-    hoja = Lienzo(16 * 6, 16)
-    for pose in range(6):
-        hoja.blit(pose * 16, 0, _heroe_frame(pose))
+    hoja = Lienzo(16 * HEROE_POSES, 16)
+    for pose in range(HEROE_POSES):
+        dibujo = _heroe_de_espaldas() if pose == 8 else _heroe_frame(pose)
+        hoja.blit(pose * 16, 0, dibujo)
+    return hoja.image
+
+
+# --- el latigo ------------------------------------------------------------
+#
+# Un fotograma por nivel del arma: el de serie, y los dos que salen al coger
+# las mejoras. Cada uno mide exactamente lo que alcanza el golpe (24, 36 y 48
+# pixeles), asi que lo que se ve es lo que pega. El motor lo coloca pegado al
+# costado del jugador y lo espeja al mirar a la izquierda, asi que el latigo
+# sale siempre del mango: por eso se dibuja arrancando en la columna 0.
+
+LATIGO_ANCHO = 48
+LATIGO_LARGOS = (24, 36, 48)
+
+
+def _latigo_frame(largo: int) -> Image:
+    c = Lienzo(LATIGO_ANCHO, 16)
+    cuero, brillo, punta = PALETA["madera2"], PALETA["madera"], PALETA["oro"]
+    # a la altura de la mano: el motor pone la fila 0 del latigo en la fila 1
+    # del jugador (su caja empieza ahi), y la mano del fotograma 7 esta en las
+    # filas 8 y 9, asi que el mango va en las 7 y 8
+    grueso = largo * 2 // 3
+    c.rect(0, 7, grueso, 2, cuero)                 # el tramo gordo, con brillo
+    c.rect(0, 7, grueso, 1, brillo)
+    c.rect(grueso, 8, largo - grueso - 3, 1, cuero)   # se va afinando
+    c.rect(largo - 3, 9, 3, 1, cuero)              # y la punta cae
+    c.px(largo - 1, 10, punta)                     # el chasquido
+    return c.image
+
+
+def latigo() -> Image:
+    hoja = Lienzo(LATIGO_ANCHO * len(LATIGO_LARGOS), 16)
+    for i, largo in enumerate(LATIGO_LARGOS):
+        hoja.blit(i * LATIGO_ANCHO, 0, _latigo_frame(largo))
     return hoja.image
 
 
@@ -508,6 +597,7 @@ def todos() -> Dict[str, Image]:
         "graficos/candelabro.png": candelabro(),
         "graficos/corazon.png": corazon(),
         "graficos/cuchillo.png": cuchillo(),
+        "graficos/latigo.png": latigo(),
         "graficos/mejora.png": mejora(),
         "graficos/tiles.png": tileset(),
         "graficos/cielo.png": cielo(),

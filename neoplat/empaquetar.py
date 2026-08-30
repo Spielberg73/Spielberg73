@@ -9,7 +9,7 @@ Sale todo en `dist/`, con la version en el nombre (ngplat/__init__.py):
 
     neoplat-docs-1.2.zip      solo la documentacion (para llevarsela a otro sitio)
     neoplat-kit-1.2.zip       el kit entero: motor, herramientas, ejemplo y pruebas
-    neoplat-windows-1.4.zip   el ngplat.exe con su LEEME, si se ha construido
+    neoplat-windows-1.5.zip   el ngplat.exe con su LEEME, si se ha construido
 
 Los ZIP se arman a mano con `zipfile` y no llamando a `zip`, para que esto
 funcione igual en Windows, en Linux y en un mac sin instalar nada. Y las fechas

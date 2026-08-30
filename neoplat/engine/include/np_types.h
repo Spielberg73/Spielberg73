@@ -66,6 +66,7 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_KIND_PLATFORM 3
 #define NP_KIND_BREAKABLE 4      /* candelabro: se rompe y suelta algo */
 #define NP_KIND_SUBSHOT 5        /* lo que tira el arma secundaria */
+#define NP_KIND_MELEE 6          /* el latigo: solo se ve, no toca a nadie */
 
 /* El arma secundaria: se lanza con arriba + accion y gasta municion. */
 #define NP_SUB_NONE  0

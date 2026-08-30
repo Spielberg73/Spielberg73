@@ -32,7 +32,10 @@ typedef struct {
  *   NP_ATTACK_MELEE  no sale nada: durante `duration` frames hay una caja
  *                    delante del jugador que hace dano a lo que toque.
  *
- * `actor` es el dibujo del proyectil, y solo se usa con NP_ATTACK_SHOT. */
+ * `actor` es el dibujo: con NP_ATTACK_SHOT es el proyectil que sale volando y
+ * con NP_ATTACK_MELEE es el **arma en si** (el latigo), que se dibuja delante
+ * del jugador mientras el golpe hace dano. `fx` a uno quiere decir que ese
+ * dibujo existe; a cero el golpe es invisible, que es como estaba el kit. */
 typedef struct {
     NpActorDef actor;
     np_fix speed;            /* velocidad del proyectil */
@@ -52,6 +55,7 @@ typedef struct {
     uint8_t kind;            /* NP_ATTACK_* */
     uint8_t damage;
     uint8_t locks;           /* 1 = mientras pegas no te puedes mover */
+    uint8_t fx;              /* 1 = `actor` es un dibujo de verdad */
 } NpAttackDef;
 
 /* El arma secundaria: se lanza con **arriba + accion** y gasta municion, que

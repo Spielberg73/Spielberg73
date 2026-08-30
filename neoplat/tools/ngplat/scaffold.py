@@ -200,7 +200,8 @@ jugador:
     correr: {{frames: [1, 2, 3, 2], velocidad: 6}}
     saltar: {{frames: [4]}}
     caer:   {{frames: [5]}}
-{armas}
+    dano:   {{frames: [9]}}   # la pose de recibir un golpe
+{animos}{armas}
 tiles:
   imagen: graficos/tiles.png
   leyenda:
@@ -370,7 +371,8 @@ jugador:
     correr: {{frames: [1, 2, 3, 2], velocidad: 6}}
     saltar: {{frames: [4]}}
     caer:   {{frames: [5]}}
-{armas}
+    dano:   {{frames: [9]}}   # la pose de recibir un golpe
+{animos}{armas}
 tiles:
   imagen: graficos/tiles.png
   leyenda:
@@ -615,6 +617,7 @@ class Genero:
     control: str                 # la fila del punto de control, si lo lleva
     municion: str                # el objeto de `efecto: municion`, si lo hay
     mejora: str                  # el objeto de `efecto: mejora`, si lo hay
+    animos: str                  # animaciones del heroe propias del genero
     musica: str                  # el bloque `musica:` entero
     canciones: tuple             # como se llama la de cada nivel
     eventos: str                 # efectos de sonido que anade este genero
@@ -652,6 +655,7 @@ def _genero_plataformas(nombres: Dict[str, str], estilo: str) -> Genero:
         control="",
         municion="",
         mejora="",
+        animos='    atacar: {frames: [7], velocidad: 6}\n',
         musica=_MUSICA_BOSQUE if estilo == "bosque" else _MUSICA_HIERRO,
         canciones=(("bosque", "cueva") if estilo == "bosque"
                    else ("galeria", "pozo")),
@@ -678,9 +682,18 @@ def _genero_castlevania(nombres: Dict[str, str]) -> Genero:
         armas=("  # El latigo. `preparacion` son los frames en los que el brazo\n"
                "  # todavia sale y no hace dano, y `clavado` te planta en el sitio\n"
                "  # mientras pegas: es lo que obliga a medir la distancia.\n"
+               "  #\n"
+               "  # Con `tipo: golpe`, `sprite:` es **el arma**: se dibuja delante\n"
+               "  # del jugador justo mientras el golpe hace dano, y cada\n"
+               "  # fotograma es un nivel de mejora (24, 36 y 48 px), asi que lo\n"
+               "  # que se ve es exactamente lo que llega.\n"
                "  ataque:\n"
                "    tipo: golpe\n"
-               "    alcance: 26\n"
+               "    sprite: graficos/latigo.png\n"
+               "    frame: [48, 16]\n"
+               "    caja: [48, 16]\n"
+               "    desplazamiento: [0, 0]\n"
+               "    alcance: 24\n"
                "    duracion: 14\n"
                "    preparacion: 5\n"
                "    clavado: si\n"
@@ -688,6 +701,10 @@ def _genero_castlevania(nombres: Dict[str, str]) -> Genero:
                "    dano: 1\n"
                "    mejoras: 2             # cuantas veces se puede mejorar\n"
                "    alcance_mejora: 12     # px que alarga cada mejora\n"
+               "    animaciones:\n"
+               "      # un fotograma por nivel del arma: el motor elige el que\n"
+               "      # toca segun las mejoras que lleves\n"
+               "      quieto: {frames: [0, 1, 2]}\n"
                "  # El arma secundaria: se tira con **arriba + accion** y gasta\n"
                "  # municion. 'tipo: arco' la haria caer describiendo una parabola.\n"
                "  secundaria:\n"
@@ -727,6 +744,12 @@ def _genero_castlevania(nombres: Dict[str, str]) -> Genero:
                 "    cantidad: 1\n"
                 "    animaciones:\n"
                 "      quieto: {frames: [0, 1], velocidad: 10}\n"),
+        # 'atacar' son dos poses: el brazo echado atras mientras dura la
+        # `preparacion:` del golpe y estirado cuando ya hace dano. Con
+        # 'bucle: no' la segunda se queda hasta el final, en vez de volver a
+        # la primera a mitad del latigazo.
+        animos=("    atacar: {frames: [6, 7], velocidad: 5, bucle: no}\n"
+                "    subir:  {frames: [8]}   # de espaldas, en la escalera\n"),
         musica=_MUSICA_LATIGO,
         canciones=("castillo", "cripta"),
         # La antorcha del punto de control tenia el sonido sin poner: se
@@ -858,7 +881,7 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
         plantilla = GAME_YAML_HIERRO
     contenido = plantilla.format(
         titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles,
-        fisica=g.fisica, armas=g.armas, escaleras=g.escaleras,
+        fisica=g.fisica, armas=g.armas, escaleras=g.escaleras, animos=g.animos,
         control=g.control, municion=g.municion, mejora=g.mejora,
         musica=g.musica, eventos=g.eventos,
         spawns=g.spawns, suelta=g.suelta)

@@ -2,8 +2,33 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.4.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.5.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.5
+
+**El látigo se ve.** Funcionaba —pegaba, alcanzaba más con cada mejora— pero en
+pantalla no salía nada: el golpe era una caja invisible de 26 píxeles y el
+héroe ni cambiaba de postura, porque el generador rellena con el fotograma 0
+las poses que faltan y faltaban cuatro.
+
+- **El arma es un dibujo**: con `tipo: golpe`, `sprite:` es el látigo, y se
+  dibuja pegado al costado del jugador **sólo mientras el golpe hace daño**
+  (pasada la `preparacion`), así que lo que se ve es exactamente lo que pega.
+  Es una entidad más de la lista, no un caso aparte: por eso lo pintan las seis
+  máquinas y el preview sin una línea de código por máquina, y por eso entra en
+  el hash de la paridad y se compara frame a frame entre C y JavaScript.
+- **La mejora se ve**: un fotograma por nivel del arma, dibujado de lo que mide
+  su alcance (24, 36 y 48 px).
+- **Cuatro poses nuevas del héroe** en los dos estilos de dibujo: el brazo
+  echado atrás mientras dura la preparación, el brazo estirado al pegar, de
+  espaldas en la escalera y la de recibir un golpe. Con `bucle: no` en la
+  animación de atacar, la segunda pose se queda hasta el final en vez de volver
+  a la primera a mitad del latigazo.
+
+Comprobado en el emulador de Mega Drive (Genesis Plus GX) y en el preview: el
+látigo sale de la mano, se afina y acaba en la punta dorada. Y en la traza, que
+está en pantalla exactamente los nueve frames en los que hace daño.
 
 ## 1.4
 

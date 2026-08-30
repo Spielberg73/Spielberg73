@@ -188,10 +188,10 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
         src.append(_actor_def("np_attack", actor_def_values(build.attack)) + ",")
     else:
         src.append("    " + _actor_vacio() + ",")
-    src.append("        %d, %d, %d, %d, %d, %d, %d, %d, %d, %d"
+    src.append("        %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d"
                % (av["speed"], av["range"], av["cooldown"], av["duration"],
                   av["windup"], av["range_step"], av["levels"], av["kind"],
-                  av["damage"], av["locks"]))
+                  av["damage"], av["locks"], av["fx"]))
     src.append("    },")
     # el arma secundaria: su dibujo va detras del del ataque
     sv = sub_values(project)

@@ -215,6 +215,7 @@ const NpActorDef *np_entity_def(const NpEntity *e)
     if (e->kind == NP_KIND_PLATFORM) return &np_platforms[e->def].actor;
     if (e->kind == NP_KIND_BREAKABLE) return &np_breakables[e->def].actor;
     if (e->kind == NP_KIND_SUBSHOT) return &np_player_def.sub.actor;
+    if (e->kind == NP_KIND_MELEE) return &np_player_def.attack.actor;
     return &np_items[e->def].actor;
 }
 
@@ -347,6 +348,17 @@ static void np_spawn_entities(NpWorld *w)
     }
 }
 
+/* Quita de la lista el dibujo del latigo, si lo habia. Se llama en cuanto el
+   golpe deja de hacer dano, y tambien al recibir uno o al morir: si no, el
+   latigo se quedaria colgado en el aire mientras el jugador sale despedido. */
+static void np_whip_off(NpWorld *w, uint8_t quien)
+{
+    NpPlayer *p = &w->players[quien];
+    if (p->whip && p->whip <= NP_MAX_ENTITIES)
+        w->entities[p->whip - 1].active = 0;
+    p->whip = 0;
+}
+
 /* Deja a un jugador como recien salido: en la salida del nivel y entero. Se usa
    al empezar el nivel y cuando reaparece despues de morir. */
 static void np_player_reset(NpWorld *w, uint8_t quien)
@@ -369,6 +381,7 @@ static void np_player_reset(NpWorld *w, uint8_t quien)
     p->stun = 0;
     p->power = 0;               /* el arma vuelve a la de serie */
     p->riding = 0;
+    np_whip_off(w, quien);
     p->stairs = 0;
     p->stair_dir = 1;
     p->anim = NP_ANIM_IDLE;
@@ -417,6 +430,8 @@ static void np_player_die(NpWorld *w, uint8_t quien)
     p->dying = NP_DYING_TIME;
     p->vy = -np_player_def.jump;
     p->vx = 0;
+    p->attack_timer = 0;
+    np_whip_off(w, quien);      /* muriendo no se pega, y el latigo no se queda */
     p->anim = NP_ANIM_HURT;
     p->anim_frame = 0;
     if (!np_players_up(w)) {
@@ -445,6 +460,7 @@ static void np_player_hurt(NpWorld *w, uint8_t quien, uint8_t damage)
        donde te lleve. Con `aturdido: 0` se recupera el control al momento. */
     p->stun = np_player_def.stun;
     p->attack_timer = 0;
+    np_whip_off(w, quien);
     p->stairs = 0;              /* un golpe te tira de la escalera */
 }
 
@@ -551,11 +567,16 @@ static int np_hit_entity(NpWorld *w, NpEntity *e, uint8_t damage)
 /* El alcance del arma ahora mismo: el de siempre mas lo que hayan sumado las
    mejoras. Es una cuenta y no un campo guardado para que no haya dos verdades
    que puedan separarse. */
+static uint8_t np_attack_level(const NpPlayer *p)
+{
+    const NpAttackDef *at = &np_player_def.attack;
+    return p->power < at->levels ? p->power : at->levels;
+}
+
 static uint16_t np_attack_range(const NpPlayer *p)
 {
     const NpAttackDef *at = &np_player_def.attack;
-    uint8_t niveles = p->power < at->levels ? p->power : at->levels;
-    return (uint16_t)(at->range + niveles * at->range_step);
+    return (uint16_t)(at->range + np_attack_level(p) * at->range_step);
 }
 
 static void np_player_attack(NpWorld *w, uint8_t quien)
@@ -721,6 +742,59 @@ static void np_shot_update(NpWorld *w, NpEntity *e)
     np_anim_tick(a, e->anim, &e->anim_frame, &e->anim_timer);
 }
 
+/* El latigo que se ve.
+ *
+ * El dano lo sigue haciendo la caja de np_melee_update: esto es solo el
+ * dibujo. Y es una entidad mas de la lista, no un caso aparte, porque asi lo
+ * pintan las seis maquinas y el preview **sin tocar una linea** (todas
+ * recorren las entidades y le piden el dibujo a np_entity_def), y ademas entra
+ * en el hash de la traza, o sea que la paridad con el preview lo comprueba
+ * frame a frame.
+ *
+ * Se coloca pegado a la caja del jugador y ocupa el fotograma entero. Mirando
+ * a la izquierda el dibujo sale espejado, asi que ahi hay que restar el ancho
+ * completo: el latigo empieza entonces por el borde derecho del fotograma, que
+ * es justo el costado del jugador. Con eso cuadra sin depender del nivel de
+ * mejora.
+ *
+ * El fotograma es el nivel del arma: 0 el latigo de serie, 1 y 2 los
+ * mejorados. Asi la mejora se **ve**, que hasta ahora solo se notaba en que
+ * llegabas un poco mas lejos. */
+static void np_whip_on(NpWorld *w, uint8_t quien)
+{
+    const NpAttackDef *at = &np_player_def.attack;
+    const NpActorDef *pa = &np_player_def.actor;
+    NpPlayer *p = &w->players[quien];
+    NpEntity *e;
+
+    if (!at->fx) return;                  /* el ataque no trae dibujo */
+    if (!p->whip) {
+        int hueco = np_hueco_libre(w);
+        if (hueco < 0) return;            /* no cabe: se pega sin verse */
+        p->whip = (uint8_t)(hueco + 1);
+        e = &w->entities[hueco];
+        e->active = 1;
+        e->kind = NP_KIND_MELEE;
+        e->def = 0;
+        e->vx = 0;
+        e->vy = 0;
+        e->home_x = 0;
+        e->home_y = 0;
+        e->vida = 0;
+        e->timer = 0;
+        e->health = 1;
+        e->hurt = 0;
+        e->anim = NP_ANIM_IDLE;
+        e->anim_timer = 0;
+    }
+    e = &w->entities[p->whip - 1];
+    e->facing = p->facing;
+    e->x = p->facing ? p->x + NP_I2F(pa->box_w)
+                     : p->x - NP_I2F(at->actor.cols * NP_TILE);
+    e->y = p->y;
+    e->anim_frame = np_attack_level(p);
+}
+
 /* El golpe cuerpo a cuerpo: mientras dura, una caja delante del jugador. */
 static void np_melee_update(NpWorld *w, uint8_t quien)
 {
@@ -731,13 +805,18 @@ static void np_melee_update(NpWorld *w, uint8_t quien)
     uint16_t alcance;
     uint8_t i;
 
-    if (!p->attack_timer) return;
+    if (!p->attack_timer) { np_whip_off(w, quien); return; }
     p->attack_timer--;
     if (at->kind != NP_ATTACK_MELEE) return;   /* un disparo no pega de cerca */
     /* Los primeros `preparacion:` frames el golpe se ve pero no toca: el brazo
        todavia esta saliendo. Es la diferencia entre medir la distancia y
-       machacar el boton. */
-    if (p->attack_timer + at->windup >= at->duration) return;
+       machacar el boton. El latigo aparece justo cuando empieza a hacer dano,
+       asi que lo que se ve en pantalla es exactamente lo que pega. */
+    if (p->attack_timer + at->windup >= at->duration) {
+        np_whip_off(w, quien);
+        return;
+    }
+    np_whip_on(w, quien);
     alcance = np_attack_range(p);
     gx = p->facing ? p->x + NP_I2F(pa->box_w) : p->x - NP_I2F(alcance);
     gy = p->y;
@@ -1276,6 +1355,7 @@ static void np_touch_entities(NpWorld *w)
                 continue;
             if (e->kind == NP_KIND_SHOT || e->kind == NP_KIND_SUBSHOT)
                 continue;                            /* es tuyo: no te toca */
+            if (e->kind == NP_KIND_MELEE) continue;  /* es tu propio latigo */
             if (e->kind == NP_KIND_PLATFORM) continue;   /* es suelo, no un bicho */
             if (e->kind == NP_KIND_BREAKABLE) continue;  /* hay que pegarle */
             if (e->kind == NP_KIND_ITEM) {
@@ -1469,6 +1549,7 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
             if (e->kind == NP_KIND_ENEMY) continue;
         }
         if (e->kind == NP_KIND_PLATFORM) continue;      /* ya se ha movido */
+        if (e->kind == NP_KIND_MELEE) continue;        /* lo lleva el jugador */
         if (e->hurt) e->hurt--;
         if (e->kind == NP_KIND_SHOT) np_shot_update(w, e);
         else if (e->kind == NP_KIND_SUBSHOT) np_subshot_update(w, e);

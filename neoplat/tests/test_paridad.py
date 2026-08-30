@@ -74,6 +74,10 @@ class TestParidad(unittest.TestCase):
         cls.variantes["dos"] = cls._preparar("scroll", dos=True)
         cls.variantes["dos-pantallas"] = cls._preparar("pantallas", dos=True)
         cls.variantes["golpe"] = cls._preparar("scroll", golpe=True)
+        # el mismo golpe pero sin `sprite:`: el ataque no trae dibujo y no
+        # tiene que meter nada en la lista de entidades
+        cls.variantes["golpe-pelado"] = cls._preparar("scroll", golpe=True,
+                                                      sin_dibujo=True)
         cls.variantes["llave"] = cls._preparar("scroll", llave=True)
         cls.variantes["tablon"] = cls._preparar("scroll", tablon=True)
         # El genero de latigo entero, tal y como sale de `ngplat nuevo`: trae
@@ -85,10 +89,11 @@ class TestParidad(unittest.TestCase):
 
     @classmethod
     def _preparar(cls, camara, jefe=False, dos=False, golpe=False, llave=False,
-                  tablon=False, genero="plataformas"):
+                  tablon=False, genero="plataformas", sin_dibujo=False):
         proyecto_dir = os.path.join(
             cls.tmp, "juego-" + camara + ("-jefe" if jefe else "")
             + ("-dos" if dos else "") + ("-golpe" if golpe else "")
+            + ("-pelado" if sin_dibujo else "")
             + ("-llave" if llave else "") + ("-tablon" if tablon else "")
             + ("-" + genero if genero != "plataformas" else ""))
         crear_proyecto(proyecto_dir, "PARIDAD", "TEST", genero=genero)
@@ -107,6 +112,11 @@ class TestParidad(unittest.TestCase):
             marca = "    tipo: disparo"
             assert marca in texto, "el andamiaje ya no trae el ataque asi"
             texto = texto.replace(marca, "    tipo: golpe", 1)
+        if sin_dibujo:
+            # sin dibujo el golpe es invisible, que es como estaba el kit
+            marca = "    sprite: graficos/bala.png\n"
+            assert marca in texto, "el ataque del andamiaje ya no trae sprite"
+            texto = texto.replace(marca, "", 1)
         if llave:
             # el andamiaje pone la llave en la plataforma mas alta y el mando
             # aleatorio no llega hasta alli: se pone otra a dos pasos de la
@@ -337,6 +347,45 @@ class TestParidad(unittest.TestCase):
         perdidas = sum(1 for a, b in zip(niveles, niveles[1:]) if b < a)
         self.assertGreater(perdidas, 0, "la mejora no se pierde nunca")
 
+    def test_el_latigo_se_ve_y_dura_lo_que_hace_dano(self):
+        """El latigo es una entidad mas de la lista, asi que ya entra en el
+        hash de la paridad; esto comprueba que existe y **cuando**.
+
+        Tiene que estar en pantalla exactamente los frames en los que el golpe
+        hace dano: `duracion` menos `preparacion`, que en el andamiaje son
+        14 - 5 = 9. Ni antes (durante la preparacion el brazo todavia sale) ni
+        despues.
+        """
+        traza, _ = self._trazas(1, "castillo")
+        latigo = [int(linea.split()[31]) for linea in traza]
+        self.assertIn(1, latigo, "el latigo no aparece en toda la traza")
+        self.assertIn(0, latigo, "el latigo no se quita nunca")
+        rachas, cuenta = [], 0
+        for valor in latigo + [0]:
+            if valor:
+                cuenta += 1
+            elif cuenta:
+                rachas.append(cuenta)
+                cuenta = 0
+        self.assertEqual(max(rachas), 9,
+                         "el latigo no dura lo que dura el golpe: %s" % sorted(set(rachas)))
+        self.assertGreater(len(rachas), 3, "casi no se pega en toda la traza")
+
+    def test_sin_dibujo_no_hay_latigo(self):
+        """Un golpe sin `sprite:` no mete nada en la lista, y un disparo
+        tampoco: los proyectos que ya existian se juegan igual que antes."""
+        for variante in ("golpe-pelado", "scroll"):
+            traza, _ = self._trazas(1, variante)
+            self.assertEqual({int(linea.split()[31]) for linea in traza}, {0},
+                             "'%s' esta metiendo un latigo en la lista" % variante)
+
+    def test_el_golpe_con_dibujo_lo_ensena(self):
+        """Y con `sprite:`, el mismo golpe si lo saca: es lo unico que cambia
+        entre las dos variantes."""
+        traza, _ = self._trazas(1, "golpe")
+        self.assertIn(1, [int(linea.split()[31]) for linea in traza],
+                      "el golpe con dibujo no ensena nada")
+
     def test_misma_traza_a_dos_jugadores(self):
         """Lo mismo con `jugadores: 2`: dos mandos, dos vidas, la camara en el
         punto medio y el que se queda atras pegado al borde."""
@@ -349,7 +398,7 @@ class TestParidad(unittest.TestCase):
         en su sitio y la prueba de paridad pasaria sin comprobar nada."""
         traza, _ = self._trazas(1, "dos")
         columnas = [linea.split() for linea in traza]
-        self.assertTrue(all(len(c) == 31 for c in columnas),
+        self.assertTrue(all(len(c) == 32 for c in columnas),
                         "la traza no trae las columnas del segundo jugador")
         # al empezar los dos estan dentro; luego el mando aleatorio puede
         # dejarlo sin vidas, y eso tambien tiene que salir igual en las dos

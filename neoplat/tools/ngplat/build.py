@@ -428,7 +428,7 @@ def attack_values(project: Project) -> Dict[str, object]:
     if a is None:
         return {"kind": 0, "speed": 0, "range": 0, "cooldown": 0,
                 "duration": 0, "windup": 0, "damage": 0, "locks": 0,
-                "levels": 0, "range_step": 0}
+                "levels": 0, "range_step": 0, "fx": 0}
     return {
         "kind": ATTACK_KIND_ID[a.kind],
         "speed": to_fixed(a.speed),
@@ -440,6 +440,10 @@ def attack_values(project: Project) -> Dict[str, object]:
         "locks": 1 if a.locks else 0,
         "levels": a.levels,
         "range_step": a.range_step,
+        # con `tipo: golpe`, `sprite:` es el arma en si (el latigo) y se dibuja
+        # delante del jugador mientras el golpe hace dano; sin sprite el golpe
+        # es invisible, que es como estaba el kit
+        "fx": 1 if a.sprite else 0,
     }
 
 
