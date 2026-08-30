@@ -149,6 +149,11 @@ jugador:
 izquierda a derecha. Se numeran desde 0. Máximo **15 colores** más el
 transparente por imagen.
 
+**Andar a la derecha y a la izquierda es la misma animación**: el motor la
+dibuja **espejada** según hacia dónde mires, igual que hacen estas máquinas por
+hardware. No hay que dibujar el personaje dos veces (ni pagar el doble de
+tiles): dibújalo mirando a la derecha y ya.
+
 **Animaciones**: `frames` es la lista de fotogramas y `velocidad` los frames de
 juego que dura cada uno (más alto = más lento). Ranuras que entiende el motor:
 `quieto`, `correr`, `saltar`, `caer`, `dano`, `atacar`, `subir`,

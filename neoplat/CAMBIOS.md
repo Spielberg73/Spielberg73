@@ -2,8 +2,38 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.7.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.8.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.8
+
+**Lo que dibujas en el editor ya sale en el juego.** Era el fallo gordo: el
+editor promete "pulsas E, dibujas, pulsas Enter y lo estás jugando", pero el
+retoque no entraba en la hoja con la que se pinta la partida hasta darle a
+*guardar*. Quien probaba un cambio veía el dibujo de antes y no entendía nada.
+Ahora el dibujo entra en cuanto sueltas el ratón; guardar sigue siendo para
+escribirlo en el PNG del proyecto.
+
+**El personaje trae el juego de movimientos completo, y todo se toca desde el
+editor:**
+
+- **Agacharse en los dos géneros** (antes sólo en el de látigo): quieto,
+  correr, saltar, caer, agacharse, atacar y la pose de recibir un golpe.
+  Derecha e izquierda son la misma animación espejada, como hacen estas
+  máquinas por hardware.
+- **Las animaciones se editan en la pestaña dibujos**: las ocho ranuras del
+  motor (`quieto`, `correr`, `saltar`, `caer`, `dano`, `atacar`, `subir`,
+  `agachado`), con sus fotogramas, su velocidad y si se repiten. Se aplica al
+  momento y al guardar entra en el `game.yaml` en una línea, respetando el
+  resto del archivo. Antes el editor sólo enseñaba cinco ranuras y no dejaba
+  cambiar ninguna.
+- **Los ajustes de movimiento que faltaban** en el panel de física: retroceso,
+  frames aturdido, velocidad al subir escaleras, alto de la caja agachado y el
+  interruptor de agacharse.
+
+Y las pruebas del navegador **entran en la batería de siempre**
+(`tests/test_navegador.py`): estaban sólo en `make test-navegador`, nadie las
+ejecutaba y se habían quedado desfasadas. Por ahí se coló justo este fallo.
 
 ## 1.7
 

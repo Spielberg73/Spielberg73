@@ -61,6 +61,11 @@
       var jugador = DATA.player;
       return {
         filas: DATA.levels.map(function (n) { return n.rows.slice(); }),
+        /* Las animaciones que se hayan cambiado en el editor de dibujos, por
+           actor: {"jugador": {atacar: {frames: [6, 7], velocidad: 5,
+           bucle: false}}}. Solo entran las tocadas, asi que al guardar el yaml
+           no se reescriben las que estan como estaban. */
+        animaciones: {},
         niveles: DATA.levels.map(function (n) {
           return {
             nombre: n.name,
@@ -92,7 +97,16 @@
           coyote: jugador.coyote,
           buffer_salto: jugador.jump_buffer,
           vida: jugador.health,
-          invulnerable: jugador.invuln
+          invulnerable: jugador.invuln,
+          retroceso: fijoAUsuario(jugador.knockback),
+          aturdido: jugador.stun,
+          velocidad_escalera: fijoAUsuario(jugador.stair_speed),
+          agachado: !!jugador.crouch_drop,
+          /* la caja de agachado se guarda por su alto, que es lo que se
+             escribe en el yaml; el motor usa cuanto baja el techo */
+          caja_agachado: jugador.crouch_drop
+            ? jugador.actor.box_h - jugador.crouch_drop
+            : jugador.actor.box_h - Math.floor(jugador.actor.box_h / 4)
         },
         enemigos: DATA.enemies.map(function (e, i) {
           return {
@@ -483,6 +497,67 @@
         else if (grupo === "objeto") editor.modelo.objetos[indice][campo] = valor;
       });
       aplicarAlMotor();
+      return true;
+    };
+
+    /* ----------------------------------------------------- animaciones */
+    /*
+     * Las ocho ranuras que entiende el motor, en el orden en el que las
+     * guarda `actor.anims` (el mismo de ANIM_SLOTS en build.py). El nombre es
+     * el que se escribe en el game.yaml.
+     */
+    editor.RANURAS = ["quieto", "correr", "saltar", "caer", "dano", "atacar",
+                      "subir", "agachado"];
+
+    /** Que actor del game.yaml es una hoja de dibujo. */
+    editor.actorDeHoja = function (hoja) {
+      if (DATA.player && DATA.player.actor.sheet === hoja) {
+        return { clave: "jugador", actor: DATA.player.actor };
+      }
+      var i;
+      for (i = 0; i < (DATA.enemies || []).length; i++) {
+        if (DATA.enemies[i].actor.sheet === hoja) {
+          return { clave: "enemigo:" + i, actor: DATA.enemies[i].actor,
+                   tipo: "enemigo", indice: i };
+        }
+      }
+      for (i = 0; i < (DATA.items || []).length; i++) {
+        if (DATA.items[i].actor.sheet === hoja) {
+          return { clave: "objeto:" + i, actor: DATA.items[i].actor,
+                   tipo: "objeto", indice: i };
+        }
+      }
+      return null;
+    };
+
+    /**
+     * Cambia una animacion: que fotogramas usa, cuanto dura cada uno y si se
+     * repite. Se aplica **al momento** al motor (asi se ve jugando, no solo en
+     * la vista previa del editor) y se apunta en el modelo para que salga en
+     * el game.yaml al guardar.
+     */
+    editor.ponerAnimacion = function (hoja, ranura, frames, velocidad, bucle) {
+      var quien = editor.actorDeHoja(hoja);
+      if (!quien || ranura < 0 || ranura >= editor.RANURAS.length) return false;
+      var limpios = [];
+      (frames || []).forEach(function (f) {
+        var n = Math.round(Number(f));
+        if (!isFinite(n) || n < 0 || n >= quien.actor.frames) return;
+        limpios.push(n);
+      });
+      if (!limpios.length) return false;
+      velocidad = Math.max(1, Math.min(120, Math.round(Number(velocidad) || 1)));
+
+      quien.actor.anims[ranura] = {
+        frames: limpios, count: limpios.length,
+        speed: velocidad, loop: bucle ? 1 : 0
+      };
+      if (!editor.modelo.animaciones[quien.clave]) {
+        editor.modelo.animaciones[quien.clave] = {};
+      }
+      editor.modelo.animaciones[quien.clave][editor.RANURAS[ranura]] = {
+        frames: limpios.slice(), velocidad: velocidad, bucle: !!bucle
+      };
       return true;
     };
 
@@ -956,6 +1031,15 @@
       p.jump_buffer = Math.round(j.buffer_salto);
       p.health = Math.round(j.vida);
       p.invuln = Math.round(j.invulnerable);
+      p.knockback = usuarioAFijo(j.retroceso);
+      p.stun = Math.round(j.aturdido);
+      p.stair_speed = usuarioAFijo(j.velocidad_escalera);
+      /* agacharse: en el yaml va el alto de la caja y el motor quiere cuanto
+         baja el techo, asi que se resta. Sin agacharse, cero. */
+      p.crouch_drop = j.agachado
+        ? Math.max(1, Math.min(p.actor.box_h - 1,
+                               p.actor.box_h - Math.round(j.caja_agachado)))
+        : 0;
 
       editor.modelo.enemigos.forEach(function (m, i) {
         var e = DATA.enemies[i];
@@ -1001,6 +1085,45 @@
 
     function cambio(a, b) { return JSON.stringify(a) !== JSON.stringify(b); }
 
+    /* Las animaciones cambiadas, escritas en su actor.
+     *
+     * Van **en una linea** (`correr: {frames: [1, 2], velocidad: 6}`), que es
+     * como las escribe el andamiaje y como se leen de un vistazo. La seccion
+     * se busca cada vez porque cada escritura mueve las lineas de sitio. */
+    function escribirAnimaciones(y, animaciones) {
+      var ALIAS = { animaciones: ["animaciones", "animations", "anims"] };
+      Object.keys(animaciones || {}).forEach(function (clave) {
+        var partes = clave.split(":");
+        Object.keys(animaciones[clave]).forEach(function (ranura) {
+          var actor = null;
+          if (partes[0] === "jugador") {
+            actor = y.seccion(["jugador", "player"], 0, undefined, 0);
+          } else {
+            var lista = partes[0] === "enemigo"
+              ? y.seccion(["enemigos", "enemies"], 0, undefined, 0)
+              : y.seccion(["objetos", "items"], 0, undefined, 0);
+            var modeloActor = partes[0] === "enemigo"
+              ? editor.modelo.enemigos[Number(partes[1])]
+              : editor.modelo.objetos[Number(partes[1])];
+            if (lista && modeloActor) {
+              actor = y.seccion([modeloActor.nombre], lista.inicio, lista.fin);
+            }
+          }
+          if (!actor) return;
+          var dentro = y.asegurarSubseccion(actor, ALIAS.animaciones);
+          y.ponerValorPlano(dentro, [ranura], enLinea(animaciones[clave][ranura]));
+        });
+      });
+    }
+
+    function enLinea(anim) {
+      var texto = "{frames: [" + anim.frames.join(", ") + "]" +
+                  ", velocidad: " + anim.velocidad;
+      /* 'bucle: si' es lo de por defecto y no hace falta escribirlo */
+      if (!anim.bucle) texto += ", bucle: no";
+      return texto + "}";
+    }
+
     editor.exportarYaml = function () {
       var original = DATA.yaml || "";
       if (!original || !NPYaml) return editor.exportarMapas();
@@ -1028,7 +1151,8 @@
       function decimales(campo) {
         var enteros = ["vidas", "tiempo", "coyote", "buffer_salto", "vida",
                        "invulnerable", "puntos", "dano", "periodo", "intervalo",
-                       "cantidad", "rango", "amplitud", "llaves"];
+                       "cantidad", "rango", "amplitud", "llaves",
+                       "aturdido", "caja_agachado"];
         return enteros.indexOf(campo) >= 0 ? 0 : 2;
       }
 
@@ -1054,6 +1178,9 @@
           escribir(rango, campos.objeto || {}, m, base.objetos[i]);
         });
       }
+
+      // las animaciones que se hayan cambiado en el editor de dibujos
+      escribirAnimaciones(y, modelo.animaciones);
 
       // los que se han borrado
       editor.borrados.forEach(function (borrado) {

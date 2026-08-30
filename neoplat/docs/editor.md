@@ -59,11 +59,12 @@ niveles: **nuevo** (nace con salida, meta y suelo, listo para jugar),
 ## Juego y física
 
 Título, autor, vidas, tiempo límite, la **máquina** para la que se compila
-(Neo Geo, Mega Drive, Amiga, Jaguar o Atari ST) y todos los ajustes del
-jugador con
-deslizadores: velocidad, salto, gravedad, aceleración, fricción, control en el
-aire, corte del salto, caída máxima, rebote, coyote, buffer de salto, vida,
-invulnerabilidad, doble salto, pisar enemigos y velocidad al subir escaleras.
+(Neo Geo, Mega Drive, Amiga, Jaguar, Atari ST o X68000) y todos los ajustes del
+jugador con deslizadores: velocidad, salto, gravedad, aceleración, fricción,
+control en el aire, corte del salto, caída máxima, rebote, coyote, buffer de
+salto, vida, invulnerabilidad, retroceso al recibir un golpe, frames aturdido,
+velocidad al subir escaleras, alto de la caja agachado, doble salto, pisar
+enemigos y agacharse.
 
 Cada cambio se aplica **al momento**: pulsa <kbd>Enter</kbd> y lo pruebas. Debajo
 te dice lo que consigue tu salto con esos números, por ejemplo:
@@ -121,6 +122,18 @@ que este viva dentro del kit:
   reproduce la animación que elijas (`quieto`, `correr`, `saltar`...) con los
   fotogramas y la velocidad que tiene ese actor en el `game.yaml`, mientras
   dibujas.
+
+**Y se edita ahí mismo.** Debajo de la vista previa están las ocho ranuras que
+entiende el motor —`quieto`, `correr`, `saltar`, `caer`, `dano`, `atacar`,
+`subir` y `agachado`— y, de la elegida, **qué fotogramas usa** (`0, 1, 2, 1`),
+**cuánto dura cada uno** y **si se repite**. Se aplica al momento: pulsa
+<kbd>Enter</kbd> y el personaje ya se mueve así. Al guardar, la animación entra
+en el `game.yaml` en una línea (`correr: {frames: [1, 2, 3, 2], velocidad: 6}`).
+Un fotograma que no exista en la hoja se descarta y te lo dice.
+
+Lo que dibujas **se ve en el juego sin guardar**: el retoque entra en la hoja
+con la que se pinta la partida en cuanto sueltas el ratón. Guardar es para
+escribirlo en el PNG del proyecto.
 
 **Herramientas**: lápiz, borrador, línea, rectángulo (hueco o lleno), elipse
 (hueca o llena), relleno por zonas, cuentagotas y mover un trozo. Todo con

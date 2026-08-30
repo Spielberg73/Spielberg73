@@ -145,7 +145,7 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
             // se le pega a todo lo que se pueda durante un rato
             for (let i = 0; i < 400; i++) w.step(i % 20 === 0 ? 32 : 2, 0);
             return { antes: antes, velas: cuantos(4),
-                     hayArma: !!(w.data.player.sub && w.data.player.sub.kind) };
+                     hayArma: (w.data.player.subs || []).length > 0 };
         }""")
         print("candelabros:", json.dumps(candelabro))
         exigir(candelabro["antes"]["velas"] > 0,
@@ -465,6 +465,82 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
         print("png del jugador:", json.dumps(medidas))
         exigir(medidas == [96, 16], "el PNG no mide lo que la hoja: %s" % medidas)
 
+        # --- lo que dibujas se ve en el juego, sin guardar ----------------
+        #
+        # Es lo que promete el editor: pulsas E, dibujas, pulsas Enter y lo
+        # estas jugando. Antes habia que darle a "guardar" para que el juego se
+        # enterara, asi que quien probaba un retoque veia el dibujo de antes.
+        #
+        # Se mira la hoja con la que **pinta el juego**, no la pantalla: en la
+        # pantalla se mueven enemigos y monedas y el ruido taparia la senal.
+        MIRAR_HOJA = """(fila) => {
+            const hoja = window.NeoPlat.hojas()['player'];
+            const c = document.createElement('canvas');
+            c.width = 16; c.height = 16;
+            const ctx = c.getContext('2d');
+            ctx.drawImage(hoja, 0, 0, 16, 16, 0, 0, 16, 16);
+            const d = ctx.getImageData(0, 0, 16, 16).data;
+            let s = '';
+            for (let x = 0; x < 16; x++) {
+                const i = (fila * 16 + x) * 4;
+                s += d[i] + ',' + d[i+1] + ',' + d[i+2] + ',' + d[i+3] + ';';
+            }
+            return s; }"""
+        pagina.evaluate("() => window.NeoPlat.dibujos.abrir('player')")
+        pagina.wait_for_timeout(200)
+        antes_hoja = pagina.evaluate(MIRAR_HOJA, 5)
+        pagina.evaluate("""() => { const d = window.NeoPlat.dibujos.estado();
+            d.herramienta = 'linea'; d.color = 3; }""")
+        caja = pagina.locator("#dib-canvas").bounding_box()
+        zoom = pagina.evaluate("() => window.NeoPlat.dibujos.estado().zoom")
+        alto = caja["y"] + zoom * 5.5
+        pagina.mouse.move(caja["x"] + zoom * 1.5, alto)
+        pagina.mouse.down()
+        pagina.mouse.move(caja["x"] + zoom * 14.5, alto)
+        pagina.mouse.up()
+        pagina.wait_for_timeout(200)
+        despues_hoja = pagina.evaluate(MIRAR_HOJA, 5)
+        distintos = sum(1 for a, b in zip(antes_hoja.split(";"),
+                                          despues_hoja.split(";")) if a != b)
+        print("lo dibujado llega al juego:", distintos, "pixeles de la hoja")
+        exigir(distintos >= 10,
+               "lo que dibujas no llega a la hoja con la que se juega hasta "
+               "guardar (%d pixeles)" % distintos)
+        # y sigue ahi despues de volver a la partida
+        pagina.keyboard.press("Enter")
+        pagina.wait_for_timeout(400)
+        exigir(pagina.evaluate(MIRAR_HOJA, 5) == despues_hoja,
+               "al volver a jugar se pierde lo dibujado")
+        pagina.keyboard.press("e")
+        pagina.wait_for_timeout(300)
+        pagina.click("#pestanas button[data-panel=dibujos]")
+        pagina.wait_for_timeout(200)
+
+        # --- las animaciones se editan desde el editor --------------------
+        pagina.evaluate("() => window.NeoPlat.dibujos.abrir('player')")
+        pagina.wait_for_timeout(200)
+        ranuras = pagina.evaluate("""() => Array.from(
+            document.querySelectorAll('#dib-animacion option')).map(o => o.textContent)""")
+        print("ranuras de animacion:", json.dumps(ranuras))
+        exigir(ranuras == ["quieto", "correr", "saltar", "caer", "dano",
+                           "atacar", "subir", "agachado"],
+               "el editor no ensena las ocho animaciones del motor: %s" % ranuras)
+        pagina.select_option("#dib-animacion", "1")
+        pagina.wait_for_timeout(150)
+        pagina.fill("#dib-anim-frames", "3, 2, 1")
+        pagina.fill("#dib-anim-velocidad", "11")
+        pagina.dispatch_event("#dib-anim-velocidad", "change")
+        pagina.wait_for_timeout(200)
+        animacion = pagina.evaluate("""() => {
+            const a = window.NeoPlat.data.player.actor.anims[1];
+            const yaml = window.NeoPlat.editor.exportarYaml();
+            return { frames: a.frames, speed: a.speed,
+                     enYaml: /correr: \\{frames: \\[3, 2, 1\\], velocidad: 11\\}/.test(yaml) }; }""")
+        print("animacion editada:", json.dumps(animacion))
+        exigir(animacion["frames"] == [3, 2, 1] and animacion["speed"] == 11,
+               "cambiar la animacion no llega al motor: %s" % animacion)
+        exigir(animacion["enYaml"], "la animacion no sale en el yaml")
+
         # --- copiar de un dibujo y pegarlo en otro ------------------------
         #
         # Los pixeles son indices de paleta, asi que pegarlos tal cual en otro
@@ -611,7 +687,7 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
         print("rom:", json.dumps(panel))
         exigir(panel["solo"] == ["panel-rom"],
                "la pestana ROM deja otros paneles a la vista: %s" % panel["solo"])
-        exigir(len(panel["maquinas"]) == 5,
+        exigir(len(panel["maquinas"]) == 6,
                "faltan maquinas donde elegir: %s" % panel["maquinas"])
         # el boton dice lo que va a salir: no todas las maquinas hacen una ROM
         etiquetas = {}
@@ -628,10 +704,12 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
                "en Jaguar el boton no dice cartucho: %r" % etiquetas.get("jaguar"))
         exigir(etiquetas.get("atarist") == "generar el disquete",
                "en Atari ST el boton no dice disquete: %r" % etiquetas.get("atarist"))
-        exigir(len(set(etiquetas.values())) == 3,
-               "el boton deberia decir tres cosas distintas: cartucho (Mega Drive "
-               "y Jaguar), disquete (Amiga y Atari ST) y ROM (Neo Geo): %s"
-               % etiquetas)
+        exigir(etiquetas.get("x68000") == "generar el ejecutable",
+               "en el X68000 el boton no dice ejecutable: %r" % etiquetas.get("x68000"))
+        exigir(len(set(etiquetas.values())) == 4,
+               "el boton deberia decir cuatro cosas distintas: cartucho (Mega "
+               "Drive y Jaguar), disquete (Amiga y Atari ST), ROM (Neo Geo) y "
+               "ejecutable (X68000): %s" % etiquetas)
         # aqui el preview se abre como file://, asi que no hay ngplat con quien
         # hablar: el boton tiene que estar apagado y decir por que
         exigir(not panel["servidor"], "cree que hay servidor abriendo un archivo")

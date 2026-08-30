@@ -389,15 +389,16 @@ class TestParidad(unittest.TestCase):
 
     def test_agacharse_pasa_de_verdad(self):
         """El mando aleatorio pulsa abajo, asi que la traza ya compara la caja
-        mas baja frame a frame; esto comprueba que se llega a usar."""
-        traza, _ = self._trazas(1, "castillo")
-        agachado = [int(linea.split()[32]) for linea in traza]
-        self.assertGreater(sum(agachado), 20,
-                           "en toda la traza no se agacha nadie")
-        # y en el genero de plataformas no se agacha nadie: no lo lleva
-        otra, _ = self._trazas(1, "scroll")
-        self.assertEqual({int(linea.split()[32]) for linea in otra}, {0},
-                         "el de plataformas se agacha sin tenerlo puesto")
+        mas baja frame a frame; esto comprueba que se llega a usar.
+
+        Los dos generos lo traen puesto: agacharse es del personaje, no del
+        tipo de juego. Que sin `agachado:` no se agache nadie lo comprueba
+        tests/comportamiento.js, que puede montar ese caso a mano."""
+        for variante in ("castillo", "scroll"):
+            traza, _ = self._trazas(1, variante)
+            agachado = [int(linea.split()[32]) for linea in traza]
+            self.assertGreater(sum(agachado), 20,
+                               "en la traza de '%s' no se agacha nadie" % variante)
 
     def test_el_hacha_se_coge_y_cambia_el_arma(self):
         """El andamiaje trae dos armas secundarias -cuchillo y hacha- y el

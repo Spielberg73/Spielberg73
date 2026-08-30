@@ -641,7 +641,10 @@ def _genero_plataformas(nombres: Dict[str, str], estilo: str) -> Genero:
         fisica=("  vida: 2              # golpes que aguanta antes de perder una vida\n"
                 "  control_aire: 0.16   # cuanto se corrige el salto en el aire\n"
                 "  pisar_enemigos: si\n"
-                "  rebote: 3.6          # impulso al pisar un enemigo\n"),
+                "  rebote: 3.6          # impulso al pisar un enemigo\n"
+                "  agachado: si         # con abajo: ni andas ni saltas, pero\n"
+                "                       # disparas por abajo y lo que pasa por\n"
+                "                       # encima ya no te toca\n"),
         armas=("  # El boton de accion. Quitalo entero y el jugador solo podra\n"
                "  # pisar enemigos.\n"
                "  ataque:\n"
@@ -661,7 +664,8 @@ def _genero_plataformas(nombres: Dict[str, str], estilo: str) -> Genero:
         municion="",
         arma="",
         mejora="",
-        animos='    atacar: {frames: [7], velocidad: 6}\n',
+        animos=("    atacar: {frames: [7], velocidad: 6}\n"
+                "    agachado: {frames: [10]}\n"),
         musica=_MUSICA_BOSQUE if estilo == "bosque" else _MUSICA_HIERRO,
         canciones=(("bosque", "cueva") if estilo == "bosque"
                    else ("galeria", "pozo")),

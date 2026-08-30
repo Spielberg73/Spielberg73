@@ -260,6 +260,55 @@ prueba("las llaves del nivel llegan al motor y al yaml", function () {
   assert.ok(/llaves:\s*2/.test(yaml), "el yaml no recoge las llaves:\n" + yaml);
 });
 
+/* ------------------------------------------------------- animaciones */
+
+prueba("cambiar una animacion llega al motor y al yaml", function () {
+  var e = nuevoEditor();
+  var hoja = e.data.player.actor.sheet;
+  assert.ok(e.ponerAnimacion(hoja, 1, [3, 2, 1], 12, true),
+            "no ha dejado cambiar la animacion de correr");
+  var anim = e.data.player.actor.anims[1];
+  assert.deepStrictEqual(anim.frames, [3, 2, 1], "el motor sigue con la de antes");
+  assert.strictEqual(anim.count, 3);
+  assert.strictEqual(anim.speed, 12);
+  var yaml = e.exportarYaml();
+  assert.ok(/correr: \{frames: \[3, 2, 1\], velocidad: 12\}/.test(yaml),
+            "el yaml no recoge la animacion:\n" + yaml);
+});
+
+prueba("una animacion sin bucle se escribe con 'bucle: no'", function () {
+  var e = nuevoEditor();
+  var hoja = e.data.player.actor.sheet;
+  e.ponerAnimacion(hoja, 5, [1, 2], 4, false);      // atacar
+  assert.strictEqual(e.data.player.actor.anims[5].loop, 0);
+  assert.ok(/atacar: \{frames: \[1, 2\], velocidad: 4, bucle: no\}/
+            .test(e.exportarYaml()), "no ha escrito que no se repite");
+});
+
+prueba("los fotogramas que no existen en la hoja no cuelan", function () {
+  var e = nuevoEditor();
+  var hoja = e.data.player.actor.sheet;
+  var cuantos = e.data.player.actor.frames;
+  e.ponerAnimacion(hoja, 0, [0, cuantos + 5], 8, true);
+  assert.deepStrictEqual(e.data.player.actor.anims[0].frames, [0],
+    "ha dejado poner un fotograma que la hoja no tiene");
+  assert.strictEqual(e.ponerAnimacion(hoja, 0, [cuantos + 5], 8, true), false,
+    "sin ningun fotograma valido tendria que negarse");
+});
+
+prueba("las animaciones de un enemigo van a su bloque, no al del jugador",
+       function () {
+  var e = nuevoEditor();
+  if (!e.data.enemies.length) return;
+  var hoja = e.data.enemies[0].actor.sheet;
+  if (hoja === e.data.player.actor.sheet) return;   // comparten dibujo
+  e.ponerAnimacion(hoja, 0, [1], 9, true);
+  var yaml = e.exportarYaml();
+  var bloque = yaml.split(/^enemigos:/m)[1] || "";
+  assert.ok(/quieto: \{frames: \[1\], velocidad: 9\}/.test(bloque),
+            "la animacion no ha ido a parar al enemigo:\n" + bloque);
+});
+
 prueba("editar un enemigo cambia su comportamiento", function () {
   var e = nuevoEditor();
   if (!e.modelo.enemigos.length) return;
@@ -375,6 +424,30 @@ prueba("el yaml lleva el enemigo nuevo y su simbolo", function () {
   assert.ok(/rango: 120/.test(yaml), "falta el rango del perseguidor");
   assert.ok(new RegExp("^\\s*" + creado.simbolo + ": fantasma", "m").test(yaml),
             "falta el simbolo en spawns");
+});
+
+prueba("agacharse y el resto del movimiento llegan al motor y al yaml",
+       function () {
+  var e = nuevoEditor();
+  var alto = e.data.player.actor.box_h;
+  e.ponerPropiedad("jugador", "agachado", true);
+  assert.ok(e.data.player.crouch_drop > 0, "no se puede agachar");
+  e.ponerPropiedad("jugador", "caja_agachado", alto - 5);
+  assert.strictEqual(e.data.player.crouch_drop, 5,
+    "el alto de la caja agachado no llega al motor");
+  e.ponerPropiedad("jugador", "aturdido", 20);
+  assert.strictEqual(e.data.player.stun, 20);
+  e.ponerPropiedad("jugador", "velocidad_escalera", 1.0);
+  assert.strictEqual(e.data.player.stair_speed, 256);
+  e.ponerPropiedad("jugador", "retroceso", 2.5);
+  assert.strictEqual(e.data.player.knockback, 640);
+  var yaml = e.exportarYaml();
+  assert.ok(/agachado: si/.test(yaml), "el yaml no recoge agacharse:\n" + yaml);
+  assert.ok(/aturdido: 20/.test(yaml), "el yaml no recoge el aturdimiento");
+  assert.ok(/velocidad_escalera: 1/.test(yaml), "el yaml no recoge la escalera");
+  e.ponerPropiedad("jugador", "agachado", false);
+  assert.strictEqual(e.data.player.crouch_drop, 0,
+    "quitando agacharse el motor sigue agachandose");
 });
 
 prueba("el yaml recoge la maquina de destino", function () {

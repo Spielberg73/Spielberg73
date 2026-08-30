@@ -127,6 +127,48 @@
     return true;
   };
 
+  /**
+   * Igual que `ponerValor`, pero dejando la clave en **una sola linea**.
+   *
+   * Hace falta para las animaciones: se escriben en linea
+   * (`correr: {frames: [1, 2], velocidad: 6}`) pero el usuario ha podido
+   * escribirlas como un bloque de varias lineas. Si se le pusiera el valor a
+   * la clave sin mas, los hijos del bloque se quedarian sueltos debajo y el
+   * yaml saldria roto.
+   */
+  Yaml.prototype.ponerValorPlano = function (rango, alias, valor) {
+    if (!rango) return false;
+    var encontrada = this.clave(rango, alias);
+    if (encontrada && !encontrada.partes.valor) {
+      var sangria = encontrada.partes.sangria.length;
+      var fin = encontrada.linea + 1;
+      while (fin < this.lineas.length) {
+        var linea = this.lineas[fin];
+        if (esHueco(linea) || sangriaDe(linea) <= sangria) break;
+        fin++;
+      }
+      if (fin > encontrada.linea + 1) {
+        this.lineas.splice(encontrada.linea + 1, fin - encontrada.linea - 1);
+        rango.fin -= fin - encontrada.linea - 1;
+      }
+    }
+    return this.ponerValor(rango, alias, valor);
+  };
+
+  /** Busca una subseccion dentro de un rango y, si no esta, la crea vacia. */
+  Yaml.prototype.asegurarSubseccion = function (rango, alias) {
+    if (!rango) return null;
+    var dentro = this.seccion(alias, rango.inicio, rango.fin,
+                              this.sangriaHijos(rango));
+    if (dentro) return dentro;
+    var sangria = this.sangriaHijos(rango);
+    var destino = rango.fin;
+    while (destino > rango.inicio && esHueco(this.lineas[destino - 1])) destino--;
+    this.lineas.splice(destino, 0, Array(sangria + 1).join(" ") + alias[0] + ":");
+    return { clave: destino, inicio: destino + 1, fin: destino + 1,
+             sangria: sangria, nombre: alias[0] };
+  };
+
   Yaml.prototype.quitarClave = function (rango, alias) {
     var encontrada = this.clave(rango, alias);
     if (!encontrada) return false;

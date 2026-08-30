@@ -164,6 +164,12 @@
   #dib-canvas { image-rendering: pixelated; display: block; touch-action: none;
                 cursor: crosshair; background:
     repeating-conic-gradient(#20242f 0% 25%, #171b24 0% 50%) 50% / 16px 16px; }
+  #dib-anim-campos { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+  #dib-anim-campos .campo { display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: #9aa3b5; }
+  #dib-anim-campos .campo span { min-width: 74px; }
+  #dib-anim-campos input[type=text] { width: 100px; }
+  #dib-anim-campos input[type=number] { width: 60px; }
   #dib-anim { image-rendering: pixelated; border: 1px solid #2b3245; border-radius: 4px;
               background: #11141d; flex: 0 0 auto; }
   .dibujos .aviso { color: #f2b705; }
@@ -404,6 +410,15 @@
           <select id="dib-animacion"></select>
         </div>
         <canvas id="dib-anim" width="64" height="64"></canvas>
+        <div id="dib-anim-campos">
+          <label class="campo"><span>fotogramas</span>
+            <input type="text" id="dib-anim-frames" size="12"></label>
+          <label class="campo"><span>velocidad</span>
+            <input type="number" id="dib-anim-velocidad" min="1" max="120" step="1"></label>
+          <label class="campo"><span>se repite</span>
+            <input type="checkbox" id="dib-anim-bucle"></label>
+          <div class="nota" id="dib-anim-aviso"></div>
+        </div>
         <div class="barra">
           <button type="button" id="dib-guardar">guardar</button>
           <button type="button" id="dib-revertir">descartar</button>
@@ -1305,8 +1320,15 @@
     campoNumero(fis, "buffer salto", "jugador", "buffer_salto", null, p.buffer_salto);
     campoNumero(fis, "vida", "jugador", "vida", null, p.vida);
     campoNumero(fis, "invulnerable", "jugador", "invulnerable", null, p.invulnerable);
+    campoNumero(fis, "retroceso", "jugador", "retroceso", null, p.retroceso);
+    campoNumero(fis, "aturdido", "jugador", "aturdido", null, p.aturdido);
+    campoNumero(fis, "velocidad escalera", "jugador", "velocidad_escalera",
+                null, p.velocidad_escalera);
+    campoNumero(fis, "alto agachado", "jugador", "caja_agachado", null,
+                p.caja_agachado);
     campoBool(fis, "doble salto", "jugador", "doble_salto", null, p.doble_salto);
     campoBool(fis, "pisar enemigos", "jugador", "pisar_enemigos", null, p.pisar_enemigos);
+    campoBool(fis, "agacharse", "jugador", "agachado", null, p.agachado);
   }
 
   /* --- crear enemigos y objetos, con su dibujo ------------------------ */
@@ -2080,6 +2102,7 @@
       ctx.strokeRect(sitio[0] * z, sitio[1] * z, l.ancho * z, l.alto * z);
     }
     actualizarCuentaColores();
+    refrescarHojaViva();
     var nota = document.getElementById("dib-nota");
     if (nota) {
       nota.textContent = dib.hoja
@@ -2088,6 +2111,27 @@
           (dib.tocado ? " - sin guardar" : "")
         : "elige un dibujo de la lista";
     }
+  }
+
+  /* Lo que acabas de dibujar, metido ya en las hojas con las que se pinta el
+     juego.
+     
+     Sin esto habia que pulsar "guardar" para ver un retoque en la partida, y
+     eso es justo lo contrario de lo que promete el editor: pulsas E, dibujas,
+     pulsas Enter y lo estas jugando. El lienzo se pasa a un canvas suelto (que
+     vale igual que una imagen para dibujar) en vez de a un PNG, porque un PNG
+     hay que cargarlo y eso tarda: se veria un frame despues, o dos. */
+  var hojasVivas = {};
+
+  function refrescarHojaViva() {
+    if (!dib.lienzo || !dib.hoja || !DATA.sheets[dib.hoja]) return;
+    var lienzo = hojasVivas[dib.hoja];
+    if (!lienzo) {
+      lienzo = document.createElement("canvas");
+      hojasVivas[dib.hoja] = lienzo;
+    }
+    dib.lienzo.aCanvas(lienzo);
+    images[dib.hoja] = lienzo;
   }
 
   /* ------------------------------------------------------------- raton */
@@ -2233,13 +2277,18 @@
     if (!selector) return;
     selector.innerHTML = "";
     var actor = actorDeHoja(dib.hoja);
-    var nombres = ["quieto", "correr", "saltar", "caer", "dolor"];
+    /* Las ocho ranuras que entiende el motor, con el nombre que llevan en el
+       game.yaml. Antes salian cinco y las tres ultimas -atacar, subir y
+       agachado- no habia forma de verlas ni de tocarlas desde el editor. */
+    var nombres = editor.RANURAS;
     /* El escenario y las capas de fondo no se animan: ahi la vista previa no
        dice nada y estorba. */
     var caja = document.getElementById("dib-caja-animacion");
     var vista = document.getElementById("dib-anim");
+    var campos = document.getElementById("dib-anim-campos");
     if (caja) caja.style.display = actor ? "" : "none";
     if (vista) vista.style.display = actor ? "" : "none";
+    if (campos) campos.style.display = actor ? "" : "none";
     if (!actor) {
       dib.animacion = -1;
       return;
@@ -2252,6 +2301,56 @@
     });
     dib.animacion = 0;
     selector.value = "0";
+    refrescarCamposAnimacion();
+  }
+
+  /* Los tres campos de la animacion elegida: que fotogramas usa, cuanto dura
+     cada uno y si se repite. Se rellenan desde lo que come el motor, asi que
+     ensenan lo que de verdad se esta jugando. */
+  function refrescarCamposAnimacion() {
+    var actor = actorDeHoja(dib.hoja);
+    var frames = document.getElementById("dib-anim-frames");
+    var velocidad = document.getElementById("dib-anim-velocidad");
+    var bucle = document.getElementById("dib-anim-bucle");
+    if (!frames || !velocidad || !bucle) return;
+    if (!actor || dib.animacion < 0) {
+      frames.value = ""; velocidad.value = ""; bucle.checked = false;
+      return;
+    }
+    var anim = actor.anims[dib.animacion] || { frames: [0], speed: 6, loop: 1 };
+    frames.value = (anim.frames || []).join(", ");
+    velocidad.value = anim.speed;
+    bucle.checked = !!anim.loop;
+  }
+
+  /** Lo que se teclea en los campos, al motor y al game.yaml. */
+  function aplicarCamposAnimacion() {
+    var aviso = document.getElementById("dib-anim-aviso");
+    var actor = actorDeHoja(dib.hoja);
+    if (!actor || dib.animacion < 0) return;
+    var texto = document.getElementById("dib-anim-frames").value;
+    var lista = texto.split(/[^0-9]+/).filter(function (s) { return s !== ""; })
+                     .map(Number);
+    var fuera = lista.filter(function (n) { return n >= actor.frames; });
+    var puesto = editor.ponerAnimacion(
+      dib.hoja, dib.animacion, lista,
+      document.getElementById("dib-anim-velocidad").value,
+      document.getElementById("dib-anim-bucle").checked);
+    if (aviso) {
+      if (!puesto) {
+        aviso.textContent = "hacen falta fotogramas: por ejemplo 0, 1, 2, 1";
+      } else if (fuera.length) {
+        aviso.textContent = "este dibujo solo tiene " + actor.frames +
+          " fotograma(s): " + fuera.join(", ") + " no existe(n) y se han quitado";
+      } else {
+        aviso.textContent = "";
+      }
+    }
+    if (puesto) {
+      dib.animFrame = 0;
+      dib.animReloj = 0;
+      refrescarCamposAnimacion();
+    }
   }
 
   function actorDeHoja(hoja) {
@@ -2548,7 +2647,13 @@
     if (anim) anim.addEventListener("change", function () {
       dib.animacion = parseInt(anim.value, 10);
       dib.animFrame = 0;
+      refrescarCamposAnimacion();
       refrescarPreviewDibujo();
+    });
+    ["dib-anim-frames", "dib-anim-velocidad", "dib-anim-bucle"].forEach(function (id) {
+      var campo = document.getElementById(id);
+      if (!campo) return;
+      campo.addEventListener("change", aplicarCamposAnimacion);
     });
   }
 
@@ -3187,6 +3292,10 @@
     audio: audio,
     editor: editor,
     pixel: function () { return lienzoPixel; },
+    /* Las hojas de dibujo con las que se pinta el juego ahora mismo. Es lo
+       que mira tests/navegador.py para comprobar que lo que retocas en el
+       editor llega de verdad a la partida. */
+    hojas: function () { return images; },
     dibujos: {
       abrir: abrirDibujo,
       estado: function () { return dib; },
