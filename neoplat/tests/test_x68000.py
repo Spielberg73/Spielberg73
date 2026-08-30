@@ -137,15 +137,16 @@ class TestEjecutable(unittest.TestCase):
 class TestNotasDelYM2151(unittest.TestCase):
     """El key code del YM2151, que no es un periodo sino una nota.
 
-    Los cuatro valores de anclaje estan **medidos en el emulador**: se tocan
-    dos notas que se turnan y se comprueba que salen a una octava justa, que es
-    la unica forma de medir esto sin desfases. Hacia falta porque la
-    documentacion que circula da otra tabla (un semitono por encima) y con ella
-    las melodias salen cambiadas.
+    Los valores de anclaje estan **medidos dentro del juego**: el driver
+    escribe en el marcador, bit a bit, el codigo que le manda al chip, y se
+    empareja cada codigo con la frecuencia que sale por el altavoz. Es la unica
+    medida que resulto fiable; midiendo notas sueltas o por tramos salieron
+    tres tablas distintas, todas mal.
     """
 
-    ANCLAS = {"la3": ((9, 3), 0x4D), "do4": ((0, 4), 0x51),
-              "la4": ((9, 4), 0x5D), "si4": ((11, 4), 0x60)}
+    ANCLAS = {"do#5": ((1, 5), 0x4D), "mi5": ((4, 5), 0x51),
+              "fa#5": ((6, 5), 0x54), "sol#5": ((8, 5), 0x56),
+              "do#6": ((1, 6), 0x5D)}
 
     def test_las_notas_medidas_en_el_emulador(self):
         for nombre, ((semitono, octava), kc) in self.ANCLAS.items():
@@ -153,11 +154,11 @@ class TestNotasDelYM2151(unittest.TestCase):
             self.assertEqual(codigo_ym2151(hz) >> 8, kc,
                              "%s tendria que ser el key code $%02X" % (nombre, kc))
 
-    def test_el_si_se_lleva_uno_a_la_octava(self):
-        """El si no cabe en el bloque de su octava: se sube al codigo 0 del
-        siguiente. Por eso el si4 es $60 y no $5F, que no existe."""
-        self.assertEqual(codigo_ym2151(frecuencia_de_nota(11, 4)) >> 8, 0x60)
-        self.assertEqual(codigo_ym2151(frecuencia_de_nota(0, 5)) >> 8, 0x61)
+    def test_media_octava_se_lleva_al_bloque_siguiente(self):
+        """Del re# para arriba, las notas caen ya en el bloque de la octava
+        siguiente: el do5 es $4C y el re#5 es $50, no $4F, que no existe."""
+        self.assertEqual(codigo_ym2151(frecuencia_de_nota(0, 5)) >> 8, 0x4C)
+        self.assertEqual(codigo_ym2151(frecuencia_de_nota(3, 5)) >> 8, 0x50)
 
     def test_una_octava_es_justo_el_doble(self):
         for semitono in range(12):

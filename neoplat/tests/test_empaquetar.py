@@ -44,7 +44,7 @@ class TestZips(unittest.TestCase):
         nombres = self._hacer(empaquetar.DOCS, "docs")
         self.assertIn("docs/README.md", nombres)
         for pagina in ("formato", "tutorial", "sonido", "neogeo", "megadrive",
-                       "amiga", "jaguar", "atarist", "editor"):
+                       "amiga", "jaguar", "atarist", "x68000", "editor"):
             self.assertIn("docs/docs/%s.md" % pagina, nombres,
                           "falta docs/%s.md en el ZIP" % pagina)
 
@@ -105,11 +105,12 @@ class TestElExeLlevaTodo(unittest.TestCase):
         sys._MEIPASS = self.raiz
         return importlib.reload(paths)
 
-    def test_el_motor_de_las_cinco_maquinas_esta_dentro(self):
+    def test_el_motor_de_las_seis_maquinas_esta_dentro(self):
         congelado = self._congelado()
         try:
             faltan = []
-            for nombre in ("neogeo", "megadrive", "amiga", "jaguar", "atarist"):
+            for nombre in ("neogeo", "megadrive", "amiga", "jaguar", "atarist",
+                           "x68000"):
                 for origen, _destino in sistemas.obtener(nombre).archivos_motor:
                     ruta = os.path.join(congelado.ENGINE_DIR,
                                         origen.replace("/", os.sep))

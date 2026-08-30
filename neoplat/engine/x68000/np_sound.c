@@ -26,33 +26,29 @@
 #include "gamedata.h"
 #include "np_sonido.h"
 
-/* --- ojo: la musica todavia no esta bien ---------------------------------
+/* Lo que costo afinarlo, por si alguien lo vuelve a tocar.
  *
- * El chip suena y el secuenciador va: se oyen notas limpias y con el ritmo que
- * pide el game.yaml. Lo que **no** cuadra son las alturas: dentro del juego el
- * mismo key code que en un programa suelto da la nota buena sale cambiado, y
- * de forma que no es un transporte constante (el analizador de las pruebas
- * reconoce diez de las dieciseis notas, no las dieciseis como en las otras
- * cinco maquinas).
+ * La tabla de notas de este chip no es la que dice la documentacion que
+ * circula, y medirla es mas dificil de lo que parece: midiendo notas sueltas o
+ * por tramos salieron tres tablas distintas, todas mal, porque la captura se
+ * desfasa una nota y no se nota. Lo que si valio fue **mirarlo desde dentro
+ * del juego**: el driver escribia en el marcador, bit a bit, el codigo que le
+ * mandaba al chip, y se emparejo cada codigo con la frecuencia que salia por
+ * el altavoz. Con siete pares quedo claro que todo sonaba 16 semitonos por
+ * encima, y de ahi salio la cuenta buena (codigo_ym2151, en sonido.py).
  *
- * Lo que ya esta comprobado en el emulador y no hay que volver a mirar:
+ * Lo demas que hubo que aprender por el camino:
  *
- *   - Las direcciones ($E90001 el registro, $E90003 el valor) y que hay que
- *     esperar entre una y otra.
- *   - La tabla de notas: el la4 de 440 Hz es el key code $5D, el do4 el $51,
- *     el si4 el $60 y el la3 el $4D. Medido tocando dos notas que se turnan y
- *     comprobando que salen justo a una octava.
- *   - Que el chip hay que callarlo canal por canal antes de tocar nada:
- *     ponerle todos los registros a cero deja el TL en 0, que es el volumen
- *     **maximo**, y lo que estuviera sonando de antes berrea.
- *   - Que no son las interrupciones: el juego corre en modo supervisor y las
- *     cierra mientras escribe el par registro/valor, y sale igual.
- *
- * Hasta que las alturas cuadren, el kit no toca musica en esta maquina: es
- * peor una cancion con las notas cambiadas que ninguna. Poner esto a 1 la
- * enciende para seguir probando.
+ *   - Al chip hay que callarlo canal por canal antes de tocar nada. Ponerle
+ *     todos los registros a cero deja el TL en 0, que es el volumen **maximo**,
+ *     y lo que estuviera sonando de antes berrea por encima de la musica.
+ *   - Entre el numero de registro y el valor hay que esperar, y el par no
+ *     puede partirse: por eso el juego corre en modo supervisor y cierra las
+ *     interrupciones mientras escribe (ver arranque.S).
+ *   - Un silencio viene con la nota a cero y hay que tratarlo como silencio:
+ *     tocarlo daria el do mas grave del chip, que en FM pesa mas que la
+ *     melodia y se la come.
  */
-#define NP_X68K_MUSICA 0
 
 #define NP_CANAL_MELODIA 0
 #define NP_CANAL_ACOMP   1
@@ -291,7 +287,7 @@ static void np_avanzar(uint8_t i)
 
 void np_sound_frame(const NpWorld *w)
 {
-#if NP_SOUND_ENABLED && NP_X68K_MUSICA
+#if NP_SOUND_ENABLED
     uint8_t i;
     uint8_t musica = (w->state == NP_STATE_PLAY && w->level->music)
         ? (uint8_t)(w->level->music - 1) : 0xFF;
@@ -310,7 +306,5 @@ void np_sound_frame(const NpWorld *w)
     for (i = 0; i < NP_CANALES; i++) np_avanzar(i);
 #else
     (void)w;
-    (void)np_avanzar;
-    (void)np_tocar_musica;
 #endif
 }

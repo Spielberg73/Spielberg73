@@ -22,7 +22,8 @@ para copiarlo a un disco de sistema. Aqui se hace eso mismo sobre la marcha: se
 coge el disco de Human68k del usuario, se le mete el .X y se le cambia el
 AUTOEXEC.BAT para que lo llame.
 
-    python3 tests/emulador_x68000.py JUEGO.X [capturas] [--pantallas]
+    python3 tests/emulador_x68000.py JUEGO.X [capturas] [--proyecto RUTA]
+                                    [--pantallas]
 """
 
 from __future__ import annotations
@@ -35,6 +36,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from camara import Vigia, comprobar_salto  # noqa: E402
 from libretro import (Emulador, buscar_core, colores, distintos,  # noqa: E402
                       franja, guardar_png)
+from sonido import (banda_del_efecto, comprobar_melodia,  # noqa: E402
+                    nivel, pico_por_frame)
 
 CORE = "px68k"
 FPS = 60
@@ -117,8 +120,8 @@ def _esperar_al_juego(emu) -> bool:
     return False
 
 
-def comprobar(ejecutable: str, capturas: str = "capturas",
-              pantallas: bool = False) -> int:
+def comprobar(ejecutable: str, capturas: str = "capturas", musica=None,
+              salto=None, pantallas: bool = False) -> int:
     core = buscar_core(CORE, "NEOPLAT_CORE_X68000")
     if not core:
         print("el core de px68k no esta instalado: se salta la prueba")
@@ -131,6 +134,7 @@ def comprobar(ejecutable: str, capturas: str = "capturas",
         print("no hay un disco de Human68k (NEOPLAT_HUMAN68K): se salta la prueba")
         return 0
     os.makedirs(capturas, exist_ok=True)
+    franja_del_salto = banda_del_efecto(musica, salto) if musica and salto else None
     fallos = []
 
     def exigir(condicion, mensaje):
@@ -193,7 +197,31 @@ def comprobar(ejecutable: str, capturas: str = "capturas",
     guardar_png(juego, os.path.join(capturas, "x68000_juego.png"))
     exigir(distintos(titulo, juego) > 0.001, "la pantalla no cambia al pulsar start")
 
-    # --- 3) se juega: el escenario se mueve y los actores tambien --------
+    # --- 3) y ademas suena: el YM2151 toca la melodia del game.yaml ------
+    if musica:
+        exigir(nivel(emu.escuchar(10)) > 1.0, "el X68000 no saca ningun sonido")
+        oido = emu.escuchar(musica.velocidad * (len(musica.pistas[0]) + 1))
+        aciertos, total, _, notas = comprobar_melodia(oido, emu.ritmo, musica, FPS)
+        exigir(total and aciertos >= total * 0.8,
+               "el YM2151 no toca la melodia del game.yaml: %d notas de %d "
+               "(se ha oido %s)" % (aciertos, total, [int(n) for n in notas]))
+        print("musica: %d de %d notas son las del game.yaml" % (aciertos, total))
+
+    if franja_del_salto:
+        quieto = pico_por_frame(emu.escuchar, 24, emu.ritmo, *franja_del_salto)
+        emu.pulsar("A")
+        emu.avanzar(2)
+        emu.pulsar()
+        saltando = pico_por_frame(emu.escuchar, 24, emu.ritmo, *franja_del_salto)
+        exigir(saltando > quieto * 2.5,
+               "al saltar no se oye el efecto: entre %.0f y %.0f Hz suena %.1f "
+               "veces mas que estando quieto"
+               % (franja_del_salto[0], franja_del_salto[1],
+                  saltando / max(1.0, quieto)))
+        print("efecto de salto: %.1f veces mas fuerte que el fondo"
+              % (saltando / max(1.0, quieto)))
+
+    # --- 4) se juega: el escenario se mueve y los actores tambien --------
     movimiento = 0.0
     antes = juego
     vigia = Vigia() if pantallas else None
@@ -216,7 +244,7 @@ def comprobar(ejecutable: str, capturas: str = "capturas",
     if vigia:
         comprobar_salto(vigia, exigir)
 
-    # --- 4) sigue vivo ---------------------------------------------------
+    # --- 5) sigue vivo ---------------------------------------------------
     ultimo = emu.frame
     movida = 0.0
     for i in range(100):
@@ -242,6 +270,18 @@ if __name__ == "__main__":
     argumentos = [a for a in sys.argv[1:] if not a.startswith("--")]
     ejecutable = (argumentos[0] if argumentos
                   else "examples/bosque-magico/build/x68000/disco/BOSQUEMA.X")
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "tools"))
+    from ngplat.project import load_project
+    from sonido import buscar_proyecto, musica_al_empezar
+    proyecto = ""
+    for opcion in sys.argv[1:]:
+        if opcion.startswith("--proyecto="):
+            proyecto = opcion.split("=", 1)[1]
+    proyecto = proyecto or buscar_proyecto(ejecutable)
+    p = load_project(proyecto) if proyecto else None
     sys.exit(comprobar(ejecutable,
                        argumentos[1] if len(argumentos) > 1 else "capturas",
+                       musica_al_empezar(p) if p else None,
+                       p.sound.efectos.get("salto") if p else None,
                        pantallas="--pantallas" in sys.argv[1:]))

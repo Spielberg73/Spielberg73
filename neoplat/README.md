@@ -31,7 +31,7 @@ Y las seis llevan un **68000**, que es lo que hace que el motor sea uno solo.
 | Escenario | columnas de sprites | plano A del VDP | mapa de bits + blitter | mapa de bits lineal | bitplanes, movidos por la CPU | capa de fondo del chip |
 | Actores | sprites | sprites del VDP | blitter con máscara | objetos del chip | dibujados a mano, con máscara | sprites de 16×16 |
 | Colores | 4096 en pantalla | 4 paletas de 16 | una de 32, o dos de 8 | una tabla de 256 | una de 16 | 16 bloques de 16 |
-| Sonido | YM2610 (SSG) por Z80 | PSG SN76489 | Paula (4 canales) | los DAC, por el DSP de Jerry | YM2149 | todavía en silencio |
+| Sonido | YM2610 (SSG) por Z80 | PSG SN76489 | Paula (4 canales) | los DAC, por el DSP de Jerry | YM2149 | YM2151 (FM) |
 | Parallax | sí | una capa | una capa (`amiga: 8colores`) | una capa | una capa (`camara: pantallas`) | no |
 | Sale | ROMs de cartucho | `.bin` con cabecera y suma | disquete `.adf` arrancable | cartucho `.j64` | disquete `.st` arrancable | `.X` de Human68k y disquete `.xdf` |
 
@@ -46,8 +46,9 @@ El X68000 es el otro caso raro, por lo contrario: es la que más ayuda da (sus
 patrones son de 16×16, justo el tile del kit) y a la vez la que menos
 documentación fiable tiene. Se portó **midiendo el hardware en el emulador**
 con una sonda que enciende bits y mira lo que sale por pantalla;
-[docs/x68000.md](docs/x68000.md) cuenta qué dijo cada prueba, incluido por qué
-esta máquina se queda sin parallax y con 192 patrones en vez de 256.
+[docs/x68000.md](docs/x68000.md) cuenta qué dijo cada prueba: por qué esta
+máquina se queda sin parallax y con 192 patrones en vez de 256, y cómo se
+midió la tabla de notas del YM2151, que no es la que dice la documentación.
 
 ## Instalación
 
@@ -335,7 +336,7 @@ siempre con saltos de línea de Unix (`newline="\n"`), que si no Windows meterí
 
 Y hay una prueba (`tests/test_empaquetar.py`) que monta el árbol que deja
 PyInstaller al arrancar el `.exe` y comprueba que dentro está todo lo que el
-kit abre en marcha: el motor de las cinco máquinas, las plantillas, el preview
+kit abre en marcha: el motor de las seis máquinas, las plantillas, el preview
 y los módulos que el proyecto generado se lleva consigo. Es fácil añadir un
 archivo nuevo y que el `.exe` se quede sin él; así salta antes de repartirlo.
 
@@ -518,7 +519,7 @@ Verificado aquí:
   las cosas dos veces). Cómo funciona la máquina y las cuatro trampas que
   costaron encontrarla, en [docs/jaguar.md](docs/jaguar.md).
 - **El binario no lleva nada que el 68000 no entienda**: las pruebas revisan el
-  código máquina de las **cinco** máquinas (la Neo Geo también, compilando sus
+  código máquina de las **seis** máquinas (la Neo Geo también, compilando sus
   fuentes sin enlazar) y fallan si aparece una instrucción de 68020 o un acceso
   a una dirección impar. Así se encontró que la ROM de Neo Geo arrastraba el
   mismo fallo que colgaba la de Mega Drive.
@@ -562,21 +563,22 @@ Verificado aquí:
 - Las mecánicas de plataformas funcionan (24 pruebas de jugabilidad).
 - Los niveles de ejemplo se pueden terminar: un bot los juega enteros en cada
   prueba, así que nunca se cuela un nivel imposible.
-- El mismo juego compilado para las cinco máquinas describe exactamente los
+- El mismo juego compilado para las seis máquinas describe exactamente los
   mismos niveles, enemigos y mapas: lo comprueban las pruebas.
 - Ida y vuelta de los cinco formatos de gráficos (tiles de Neo Geo, tiles del
   VDP, bitplanes y máscaras del Amiga, un byte por píxel de la Jaguar, cuatro
   bitplanes del ST): codificar y decodificar devuelve la imagen original.
-- **Las cinco máquinas suenan, y suenan lo que pone el `game.yaml`**: las
+- **Las seis máquinas suenan, y suenan lo que pone el `game.yaml`**: las
   pruebas capturan lo que sale del altavoz —del core de libretro en Mega Drive,
-  Amiga, Jaguar y Atari ST, y del circuito entero 68000 → Z80 → YM2610 en la
-  Neo Geo— y reconocen las notas una a una. En las cinco salen **16 de 16** de la
-  melodía, la pantalla de título está callada y al saltar se oye el efecto por
-  encima de la música. Comprobado que la prueba sabe fallar: con una placa muda
+  Amiga, Jaguar, Atari ST y X68000, y del circuito entero 68000 → Z80 → YM2610
+  en la Neo Geo— y reconocen las notas una a una. En las seis salen **16 de 16**
+  de la melodía, la pantalla de título está callada y al saltar se oye el efecto
+  por encima de la música. Comprobado que la prueba sabe fallar: con una placa muda
   a propósito, fallan las tres comprobaciones. Cómo se hace, en
   [docs/sonido.md](docs/sonido.md).
-- Las cinco tocan la misma nota: 440 Hz salen a 440 Hz en el SSG, en el PSG, en
-  Paula, en los DAC de la Jaguar y en el YM2149 (con el redondeo de cada uno).
+- Las seis tocan la misma nota: 440 Hz salen a 440 Hz en el SSG, en el PSG, en
+  Paula, en los DAC de la Jaguar, en el YM2149 y en el YM2151 (con el redondeo
+  de cada uno).
 - El preview se abre en Chromium durante las pruebas y se comprueba que dibuja
   lo que debe (capturas de pantalla revisadas a mano).
 - El editor hace el viaje completo en las pruebas: edita mapas, física y
@@ -666,7 +668,7 @@ Lo que aún no hace:
   las demás se ignoran. Dibujarlas con el blitter y quedarse con los 32 colores
   está medido y **no cabe**: 1.311 líneas de barrido sobre las 313 que da un
   frame ([docs/amiga.md](docs/amiga.md)).
-- **Muestras digitales en cuatro de las cinco máquinas**: un efecto ya puede ser
+- **Muestras digitales en cuatro de las seis máquinas**: un efecto ya puede ser
   un WAV tuyo (`muestra: sonidos/x.wav`). Lo toca Paula desde la RAM chip en el
   Amiga; en la Mega Drive se lo da al DAC del YM2612 un driver de Z80 que genera
   el propio compilador; en la Jaguar lo lee el DSP del cartucho; y en la Neo Geo

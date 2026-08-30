@@ -994,7 +994,7 @@ class TestCompilacionReal(unittest.TestCase):
         # de direccion con desplazamiento: movew %d0,%a0@(2109)
         patron = re.compile(
             r"\b(?!lea|pea)[a-z]+[wl]\s+\S*%(?:a\d|sp|fp)@\((\d+)\)")
-        for sistema in ("megadrive", "amiga", "atarist"):
+        for sistema in ("megadrive", "amiga", "atarist", "x68000"):
             out = self._construir(sistema)
             hecho = subprocess.run([objdump, "-d", os.path.join(out, "juego.elf")],
                                    capture_output=True, text=True)
@@ -1014,7 +1014,7 @@ class TestCompilacionReal(unittest.TestCase):
         objdump = self.cc.replace("-gcc", "-objdump")
         if not shutil.which(objdump):
             self.skipTest("no hay %s" % objdump)
-        for sistema in ("megadrive", "amiga", "atarist"):
+        for sistema in ("megadrive", "amiga", "atarist", "x68000"):
             out = self._construir(sistema)
             hecho = subprocess.run([objdump, "-d", os.path.join(out, "juego.elf")],
                                    capture_output=True, text=True)
@@ -1077,10 +1077,12 @@ class TestCompilacionReal(unittest.TestCase):
         juego = [n for n in os.listdir(os.path.join(out, "disco"))
                  if n.endswith(".X")]
         self.assertTrue(juego, "el Makefile no ha dejado ningun .X en disco/")
+        musica, salto, _ = self._banda_sonora()
         self.assertEqual(
             emulador_x68000.comprobar(os.path.join(out, "disco", juego[0]),
-                                      os.path.join(self.tmp, "capturas-x68000")),
-            0, "el juego no arranca o no se juega en el emulador de X68000")
+                                      os.path.join(self.tmp, "capturas-x68000"),
+                                      musica, salto),
+            0, "el juego no arranca, no se juega o no suena en el emulador")
 
     def test_la_neogeo_dibuja_el_juego(self):
         """La Neo Geo no se puede arrancar en un emulador normal sin la BIOS de

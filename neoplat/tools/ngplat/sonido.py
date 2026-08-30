@@ -32,21 +32,23 @@ PSG_MAX_PERIOD = 1023                # 10 bits
 OPM_CLOCK = 3579545                  # Hz del YM2151 (X68000)
 # El YM2151 no lleva un periodo sino un "key code": tres bits de octava y
 # cuatro de nota, y las notas **no van seguidas** (de cada cuatro codigos solo
-# valen tres). Estos son los doce, del do al si.
+# valen tres).
 #
-# Esta medido nota a nota en el emulador -tocando un solo codigo por arranque,
-# que es la unica forma de no confundirse- porque la documentacion que circula
-# dice otra cosa: segun ella el codigo 0 es un do# y el do va al final del
-# bloque de abajo. En el chip que hay debajo, cada codigo suena **un semitono
-# por debajo** de eso: el la4 de 440 Hz es el key code $5D, no el $4A.
+# La tabla esta medida dentro del juego, emparejando lo que el driver le manda
+# al chip -escrito en el marcador, bit a bit- con la frecuencia que sale por el
+# altavoz. Es la unica medida que ha resultado fiable: midiendo notas sueltas o
+# por tramos me desfase y saque tres tablas distintas, todas mal.
 #
-# El si se sale de la cuenta y cae en el codigo 16, que no existe: al sumarlo
-# se lleva uno a la octava y queda en el codigo 0 del bloque de arriba, que es
-# justo donde el chip lo tiene. Por eso la formula no necesita ningun caso
-# aparte.
-OPM_NOTAS = [1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14, 16]
-# Y el campo de octava va una por encima de la octava musical.
-OPM_OCTAVA_BASE = 1
+# Lo que dice, para las notas del do al si:
+#
+#   do  12   do# 13   re  14   re#  0*   mi   1*   fa   2*
+#   fa#  4*  sol  5*  sol#  6*  la   8*  la#  9*   si  10*
+#
+# Los marcados con * caen ya en el bloque de la octava siguiente. La cuenta
+# sale sola sumando nueve al semitono y repartiendo de tres en cuatro: lo que
+# se pase de quince se lleva a la octava, que es justo lo que hace el chip.
+OPM_DESPLAZA = 9                     # el do no empieza en el codigo 0
+OPM_OCTAVA_BASE = -1                 # y el campo de octava va una por debajo
 OPM_OCTAVAS = 8                      # el campo de octava son tres bits
 
 PAULA_CLOCK = 3546895                # reloj de Paula en PAL (Amiga)
@@ -149,9 +151,7 @@ def codigo_ym2151(hz: float) -> int:
     pasos. Aqui se devuelven los dos juntos -KC en el byte de arriba, KF en el
     de abajo- porque la tabla de sonido del kit guarda una palabra por paso.
 
-    La octava del chip va una por encima de la musical (ver OPM_OCTAVA_BASE) y
-    de cada cuatro codigos de nota solo valen tres, asi que ni el numero de
-    octava ni el de nota son los que uno diria.
+    Ni el numero de octava ni el de nota son los que uno diria: ver arriba.
     """
     if hz <= 0:
         return 0
@@ -160,27 +160,24 @@ def codigo_ym2151(hz: float) -> int:
     fraccion = semitonos - entero
     octava, nota = divmod(entero, 12)
     octava += OPM_OCTAVA_BASE
-    if octava < 0:
-        octava, nota, fraccion = 0, 0, 0.0
-    if octava > OPM_OCTAVAS - 1:
-        octava, nota, fraccion = OPM_OCTAVAS - 1, 11, 63 / 64.0
+    n = nota + OPM_DESPLAZA
+    kc = octava * 16 + (n // 3) * 4 + (n % 3)
     kf = min(63, int(round(fraccion * 64)))
-    kc = octava * 16 + OPM_NOTAS[nota]       # el si se lleva uno a la octava
+    if kc < 0:
+        kc, kf = 0, 0                        # la nota mas grave que existe
     if kc > 0x7E:
-        kc, kf = 0x7E, 63                    # la nota mas aguda que existe
+        kc, kf = 0x7E, 63                    # y la mas aguda
     return (kc << 8) | kf
 
 
 def frecuencia_ym2151(codigo: int) -> float:
     """Inversa de `codigo_ym2151` (la usan las pruebas)."""
     kc, kf = (codigo >> 8) & 0x7F, codigo & 0x3F
-    octava, nota = kc >> 4, kc & 0x0F
-    if nota == 0:                     # el si, que vive al principio del bloque
-        octava, nota = octava - 1, 16
-    if nota not in OPM_NOTAS:
-        raise ValueError("el codigo de nota %d no existe en el YM2151" % nota)
-    indice = OPM_NOTAS.index(nota)
-    semitonos = (octava - OPM_OCTAVA_BASE) * 12 + indice + kf / 64.0
+    octava, nibble = kc >> 4, kc & 0x0F
+    if nibble % 4 == 3:
+        raise ValueError("el codigo de nota %d no existe en el YM2151" % nibble)
+    n = (nibble // 4) * 3 + (nibble % 4) - OPM_DESPLAZA
+    semitonos = (octava - OPM_OCTAVA_BASE) * 12 + n + kf / 64.0
     return 440.0 * (2.0 ** ((semitonos - 4 * 12 - 9) / 12.0))
 
 

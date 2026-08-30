@@ -23,6 +23,10 @@ Dos cosas que salieron de probarlo en el emulador y no de la documentacion:
 
 Y por eso el color 15 del primer bloque de paleta se lo queda el marcador: el
 plano de texto lee de la paleta de sprites, no tiene una suya.
+
+El sonido lo lleva el YM2151, ocho canales de FM que toca el propio 68000. La
+tabla de notas del chip esta medida en el emulador y no copiada: ver
+docs/x68000.md, que cuenta como y por que.
 """
 
 from __future__ import annotations
@@ -71,8 +75,7 @@ class X68000(Sistema):
         "sprites:  128 de 16x16, y el escenario va en una capa aparte",
         "patrones: 192, repartidos entre los sprites y la capa de fondo",
         "parallax: no, esta maquina solo ensena una capa de fondo",
-        "sonido:   YM2151 (ocho canales de FM); las notas van, pero todavia",
-        "          no suenan afinadas y va apagado (ver docs/x68000.md)",
+        "sonido:   YM2151, ocho canales de FM que toca el propio 68000",
     ]
 
     # --- colores -------------------------------------------------------
@@ -195,8 +198,7 @@ class X68000(Sistema):
             "colores:  %d bloques de 16 de los %d que hay"
             % (len(banco.paletas), MAX_BLOQUES))
         salida.resumen.append(
-            "sonido:   %d melodias y %d efectos, ya en notas del YM2151 (pero"
-            " todavia no se tocan)"
+            "sonido:   %d melodias y %d efectos por el YM2151"
             % (len(build.music_order), len(_efectos_de(build))))
         salida.resumen.append(
             "ejecutable: disco/%s.X, y disco/%s.xdf con el dentro"
