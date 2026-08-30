@@ -26,6 +26,7 @@ from ngplat.art import PALETA as PALETA_BOSQUE
 from ngplat.art_hierro import PALETA as PALETA_HIERRO
 from ngplat.gfx_x68k import (PATRON_BYTES, codificar_patron, decodificar_patron,
                              x68k_color, x68k_color_a_rgb)
+from ngplat.sonido import codigo_ym2151, frecuencia_de_nota, frecuencia_ym2151
 from ngplat.x68k import ErrorX, tabla_de_correcciones
 
 
@@ -131,6 +132,58 @@ class TestEjecutable(unittest.TestCase):
         se colara, la maquina se para con un error de direccion."""
         with self.assertRaises(ErrorX):
             tabla_de_correcciones([4, 7])
+
+
+class TestNotasDelYM2151(unittest.TestCase):
+    """El key code del YM2151, que no es un periodo sino una nota.
+
+    Los cuatro valores de anclaje estan **medidos en el emulador**: se tocan
+    dos notas que se turnan y se comprueba que salen a una octava justa, que es
+    la unica forma de medir esto sin desfases. Hacia falta porque la
+    documentacion que circula da otra tabla (un semitono por encima) y con ella
+    las melodias salen cambiadas.
+    """
+
+    ANCLAS = {"la3": ((9, 3), 0x4D), "do4": ((0, 4), 0x51),
+              "la4": ((9, 4), 0x5D), "si4": ((11, 4), 0x60)}
+
+    def test_las_notas_medidas_en_el_emulador(self):
+        for nombre, ((semitono, octava), kc) in self.ANCLAS.items():
+            hz = frecuencia_de_nota(semitono, octava)
+            self.assertEqual(codigo_ym2151(hz) >> 8, kc,
+                             "%s tendria que ser el key code $%02X" % (nombre, kc))
+
+    def test_el_si_se_lleva_uno_a_la_octava(self):
+        """El si no cabe en el bloque de su octava: se sube al codigo 0 del
+        siguiente. Por eso el si4 es $60 y no $5F, que no existe."""
+        self.assertEqual(codigo_ym2151(frecuencia_de_nota(11, 4)) >> 8, 0x60)
+        self.assertEqual(codigo_ym2151(frecuencia_de_nota(0, 5)) >> 8, 0x61)
+
+    def test_una_octava_es_justo_el_doble(self):
+        for semitono in range(12):
+            abajo = codigo_ym2151(frecuencia_de_nota(semitono, 3))
+            arriba = codigo_ym2151(frecuencia_de_nota(semitono, 4))
+            self.assertEqual((arriba >> 8) - (abajo >> 8), 0x10,
+                             "la octava son 16 en el key code")
+
+    def test_ida_y_vuelta(self):
+        for octava in range(2, 7):
+            for semitono in range(12):
+                hz = frecuencia_de_nota(semitono, octava)
+                vuelta = frecuencia_ym2151(codigo_ym2151(hz))
+                self.assertLess(abs(vuelta - hz) / hz, 0.001,
+                                "%.2f Hz vuelve como %.2f" % (hz, vuelta))
+
+    def test_los_codigos_que_no_existen_no_se_usan(self):
+        """De cada cuatro codigos de nota, uno no vale (el 3, el 7, el 11 y el
+        15): el chip lo toma como el anterior."""
+        for octava in range(2, 7):
+            for semitono in range(12):
+                nota = codigo_ym2151(frecuencia_de_nota(semitono, octava)) >> 8
+                self.assertNotIn(nota & 0x0F, (3, 7, 11, 15))
+
+    def test_el_silencio_no_tiene_nota(self):
+        self.assertEqual(codigo_ym2151(0), 0)
 
 
 class TestDisquete(unittest.TestCase):

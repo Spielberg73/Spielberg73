@@ -25,6 +25,17 @@ _start:
         cmpa.l  %a0, %a1
         bhi     0b
 1:
+        | A modo supervisor antes de nada. No es un capricho: el juego escribe
+        | en el YM2151 en dos pasos (primero el numero de registro y luego el
+        | valor) y eso **no se puede interrumpir**. En modo usuario no hay forma
+        | de cerrar las interrupciones, y con las de Human68k por medio salian
+        | notas cambiadas: la melodia sonaba con armonicos agudos por encima.
+        | DOS _SUPER con un cero en la pila hace el cambio; devuelve en d0 la
+        | pila de usuario, que no hace falta porque de aqui no se vuelve.
+        clr.l   -(%sp)
+        .dc.w   0xFF20                  | DOS _SUPER
+        addq.l  #4, %sp
+
         jsr     main
 
         | por si acaso: devolver el control al sistema

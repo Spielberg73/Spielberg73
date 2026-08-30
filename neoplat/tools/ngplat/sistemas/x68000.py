@@ -34,6 +34,7 @@ from .. import gfx_x68k
 from ..build import Build
 from ..errors import ProjectError
 from ..paths import fuente_del_kit
+from ..sonido import codigo_ym2151, tabla_de_muestras_vacia
 from .base import Limites, Salida, Sistema, registrar
 
 MAX_PATRONES = gfx_x68k.PATRONES     # los que quedan libres en la PCG RAM
@@ -57,6 +58,7 @@ class X68000(Sistema):
         ("x68000/np_x68k.h", "src/np_x68k.h"),
         ("x68000/np_video.c", "src/np_video.c"),
         ("x68000/np_hud.c", "src/np_hud.c"),
+        ("include/np_sonido.h", "src/np_sonido.h"),
         ("x68000/np_sound.c", "src/np_sound.c"),
         ("x68000/main.c", "src/main.c"),
         ("x68000/arranque.S", "src/arranque.S"),
@@ -69,7 +71,8 @@ class X68000(Sistema):
         "sprites:  128 de 16x16, y el escenario va en una capa aparte",
         "patrones: 192, repartidos entre los sprites y la capa de fondo",
         "parallax: no, esta maquina solo ensena una capa de fondo",
-        "sonido:   YM2151 (ocho canales de FM) y ADPCM; todavia en silencio",
+        "sonido:   YM2151 (ocho canales de FM); las notas van, pero todavia",
+        "          no suenan afinadas y va apagado (ver docs/x68000.md)",
     ]
 
     # --- colores -------------------------------------------------------
@@ -180,6 +183,7 @@ class X68000(Sistema):
         nombre = _nombre_ejecutable(build)
 
         salida.archivos["src/graficos.c"] = _graficos_c(build, banco)
+        salida.archivos["src/sonido.c"] = _sonido_c(build)
         salida.archivos["Makefile"] = _makefile(build, nombre)
         salida.archivos["hacer_x.py"] = fuente_del_kit("x68k.py")
         salida.archivos["hacer_disco.py"] = fuente_del_kit("x68k_disk.py")
@@ -191,9 +195,80 @@ class X68000(Sistema):
             "colores:  %d bloques de 16 de los %d que hay"
             % (len(banco.paletas), MAX_BLOQUES))
         salida.resumen.append(
+            "sonido:   %d melodias y %d efectos, ya en notas del YM2151 (pero"
+            " todavia no se tocan)"
+            % (len(build.music_order), len(_efectos_de(build))))
+        salida.resumen.append(
             "ejecutable: disco/%s.X, y disco/%s.xdf con el dentro"
             % (nombre, nombre.lower()))
         return salida
+
+
+def _efectos_de(build: Build) -> List[str]:
+    from ..sonido import EVENTOS
+    return [n for n in EVENTOS if n in build.project.sound.efectos]
+
+
+def _secuencia_c(nombre: str, pasos) -> List[str]:
+    """Una secuencia de notas, ya en codigos del YM2151.
+
+    En `periodo` no va un periodo sino el key code del chip y su fraccion, uno
+    en cada byte: este chip no toma frecuencias, toma notas. La estructura es la
+    misma que en las otras maquinas para que el motor no cambie.
+    """
+    lineas = ["static const NpSndPaso %s[] = {" % nombre]
+    for paso in pasos:
+        duracion = max(1, int(paso.duracion))
+        volumen = (paso.volumen & 0x0F) | (0x80 if paso.ruido else 0)
+        codigo = codigo_ym2151(paso.frecuencia)
+        while duracion > 0:
+            trozo = min(255, duracion)
+            lineas.append("    { 0x%04x, %d, 0x%02x }," % (codigo, trozo, volumen))
+            duracion -= trozo
+    lineas.append("    { 0, 0, 0 }")
+    lineas.append("};")
+    return lineas
+
+
+def _sonido_c(build: Build) -> str:
+    sonido = build.project.sound
+    efectos = _efectos_de(build)
+    partes = [
+        "/* Archivo generado por ngplat: la musica y los efectos, ya en codigos",
+        " * de nota del YM2151 (X68000). */",
+        '#include "np_sonido.h"',
+        "",
+    ]
+    for i, nombre in enumerate(efectos):
+        partes.extend(_secuencia_c("np_sfx%d" % i, sonido.efectos[nombre].pasos))
+        partes.append("")
+    for i, nombre in enumerate(build.music_order):
+        tema = sonido.musica[nombre]
+        for p in range(2):
+            pista = tema.pistas[p] if p < len(tema.pistas) else []
+            partes.extend(_secuencia_c("np_mus%d_%d" % (i, p), pista))
+        partes.append("")
+
+    partes.append("const NpSndPaso *const np_snd_efectos[] = {")
+    partes.append("    " + (", ".join("np_sfx%d" % i for i in range(len(efectos)))
+                            if efectos else "0"))
+    partes.append("};")
+    partes.append("const NpSndPaso *const np_snd_musica[] = {")
+    if build.music_order:
+        entradas = []
+        for i in range(len(build.music_order)):
+            entradas.append("np_mus%d_0" % i)
+            entradas.append("np_mus%d_1" % i)
+        partes.append("    " + ", ".join(entradas))
+    else:
+        partes.append("    0, 0")
+    partes.append("};")
+    partes.append("const uint16_t np_snd_efecto_count = %d;" % len(efectos))
+    partes.append("const uint16_t np_snd_musica_count = %d;" % len(build.music_order))
+    partes.append("")
+    partes.extend(tabla_de_muestras_vacia())
+    partes.append("")
+    return "\n".join(partes)
 
 
 def _nombre_ejecutable(build: Build) -> str:
@@ -282,7 +357,7 @@ CFLAGS  := -m68000 -O2 -fomit-frame-pointer -fno-builtin -ffreestanding \\
 LDFLAGS := -nostdlib -nodefaultlibs -T x68000.ld -Wl,--emit-relocs \\
            -Wl,--build-id=none -Wl,-z,max-page-size=2
 
-SRC := src/main.c src/np_video.c src/np_hud.c src/np_sound.c \\
+SRC := src/main.c src/np_video.c src/np_hud.c src/np_sound.c src/sonido.c \\
        src/np_world.c src/np_aritmetica.c src/gamedata.c src/graficos.c
 OBJ := $(SRC:.c=.o) src/arranque.o
 JUEGO := disco/%s.X

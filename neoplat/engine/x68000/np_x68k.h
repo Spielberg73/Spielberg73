@@ -87,6 +87,17 @@ static __inline long np_iocs(long numero, long d1, long d2)
 #define NP_VC_SPRITES    0x0040
 #define NP_VC_TEXTO      0x0020
 
+/* --- YM2151 (OPM): la musica y los efectos ------------------------------
+ *
+ * Dos direcciones, como el YM2149 del Atari ST: el numero de registro en una y
+ * el valor en la otra. Por la primera se lee ademas el estado, y el bit 7 dice
+ * que el chip todavia esta ocupado con lo anterior.
+ */
+#define NP_OPM_REGISTRO  ((volatile uint8_t *)0xE90001)
+#define NP_OPM_ESTADO    ((volatile uint8_t *)0xE90001)
+#define NP_OPM_DATO      ((volatile uint8_t *)0xE90003)
+#define NP_OPM_OCUPADO   0x80
+
 /* --- MFP: de aqui sale el retrazo vertical ------------------------------ */
 #define NP_MFP_GPIP      ((volatile uint8_t *)0xE88001)
 #define NP_MFP_GPIP_VDISP 0x10    /* a 0 mientras se dibuja la imagen */

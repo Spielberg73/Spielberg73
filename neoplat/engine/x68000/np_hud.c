@@ -138,9 +138,13 @@ void np_hud_draw(const NpWorld *w)
         }
     }
 
-    /* La vida del jugador. Va en la fila 2, la de los mensajes: solo salen
-       fuera de la partida, y np_life_bar deja la barra en blanco entonces. */
-    {
+    /* La vida del jugador. Va en la fila 2, que es tambien la de los mensajes.
+       Fuera de la partida np_life_bar deja la barra en blanco, y **aqui eso no
+       vale**: en esta maquina escribir un espacio borra lo que hubiera debajo,
+       asi que la barra en blanco se comia el principio del titulo (salia "A DE
+       HIERRO" en vez de "CUEVA DE HIERRO"). Fuera de la partida la fila es del
+       mensaje y no se toca. */
+    if (w->state == NP_STATE_PLAY) {
         uint32_t ahora = ((uint32_t)w->state << 16)
                        | ((uint32_t)w->players[0].health << 8)
                        | (uint32_t)w->players[1].health;

@@ -14,6 +14,7 @@ el preview del navegador, asi que suenan igual (dentro de lo que da cada chip).
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
@@ -28,6 +29,26 @@ SSG_MIN_PERIOD = 1
 PSG_CLOCK = 3579545                  # Hz del SN76489 (Mega Drive)
 YM2149_CLOCK = 2000000               # Hz del YM2149 (Atari ST)
 PSG_MAX_PERIOD = 1023                # 10 bits
+OPM_CLOCK = 3579545                  # Hz del YM2151 (X68000)
+# El YM2151 no lleva un periodo sino un "key code": tres bits de octava y
+# cuatro de nota, y las notas **no van seguidas** (de cada cuatro codigos solo
+# valen tres). Estos son los doce, del do al si.
+#
+# Esta medido nota a nota en el emulador -tocando un solo codigo por arranque,
+# que es la unica forma de no confundirse- porque la documentacion que circula
+# dice otra cosa: segun ella el codigo 0 es un do# y el do va al final del
+# bloque de abajo. En el chip que hay debajo, cada codigo suena **un semitono
+# por debajo** de eso: el la4 de 440 Hz es el key code $5D, no el $4A.
+#
+# El si se sale de la cuenta y cae en el codigo 16, que no existe: al sumarlo
+# se lleva uno a la octava y queda en el codigo 0 del bloque de arriba, que es
+# justo donde el chip lo tiene. Por eso la formula no necesita ningun caso
+# aparte.
+OPM_NOTAS = [1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14, 16]
+# Y el campo de octava va una por encima de la octava musical.
+OPM_OCTAVA_BASE = 1
+OPM_OCTAVAS = 8                      # el campo de octava son tres bits
+
 PAULA_CLOCK = 3546895                # reloj de Paula en PAL (Amiga)
 PAULA_MIN_PERIOD = 124               # por debajo la DMA no da abasto
 PAULA_MAX_PERIOD = 65535
@@ -118,6 +139,49 @@ def periodo_ym2149(hz: float) -> int:
         return 0
     return max(SSG_MIN_PERIOD, min(SSG_MAX_PERIOD,
                                    int(round(YM2149_CLOCK / (16.0 * hz)))))
+
+
+def codigo_ym2151(hz: float) -> int:
+    """X68000 (YM2151): frecuencia -> el key code y la fraccion, en una palabra.
+
+    El chip no toma un periodo, toma una nota: `KC` con la octava y el nombre
+    de la nota, y `KF` con la parte de semitono que falta, en sesenta y cuatro
+    pasos. Aqui se devuelven los dos juntos -KC en el byte de arriba, KF en el
+    de abajo- porque la tabla de sonido del kit guarda una palabra por paso.
+
+    La octava del chip va una por encima de la musical (ver OPM_OCTAVA_BASE) y
+    de cada cuatro codigos de nota solo valen tres, asi que ni el numero de
+    octava ni el de nota son los que uno diria.
+    """
+    if hz <= 0:
+        return 0
+    semitonos = 12.0 * math.log(hz / 440.0, 2.0) + 9.0 + 4.0 * 12.0
+    entero = int(math.floor(semitonos))
+    fraccion = semitonos - entero
+    octava, nota = divmod(entero, 12)
+    octava += OPM_OCTAVA_BASE
+    if octava < 0:
+        octava, nota, fraccion = 0, 0, 0.0
+    if octava > OPM_OCTAVAS - 1:
+        octava, nota, fraccion = OPM_OCTAVAS - 1, 11, 63 / 64.0
+    kf = min(63, int(round(fraccion * 64)))
+    kc = octava * 16 + OPM_NOTAS[nota]       # el si se lleva uno a la octava
+    if kc > 0x7E:
+        kc, kf = 0x7E, 63                    # la nota mas aguda que existe
+    return (kc << 8) | kf
+
+
+def frecuencia_ym2151(codigo: int) -> float:
+    """Inversa de `codigo_ym2151` (la usan las pruebas)."""
+    kc, kf = (codigo >> 8) & 0x7F, codigo & 0x3F
+    octava, nota = kc >> 4, kc & 0x0F
+    if nota == 0:                     # el si, que vive al principio del bloque
+        octava, nota = octava - 1, 16
+    if nota not in OPM_NOTAS:
+        raise ValueError("el codigo de nota %d no existe en el YM2151" % nota)
+    indice = OPM_NOTAS.index(nota)
+    semitonos = (octava - OPM_OCTAVA_BASE) * 12 + indice + kf / 64.0
+    return 440.0 * (2.0 ** ((semitonos - 4 * 12 - 9) / 12.0))
 
 
 def periodo_paula(hz: float, muestras: int = 32) -> int:

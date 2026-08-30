@@ -81,7 +81,10 @@ void np_video_init(void)
     *NP_CRTC_R01 = 0x0005;
     *NP_CRTC_R02 = 0x0007;
     *NP_CRTC_R03 = (uint16_t)(0x0007 + NP_ANCHO / 8);
-    *NP_CRTC_R04 = 0x0103;
+    /* 266 lineas en total: con 259 el frame salia a 61,5 Hz y el juego corria
+       un 2,4% mas rapido que en las otras maquinas. Con esto se queda en 60,0
+       (lo dice el propio emulador al pedirle el temporizado). */
+    *NP_CRTC_R04 = 0x0109;
     *NP_CRTC_R05 = 0x0002;
     *NP_CRTC_R06 = 0x0010;
     *NP_CRTC_R07 = (uint16_t)(0x0010 + NP_ALTO);

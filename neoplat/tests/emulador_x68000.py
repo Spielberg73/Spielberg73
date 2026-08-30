@@ -80,18 +80,39 @@ def _disco_de_arranque(ejecutable: str, carpeta: str) -> str:
     return destino
 
 
+def _donde_empieza(frame, fila: int):
+    """El primer pixel encendido de una fila de texto del marcador."""
+    ancho, alto, pixeles = frame
+    for x in range(ancho):
+        for y in range(fila * 8, min((fila + 1) * 8, alto)):
+            if pixeles[y * ancho + x] != (0, 0, 0):
+                return x
+    return None
+
+
 def _esperar_al_juego(emu) -> bool:
     """Espera a que Human68k acabe de arrancar y ejecute el juego.
 
-    No hay que contar segundos ni mirar colores: el juego pide al CRTC su
-    propio modo de pantalla, asi que en cuanto el emulador entrega un frame de
-    320x224 en vez del 768x512 de la consola de Human68k, es que ya manda el
-    juego.
+    Se mira el modo de pantalla y no los colores: el juego pide al CRTC el
+    suyo, asi que en cuanto el emulador entrega un frame de 320x224 en vez del
+    768x512 de la consola de Human68k, es que ya manda el juego.
+
+    Y despues hay que esperar a que dibuje. Entre que cambia el modo y que hay
+    algo en pantalla pasa un rato -sube la PCG entera y pinta la primera
+    pantalla de escenario-, y cuanto tarda depende del juego: con treinta
+    frames fijos el ejemplo grande llegaba a tiempo y el de `ngplat nuevo` no,
+    y la captura del titulo salia en negro.
     """
     while emu.frames < FRAMES_DE_ARRANQUE:
         emu.avanzar(30)
         if emu.frame and emu.frame[:2] == (ANCHO, ALTO):
-            emu.avanzar(30)                       # que acabe de pintarse
+            break
+    else:
+        return False
+    while emu.frames < FRAMES_DE_ARRANQUE:
+        emu.avanzar(15)
+        if emu.frame and len(colores(emu.frame)) > 2:
+            emu.avanzar(15)                       # que acabe de pintarse
             return True
     return False
 
@@ -148,6 +169,15 @@ def comprobar(ejecutable: str, capturas: str = "capturas",
     exigir(cuantos > 3, "la pantalla de titulo solo tiene %d colores" % cuantos)
     # el marcador va en el plano de texto, en las tres primeras filas de 8
     exigir(len(set(franja(titulo, 8))) > 1, "no se ve el marcador arriba")
+    # Y el nombre del juego, que se escribe en la fila 2 y empieza siempre en
+    # la columna 12 (o sea el pixel 96). Se mira donde empieza lo que se ve:
+    # si empezara mas a la derecha es que le falta el principio, que es lo que
+    # pasaba cuando la barra de vida en blanco lo borraba.
+    exigir(_donde_empieza(titulo, 2) is not None
+           and _donde_empieza(titulo, 2) < 112,
+           "el titulo no empieza donde tiene que empezar: la fila de mensajes "
+           "arranca en el pixel %s y el nombre se escribe desde el 96"
+           % _donde_empieza(titulo, 2))
     print("titulo: %dx%d con %d colores" % (titulo[0], titulo[1], cuantos))
 
     # --- 2) empieza la partida ------------------------------------------
