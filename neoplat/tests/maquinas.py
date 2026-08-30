@@ -28,6 +28,33 @@ VARIABLE = {"megadrive": "NEOPLAT_CORE_MD", "amiga": "NEOPLAT_CORE_AMIGA",
 MAQUINAS = ("neogeo", "megadrive", "amiga", "jaguar", "atarist", "x68000")
 
 
+class _X68000:
+    """El X68000, con un reinicio que no se lleve el proceso por delante.
+
+    px68k **se cae** al llamarle a retro_reset (segmentation fault, medido),
+    pero se deja montar mas de una vez en el mismo proceso. Asi que reiniciar
+    aqui es volver a montarlo desde el mismo disco, igual que hace el banco de
+    la Neo Geo, que tampoco tiene boton de reset."""
+
+    def __init__(self, core, sistema, disco, opciones):
+        self.core = core
+        self.sistema = sistema
+        self.disco = disco
+        self.opciones = opciones
+        self.emu = None
+        self.reiniciar()
+
+    def reiniciar(self):
+        if self.emu is not None:
+            self.emu.cerrar()
+        self.emu = Emulador(self.core, sistema=self.sistema,
+                            opciones=self.opciones)
+        self.emu.cargar(self.disco)
+
+    def __getattr__(self, nombre):
+        return getattr(self.emu, nombre)
+
+
 class _BancoNeoGeo:
     """Le pone al banco de la Neo Geo la misma cara que un core de libretro.
 
@@ -112,10 +139,8 @@ def montar(sistema, ruta, sonido=False):
     if not core:
         return (None, "", None)
     if sistema == "x68000":
-        sistema_dir, ruta = maq.preparar(ruta)
-        emu = Emulador(core, sistema=sistema_dir, opciones=opciones)
-        emu.cargar(ruta)
-        return emu, empezar, esperar
+        sistema_dir, disco = maq.preparar(ruta)
+        return _X68000(core, sistema_dir, disco, opciones), empezar, esperar
     sistema_dir = tempfile.mkdtemp(prefix="neoplat-emu-")
     if sistema == "atarist":
         tos = maq._buscar_tos()

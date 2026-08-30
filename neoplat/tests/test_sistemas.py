@@ -86,6 +86,32 @@ def _comprobar_st(prueba, disco, capturas, proyecto="", pantallas=False):
                        "emulador:\n" + hecho.stdout + hecho.stderr)
 
 
+def _hay_x68000(prueba):
+    """Las tres cosas que hacen falta para arrancar un X68000, o se salta."""
+    import emulador_x68000
+    from libretro import buscar_core
+    if not buscar_core(emulador_x68000.CORE, "NEOPLAT_CORE_X68000"):
+        prueba.skipTest("no esta instalado el core de px68k")
+    if not emulador_x68000._buscar_roms():
+        prueba.skipTest("no estan las ROMs del X68000 (iplrom.dat)")
+    if not emulador_x68000._buscar_human68k():
+        prueba.skipTest("no hay un disquete de Human68k (NEOPLAT_HUMAN68K)")
+
+
+def _en_su_proceso(prueba, guion, *argumentos):
+    """Lanza uno de los guiones de tests/ como un programa aparte.
+
+    Para el X68000 no es una manía: px68k **no sobrevive** a que se le monte
+    muchas veces en el mismo proceso (se cae con una excepcion de coma flotante
+    y se lleva la bateria entera por delante), igual que Hatari no se deja
+    arrancar dos veces. Cada prueba en su proceso y no hay problema."""
+    hecho = subprocess.run([sys.executable, os.path.join(KIT, "tests", guion)]
+                           + [str(a) for a in argumentos],
+                           capture_output=True, text=True)
+    print(hecho.stdout.strip())
+    prueba.assertEqual(hecho.returncode, 0, hecho.stdout + hecho.stderr)
+
+
 def _compilador_68k():
     for nombre in ("m68k-elf-gcc", "m68k-linux-gnu-gcc"):
         if shutil.which(nombre):
@@ -1065,24 +1091,15 @@ class TestCompilacionReal(unittest.TestCase):
         Hacen falta tres cosas que no son nuestras y no vienen en el
         repositorio: el core de px68k, las ROMs del X68000 y un disquete de
         arranque de Human68k. Sin ellas la prueba se salta."""
-        import emulador_x68000
-        from libretro import buscar_core
-        if not buscar_core(emulador_x68000.CORE, "NEOPLAT_CORE_X68000"):
-            self.skipTest("no esta instalado el core de px68k")
-        if not emulador_x68000._buscar_roms():
-            self.skipTest("no estan las ROMs del X68000 (iplrom.dat)")
-        if not emulador_x68000._buscar_human68k():
-            self.skipTest("no hay un disquete de Human68k (NEOPLAT_HUMAN68K)")
+        _hay_x68000(self)
         out = self._construir("x68000")
         juego = [n for n in os.listdir(os.path.join(out, "disco"))
                  if n.endswith(".X")]
         self.assertTrue(juego, "el Makefile no ha dejado ningun .X en disco/")
-        musica, salto, _ = self._banda_sonora()
-        self.assertEqual(
-            emulador_x68000.comprobar(os.path.join(out, "disco", juego[0]),
-                                      os.path.join(self.tmp, "capturas-x68000"),
-                                      musica, salto),
-            0, "el juego no arranca, no se juega o no suena en el emulador")
+        _en_su_proceso(self, "emulador_x68000.py",
+                       os.path.join(out, "disco", juego[0]),
+                       os.path.join(self.tmp, "capturas-x68000"),
+                       "--proyecto=" + self.proyecto)
 
     def test_la_neogeo_dibuja_el_juego(self):
         """La Neo Geo no se puede arrancar en un emulador normal sin la BIOS de
@@ -1234,22 +1251,14 @@ class TestCamaraPorPantallas(unittest.TestCase):
             "la Jaguar no salta de pantalla como debe")
 
     def test_el_x68000_salta_de_pantalla(self):
-        import emulador_x68000
-        from libretro import buscar_core
-        if not buscar_core(emulador_x68000.CORE, "NEOPLAT_CORE_X68000"):
-            self.skipTest("no esta instalado el core de px68k")
-        if not emulador_x68000._buscar_roms():
-            self.skipTest("no estan las ROMs del X68000 (iplrom.dat)")
-        if not emulador_x68000._buscar_human68k():
-            self.skipTest("no hay un disquete de Human68k (NEOPLAT_HUMAN68K)")
+        _hay_x68000(self)
         out = self._construir("x68000")
         juego = [n for n in os.listdir(os.path.join(out, "disco"))
                  if n.endswith(".X")]
         self.assertTrue(juego, "el Makefile no ha dejado ningun .X en disco/")
-        self.assertEqual(
-            emulador_x68000.comprobar(os.path.join(out, "disco", juego[0]),
-                                      self._capturas("x68000"), pantallas=True),
-            0, "el X68000 no salta de pantalla como debe")
+        _en_su_proceso(self, "emulador_x68000.py",
+                       os.path.join(out, "disco", juego[0]),
+                       self._capturas("x68000"), "--pantallas")
 
     def test_la_neogeo_salta_de_pantalla_sin_pasarse_de_ciclos(self):
         """La mas exigente: el banco de Neo Geo cuenta los ciclos, y saltar de
@@ -1267,13 +1276,14 @@ class TestCamaraPorPantallas(unittest.TestCase):
 
 
 class TestDosJugadores(unittest.TestCase):
-    """Con `jugadores: 2`, el segundo mando en las cinco maquinas de verdad.
+    """Con `jugadores: 2`, el segundo mando en las seis maquinas de verdad.
 
     La paridad C/JS ya comprueba que el motor lleva bien a los dos jugadores,
     pero eso es la simulacion. Lo que se mira aqui es el otro extremo: que el
     segundo mando de cada maquina (el puerto 2 de la Neo Geo, el otro conector
     de la Mega Drive, el puerto del raton en el Amiga y en el ST, la otra
-    mitad de la matriz en la Jaguar) llega de verdad al segundo jugador y no
+    mitad de la matriz en la Jaguar, el puerto B del 8255 en el X68000) llega
+    de verdad al segundo jugador y no
     es el primero leido dos veces. Como se comprueba, en dos_jugadores.py.
     """
 
@@ -1330,6 +1340,15 @@ class TestDosJugadores(unittest.TestCase):
     def test_los_dos_mandos_de_la_jaguar(self):
         self._mirar("jaguar",
                     os.path.join(self._construir("jaguar"), "rom/Dos.j64"))
+
+    def test_los_dos_mandos_del_x68000(self):
+        """Los dos puertos del 8255: el A es el mando 1 y el B el 2."""
+        _hay_x68000(self)
+        out = self._construir("x68000")
+        juego = [n for n in os.listdir(os.path.join(out, "disco"))
+                 if n.endswith(".X")][0]
+        _en_su_proceso(self, "dos_jugadores.py", "x68000",
+                       os.path.join(out, "disco", juego), self._capturas())
 
     def test_los_dos_mandos_del_atari_st(self):
         """En un proceso aparte: Hatari no se deja arrancar dos veces en el
@@ -1416,18 +1435,12 @@ class TestMuestras(unittest.TestCase):
     def test_el_x68000_toca_la_muestra(self):
         """El MSM6258 no lee bytes crudos: lee ADPCM, medio byte por muestra, y
         lo saca por DMA. La muestra se cifra al compilar."""
-        import emulador_x68000
-        from libretro import buscar_core
-        if not buscar_core(emulador_x68000.CORE, "NEOPLAT_CORE_X68000"):
-            self.skipTest("no esta instalado el core de px68k")
-        if not emulador_x68000._buscar_roms():
-            self.skipTest("no estan las ROMs del X68000 (iplrom.dat)")
-        if not emulador_x68000._buscar_human68k():
-            self.skipTest("no hay un disquete de Human68k (NEOPLAT_HUMAN68K)")
+        _hay_x68000(self)
         out = self._construir("x68000")
         juego = [n for n in os.listdir(os.path.join(out, "disco"))
                  if n.endswith(".X")][0]
-        self._escuchar("x68000", os.path.join(out, "disco", juego))
+        _en_su_proceso(self, "muestras.py", "x68000",
+                       os.path.join(out, "disco", juego))
 
     def test_la_jaguar_toca_la_muestra(self):
         """El DSP lee el sonido del cartucho, un byte por muestra de audio, y

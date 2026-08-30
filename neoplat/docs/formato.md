@@ -103,11 +103,12 @@ Dónde se enchufa el segundo mando en cada máquina:
 | Amiga | el **puerto del ratón**, que es el de la izquierda: hay que quitar el ratón y enchufar ahí el otro joystick. A dos jugadores, el botón del ratón deja de valer de start |
 | Atari Jaguar | el segundo conector. Los dos mandos comparten la misma matriz, pero **las filas no se piden con el mismo número** en un puerto que en el otro (ver `engine/jaguar/np_video.c`) |
 | Atari ST | el **puerto 0**, que es el del ratón, igual que en el Amiga. El teclado sigue siendo solo del primero |
+| X68000 | el **puerto B** del 8255; el A es el del primer jugador |
 
 En el preview, el segundo jugador va con **WASD** y salta con **G**. A un
 jugador, WASD sigue valiendo como las flechas.
 
-Las cinco se comprueban en emulador (`tests/test_sistemas.py`,
+Las seis se comprueban en emulador (`tests/test_sistemas.py`,
 `TestDosJugadores`): se juega la misma partida tres veces, con un mando, con el
 otro y con los dos, y las tres tienen que acabar distintas. Si el segundo mando
 no llegara, o si los dos leyeran del mismo sitio, saldrían iguales.

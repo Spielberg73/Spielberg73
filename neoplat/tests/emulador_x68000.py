@@ -126,13 +126,18 @@ def _esperar_al_juego(emu) -> bool:
     frames fijos el ejemplo grande llegaba a tiempo y el de `ngplat nuevo` no,
     y la captura del titulo salia en negro.
     """
-    while emu.frames < FRAMES_DE_ARRANQUE:
+    # El tope se cuenta desde aqui y no desde el frame cero: esta funcion se
+    # llama otra vez despues de un reset (la prueba de los dos mandos juega tres
+    # partidas seguidas), y con un tope absoluto la segunda vez se rendiria sin
+    # esperar nada.
+    limite = emu.frames + FRAMES_DE_ARRANQUE
+    while emu.frames < limite:
         emu.avanzar(30)
         if emu.frame and emu.frame[:2] == (ANCHO, ALTO):
             break
     else:
         return False
-    while emu.frames < FRAMES_DE_ARRANQUE:
+    while emu.frames < limite:
         emu.avanzar(15)
         if emu.frame and len(colores(emu.frame)) > 2:
             emu.avanzar(15)                       # que acabe de pintarse
