@@ -1,8 +1,8 @@
 # NeoPlat
 
 Kit para hacer juegos de plataformas 2D **sin programar** y compilarlos para
-cinco máquinas de verdad: **Neo Geo** (AES/MVS), **Mega Drive** (Genesis),
-**Amiga** (OCS/ECS), **Atari Jaguar** y **Atari ST**.
+seis máquinas de verdad: **Neo Geo** (AES/MVS), **Mega Drive** (Genesis),
+**Amiga** (OCS/ECS), **Atari Jaguar**, **Atari ST** y **Sharp X68000**.
 
 Describes el juego en un archivo `game.yaml`, dibujas los gráficos en PNG y el
 compilador genera el proyecto en C, los gráficos ya convertidos al formato de
@@ -16,23 +16,24 @@ game.yaml + PNG  ──►  ngplat  ──┼──►  build/neogeo/         RO
                                 ├──►  build/megadrive/      cartucho .bin
                                 ├──►  build/amiga/          disquete .adf
                                 ├──►  build/jaguar/         cartucho .j64
-                                └──►  build/atarist/        disquete .st
+                                ├──►  build/atarist/        disquete .st
+                                └──►  build/x68000/         ejecutable .X y disquete .xdf
 ```
 
 El juego lo describes una vez. Lo que cambia de una máquina a otra es cómo se
 dibuja y cómo suena, no lo que pasa: la simulación (`engine/core/np_world.c`)
-es la misma en las cinco, así que un salto mide exactamente lo mismo en todas.
-Y las cinco llevan un **68000**, que es lo que hace que el motor sea uno solo.
+es la misma en las seis, así que un salto mide exactamente lo mismo en todas.
+Y las seis llevan un **68000**, que es lo que hace que el motor sea uno solo.
 
-| | Neo Geo | Mega Drive | Amiga | Jaguar | Atari ST |
-|---|---|---|---|---|---|
-| CPU | 68000 a 12 MHz | 68000 a 7,6 MHz | 68000 a 7 MHz | 68000 a 13,3 MHz | 68000 a 8 MHz |
-| Escenario | columnas de sprites | plano A del VDP | mapa de bits + blitter | mapa de bits lineal | bitplanes, movidos por la CPU |
-| Actores | sprites | sprites del VDP | blitter con máscara | objetos del chip | dibujados a mano, con máscara |
-| Colores | 4096 en pantalla | 4 paletas de 16 | una de 32, o dos de 8 | una tabla de 256 | una de 16 |
-| Sonido | YM2610 (SSG) por Z80 | PSG SN76489 | Paula (4 canales) | los DAC, por el DSP de Jerry | YM2149 |
-| Parallax | sí | una capa | una capa (`amiga: 8colores`) | una capa | una capa (`camara: pantallas`) |
-| Sale | ROMs de cartucho | `.bin` con cabecera y suma | disquete `.adf` arrancable | cartucho `.j64` | disquete `.st` arrancable |
+| | Neo Geo | Mega Drive | Amiga | Jaguar | Atari ST | X68000 |
+|---|---|---|---|---|---|---|
+| CPU | 68000 a 12 MHz | 68000 a 7,6 MHz | 68000 a 7 MHz | 68000 a 13,3 MHz | 68000 a 8 MHz | 68000 a 10 MHz |
+| Escenario | columnas de sprites | plano A del VDP | mapa de bits + blitter | mapa de bits lineal | bitplanes, movidos por la CPU | capa de fondo del chip |
+| Actores | sprites | sprites del VDP | blitter con máscara | objetos del chip | dibujados a mano, con máscara | sprites de 16×16 |
+| Colores | 4096 en pantalla | 4 paletas de 16 | una de 32, o dos de 8 | una tabla de 256 | una de 16 | 16 bloques de 16 |
+| Sonido | YM2610 (SSG) por Z80 | PSG SN76489 | Paula (4 canales) | los DAC, por el DSP de Jerry | YM2149 | todavía en silencio |
+| Parallax | sí | una capa | una capa (`amiga: 8colores`) | una capa | una capa (`camara: pantallas`) | no |
+| Sale | ROMs de cartucho | `.bin` con cabecera y suma | disquete `.adf` arrancable | cartucho `.j64` | disquete `.st` arrancable | `.X` de Human68k y disquete `.xdf` |
 
 El Atari ST es el caso raro y por eso merece la pena: mismo 68000 que los
 demás y **nada** que le eche una mano —sin sprites, sin blitter y sin scroll
@@ -40,6 +41,13 @@ por hardware—, así que todo lo que se mueve lo mueve la CPU. Enseña 200 lín
 en vez de 224 (una ventana del mismo mundo) y dibuja a 25 frames por segundo
 simulando a 50, que es lo que da de sí la máquina;
 [docs/atarist.md](docs/atarist.md) cuenta cómo se midió.
+
+El X68000 es el otro caso raro, por lo contrario: es la que más ayuda da (sus
+patrones son de 16×16, justo el tile del kit) y a la vez la que menos
+documentación fiable tiene. Se portó **midiendo el hardware en el emulador**
+con una sonda que enciende bits y mira lo que sale por pantalla;
+[docs/x68000.md](docs/x68000.md) cuenta qué dijo cada prueba, incluido por qué
+esta máquina se queda sin parallax y con 192 patrones en vez de 256.
 
 ## Instalación
 
@@ -70,8 +78,9 @@ depende de la máquina:
 | Amiga | lo mismo que la Mega Drive (o `m68k-amigaos-gcc` si lo tienes) |
 | Jaguar | lo mismo que la Mega Drive; el GPU y el DSP no se usan, así que no hace falta el SDK de Atari |
 | Atari ST | lo mismo que la Mega Drive (o `m68k-atari-mint-gcc` si lo tienes) |
+| Sharp X68000 | lo mismo que la Mega Drive |
 
-Para Mega Drive, Amiga, Jaguar y Atari ST no hace falta nada más: el resto
+Para Mega Drive, Amiga, Jaguar, Atari ST y X68000 no hace falta nada más: el resto
 (cabecera del cartucho, suma de control, hunks, relocalización, el disquete de
 880 KB con su bootblock y su sistema de ficheros, la cabecera del cartucho de
 Jaguar y el disquete de 720 KB con su FAT12 y su ejecutable de GEMDOS) lo hace
@@ -150,7 +159,7 @@ edites; <kbd>Enter</kbd> y lo estás jugando otra vez.
   espejo y deshacer). El PNG se descarga listo para dejarlo en `graficos/`.
 - **Cámara a elegir**: `scroll` (el escenario se desliza, como en consola) o
   `pantallas` (la vista salta de una pantalla fija a la siguiente, como en los
-  ordenadores de 8 bits). Es la misma opción para las cinco máquinas.
+  ordenadores de 8 bits). Es la misma opción para las seis máquinas.
 - **Revisión en vivo**: te avisa de que falta la salida o la meta, de enemigos
   colgados en el aire o de un hueco más ancho de lo que cruza tu salto. Y un
   botón que **lanza un bot a terminarse el nivel** para comprobar que es posible.
@@ -239,7 +248,7 @@ niveles:
 que se atraviesa desde abajo, `^` pinchos. Los demás símbolos los defines tú.
 
 El jugador puede **atacar**, no sólo pisar: con `ataque:` dispara un proyectil
-o pega de cerca, y el botón de acción de las cinco máquinas pasa a hacer algo.
+o pega de cerca, y el botón de acción de las seis máquinas pasa a hacer algo.
 `ngplat nuevo` ya te lo deja montado.
 
 La meta se puede **cerrar con llave**: un objeto con `efecto: llave` y un nivel
@@ -439,7 +448,7 @@ colisiones, editor, preview, pruebas) ya está hecho y no se toca.
 
 ## La misma simulación en los seis sitios
 
-`engine/core/np_world.c` (las cinco máquinas) y `preview/np_core.js` (navegador)
+`engine/core/np_world.c` (las seis máquinas) y `preview/np_core.js` (navegador)
 son la misma simulación escrita dos veces: enteros y coma fija 24.8, sin
 decimales.
 `tests/test_paridad.py` ejecuta las dos con las mismas pulsaciones y compara
@@ -456,7 +465,7 @@ make test           # herramientas, validación, generación de C y paridad C/JS
 make test-emulador  # arranca la ROM y el disquete en emuladores de verdad
 make test-navegador # abre el preview y el editor en Chromium
 node tests/comportamiento.js   # 38 pruebas de jugabilidad
-make ejemplo-todos             # compila el ejemplo para las cinco máquinas
+make ejemplo-todos             # compila el ejemplo para las seis máquinas
 ```
 
 Las pruebas con emulador y navegador son opcionales: si no tienes
@@ -642,7 +651,7 @@ Verificado aquí:
   se comprueba que recibe las órdenes del 68000 y escribe en el chip los
   periodos y volúmenes de las notas escritas en el `game.yaml`.
 
-**Sin probar en hardware real**: las cinco se han visto funcionando en
+**Sin probar en hardware real**: las seis se han visto funcionando en
 emuladores, pero no en máquinas de verdad. Y en la Neo Geo el emulador es el del
 propio kit, que da por buenas dos cosas porque las da por buenas también el
 motor: que el sprite 0 va delante de los demás y que la fila 0 del plano fix cae

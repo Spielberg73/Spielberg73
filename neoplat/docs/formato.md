@@ -38,7 +38,7 @@ Con `pantallas` conviene que los niveles midan un número exacto de pantallas
 anterior y el compilador avisa.
 
 **Lo que cuesta el salto.** Cambiar de pantalla obliga a repintar las veinte
-columnas del escenario de una vez, y eso aprieta en las cinco máquinas. Cada
+columnas del escenario de una vez, y eso aprieta en las seis máquinas. Cada
 una lo lleva a su manera:
 
 | | |
@@ -48,8 +48,9 @@ una lo lleva a su manera:
 | Amiga | repinta con el blitter las veinte columnas: unas 620 líneas de barrido sobre las 313 de un frame, o sea dos o tres frames perdidos en el cambio |
 | Jaguar | repinta el mapa de bits entero, como en cualquier otro frame |
 | Atari ST | repinta las veinte columnas con la CPU, que es lo que hace siempre; le cuesta un dibujado de los suyos, o sea dos frames de hardware. Y es el único sitio donde el ST dibuja parallax: con la vista quieta, pintarlo sale gratis |
+| X68000 | escribe las veinte columnas de la tabla de nombres, como la Mega Drive: una palabra por casilla y el chip hace el resto |
 
-Las cinco se comprueban en emulador (`tests/test_sistemas.py`,
+Las seis se comprueban en emulador (`tests/test_sistemas.py`,
 `TestCamaraPorPantallas`): que la vista se quede quieta casi todos los frames y
 que de vez en cuando cambie de golpe.
 

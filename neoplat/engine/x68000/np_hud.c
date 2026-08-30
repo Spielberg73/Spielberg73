@@ -5,10 +5,13 @@
  * gasta ni un patron de PCG -que son 256 para todo el juego y es el limite de
  * verdad- ni un sprite, y se dibuja por encima de las capas sin estorbar.
  *
- * Se escribe en un solo plano, el 0, asi que el marcador sale de un color y no
- * hace falta subir cuatro veces cada letra. La fuente viene ya a un bit por
- * pixel (ocho bytes por caracter), la misma que usan la Jaguar y el Atari ST,
- * asi que una fila de un caracter es un byte y se copia tal cual.
+ * Se escribe en los cuatro planos a la vez, asi que el marcador sale del color
+ * 15 del primer bloque de paleta. No es un capricho: el plano de texto lee de
+ * la paleta de sprites (comprobado en el emulador), y el color 15 es el que el
+ * empaquetador deja reservado para el marcador, igual que en el Atari ST y en
+ * el Amiga. La fuente viene ya a un bit por pixel (ocho bytes por caracter), la
+ * misma que usan la Jaguar y el Atari ST, asi que una fila de un caracter es un
+ * byte y se copia tal cual.
  */
 
 #include "np_x68k.h"
@@ -22,11 +25,15 @@
 #define NP_TEXTO_COLS    (NP_ANCHO / 8)
 #define NP_TEXTO_FILAS   (NP_ALTO / 8)
 
+/* El plano de texto entero, los cuatro planos. Se limpia todo y no solo lo que
+   se ve porque lo que deja escrito Human68k al arrancar ocupa 768x512, mas de
+   lo que ensena el juego, y en cuanto el marcador se mueve asomaria por debajo. */
 void np_hud_clear(void)
 {
+    volatile uint32_t *p = (volatile uint32_t *)NP_TEXTO;
     uint32_t i;
-    for (i = 0; i < (uint32_t)NP_TEXTO_PASO * NP_ALTO; i++)
-        NP_TEXTO[i] = 0;
+    for (i = 0; i < 4UL * NP_TEXTO_PLANO / 4; i++)
+        p[i] = 0;
 }
 
 void np_hud_print(uint8_t col, uint8_t fila, const char *texto)
@@ -36,9 +43,11 @@ void np_hud_print(uint8_t col, uint8_t fila, const char *texto)
         uint8_t indice = (c < 128) ? np_font_index[c] : 0;
         const uint8_t *glifo = &np_font_data[(uint32_t)indice * 8];
         volatile uint8_t *destino = NP_TEXTO + (uint32_t)fila * 8 * NP_TEXTO_PASO + col;
-        uint8_t y;
+        uint8_t y, p;
         for (y = 0; y < 8; y++)
-            destino[(uint32_t)y * NP_TEXTO_PASO] = glifo[y];
+            for (p = 0; p < 4; p++)
+                destino[(uint32_t)p * NP_TEXTO_PLANO + (uint32_t)y * NP_TEXTO_PASO]
+                    = glifo[y];
         col++;
     }
 }
@@ -60,9 +69,12 @@ static void np_hud_borrar_fila(uint8_t fila)
 {
     uint32_t base = (uint32_t)fila * 8 * NP_TEXTO_PASO;
     uint16_t y, x;
-    for (y = 0; y < 8; y++)
-        for (x = 0; x < NP_TEXTO_COLS; x++)
-            NP_TEXTO[base + (uint32_t)y * NP_TEXTO_PASO + x] = 0;
+    uint8_t p;
+    for (p = 0; p < 4; p++)
+        for (y = 0; y < 8; y++)
+            for (x = 0; x < NP_TEXTO_COLS; x++)
+                NP_TEXTO[(uint32_t)p * NP_TEXTO_PLANO + base
+                         + (uint32_t)y * NP_TEXTO_PASO + x] = 0;
 }
 
 /* Igual que en las otras cinco: solo se escribe lo que ha cambiado, porque

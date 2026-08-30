@@ -1,4 +1,4 @@
-/* np_video.c - video del Sharp X68000: capas BG y sprites del chip CYNTHIA.
+/* np_video.c - video del Sharp X68000: capa de fondo y sprites del chip CYNTHIA.
  *
  * Es la maquina mas comoda de las seis para este motor, y por una razon: los
  * tiles del PCG son de **16x16**, exactamente el tamano de tile de NeoPlat.
@@ -8,10 +8,14 @@
  *
  * El reparto:
  *
- *   BG0      el escenario, con scroll por hardware
- *   BG1      la capa de parallax
+ *   capa BG  el escenario, con scroll por hardware
  *   sprites  los actores (jugadores, enemigos, objetos, disparos)
  *   texto    el marcador (np_hud.c), que asi no gasta ni un patron de PCG
+ *
+ * Del parallax no hay: el chip tiene dos capas, pero encendiendo las dos y
+ * dandole a cada una su tabla de nombres nunca se ven los dos dibujos a la vez
+ * (probado bit a bit en el emulador, ver np_x68k.h). Asi que la capa se la
+ * queda el escenario, que es lo que no se puede dibujar de otra forma.
  *
  * La tabla de nombres es de 64x64 casillas y se repite sola, asi que un nivel
  * mas largo que 64 casillas se dibuja columna a columna segun avanza la camara,
@@ -53,21 +57,26 @@ static void np_limpiar_sprites(void)
         NP_SPRITE_REGS[i * 4 + 3] = 0;      /* prioridad 0 = apagado */
 }
 
-static void np_limpiar_capas(void)
+static void np_limpiar_capa(void)
 {
     uint16_t i;
-    for (i = 0; i < NP_BG_COLUMNAS * NP_BG_FILAS; i++) {
-        NP_BG0_MAPA[i] = 0;
-        NP_BG1_MAPA[i] = 0;
-    }
+    for (i = 0; i < NP_BG_COLUMNAS * NP_BG_FILAS; i++)
+        NP_BG_MAPA[i] = 0;
 }
 
 void np_video_init(void)
 {
-    /* CRTC: los valores son los del modo de 256 lineas a 31 kHz, con la zona
-       visible recortada a lo que dibujamos. El X68000 deja programar el
-       temporizado entero, asi que se le pide justo NP_ANCHO x NP_ALTO en vez de
-       aceptar un modo de catalogo y desperdiciar media pantalla. */
+    /* Primero la ROM: _CRTMOD deja la pantalla puesta y _SP_INIT/_SP_ON dejan
+       el chip de sprites preparado. Es la unica forma de heredar el
+       temporizado bueno de los registros del CRTC, que son de solo escritura y
+       no se pueden releer. */
+    np_iocs(NP_IOCS_CRTMOD, NP_MODO_ROM, 0);
+    np_iocs(NP_IOCS_SP_INIT, 0, 0);
+    np_iocs(NP_IOCS_SP_ON, 0, 0);
+
+    /* Y encima, el temporizado nuestro: 320x224, que es la pantalla del kit.
+       El chip de sprites lo aguanta -esta comprobado en el emulador- asi que
+       no hay que recortar la vista como en el Atari ST. */
     *NP_CRTC_R00 = 0x0037;
     *NP_CRTC_R01 = 0x0005;
     *NP_CRTC_R02 = 0x0007;
@@ -86,15 +95,15 @@ void np_video_init(void)
 
     np_subir_paletas();
     np_subir_patrones();
-    np_limpiar_capas();
+    np_limpiar_capa();
     np_limpiar_sprites();
 
     /* El sistema de sprites lleva su propio temporizado, aparte del CRTC. */
     *NP_BG_HTOTAL = 0x0037;
     *NP_BG_HDISP  = 0x000A;
     *NP_BG_VDISP  = 0x0010;
-    *NP_BG_RES    = 0x0000;      /* casillas de 16x16, 512 puntos */
-    *NP_BG_CTRL   = NP_BG_DISP | NP_BG0_ON | NP_BG1_ON;
+    *NP_BG_RES    = NP_BG_PATRON16;
+    *NP_BG_CTRL   = NP_BG_CHIP_ON | NP_BG_CAPA_ON | NP_BG_TABLA_ALTA;
 }
 
 /* --- el escenario ------------------------------------------------------- */
@@ -116,60 +125,18 @@ static void np_columna_escenario(const NpWorld *w, int32_t tile_x)
     if (alto > NP_BG_FILAS) alto = NP_BG_FILAS;
     np_tile_gfx_column(nivel, tile_x, 0, (uint16_t)alto, patrones);
     for (fila = 0; fila < alto; fila++)
-        NP_BG0_MAPA[fila * NP_BG_COLUMNAS + columna] =
+        NP_BG_MAPA[fila * NP_BG_COLUMNAS + columna] =
             NP_CASILLA(patrones[fila], np_tileset_palette);
     for (; fila < NP_BG_FILAS; fila++)
-        NP_BG0_MAPA[fila * NP_BG_COLUMNAS + columna] = 0;
-}
-
-/* La capa de parallax se pinta una vez y luego solo se mueve: se repite sola
-   porque la tabla de nombres da la vuelta cada 64 casillas. */
-static void np_pintar_parallax(const NpWorld *w)
-{
-#if NP_LAYER_COUNT > 0
-    uint16_t columna;
-    uint16_t fila;
-    if (w->level->layer_count == 0) {
-        for (fila = 0; fila < NP_BG_COLUMNAS * NP_BG_FILAS; fila++)
-            NP_BG1_MAPA[fila] = 0;
-        return;
-    }
-    {
-        const NpLayer *capa = &np_layers[w->level->layers[0]];
-        for (columna = 0; columna < NP_BG_COLUMNAS; columna++) {
-            uint16_t origen_x = (uint16_t)(columna % capa->cols);
-            for (fila = 0; fila < NP_BG_FILAS; fila++) {
-                uint16_t casilla = 0;
-                if (fila < capa->rows)
-                    casilla = NP_CASILLA(capa->tiles[fila * capa->cols + origen_x],
-                                         capa->palette);
-                NP_BG1_MAPA[fila * NP_BG_COLUMNAS + columna] = casilla;
-            }
-        }
-    }
-#else
-    (void)w;
-#endif
+        NP_BG_MAPA[fila * NP_BG_COLUMNAS + columna] = 0;
 }
 
 static void np_scroll(const NpWorld *w)
 {
-    /* El scroll de estas capas es "donde empieza a leerse el mapa", asi que va
+    /* El scroll de esta capa es "donde empieza a leerse el mapa", asi que va
        con el mismo signo que la camara, al reves que en la Mega Drive. */
-    int16_t x = (int16_t)w->cam_x;
-    int16_t y = (int16_t)w->cam_y;
-    *NP_BG0_X = (uint16_t)x;
-    *NP_BG0_Y = (uint16_t)y;
-#if NP_LAYER_COUNT > 0
-    if (w->level->layer_count) {
-        const NpLayer *capa = &np_layers[w->level->layers[0]];
-        *NP_BG1_X = (uint16_t)(int16_t)((w->cam_x * capa->speed_x) >> 8);
-        *NP_BG1_Y = (uint16_t)(int16_t)((w->cam_y * capa->speed_y) >> 8);
-        return;
-    }
-#endif
-    *NP_BG1_X = (uint16_t)x;
-    *NP_BG1_Y = (uint16_t)y;
+    *NP_BG0_X = (uint16_t)(int16_t)w->cam_x;
+    *NP_BG0_Y = (uint16_t)(int16_t)w->cam_y;
 }
 
 /* --- los actores -------------------------------------------------------- */
@@ -230,7 +197,6 @@ void np_video_frame(const NpWorld *w)
         /* por donde no hay capa ni sprite se ve el color 0 de la paleta
            grafica, asi que ese es el fondo del nivel */
         NP_PALETA_GFX[0] = w->level->background;
-        np_pintar_parallax(w);
         for (c = columna - 1; c <= columna + NP_COLUMNAS + 1; c++)
             np_columna_escenario(w, c);
     } else {

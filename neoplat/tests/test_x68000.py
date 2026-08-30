@@ -87,11 +87,15 @@ class TestPatrones(unittest.TestCase):
         px[1] = 0x5           # (1,0)
         self.assertEqual(codificar_patron(px)[0], 0xA5)
 
-    def test_los_cuadrantes_van_en_orden_de_lectura(self):
-        """Arriba-izquierda, arriba-derecha, abajo-izquierda, abajo-derecha. Con
-        otro orden los sprites saldrian troceados, y eso solo se ve en el
-        emulador: aqui se fija el contrato."""
-        for indice, (x, y) in enumerate(((0, 0), (8, 0), (0, 8), (8, 8))):
+    def test_los_cuadrantes_van_por_columnas(self):
+        """Arriba-izquierda, abajo-izquierda, arriba-derecha, abajo-derecha: por
+        columnas, no en orden de lectura.
+
+        Esta medido en el emulador -un patron con los cuatro trozos de 32 bytes
+        de cuatro colores, a ver donde caia cada uno- despues de que los
+        dibujos salieran partidos con el orden de lectura, que es lo que se
+        supuso al principio. Aqui queda fijado el contrato."""
+        for indice, (x, y) in enumerate(((0, 0), (0, 8), (8, 0), (8, 8))):
             px = [0] * 256
             px[y * 16 + x] = 0xF
             datos = codificar_patron(px)

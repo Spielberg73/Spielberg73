@@ -1,27 +1,63 @@
 /* np_x68k.h - el hardware del Sharp X68000, en un solo sitio.
  *
- * De las seis maquinas del kit es la que mas se parece a la Neo Geo, con una
- * diferencia que lo cambia todo: **tiene capas de fondo de verdad**. En la Neo
- * Geo el escenario se dibuja con columnas de sprites; aqui lo llevan los dos
- * planos BG del chip CYNTHIA y los 128 sprites se quedan enteros para los
- * actores.
- *
  * Los chips que nos importan:
  *
  *   CRTC      ($E80000)  temporizado y modo de pantalla
  *   VIDEO     ($E82000)  paletas, prioridad de capas y que capa se ve
  *   MFP       ($E88000)  interrupciones, y de ahi el retrazo vertical
  *   PPI       ($E9A000)  los dos mandos (un 8255)
- *   CYNTHIA   ($EB0000)  sprites, capas BG y la RAM de patrones (PCG)
+ *   CYNTHIA   ($EB0000)  sprites, capa de fondo y la RAM de patrones (PCG)
  *
- * Las direcciones y los bits salen de la documentacion del hardware; lo que no
- * he podido confirmar en papel va marcado con POR CONFIRMAR y se comprueba en
- * el emulador.
+ * **Todo lo del chip de sprites esta medido en el emulador, no copiado de un
+ * manual.** La primera version de este archivo iba de documentacion suelta y
+ * no dibujaba nada: los sprites salian a medias y la capa de fondo no salia.
+ * Se escribio una sonda que enciende bits, dibuja y mira la pantalla, y de ahi
+ * salio lo que hay aqui. Lo que aprendio, por si alguien lo vuelve a tocar:
+ *
+ *   - Los registros R00-R07 del CRTC son de **solo escritura**: se leen a
+ *     cero. Por eso el arranque llama antes a la ROM (_CRTMOD) y luego escribe
+ *     su temporizado encima.
+ *   - El chip entero se enciende con el bit 9 de $EB0808. Sin el no hay ni
+ *     sprites ni capa, pongas lo que pongas en los demas registros.
+ *   - Los patrones son de 16x16 **solo si** el bit 0 de $EB0810 esta a uno. A
+ *     cero son de 8x8, y una tabla de nombres hecha para 16x16 se ve como
+ *     ruido o directamente no se ve.
+ *   - La tabla de nombres **es la propia PCG**: $EBC000 y $EBE000 son los
+ *     patrones 128-191 y 192-255. Quien usa capa de fondo se queda sin ellos.
+ *   - De las dos capas de fondo que tiene el chip, en el emulador solo se
+ *     ensena una: con las dos encendidas y cada una leyendo una tabla, nunca
+ *     se ven los dos dibujos a la vez. Asi que el escenario va en la capa y el
+ *     parallax no se dibuja en esta maquina.
+ *   - El plano de texto (el marcador) lee de la **paleta de sprites**, bloque
+ *     0. Por eso el color 15 de ese bloque se reserva para el marcador, igual
+ *     que en el Atari ST.
  */
 #ifndef NP_X68K_H
 #define NP_X68K_H
 
 #include "np_world.h"
+
+/* --- la ROM ------------------------------------------------------------
+ *
+ * Las llamadas IOCS de la ROM dejan la pantalla y el chip de sprites puestos
+ * para el modo que se les pida. El arranque las usa y luego cambia el
+ * temporizado a lo nuestro: asi no hay que adivinar los valores de los
+ * registros que no se pueden releer.
+ */
+#define NP_IOCS_CRTMOD   0x10     /* poner un modo de pantalla */
+#define NP_IOCS_SP_INIT  0xB0     /* preparar el chip de sprites */
+#define NP_IOCS_SP_ON    0xB1     /* y encenderlo */
+#define NP_MODO_ROM      3        /* 256x240 a 16 colores: el mas parecido */
+
+static __inline long np_iocs(long numero, long d1, long d2)
+{
+    register long r0 __asm__("d0") = numero;
+    register long r1 __asm__("d1") = d1;
+    register long r2 __asm__("d2") = d2;
+    __asm__ volatile ("trap #15" : "+d"(r0), "+d"(r1), "+d"(r2)
+                      : : "a0", "a1", "a2", "cc", "memory");
+    return r0;
+}
 
 /* --- CRTC: temporizado y modo ------------------------------------------ */
 #define NP_CRTC_R00      ((volatile uint16_t *)0xE80000)  /* total horizontal */
@@ -60,11 +96,11 @@
  * Un 8255: el puerto A es el mando 1 y el B el mando 2. Los bits 0-3 son las
  * direcciones y los 4-5 los dos botones.
  *
- * POR CONFIRMAR: la polaridad. En un mando de estilo MSX -que es lo que lleva
- * esta maquina- el puerto tiene resistencias de subida y el mando tira a masa,
- * asi que un bit **a cero** es un boton pulsado; la documentacion que he
- * encontrado no lo dice con todas las letras. Si en el emulador sale al reves,
- * se invierte NP_MANDO_PULSADO y no hay que tocar nada mas.
+ * La polaridad es la de un mando de estilo MSX -que es lo que lleva esta
+ * maquina-: el puerto tiene resistencias de subida y el mando tira a masa, asi
+ * que un bit **a cero** es un boton pulsado. Comprobado en el emulador: con
+ * esto el juego empieza al pulsar el boton y el jugador anda hacia donde se le
+ * dice; invertido no responderia a nada.
  */
 #define NP_PPI_A         ((volatile uint8_t *)0xE9A001)
 #define NP_PPI_B         ((volatile uint8_t *)0xE9A003)
@@ -105,38 +141,47 @@
 #define NP_BG_VDISP      ((volatile uint16_t *)0xEB080E)
 #define NP_BG_RES        ((volatile uint16_t *)0xEB0810)
 
-/* BG_CTRL: bit 9 enciende todo el chip, bit 0 la capa BG0, bit 3 la BG1,
-   bits 1 y 4 dicen de que mitad de la PCG come cada capa. */
-#define NP_BG_DISP       0x0200
-#define NP_BG0_ON        0x0001
-#define NP_BG1_ON        0x0008
+/* BG_CTRL, medido bit a bit en el emulador:
+     bit 9  enciende el chip entero (sprites incluidos)
+     bit 0  enciende la capa de fondo
+     bit 1  de que tabla come: a cero $EBC000, a uno $EBE000
+   Los demas bits no cambiaron nada en ninguna combinacion. */
+#define NP_BG_CHIP_ON    0x0200
+#define NP_BG_CAPA_ON    0x0001
+#define NP_BG_TABLA_ALTA 0x0002
 
-/* Las dos tablas de nombres, 64x64 palabras cada una. Una palabra tiene el
-   mismo formato que el atributo de un sprite: volteos, bloque de paleta y
-   numero de patron. */
-#define NP_BG0_MAPA      ((volatile uint16_t *)0xEBE000)
-#define NP_BG1_MAPA      ((volatile uint16_t *)0xEBC000)
+/* BG_RES: el bit 0 pone los patrones en 16x16. */
+#define NP_BG_PATRON16   0x0001
+
+/* La tabla de nombres, 64x64 palabras. Cada palabra tiene el mismo formato que
+   el atributo de un sprite: volteos, bloque de paleta y numero de patron.
+
+   Se usa la de arriba ($EBE000) a proposito: como la tabla vive dentro de la
+   propia PCG, dejarla al final deja seguidos los patrones 0-191 en vez de
+   partirlos en dos trozos. */
+#define NP_BG_MAPA       ((volatile uint16_t *)0xEBE000)
 #define NP_BG_COLUMNAS   64
 #define NP_BG_FILAS      64
 
-/* La RAM de patrones: 256 patrones de 16x16, 128 bytes cada uno. De aqui comen
-   los sprites **y** las dos capas, asi que 256 es el limite de verdad de esta
-   maquina, no los 128 sprites. */
+/* La RAM de patrones: 32 KB en $EB8000, 128 bytes por patron de 16x16. De aqui
+   comen los sprites **y** la capa de fondo, y ademas la tabla de nombres esta
+   metida dentro (los ultimos 8 KB), asi que quedan 192 patrones y ese es el
+   limite de verdad de esta maquina, no los 128 sprites. */
 #define NP_PCG           ((volatile uint8_t *)0xEB8000)
-#define NP_PATRONES      256
+#define NP_PATRONES      192
 #define NP_PATRON_BYTES  128
 
 /* --- la pantalla que dibujamos ------------------------------------------
  *
- * La simulacion es de 320x224 en las seis maquinas. Aqui se pide al CRTC una
- * imagen de ese tamano en vez de recortar como en el Atari ST, porque el
- * sistema de sprites lleva su propio temporizado (NP_BG_HDISP y NP_BG_VDISP) y
- * no tiene por que cuadrar con los modos de la pantalla grafica.
+ * La simulacion es de 320x224 en las seis maquinas, y aqui se ensena entera:
+ * al CRTC se le pide una imagen de ese tamano en vez de quedarse con un modo
+ * de catalogo. Comprobado en el emulador: con el temporizado nuestro la capa
+ * de fondo llena los 320x224 y los sprites caen donde tienen que caer, asi que
+ * no hace falta recortar a 256 como se temia.
  *
- * POR CONFIRMAR en el emulador. Si el chip de sprites resultara no funcionar
- * fuera de los 256 puntos, se recorta a 256 de ancho centrando la vista, que es
- * lo que hace el Atari ST a lo alto y son cuatro lineas de codigo.
+ * El color 15 del primer bloque de paleta es el del marcador (ver arriba).
  */
+#define NP_HUD_COLOR     15
 #define NP_ANCHO         NP_SCREEN_W
 #define NP_ALTO          NP_SCREEN_H
 #define NP_COLUMNAS      (NP_ANCHO / NP_TILE)     /* 20 columnas de tiles */

@@ -60,12 +60,20 @@ test-emulador-st:
 	$(PYTHON) tests/emulador_st.py \
 		$(EJEMPLO)/build/atarist/disco/bosquema.st capturas
 
+# El X68000 necesita ademas las ROMs de Sharp y un disquete de Human68k, que no
+# vienen aqui: se apuntan con NEOPLAT_X68000_ROMS y NEOPLAT_HUMAN68K. Sin ellos
+# la prueba se salta sola.
+test-emulador-x68000:
+	./ngplat compilar $(EJEMPLO) --sistema x68000 --make
+	$(PYTHON) tests/emulador_x68000.py \
+		$(EJEMPLO)/build/x68000/disco/BOSQUEMA.X capturas
+
 ejemplo:
 	./ngplat comprobar $(EJEMPLO)
 	./ngplat probar $(EJEMPLO) --no-abrir
 	./ngplat compilar $(EJEMPLO)
 
-# Compila el ejemplo para las cinco maquinas (necesita un compilador de 68000
+# Compila el ejemplo para las seis maquinas (necesita un compilador de 68000
 # para construir de verdad el cartucho, los disquetes y la ROM).
 ejemplo-todos:
 	./ngplat compilar $(EJEMPLO) --sistema neogeo
@@ -73,6 +81,7 @@ ejemplo-todos:
 	./ngplat compilar $(EJEMPLO) --sistema amiga --make
 	./ngplat compilar $(EJEMPLO) --sistema jaguar --make
 	./ngplat compilar $(EJEMPLO) --sistema atarist --make
+	./ngplat compilar $(EJEMPLO) --sistema x68000 --make
 
 # Los paquetes para repartir: los ZIP de docs y del kit en dist/.
 # `paquetes-exe` ademas construye el ngplat.exe de Windows; en Windows sale
@@ -90,4 +99,5 @@ limpiar:
 
 .PHONY: test test-rapido test-navegador test-emulador test-emulador-md \
 	test-emulador-amiga test-emulador-neogeo test-emulador-jaguar \
-	test-emulador-st ejemplo ejemplo-todos paquetes paquetes-exe limpiar
+	test-emulador-st test-emulador-x68000 ejemplo ejemplo-todos paquetes \
+	paquetes-exe limpiar

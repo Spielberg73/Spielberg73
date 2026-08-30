@@ -15,12 +15,19 @@ Lo que hay que tener claro:
 * **Paletas**: 16 bloques de 16 colores en $E82200, y los comparten los sprites
   y las dos capas BG. El color 0 de cada bloque es el transparente.
 * **PCG**: los dibujos son de 16x16 y ocupan **128 bytes**, partidos en cuatro
-  cuadrantes de 8x8 y en este orden: arriba-izquierda, arriba-derecha,
-  abajo-izquierda, abajo-derecha. Dentro de cada fila van dos pixeles por byte,
-  el nibble alto es el de la izquierda.
-* Hay **256 patrones** de PCG ($EB8000, 128 bytes cada uno = 32 KB), y de ahi
-  comen los sprites **y** las capas BG. Ese es el limite real de la maquina, no
-  los sprites.
+  cuadrantes de 8x8 que van **por columnas**: arriba-izquierda,
+  abajo-izquierda, arriba-derecha, abajo-derecha. Dentro de cada fila van dos
+  pixeles por byte, el nibble alto es el de la izquierda.
+
+  El orden de los cuadrantes esta medido en el emulador, no leido: se subio un
+  patron con los cuatro trozos de 32 bytes de cuatro colores y se miro donde
+  caia cada uno. La primera version los ponia en orden de lectura y los
+  dibujos salian partidos: el escenario ensenaba cada tile dos veces a media
+  altura y los actores salian a cachos.
+* Hay 256 patrones de PCG ($EB8000, 128 bytes cada uno = 32 KB), pero los 64
+  ultimos son la tabla de nombres de la capa de fondo, asi que quedan **192**.
+  De ahi comen los sprites **y** la capa. Ese es el limite real de la maquina,
+  no los sprites.
 """
 
 from __future__ import annotations
@@ -36,7 +43,10 @@ TILE_PX = 16                 # el PCG del X68000 es de 16x16
 PATRON_BYTES = 128
 COLORES_POR_PALETA = 16
 BLOQUES = 16                 # bloques de paleta que comparten sprites y BG
-PATRONES = 256               # los que caben en la PCG RAM
+# La PCG son 32 KB y un patron de 16x16 ocupa 128 bytes, o sea 256 patrones...
+# menos los 64 ultimos, que es donde vive la tabla de nombres de la capa de
+# fondo: en esta maquina la tabla esta metida dentro de la propia PCG.
+PATRONES = 192
 
 
 def _nivel(cinco: int, intensidad: int) -> int:
@@ -79,8 +89,8 @@ def x68k_color_a_rgb(valor: int) -> RGB:
 def codificar_patron(pixeles: Sequence[int]) -> bytes:
     """256 indices de paleta (16x16) -> los 128 bytes del patron de PCG.
 
-    Los cuatro cuadrantes van en orden de lectura -arriba-izquierda,
-    arriba-derecha, abajo-izquierda, abajo-derecha- y cada uno son 32 bytes:
+    Los cuatro cuadrantes van **por columnas** -arriba-izquierda,
+    abajo-izquierda, arriba-derecha, abajo-derecha- y cada uno son 32 bytes:
     ocho filas de cuatro, dos pixeles por byte.
     """
     if len(pixeles) != TILE_PX * TILE_PX:
@@ -88,8 +98,8 @@ def codificar_patron(pixeles: Sequence[int]) -> bytes:
                          % len(pixeles))
     datos = bytearray(PATRON_BYTES)
     destino = 0
-    for cuadrante_y in (0, 8):
-        for cuadrante_x in (0, 8):
+    for cuadrante_x in (0, 8):
+        for cuadrante_y in (0, 8):
             for fila in range(8):
                 y = cuadrante_y + fila
                 for x in range(0, 8, 2):
@@ -104,8 +114,8 @@ def decodificar_patron(datos: Sequence[int]) -> List[int]:
     """Inversa de `codificar_patron` (la usan las pruebas)."""
     pixeles = [0] * (TILE_PX * TILE_PX)
     origen = 0
-    for cuadrante_y in (0, 8):
-        for cuadrante_x in (0, 8):
+    for cuadrante_x in (0, 8):
+        for cuadrante_y in (0, 8):
             for fila in range(8):
                 y = cuadrante_y + fila
                 for x in range(0, 8, 2):

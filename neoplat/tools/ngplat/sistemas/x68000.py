@@ -1,4 +1,4 @@
-"""Sharp X68000: 68000 a 10 MHz, chip de sprites y dos capas de fondo.
+"""Sharp X68000: 68000 a 10 MHz, chip de sprites y una capa de fondo.
 
 De las seis maquinas del kit es la que menos trabajo pide, y por una razon
 concreta: los patrones del PCG son de **16x16**, justo el tamano de tile de
@@ -8,13 +8,21 @@ es una casilla de la tabla de nombres.
 
 El reparto de la pantalla:
 
-  BG0      el escenario, con scroll por hardware
-  BG1      la capa de parallax
+  capa BG  el escenario, con scroll por hardware
   sprites  los actores (128, de 16x16)
   texto    el marcador, en el plano de texto, que asi no gasta ni un patron
 
-El limite de verdad no son los sprites sino los **256 patrones** de la PCG RAM,
-que se reparten entre los sprites y las dos capas.
+Dos cosas que salieron de probarlo en el emulador y no de la documentacion:
+
+  - El chip tiene dos capas de fondo, pero no se consiguio que se vieran las
+    dos a la vez con ninguna combinacion de sus registros. Asi que la capa se
+    la queda el escenario y **el parallax no se dibuja en esta maquina**.
+  - El limite de verdad no son los sprites sino los **192 patrones** de la PCG
+    RAM: son 256, pero los 64 ultimos son la tabla de nombres de la capa, que
+    vive dentro de la misma memoria.
+
+Y por eso el color 15 del primer bloque de paleta se lo queda el marcador: el
+plano de texto lee de la paleta de sprites, no tiene una suya.
 """
 
 from __future__ import annotations
@@ -28,8 +36,9 @@ from ..errors import ProjectError
 from ..paths import fuente_del_kit
 from .base import Limites, Salida, Sistema, registrar
 
-MAX_PATRONES = gfx_x68k.PATRONES     # los que caben en la PCG RAM
+MAX_PATRONES = gfx_x68k.PATRONES     # los que quedan libres en la PCG RAM
 MAX_BLOQUES = gfx_x68k.BLOQUES       # bloques de paleta de 16 colores
+COLOR_HUD = 15                       # el ultimo del bloque 0, del marcador
 
 
 class X68000(Sistema):
@@ -57,9 +66,9 @@ class X68000(Sistema):
     carpeta_salida = "disco"
     nombre_binario = "el ejecutable"
     notas = [
-        "sprites:  128 de 16x16, y el escenario va en capas aparte",
-        "patrones: 256 en total, repartidos entre sprites y las dos capas",
-        "parallax: una capa, con scroll por hardware",
+        "sprites:  128 de 16x16, y el escenario va en una capa aparte",
+        "patrones: 192, repartidos entre los sprites y la capa de fondo",
+        "parallax: no, esta maquina solo ensena una capa de fondo",
         "sonido:   YM2151 (ocho canales de FM) y ADPCM; todavia en silencio",
     ]
 
@@ -83,12 +92,13 @@ class X68000(Sistema):
         for actor in build.actor_builds():
             banco.empaquetar_hoja(actor.sheet)
 
-        # Las capas de fondo si comparten: ahi se repite mucho el mismo dibujo.
-        for capa in build.layers:
-            capa.palette_index = banco.anadir_paleta(capa.palette)
-            nuevos = [banco.anadir(d, compartir=True) for d in capa.dibujos]
-            capa.tiles = [nuevos[i] for i in capa.tiles]
-            capa.dibujos = []
+        # El parallax se queda fuera: esta maquina solo ensena una capa de
+        # fondo y se la lleva el escenario. Se quitan antes de empaquetar para
+        # que no gasten patrones, que aqui son 192 y hacen falta.
+        build.info_parallax = len(build.layers)
+        for nivel in build.levels:
+            nivel.layers = []
+        build.layers = []
 
         # El marcador va en el plano de texto, a un bit por pixel: no gasta
         # patrones, asi que la fuente se guarda aparte.
@@ -101,9 +111,15 @@ class X68000(Sistema):
         for nivel in build.levels:
             nivel.background = self.color(nivel.background_rgb)
 
+        # El color 15 del primer bloque se lo queda el marcador: el plano de
+        # texto lee de esta misma paleta y no tiene una suya. Es lo mismo que
+        # hacen el Atari ST y el Amiga con su ultimo color.
+        paletas = banco.palabras()
+        paletas[0][COLOR_HUD] = self.color((255, 255, 255))
+
         build.font = fuente
         build.hud_palette = 0
-        build.paletas = banco.palabras()
+        build.paletas = paletas
         build.tile_gfx = [build.tileset.first_tile + t.index for t in build.tiles]
         build.info = {
             "banco": banco,
@@ -128,8 +144,8 @@ class X68000(Sistema):
             self.error(
                 "los graficos ocupan %d patrones de 16x16 y la PCG del X68000 "
                 "tiene %d" % (banco.cuantos, MAX_PATRONES),
-                "usa menos dibujos distintos: de ahi comen los sprites y las "
-                "dos capas de fondo")
+                "usa menos dibujos distintos: de ahi comen los sprites y la "
+                "capa de fondo, y los 64 ultimos son la tabla de nombres")
         if len(banco.paletas) > MAX_BLOQUES:
             self.error(
                 "el juego usa %d paletas y el X68000 tiene %d bloques de 16 "
@@ -140,6 +156,15 @@ class X68000(Sistema):
                     "el nivel '%s' tiene %d casillas de alto y la tabla de "
                     "nombres llega a 64: lo que pase de ahi no se dibuja"
                     % (nivel.name, nivel.height))
+        if getattr(build, "info_parallax", 0):
+            avisos.append(
+                "el juego tiene %d capa(s) de parallax y el X68000 solo ensena "
+                "una capa de fondo, que se lleva el escenario: no se dibujan"
+                % build.info_parallax)
+        if len(banco.paletas) and _usa_el_ultimo(banco, COLOR_HUD):
+            avisos.append(
+                "el color %d de la primera paleta se lo queda el marcador: si "
+                "el escenario lo usaba, ahi saldra blanco" % COLOR_HUD)
         sobran = MAX_PATRONES - banco.cuantos
         if sobran < 32:
             avisos.append(
@@ -176,6 +201,11 @@ def _nombre_ejecutable(build: Build) -> str:
     limpio = "".join(c for c in build.project.title.upper()
                      if c.isalnum())[:8]
     return limpio or "JUEGO"
+
+
+def _usa_el_ultimo(banco, indice: int) -> bool:
+    """Si el primer bloque de paleta llega hasta el color que se reserva."""
+    return bool(banco.paletas) and len(banco.paletas[0].colors) > indice
 
 
 def _glifo_1bpp(pixeles) -> List[int]:

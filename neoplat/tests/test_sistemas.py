@@ -1057,6 +1057,31 @@ class TestCompilacionReal(unittest.TestCase):
         _comprobar_st(self, os.path.join(out, "disco/prueba.st"),
                       os.path.join(self.tmp, "capturas-st"), self.proyecto)
 
+    def test_el_juego_de_x68000_arranca_en_un_emulador(self):
+        """Y encender el X68000: el .X con su tabla de correcciones, el
+        disquete de Human68k, el CRTC, el chip de sprites con su capa y el
+        marcador en el plano de texto.
+
+        Hacen falta tres cosas que no son nuestras y no vienen en el
+        repositorio: el core de px68k, las ROMs del X68000 y un disquete de
+        arranque de Human68k. Sin ellas la prueba se salta."""
+        import emulador_x68000
+        from libretro import buscar_core
+        if not buscar_core(emulador_x68000.CORE, "NEOPLAT_CORE_X68000"):
+            self.skipTest("no esta instalado el core de px68k")
+        if not emulador_x68000._buscar_roms():
+            self.skipTest("no estan las ROMs del X68000 (iplrom.dat)")
+        if not emulador_x68000._buscar_human68k():
+            self.skipTest("no hay un disquete de Human68k (NEOPLAT_HUMAN68K)")
+        out = self._construir("x68000")
+        juego = [n for n in os.listdir(os.path.join(out, "disco"))
+                 if n.endswith(".X")]
+        self.assertTrue(juego, "el Makefile no ha dejado ningun .X en disco/")
+        self.assertEqual(
+            emulador_x68000.comprobar(os.path.join(out, "disco", juego[0]),
+                                      os.path.join(self.tmp, "capturas-x68000")),
+            0, "el juego no arranca o no se juega en el emulador de X68000")
+
     def test_la_neogeo_dibuja_el_juego(self):
         """La Neo Geo no se puede arrancar en un emulador normal sin la BIOS de
         SNK, asi que el kit trae su propio banco: el 68000 de verdad y el chip
@@ -1137,7 +1162,7 @@ class TestCompilacionReal(unittest.TestCase):
 
 
 class TestCamaraPorPantallas(unittest.TestCase):
-    """La camara por pantallas, en las cinco maquinas de verdad.
+    """La camara por pantallas, en las seis maquinas de verdad.
 
     La paridad C/JS ya comprueba que el motor la calcula bien, pero eso es la
     simulacion. Lo que se mira aqui es el chip de video: cuando la vista salta
@@ -1205,6 +1230,24 @@ class TestCamaraPorPantallas(unittest.TestCase):
             emulador_jaguar.comprobar(os.path.join(out, "rom/Pantallas.j64"),
                                       self._capturas("jaguar"), pantallas=True), 0,
             "la Jaguar no salta de pantalla como debe")
+
+    def test_el_x68000_salta_de_pantalla(self):
+        import emulador_x68000
+        from libretro import buscar_core
+        if not buscar_core(emulador_x68000.CORE, "NEOPLAT_CORE_X68000"):
+            self.skipTest("no esta instalado el core de px68k")
+        if not emulador_x68000._buscar_roms():
+            self.skipTest("no estan las ROMs del X68000 (iplrom.dat)")
+        if not emulador_x68000._buscar_human68k():
+            self.skipTest("no hay un disquete de Human68k (NEOPLAT_HUMAN68K)")
+        out = self._construir("x68000")
+        juego = [n for n in os.listdir(os.path.join(out, "disco"))
+                 if n.endswith(".X")]
+        self.assertTrue(juego, "el Makefile no ha dejado ningun .X en disco/")
+        self.assertEqual(
+            emulador_x68000.comprobar(os.path.join(out, "disco", juego[0]),
+                                      self._capturas("x68000"), pantallas=True),
+            0, "el X68000 no salta de pantalla como debe")
 
     def test_la_neogeo_salta_de_pantalla_sin_pasarse_de_ciclos(self):
         """La mas exigente: el banco de Neo Geo cuenta los ciclos, y saltar de
