@@ -105,7 +105,7 @@ el nivel de partida.
 | género | cómo se juega |
 |---|---|
 | `plataformas` | saltas, pisas enemigos y disparas, y el salto se corrige en el aire. Lo de toda la vida |
-| `castlevania` | pegas con látigo, subes escaleras, gastas munición y el látigo se mejora. El salto **no** se corrige, un golpe te tira al vacío y hay puntos de control |
+| `castlevania` | pegas con **látigo** (que se ve, y se alarga con cada mejora), te agachas, subes escaleras y tiras cuchillos o el hacha gastando munición. El salto **no** se corrige, un golpe te tira al vacío y hay puntos de control |
 
 Si prefieres decirlo de una:
 
@@ -277,11 +277,25 @@ Y el **arma se mejora**: con `mejoras:` y `alcance_mejora:` en el ataque, cada
 objeto de `efecto: mejora` alarga el látigo un paso, hasta el tope que pongas.
 Se pierden al morir, que es lo que hace que una vida valga algo.
 
+Y **el arma se ve**: con `tipo: golpe`, el `sprite:` del ataque es el látigo, y
+se dibuja delante del jugador **sólo mientras el golpe hace daño**, así que lo
+que ves en pantalla es exactamente lo que pega. Cada fotograma es un nivel de
+mejora, dibujado de lo que alcanza (24, 36 y 48 px), así que la mejora se nota
+y se ve.
+
+Y te puedes **agachar**: con `agachado: si`, abajo en el suelo baja el techo de
+tu caja —los pies se quedan donde están— así que lo que vuela a la altura de la
+cabeza te pasa por encima, y el látigo sale a la altura de la rodilla. Ni andas
+ni saltas mientras.
+
 Y hay **candelabros**: con `rompibles:` defines algo que no hace nada hasta que
 le pegas y entonces suelta lo que lleve dentro. Con un objeto de
-`efecto: municion` y un arma `secundaria:` (arriba + acción) tienes el bucle
-entero de los clásicos de látigo: pegarle a todo, recoger corazones y gastarlos
-en el cuchillo. El ataque además puede tener `preparacion:` (frames en los que
+`efecto: municion` y las armas de `secundarias:` (arriba + acción) tienes el
+bucle entero de los clásicos de látigo: pegarle a todo, recoger corazones y
+gastarlos en el cuchillo o en el hacha. Se puede llevar **más de una**: se
+empieza con la primera y se cambia cogiendo un objeto con `efecto: subarma`, y
+con `a_la_vez:` decides cuántas caben en el aire (una es lo clásico, tres es el
+triple de toda la vida). El ataque además puede tener `preparacion:` (frames en los que
 el brazo todavía sale y no hace daño) y `clavado:` (mientras pegas, no te
 mueves), y al recibir daño sales despedido con `retroceso:` y te quedas
 `aturdido:` frames sin control: un roce al borde de una plataforma pasa a
@@ -641,6 +655,13 @@ Verificado aquí:
   punto de control se enciende **y** cambia dónde reapareces, y que la mejora
   se coge y se pierde: sin eso, la paridad estaría comparando dos motores que
   apuntan la casilla y luego la ignoran.
+- **El látigo, agacharse y las armas secundarias**: que el látigo está en
+  pantalla exactamente los nueve frames en los que hace daño —ni antes, durante
+  la preparación, ni después—; que agachado no se anda ni se salta y que un
+  volador que te da de pie te pasa por encima agachado; que el objeto del hacha
+  cambia el arma, que lo ya lanzado se queda con la que salió y que `a_la_vez`
+  limita cuántas van por el aire. El látigo, agacharse y el arma que llevas van
+  además en la traza, así que la paridad C/JS los compara frame a frame.
 - **Las plataformas móviles llevan al jugador**: ocho pruebas de jugabilidad en
   JavaScript (que va y viene entre sus dos extremos y no se pasa, que el
   jugador se planta encima y se mueve exactamente lo mismo que ella, que una
