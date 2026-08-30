@@ -3,6 +3,7 @@
 
     python3 empaquetar.py            los tres ZIP
     python3 empaquetar.py --exe      ademas, el ngplat.exe (necesita PyInstaller)
+    python3 empaquetar.py --dist X   los deja en X en vez de en dist/
 
 Sale todo en `dist/`, con la version en el nombre (ngplat/__init__.py):
 
@@ -182,11 +183,17 @@ kit.
 
 
 def main(argv):
-    if os.path.isdir(DIST):
-        shutil.rmtree(DIST)
-    hacer_zip(os.path.join(DIST, "neoplat-docs-%s.zip" % VERSION), DOCS,
+    # A donde van los paquetes. Se puede cambiar (--dist) para no pisar dist/:
+    # lo usan las pruebas, que si no borrarian los paquetes ya construidos.
+    destino = DIST
+    for i, arg in enumerate(argv):
+        if arg == "--dist" and i + 1 < len(argv):
+            destino = os.path.abspath(argv[i + 1])
+    if os.path.isdir(destino):
+        shutil.rmtree(destino)
+    hacer_zip(os.path.join(destino, "neoplat-docs-%s.zip" % VERSION), DOCS,
               "neoplat-docs-%s" % VERSION)
-    hacer_zip(os.path.join(DIST, "neoplat-kit-%s.zip" % VERSION), KIT,
+    hacer_zip(os.path.join(destino, "neoplat-kit-%s.zip" % VERSION), KIT,
               "neoplat-%s" % VERSION)
 
     if "--exe" in argv:
@@ -198,16 +205,16 @@ def main(argv):
         carpeta = os.path.dirname(exe)
         with open(os.path.join(carpeta, "LEEME.txt"), "w", encoding="utf-8") as fh:
             fh.write(LEEME)
-        destino = os.path.join(DIST, "neoplat-windows-%s.zip" % VERSION)
-        with zipfile.ZipFile(destino, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+        paquete = os.path.join(destino, "neoplat-windows-%s.zip" % VERSION)
+        with zipfile.ZipFile(paquete, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
             for nombre in sorted(os.listdir(carpeta)):
                 info = zipfile.ZipInfo(nombre, FECHA)
                 info.compress_type = zipfile.ZIP_DEFLATED
                 info.external_attr = (0o755 if nombre.endswith(".exe") else 0o644) << 16
                 with open(os.path.join(carpeta, nombre), "rb") as fh:
                     zf.writestr(info, fh.read())
-        print("%s  (%d KB)" % (os.path.relpath(destino, RAIZ),
-                               os.path.getsize(destino) // 1024))
+        print("%s  (%d KB)" % (os.path.relpath(paquete, RAIZ),
+                               os.path.getsize(paquete) // 1024))
     return 0
 
 
