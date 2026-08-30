@@ -308,13 +308,14 @@ make paquetes        # los ZIP, en dist/
 make paquetes-exe    # además el ngplat.exe (necesita PyInstaller)
 ```
 
-Salen tres cosas:
+Salen tres cosas, **con la versión en el nombre** (la misma que dice
+`ngplat --version`, y que sube en cada cambio: ver [CAMBIOS.md](CAMBIOS.md)):
 
 | | |
 |---|---|
-| `neoplat-docs.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
-| `neoplat-kit.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows.zip` | el `ngplat.exe` y su LEEME |
+| `neoplat-docs-1.2.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
+| `neoplat-kit-1.2.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.2.zip` | el `ngplat.exe` y su LEEME |
 
 El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
 plantillas; no necesita Python ni nada instalado. Construirlo desde Linux es

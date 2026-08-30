@@ -40,6 +40,22 @@ class TestZips(unittest.TestCase):
         with zipfile.ZipFile(destino) as zf:
             return zf.namelist()
 
+    def test_los_paquetes_llevan_la_version_en_el_nombre(self):
+        """Para saber que se esta probando sin abrir nada."""
+        from ngplat import __version__
+        empaquetar.main([])
+        salidas = sorted(os.listdir(empaquetar.DIST))
+        self.assertIn("neoplat-kit-%s.zip" % __version__, salidas)
+        self.assertIn("neoplat-docs-%s.zip" % __version__, salidas)
+        with zipfile.ZipFile(os.path.join(empaquetar.DIST,
+                                          "neoplat-kit-%s.zip" % __version__)) as zf:
+            nombres = zf.namelist()
+        self.assertTrue(all(n.startswith("neoplat-%s/" % __version__)
+                            for n in nombres),
+                        "todo tiene que colgar de una carpeta con la version")
+        self.assertIn("neoplat-%s/CAMBIOS.md" % __version__, nombres,
+                      "el historial de versiones viaja con el kit")
+
     def test_el_zip_de_docs_lleva_la_documentacion(self):
         nombres = self._hacer(empaquetar.DOCS, "docs")
         self.assertIn("docs/README.md", nombres)

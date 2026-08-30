@@ -4,11 +4,11 @@
     python3 empaquetar.py            los tres ZIP
     python3 empaquetar.py --exe      ademas, el ngplat.exe (necesita PyInstaller)
 
-Sale todo en `dist/`:
+Sale todo en `dist/`, con la version en el nombre (ngplat/__init__.py):
 
-    neoplat-docs.zip       solo la documentacion (para llevarsela a otro sitio)
-    neoplat-kit.zip        el kit entero: motor, herramientas, ejemplo y pruebas
-    neoplat-windows.zip    el ngplat.exe con su LEEME, si se ha construido
+    neoplat-docs-1.2.zip      solo la documentacion (para llevarsela a otro sitio)
+    neoplat-kit-1.2.zip       el kit entero: motor, herramientas, ejemplo y pruebas
+    neoplat-windows-1.2.zip   el ngplat.exe con su LEEME, si se ha construido
 
 Los ZIP se arman a mano con `zipfile` y no llamando a `zip`, para que esto
 funcione igual en Windows, en Linux y en un mac sin instalar nada. Y las fechas
@@ -33,9 +33,12 @@ FUERA = {".git", "__pycache__", "build", "dist", "capturas", ".pytest_cache",
          ".neoplat"}          # las copias locales del historial no se reparten
 FUERA_EXT = {".pyc", ".pyo", ".adf", ".st", ".j64", ".bin", ".elf", ".o"}
 
-DOCS = ["README.md", "docs", "LICENSE"]
-KIT = ["README.md", "docs", "engine", "preview", "tools", "tests", "examples",
-       "ngplat", "Makefile", "empaquetar.py", "LICENSE"]
+DOCS = ["README.md", "CAMBIOS.md", "docs", "LICENSE"]
+KIT = ["README.md", "CAMBIOS.md", "docs", "engine", "preview", "tools", "tests",
+       "examples", "ngplat", "Makefile", "empaquetar.py", "LICENSE"]
+
+sys.path.insert(0, os.path.join(RAIZ, "tools"))
+from ngplat import __version__ as VERSION  # noqa: E402
 
 
 def _interesa(ruta: str) -> bool:
@@ -99,7 +102,6 @@ DATOS = [
 # Y los modulos que el proyecto generado se lleva dentro (el Amiga y el Atari
 # ST arman su ejecutable y su disquete con ellos): de un modulo congelado no se
 # puede leer el fuente, asi que van como datos.
-sys.path.insert(0, os.path.join(RAIZ, "tools"))
 from ngplat.paths import FUENTES_COPIADAS  # noqa: E402
 
 DATOS += [("tools/ngplat/" + nombre, "ngplat") for nombre in FUENTES_COPIADAS]
@@ -182,8 +184,10 @@ kit.
 def main(argv):
     if os.path.isdir(DIST):
         shutil.rmtree(DIST)
-    hacer_zip(os.path.join(DIST, "neoplat-docs.zip"), DOCS, "neoplat-docs")
-    hacer_zip(os.path.join(DIST, "neoplat-kit.zip"), KIT, "neoplat")
+    hacer_zip(os.path.join(DIST, "neoplat-docs-%s.zip" % VERSION), DOCS,
+              "neoplat-docs-%s" % VERSION)
+    hacer_zip(os.path.join(DIST, "neoplat-kit-%s.zip" % VERSION), KIT,
+              "neoplat-%s" % VERSION)
 
     if "--exe" in argv:
         python = None
@@ -194,7 +198,7 @@ def main(argv):
         carpeta = os.path.dirname(exe)
         with open(os.path.join(carpeta, "LEEME.txt"), "w", encoding="utf-8") as fh:
             fh.write(LEEME)
-        destino = os.path.join(DIST, "neoplat-windows.zip")
+        destino = os.path.join(DIST, "neoplat-windows-%s.zip" % VERSION)
         with zipfile.ZipFile(destino, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
             for nombre in sorted(os.listdir(carpeta)):
                 info = zipfile.ZipInfo(nombre, FECHA)
