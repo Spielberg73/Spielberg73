@@ -18,8 +18,9 @@ from comun import cargar_demo
 from ngplat import sistemas
 from ngplat.codegen import generar_para_sistema
 from ngplat.scaffold import crear_proyecto
-from ngplat.x68k_disk import (ErrorDisco, crear_disquete, leer_archivo,
-                              leer_bpb, leer_directorio)
+from ngplat.x68k_disk import (ErrorDisco, crear_disquete, insertar_archivo,
+                              leer_archivo, leer_bpb, leer_directorio,
+                              reemplazar_archivo)
 
 from ngplat.art import PALETA as PALETA_BOSQUE
 from ngplat.art_hierro import PALETA as PALETA_HIERRO
@@ -190,6 +191,51 @@ class TestDisquete(unittest.TestCase):
         nombres = [n for n, _, _ in leer_directorio(disco)]
         self.assertEqual(sorted(nombres), ["DOS.TXT", "UNO.X"])
 
+    def test_un_archivo_anadido_despues_se_lee(self):
+        """Anadir sin remontar: es lo que hace falta para meter el juego en un
+        disco de sistema de Human68k que ya existe."""
+        disco = crear_disquete({"UNO.TXT": b"A" * 4000})
+        disco = insertar_archivo(disco, "JUEGO.X", b"B" * 9000)
+        self.assertEqual(leer_archivo(disco, "JUEGO.X"), b"B" * 9000)
+        self.assertEqual(leer_archivo(disco, "UNO.TXT"), b"A" * 4000,
+                         "el archivo que ya estaba se ha pisado")
+        self.assertEqual(len(disco), 77 * 2 * 8 * 1024)
+
+    def test_anadir_no_reparte_agrupaciones_ya_ocupadas(self):
+        """Diez archivos seguidos, cada uno de varias agrupaciones: si la busca
+        de sitio libre mirase mal la FAT, alguno saldria con datos de otro."""
+        disco = crear_disquete({"BASE.TXT": b"base"})
+        esperado = {}
+        for i in range(10):
+            nombre = "F%d.DAT" % i
+            esperado[nombre] = bytes([65 + i]) * (3000 + i * 700)
+            disco = insertar_archivo(disco, nombre, esperado[nombre])
+        for nombre, datos in esperado.items():
+            self.assertEqual(leer_archivo(disco, nombre), datos, nombre)
+
+    def test_anadir_lo_que_no_cabe_avisa(self):
+        disco = crear_disquete({"UNO.TXT": b"A"})
+        with self.assertRaises(ErrorDisco):
+            insertar_archivo(disco, "ENORME.X", b"\0" * (2 * 1024 * 1024))
+
+    def test_cambiar_el_contenido_de_un_archivo(self):
+        """Lo que se hace con el AUTOEXEC.BAT del disco de sistema."""
+        disco = crear_disquete({"AUTOEXEC.BAT": b"echo lo de antes\r\n",
+                                "OTRO.TXT": b"no se toca"})
+        disco = reemplazar_archivo(disco, "AUTOEXEC.BAT", b"A:\\X2.X\r\n")
+        self.assertEqual(leer_archivo(disco, "AUTOEXEC.BAT"), b"A:\\X2.X\r\n")
+        self.assertEqual(leer_archivo(disco, "OTRO.TXT"), b"no se toca")
+
+    def test_cambiarlo_por_algo_mas_largo_de_lo_que_ocupaba_avisa(self):
+        disco = crear_disquete({"CORTO.TXT": b"x"})
+        with self.assertRaises(ErrorDisco):
+            reemplazar_archivo(disco, "CORTO.TXT", b"y" * 5000)
+
+    def test_cambiar_uno_que_no_esta_avisa(self):
+        disco = crear_disquete({"UNO.TXT": b"x"})
+        with self.assertRaises(ErrorDisco):
+            reemplazar_archivo(disco, "NOESTA.TXT", b"y")
+
     def test_un_nombre_que_no_cabe_no_cuela(self):
         with self.assertRaises(ErrorDisco):
             crear_disquete({"NOMBREDEMASIADOLARGO.X": b"x"})
@@ -237,6 +283,20 @@ class TestDiscoDeSharp(unittest.TestCase):
          simbolos) = struct.unpack(">7I", datos[4:32])
         self.assertEqual(len(datos), 64 + texto + seccion + reloc + simbolos,
                          "los tamanos de la cabecera no suman el archivo")
+
+    def test_el_juego_entra_en_el_disco_de_sistema(self):
+        """El disco de arranque que se usa en el emulador: el sistema de Sharp
+        tal cual, con nuestro .X dentro y el AUTOEXEC.BAT llamandolo. Si esto
+        pasa, el disco que le damos a px68k esta bien montado."""
+        humano = leer_archivo(self.disco, "HUMAN.SYS")
+        juego = b"HU\0\0" + bytes((i * 13) % 251 for i in range(20000))
+        disco = insertar_archivo(self.disco, "X2.X", juego)
+        disco = reemplazar_archivo(disco, "AUTOEXEC.BAT", b"A:\\X2.X\r\n")
+        self.assertEqual(leer_archivo(disco, "X2.X"), juego)
+        self.assertEqual(leer_archivo(disco, "AUTOEXEC.BAT"), b"A:\\X2.X\r\n")
+        self.assertEqual(leer_archivo(disco, "HUMAN.SYS"), humano,
+                         "el sistema de Sharp no puede quedar tocado")
+        self.assertEqual(len(disco), len(self.disco))
 
 
 class TestCompilaDeVerdad(unittest.TestCase):

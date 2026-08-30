@@ -248,6 +248,120 @@ def leer_archivo(disco: bytes, nombre: str) -> bytes:
     raise ErrorDisco("'%s' no esta en el disquete" % nombre)
 
 
+
+def _entradas_raiz(disco, bpb: Dict[str, int]):
+    """Recorre las entradas del directorio raiz y da el offset de cada una."""
+    raiz = bpb["reservados"] + bpb["fats"] * bpb["sectores_fat"]
+    base = raiz * bpb["sector"]
+    for i in range(bpb["raiz"]):
+        yield base + i * 32
+
+
+def _primer_dato(bpb: Dict[str, int]) -> int:
+    """El sector donde empiezan los datos, o sea la agrupacion numero 2."""
+    raiz = bpb["reservados"] + bpb["fats"] * bpb["sectores_fat"]
+    return raiz + (bpb["raiz"] * 32 + bpb["sector"] - 1) // bpb["sector"]
+
+
+def _fat_leer(disco, bpb: Dict[str, int], agrupacion: int) -> int:
+    base = bpb["reservados"] * bpb["sector"] + agrupacion * 3 // 2
+    par = disco[base] | (disco[base + 1] << 8)
+    return (par >> 4) if agrupacion & 1 else (par & 0xFFF)
+
+
+def _fat_escribir(disco: bytearray, bpb: Dict[str, int], agrupacion: int,
+                  valor: int) -> None:
+    """Escribe una entrada de la FAT, en las dos copias que tiene el disco."""
+    for copia in range(bpb["fats"]):
+        base = ((bpb["reservados"] + copia * bpb["sectores_fat"]) * bpb["sector"]
+                + agrupacion * 3 // 2)
+        par = disco[base] | (disco[base + 1] << 8)
+        if agrupacion & 1:
+            par = (par & 0x000F) | ((valor & 0xFFF) << 4)
+        else:
+            par = (par & 0xF000) | (valor & 0xFFF)
+        disco[base] = par & 0xFF
+        disco[base + 1] = (par >> 8) & 0xFF
+
+
+def insertar_archivo(imagen: bytes, nombre: str, datos: bytes) -> bytes:
+    """Mete un archivo en un disquete que ya existe, sin tocar lo demas.
+
+    Es lo que hace falta para probar el juego de verdad en el emulador: se coge
+    un disco de sistema de Human68k, se le anade el .X y arranca solo. Busca
+    agrupaciones libres en la FAT y una entrada libre en la raiz, igual que
+    haria el sistema al copiar el archivo.
+    """
+    disco = bytearray(imagen)
+    bpb = leer_bpb(disco)
+    paso = bpb["sector"] * bpb["por_agrupacion"]
+    datos_en = _primer_dato(bpb)
+    agrupaciones = (bpb["sectores"] - datos_en) // bpb["por_agrupacion"] + 2
+
+    _nombre_83(nombre)          # que reviente aqui si el nombre no vale
+    hueco = None
+    for off in _entradas_raiz(disco, bpb):
+        if disco[off] in (0x00, 0xE5):
+            hueco = off
+            break
+    if hueco is None:
+        raise ErrorDisco("no queda sitio en el directorio raiz")
+
+    libres = [c for c in range(2, agrupaciones) if _fat_leer(disco, bpb, c) == 0]
+    hacen_falta = max(1, (len(datos) + paso - 1) // paso)
+    if len(libres) < hacen_falta:
+        raise ErrorDisco("no caben %d bytes: quedan %d agrupaciones libres"
+                         % (len(datos), len(libres)))
+    cadena = libres[:hacen_falta]
+
+    for i, agrupacion in enumerate(cadena):
+        inicio = (datos_en + (agrupacion - 2) * bpb["por_agrupacion"]) * bpb["sector"]
+        trozo = datos[i * paso:(i + 1) * paso]
+        disco[inicio:inicio + len(trozo)] = trozo
+        _fat_escribir(disco, bpb, agrupacion,
+                      cadena[i + 1] if i + 1 < len(cadena) else 0xFFF)
+
+    disco[hueco:hueco + 32] = _entrada(nombre, cadena[0], len(datos))
+    return bytes(disco)
+
+
+def reemplazar_archivo(imagen: bytes, nombre: str, datos: bytes) -> bytes:
+    """Cambia el contenido de un archivo que ya esta en el disquete.
+
+    Vale para tocar el AUTOEXEC.BAT de un disco de sistema sin remontar nada.
+    Lo nuevo tiene que caber en las agrupaciones que ya ocupaba el archivo, que
+    para un AUTOEXEC.BAT de dos lineas sobra de largo.
+    """
+    disco = bytearray(imagen)
+    bpb = leer_bpb(disco)
+    paso = bpb["sector"] * bpb["por_agrupacion"]
+    datos_en = _primer_dato(bpb)
+    quiere = _nombre_83(nombre)
+
+    for off in _entradas_raiz(disco, bpb):
+        if disco[off] in (0x00, 0xE5):
+            continue
+        if (bytes(disco[off:off + 8]), bytes(disco[off + 8:off + 11])) != quiere:
+            continue
+        agrupacion = struct.unpack("<H", disco[off + 26:off + 28])[0]
+        cabe = 0
+        cadena = []
+        while 2 <= agrupacion < 0xFF0:
+            cadena.append(agrupacion)
+            cabe += paso
+            agrupacion = _fat_leer(disco, bpb, agrupacion)
+        if len(datos) > cabe:
+            raise ErrorDisco("'%s' ocupaba %d bytes de disco y lo nuevo pide %d"
+                             % (nombre, cabe, len(datos)))
+        relleno = bytes(datos).ljust(cabe, b"\x00")
+        for i, agrupacion in enumerate(cadena):
+            inicio = (datos_en + (agrupacion - 2) * bpb["por_agrupacion"]) * bpb["sector"]
+            disco[inicio:inicio + paso] = relleno[i * paso:(i + 1) * paso]
+        struct.pack_into("<I", disco, off + 28, len(datos))
+        return bytes(disco)
+    raise ErrorDisco("'%s' no esta en el disquete" % nombre)
+
+
 def main(argv: List[str]) -> int:
     if len(argv) < 3:
         print(__doc__)

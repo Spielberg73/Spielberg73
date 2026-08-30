@@ -32,6 +32,7 @@ ENV_GET_VARIABLE = 15
 ENV_SET_VARIABLES = 16
 ENV_GET_VARIABLE_UPDATE = 17
 ENV_SET_SUPPORT_NO_GAME = 18
+ENV_SET_FRAME_TIME_CALLBACK = 21
 ENV_GET_LOG_INTERFACE = 27
 ENV_GET_CORE_ASSETS_DIRECTORY = 30
 ENV_GET_SAVE_DIRECTORY = 31
@@ -100,6 +101,12 @@ class Timing(ctypes.Structure):
     _fields_ = [("fps", ctypes.c_double), ("sample_rate", ctypes.c_double)]
 
 
+class TiempoDeFrame(ctypes.Structure):
+    """Lo que pasa el core en SET_FRAME_TIME_CALLBACK: una funcion a la que hay
+    que llamar antes de cada frame diciendole cuanto tiempo ha pasado."""
+    _fields_ = [("callback", ctypes.c_void_p), ("reference", ctypes.c_int64)]
+
+
 class AvInfo(ctypes.Structure):
     _fields_ = [("geometry", Geometry), ("timing", Timing)]
 
@@ -138,6 +145,8 @@ class Emulador:
         self.sonido = array.array("h")   # muestras estereo entrelazadas
         self.ritmo = 0                   # muestras por segundo, lo dice el core
         self._directorio = ctypes.c_char_p(sistema.encode())
+        self._reloj = None               # reloj de frame, si el core lo pide
+        self._reloj_us = 0
         self._guardar_callbacks()
         self.lib.retro_init()
 
@@ -196,6 +205,18 @@ class Emulador:
             return True
         if orden == ENV_SET_VARIABLES:
             self._leer_variables(datos)
+            return True
+        if orden == ENV_SET_FRAME_TIME_CALLBACK:
+            # Hay cores cuyo tiempo interno **no avanza** con retro_run: lo
+            # llevan por aqui. px68k es uno, y sin esto el X68000 arrancaba la
+            # ROM pero el disquete no giraba nunca: se veia el texto del IPL y
+            # ahi se quedaba, sin llegar a cargar el sistema. Nada de lo otro
+            # que se probo (las ROMs, el formato del disco, la interfaz de
+            # discos, el VFS, las opciones del core) tenia que ver.
+            c = ctypes.cast(datos, ctypes.POINTER(TiempoDeFrame))[0]
+            if c.callback:
+                self._reloj = ctypes.CFUNCTYPE(None, ctypes.c_int64)(c.callback)
+                self._reloj_us = c.reference or 16667
             return True
         if orden in (ENV_SET_GEOMETRY, ENV_SET_SUPPORT_NO_GAME):
             return True
@@ -338,6 +359,8 @@ class Emulador:
     def avanzar(self, cuantos=1):
         for _ in range(cuantos):
             self._descifrado = None
+            if self._reloj is not None:
+                self._reloj(self._reloj_us)
             self.lib.retro_run()
 
     def escuchar(self, cuantos=1):
