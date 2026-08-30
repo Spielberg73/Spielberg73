@@ -214,7 +214,7 @@ const NpActorDef *np_entity_def(const NpEntity *e)
     if (e->kind == NP_KIND_SHOT) return &np_player_def.attack.actor;
     if (e->kind == NP_KIND_PLATFORM) return &np_platforms[e->def].actor;
     if (e->kind == NP_KIND_BREAKABLE) return &np_breakables[e->def].actor;
-    if (e->kind == NP_KIND_SUBSHOT) return &np_player_def.sub.actor;
+    if (e->kind == NP_KIND_SUBSHOT) return &np_subs[e->def].actor;
     if (e->kind == NP_KIND_MELEE) return &np_player_def.attack.actor;
     return &np_items[e->def].actor;
 }
@@ -421,6 +421,7 @@ void np_world_load_level(NpWorld *w, uint16_t index)
     for (i = 0; i < NP_MAX_PLAYERS; i++) np_player_reset(w, i);
     w->keys = 0;
     w->hearts = 0;
+    w->sub = 0;                 /* se empieza con la primera arma secundaria */
     w->boss_health = 0;
     w->boss_max = 0;
     w->time_left = (uint16_t)(np_time_limit * 60);
@@ -646,15 +647,29 @@ static void np_player_attack(NpWorld *w, uint8_t quien)
  * siempre esta ahi y la otra se acaba. Con `tipo: arco` sale hacia arriba y la
  * gravedad la va bajando, que es la diferencia entre tirar de frente y tirar
  * por encima de una pared. */
+/* Cuantas tiradas de esta arma van por el aire ahora mismo. */
+static uint8_t np_subs_volando(const NpWorld *w, uint8_t arma)
+{
+    uint8_t i, cuantas = 0;
+    for (i = 0; i < w->entity_count; i++)
+        if (w->entities[i].active && w->entities[i].kind == NP_KIND_SUBSHOT
+            && w->entities[i].def == arma)
+            cuantas++;
+    return cuantas;
+}
+
 static void np_player_sub(NpWorld *w, uint8_t quien)
 {
-    const NpSubDef *sb = &np_player_def.sub;
+    const NpSubDef *sb = &np_subs[w->sub];
     NpPlayer *p = &w->players[quien];
     const NpActorDef *pa = &np_player_def.actor;
     int hueco;
 
-    if (sb->kind == NP_SUB_NONE || p->attack_cd) return;
+    if (!np_sub_count || sb->kind == NP_SUB_NONE || p->attack_cd) return;
     if (w->hearts < sb->cost) return;         /* sin municion no sale nada */
+    /* `a_la_vez`: con una sola en el aire hay que esperar a que caiga, que es
+       lo clasico; con tres sale el "triple" de toda la vida. */
+    if (sb->at_once && np_subs_volando(w, w->sub) >= sb->at_once) return;
     hueco = np_hueco_libre(w);
     if (hueco < 0) return;
     w->hearts = (uint8_t)(w->hearts - sb->cost);
@@ -665,7 +680,7 @@ static void np_player_sub(NpWorld *w, uint8_t quien)
         NpEntity *e = &w->entities[hueco];
         e->active = 1;
         e->kind = NP_KIND_SUBSHOT;
-        e->def = 0;
+        e->def = w->sub;          /* se queda con el arma con la que salio */
         e->facing = p->facing;
         e->x = p->x + NP_I2F(p->facing ? pa->box_w : -sb->actor.box_w);
         e->y = np_player_top(p) + NP_I2F((np_player_height(p) - sb->actor.box_h) / 2);
@@ -688,7 +703,7 @@ static void np_player_sub(NpWorld *w, uint8_t quien)
    dar en el suelo. */
 static void np_subshot_update(NpWorld *w, NpEntity *e)
 {
-    const NpSubDef *sb = &np_player_def.sub;
+    const NpSubDef *sb = &np_subs[e->def];
     const NpActorDef *a = &sb->actor;
     uint8_t i;
     int hit_x = 0, hit_down = 0, hit_up = 0;
@@ -935,8 +950,8 @@ static void np_player_action(NpWorld *w, uint8_t quien, uint16_t input)
     if ((input & NP_IN_ACTION) && !(w->prev_input[quien] & NP_IN_ACTION)) {
         /* arriba + accion tira el arma secundaria; el boton a secas, el
            ataque de siempre. Si no hay arma o no queda municion, se pega. */
-        if ((input & NP_IN_UP) && np_player_def.sub.kind != NP_SUB_NONE
-            && w->hearts >= np_player_def.sub.cost)
+        if ((input & NP_IN_UP) && np_sub_count
+            && w->hearts >= np_subs[w->sub].cost)
             np_player_sub(w, quien);
         else
             np_player_attack(w, quien);
@@ -1333,6 +1348,11 @@ static void np_collect(NpWorld *w, uint8_t quien, NpEntity *e)
         p->power = (uint8_t)NP_MIN(p->power + d->amount,
                                    np_player_def.attack.levels);
         break;
+    case NP_ITEM_WEAPON:
+        /* Cambia el arma secundaria que se lleva. `amount` es su indice en
+           np_subs, que pone el compilador a partir del nombre. */
+        if (d->amount < np_sub_count) w->sub = d->amount;
+        break;
     default:
         break;
     }
@@ -1705,7 +1725,7 @@ void np_extras_bar(char *out, const NpWorld *w)
         np_dos_digitos(out + 8, piden);
     }
     /* la municion solo tiene sentido si el juego lleva arma secundaria */
-    if (np_player_def.sub.kind != NP_SUB_NONE) {
+    if (np_sub_count) {
         for (i = 0; i < 5; i++) out[11 + i] = municion[i];
         np_dos_digitos(out + 16, w->hearts);
     }

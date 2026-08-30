@@ -367,6 +367,26 @@ def cuchillo() -> Image:
     return c.image
 
 
+def hacha() -> Image:
+    """La segunda arma secundaria: gira al volar y cae en arco. Con los mismos
+    colores que el cuchillo, que en seis colores no hay para mas."""
+    hoja = Lienzo(16 * 4, 16)
+    for giro in range(4):
+        c = Lienzo(16, 16)
+        if giro % 2 == 0:
+            arriba = giro == 0
+            c.rect(3, 7, 8, 2, ROCA2)
+            c.rect(10, 4 if arriba else 6, 4, 5, ROCA)
+            c.rect(10, 4 if arriba else 10, 4, 1, CLARO)
+        else:
+            izquierda = giro == 1
+            c.rect(7, 3, 2, 8, ROCA2)
+            c.rect(4 if izquierda else 6, 10, 5, 4, ROCA)
+            c.rect(4 if izquierda else 10, 10, 1, 4, CLARO)
+        hoja.blit(giro * 16, 0, c.image)
+    return hoja.image
+
+
 def _tile_escalera(derecha: bool) -> Image:
     """Escalera de hierro en diagonal: dos largueros y un peldano."""
     c = Lienzo(16, 16)
@@ -503,6 +523,7 @@ def todos() -> Dict[str, Image]:
         "graficos/corazon.png": chispa(),
         "graficos/bala.png": bala(),
         "graficos/cuchillo.png": cuchillo(),
+        "graficos/hacha.png": hacha(),
         "graficos/latigo.png": latigo(),
         "graficos/mejora.png": mejora(),
         "graficos/tiles.png": tileset(),

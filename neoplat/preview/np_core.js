@@ -83,6 +83,7 @@
     this.timeLeft = 0; this.prevInput = [0, 0];
     this.sfx = 0;                 /* eventos de sonido de este frame */
     this.keys = 0; this.hearts = 0; this.entityCount = 0;
+    this.sub = 0;                 /* el arma secundaria que se lleva */
     this.bossHealth = 0; this.bossMax = 0;
     /* El punto de control tocado en este nivel, en casillas. `checkOn` a cero
        quiere decir que se reaparece en la salida. */
@@ -212,7 +213,7 @@
     if (e.kind === KIND_SHOT) return this.data.player.attack;
     if (e.kind === KIND_PLATFORM) return this.data.platforms[e.def];
     if (e.kind === KIND_BREAKABLE) return this.data.breakables[e.def];
-    if (e.kind === KIND_SUBSHOT) return this.data.player.sub;
+    if (e.kind === KIND_SUBSHOT) return this.data.player.subs[e.def];
     if (e.kind === KIND_MELEE) return this.data.player.attack;
     return this.data.items[e.def];
   };
@@ -298,6 +299,7 @@
     for (i = 0; i < MAX_PLAYERS; i++) this.resetPlayer(i);
     this.keys = 0;
     this.hearts = 0;
+    this.sub = 0;                 /* se empieza con la primera arma */
     this.bossHealth = 0; this.bossMax = 0;
     this.timeLeft = this.data.time_limit * 60;
     this.state = STATE.PLAY;
@@ -567,11 +569,23 @@
    * Arriba + accion, y gasta municion. Traduccion literal de np_player_sub /
    * np_subshot_update / np_breakable_update. */
 
+  /* Cuantas tiradas de esta arma van por el aire. Igual que np_subs_volando. */
+  World.prototype.subsVolando = function (arma) {
+    var cuantas = 0, i;
+    for (i = 0; i < this.entityCount; i++) {
+      var e = this.entities[i];
+      if (e.active && e.kind === KIND_SUBSHOT && e.def === arma) cuantas++;
+    }
+    return cuantas;
+  };
+
   World.prototype.playerSub = function (quien) {
-    var sb = this.data.player.sub, p = this.players[quien];
-    var pa = this.data.player.actor;
+    var armas = this.data.player.subs, p = this.players[quien];
+    var sb = armas[this.sub], pa = this.data.player.actor;
     if (!sb || sb.kind === SUB_NONE || p.attackCd) return;
     if (this.hearts < sb.cost) return;
+    /* `a_la_vez`: igual que np_player_sub */
+    if (sb.at_once && this.subsVolando(this.sub) >= sb.at_once) return;
     var hueco = this.huecoLibre();
     if (hueco < 0) return;
     this.hearts -= sb.cost;
@@ -581,7 +595,7 @@
     var e = this.entities[hueco];
     e.active = 1;
     e.kind = KIND_SUBSHOT;
-    e.def = 0;
+    e.def = this.sub;             /* se queda con el arma con la que salio */
     e.facing = p.facing;
     e.x = p.x + I2F(p.facing ? pa.box_w : -sb.actor.box_w);
     e.y = this.playerTop(quien)
@@ -595,7 +609,7 @@
   };
 
   World.prototype.subshotUpdate = function (e) {
-    var sb = this.data.player.sub, a = sb.actor, i;
+    var sb = this.data.player.subs[e.def], a = sb.actor, i;
     if (!e.vida) { e.active = 0; return; }
     e.vida--;
     if (sb.kind === SUB_ARC) {
@@ -770,7 +784,7 @@
     var p = this.players[quien];
     if (p.attackCd) p.attackCd--;
     if ((input & IN.ACTION) && !(this.prevInput[quien] & IN.ACTION)) {
-      var sb = this.data.player.sub;
+      var sb = this.data.player.subs[this.sub];
       if ((input & IN.UP) && sb && sb.kind !== SUB_NONE && this.hearts >= sb.cost)
         this.playerSub(quien);
       else
@@ -968,6 +982,9 @@
     else if (d.effect === 5) {
       var at = this.data.player.attack;
       p.power = Math.min(p.power + d.amount, at ? at.levels : 0);
+    } else if (d.effect === 6) {
+      /* cambia el arma secundaria: `amount` es su numero en la lista */
+      if (d.amount < this.data.player.subs.length) this.sub = d.amount;
     }
     e.active = 0;
   };

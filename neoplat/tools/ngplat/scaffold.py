@@ -78,10 +78,14 @@ def _nivel_1(llave: bool = False, escalera: bool = False,
         suelo_1[24] = "!"       # la antorcha, pasados los pinchos de la 18
         fila_13[33] = "M"       # la mejora del latigo, en vez de una moneda
     escalones = {}
+    # arriba de la escalera, en vez de una moneda mas, el hacha: es el arma
+    # secundaria que se cambia por la de serie, y asi subir tiene premio
+    fila_10 = {5: "ccc", 38: "ccc"}
     if escalera:
         for i, fila in enumerate((14, 13, 12)):
             escalones[fila] = {34 + i: "/"}
         suelo_1.pop(40, None)
+        fila_10 = {5: "ccc", 38: "cHc"}
 
     def con_escalon(fila, base):
         if fila not in escalones:
@@ -101,7 +105,7 @@ def _nivel_1(llave: bool = False, escalera: bool = False,
         _poner(a, {15: "ccc"}),
         _poner(a, {14: "====="}),
         _fila("", a),
-        _poner(a, {5: "ccc", 38: "ccc"}),
+        _poner(a, fila_10),
         _poner(a, {4: "=====", 37: "====="}),
         _poner(a, con_escalon(12, {})),
         # el candelabro baja a la fila del suelo (para poder pegarle andando) y
@@ -264,7 +268,7 @@ objetos:
     cantidad: 1
     animaciones:
       quieto: {{frames: [0, 1], velocidad: 10}}
-{municion}{mejora}
+{municion}{arma}{mejora}
 # Rompibles: no hacen nada hasta que les pegas, y entonces sueltan lo que
 # lleven dentro. Es el bucle de los clasicos de latigo: pegarle a todo.
 rompibles:
@@ -425,7 +429,7 @@ objetos:
     puntos: 10
     animaciones:
       quieto: {{frames: [0, 1, 2, 3], velocidad: 7}}
-{municion}{mejora}
+{municion}{arma}{mejora}
 # Rompibles: no hacen nada hasta que les pegas, y entonces sueltan lo que
 # lleven dentro.
 rompibles:
@@ -616,6 +620,7 @@ class Genero:
     escaleras: str               # las filas de escalera de la leyenda
     control: str                 # la fila del punto de control, si lo lleva
     municion: str                # el objeto de `efecto: municion`, si lo hay
+    arma: str                    # el objeto que cambia de arma secundaria
     mejora: str                  # el objeto de `efecto: mejora`, si lo hay
     animos: str                  # animaciones del heroe propias del genero
     musica: str                  # el bloque `musica:` entero
@@ -654,6 +659,7 @@ def _genero_plataformas(nombres: Dict[str, str], estilo: str) -> Genero:
         escaleras="",
         control="",
         municion="",
+        arma="",
         mejora="",
         animos='    atacar: {frames: [7], velocidad: 6}\n',
         musica=_MUSICA_BOSQUE if estilo == "bosque" else _MUSICA_HIERRO,
@@ -708,19 +714,38 @@ def _genero_castlevania(nombres: Dict[str, str]) -> Genero:
                "      # un fotograma por nivel del arma: el motor elige el que\n"
                "      # toca segun las mejoras que lleves\n"
                "      quieto: {frames: [0, 1, 2]}\n"
-               "  # El arma secundaria: se tira con **arriba + accion** y gasta\n"
-               "  # municion. 'tipo: arco' la haria caer describiendo una parabola.\n"
-               "  secundaria:\n"
-               "    tipo: recta\n"
-               "    sprite: graficos/cuchillo.png\n"
-               "    frame: [16, 16]\n"
-               "    caja: [10, 4]\n"
-               "    desplazamiento: [3, 6]\n"
-               "    velocidad: 4.0\n"
-               "    alcance: 200\n"
-               "    espera: 24\n"
-               "    coste: 1               # municion que gasta cada tirada\n"
-               "    dano: 1\n"),
+               "  # Las armas secundarias: se tiran con **arriba + accion** y\n"
+               "  # gastan municion. Se empieza con la primera y se cambia\n"
+               "  # cogiendo el objeto de la otra (el hacha, aqui abajo).\n"
+               "  secundarias:\n"
+               "    cuchillo:\n"
+               "      tipo: recta          # va recto hasta que choca\n"
+               "      sprite: graficos/cuchillo.png\n"
+               "      frame: [16, 16]\n"
+               "      caja: [10, 4]\n"
+               "      desplazamiento: [3, 6]\n"
+               "      velocidad: 4.0\n"
+               "      alcance: 200\n"
+               "      espera: 24\n"
+               "      coste: 1             # municion que gasta cada tirada\n"
+               "      dano: 1\n"
+               "      a_la_vez: 3          # cuantas caben en el aire\n"
+               "    hacha:\n"
+               "      tipo: arco           # sube y cae: hay que medir\n"
+               "      sprite: graficos/hacha.png\n"
+               "      frame: [16, 16]\n"
+               "      caja: [12, 12]\n"
+               "      desplazamiento: [2, 2]\n"
+               "      velocidad: 2.2\n"
+               "      impulso: 4.0         # con cuanta fuerza sale hacia arriba\n"
+               "      gravedad: 0.20\n"
+               "      alcance: 200\n"
+               "      espera: 30\n"
+               "      coste: 2\n"
+               "      dano: 2\n"
+               "      a_la_vez: 1          # una cada vez, como los clasicos\n"
+               "      animaciones:\n"
+               "        quieto: {frames: [0, 1, 2, 3], velocidad: 4}\n"),
         escaleras=("    '/': {tile: 6, tipo: escalera}\n"
                    "    '|': {tile: 7, tipo: escalera_izquierda}\n"),
         # La antorcha no estorba: se pasa por delante. Al tocarla se apunta
@@ -739,6 +764,16 @@ def _genero_castlevania(nombres: Dict[str, str]) -> Genero:
                   % nombres["municion"]),
         # 'efecto: mejora' alarga el latigo un paso (`alcance_mejora`) y se
         # pierde al morir: es lo que hace que una vida valga algo.
+        # 'efecto: subarma' cambia el arma secundaria que llevas en la mano
+        arma=("  hacha:\n"
+              "    sprite: graficos/hacha.png\n"
+              "    frame: [16, 16]\n"
+              "    caja: [12, 12]\n"
+              "    puntos: 100\n"
+              "    efecto: subarma\n"
+              "    arma: hacha            # a cual de 'secundarias:' cambia\n"
+              "    animaciones:\n"
+              "      quieto: {frames: [0, 1, 2, 3], velocidad: 6}\n"),
         mejora=("  mejora:\n"
                 "    sprite: graficos/mejora.png\n"
                 "    caja: [10, 10]\n"
@@ -760,7 +795,7 @@ def _genero_castlevania(nombres: Dict[str, str]) -> Genero:
         # tocaba y no sonaba nada, que es justo lo que hay que oir para saber
         # que ya no vuelves al principio del nivel.
         eventos='    control: {notas: "la5 do6 mi6", velocidad: 4}\n',
-        spawns="  M: mejora\n",
+        spawns="  M: mejora\n  H: hacha\n",
         suelta=nombres["municion"],
         con_escaleras=True,
         con_control=True,
@@ -887,7 +922,7 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
         titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles,
         fisica=g.fisica, armas=g.armas, escaleras=g.escaleras, animos=g.animos,
         control=g.control, municion=g.municion, mejora=g.mejora,
-        musica=g.musica, eventos=g.eventos,
+        musica=g.musica, eventos=g.eventos, arma=g.arma,
         spawns=g.spawns, suelta=g.suelta)
     with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
               newline="\n") as fh:

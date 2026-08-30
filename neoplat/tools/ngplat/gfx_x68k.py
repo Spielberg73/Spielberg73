@@ -145,8 +145,20 @@ class BancoX68k:
     # --- paletas -------------------------------------------------------
 
     def anadir_paleta(self, paleta: Palette) -> int:
+        """El numero de bloque de paleta que le toca a esa hoja.
+
+        Dos hojas con **los mismos colores en el mismo orden** comparten
+        bloque, igual que hace el empaquetador de la Neo Geo: aqui solo hay
+        dieciseis bloques para todo el juego, y dos dibujos del mismo objeto
+        (el hacha que llevas y el hacha que vuela) gastaban dos.
+        """
         if paleta.name in self._por_nombre:
             return self._por_nombre[paleta.name]
+        clave = paleta.key()
+        for i, otra in enumerate(self.paletas):
+            if otra.key() == clave:
+                self._por_nombre[paleta.name] = i
+                return i
         indice = len(self.paletas)
         self.paletas.append(paleta)
         self._por_nombre[paleta.name] = indice

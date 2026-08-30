@@ -168,8 +168,8 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append(_anim_arrays("np_player", build.player))
     if build.attack is not None:
         src.append(_anim_arrays("np_attack", build.attack))
-    if build.sub is not None:
-        src.append(_anim_arrays("np_sub", build.sub))
+    for i, arma in enumerate(build.subs):
+        src.append(_anim_arrays("np_sub%d" % i, arma))
     pv = player_values(project)
     src.append("const NpPlayerDef np_player_def = {")
     src.append(_actor_def("np_player", actor_def_values(build.player)) + ",")
@@ -193,20 +193,27 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
                % (av["speed"], av["range"], av["cooldown"], av["duration"],
                   av["windup"], av["range_step"], av["levels"], av["kind"],
                   av["damage"], av["locks"], av["fx"]))
-    src.append("    },")
-    # el arma secundaria: su dibujo va detras del del ataque
-    sv = sub_values(project)
-    src.append("    /* arma secundaria */")
-    src.append("    {")
-    if build.sub is not None:
-        src.append(_actor_def("np_sub", actor_def_values(build.sub)) + ",")
-    else:
-        src.append("    " + _actor_vacio() + ",")
-    src.append("        %d, %d, %d, %d, %d, %d, %d, %d"
-               % (sv["speed"], sv["gravity"], sv["jump"], sv["range"],
-                  sv["cooldown"], sv["kind"], sv["cost"], sv["damage"]))
     src.append("    }")
     src.append("};")
+    src.append("")
+
+    # --- las armas secundarias: van en su propia tabla porque un juego puede
+    # llevar varias y se cambian cogiendo el objeto que las suelta
+    src.append("/* Armas secundarias, en el orden de 'secundarias:'. */")
+    src.append("const NpSubDef np_subs[] = {")
+    if not build.subs:
+        src.append("    { %s, 0, 0, 0, 0, 0, 0, 0, 0, 0 }" % _actor_vacio())
+    for i, arma in enumerate(build.subs):
+        sv = sub_values(arma.actor)
+        src.append("    {")
+        src.append(_actor_def("np_sub%d" % i, actor_def_values(arma)) + ",")
+        src.append("        %d, %d, %d, %d, %d, %d, %d, %d, %d"
+                   % (sv["speed"], sv["gravity"], sv["jump"], sv["range"],
+                      sv["cooldown"], sv["kind"], sv["cost"], sv["damage"],
+                      sv["at_once"]))
+        src.append("    }," if i + 1 < len(build.subs) else "    }")
+    src.append("};")
+    src.append("const uint8_t np_sub_count = %d;" % len(build.subs))
     src.append("")
 
     # --- enemigos
@@ -233,6 +240,9 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("")
 
     # --- objetos
+    # el objeto que cambia de arma guarda el numero del arma, no su nombre: el
+    # motor no conoce nombres
+    sub_index = {arma.name: i for i, arma in enumerate(build.subs)}
     for i, item in enumerate(build.items):
         src.append("/* objeto %d: %s */" % (i, item.name))
         src.append(_anim_arrays("np_item%d" % i, item))
@@ -240,7 +250,7 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     if not build.items:
         src.append("    { %s, 0, 0, 1 }" % _actor_vacio())
     for i, item in enumerate(build.items):
-        iv = item_values(item)
+        iv = item_values(item, sub_index)
         src.append("    {")
         src.append(_actor_def("np_item%d" % i, actor_def_values(item)) + ",")
         src.append("        %d, %d, %d" % (iv["score"], iv["effect"], iv["amount"]))

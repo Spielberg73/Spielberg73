@@ -56,7 +56,8 @@ inputs.forEach(function (par) {
     world.checkOn, world.checkX, world.checkY, p0.power,
     /* el dibujo del latigo: 0 = no hay ninguno en la lista */
     p0.whip ? 1 : 0,
-    p0.crouch
+    p0.crouch,
+    world.sub                    /* el arma secundaria que se lleva */
   ].join(" "));
 });
 process.stdout.write(out.join("\n") + "\n");

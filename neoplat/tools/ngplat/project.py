@@ -210,10 +210,13 @@ ITEM_EFFECTS = {
     # mejora del arma: alarga el ataque un paso y se pierde al morir
     "mejora": "upgrade", "upgrade": "upgrade", "mejorar": "upgrade",
     "arma": "upgrade", "latigo": "upgrade", "látigo": "upgrade",
+    # cambia el arma secundaria que se lleva: `secundaria: hacha`
+    "subarma": "weapon", "arma_secundaria": "weapon", "weapon": "weapon",
+    "cambiar_arma": "weapon",
 }
 
 ITEM_EFFECT_ID = {"points": 0, "life": 1, "health": 2, "key": 3, "ammo": 4,
-                  "upgrade": 5}
+                  "upgrade": 5, "weapon": 6}
 
 
 @dataclass
@@ -261,7 +264,12 @@ class Player(Actor):
     crouch: bool = False          # si se puede agachar con abajo
     crouch_h: int = 0             # alto de la caja agachado (0 = tres cuartos)
     attack: Optional["Attack"] = None
-    sub: Optional["Sub"] = None
+    subs: List["Sub"] = field(default_factory=list)   # las armas secundarias
+
+    @property
+    def sub(self) -> Optional["Sub"]:
+        """La primera arma secundaria, que es con la que se empieza."""
+        return self.subs[0] if self.subs else None
 
 
 @dataclass
@@ -302,6 +310,7 @@ class Item(Actor):
     effect: str = "points"
     score: int = 10
     amount: int = 1
+    weapon: str = ""               # con 'efecto: subarma', a cual cambia
 
 
 @dataclass
@@ -315,6 +324,7 @@ class Sub(Actor):
     cooldown: int = 24
     cost: int = 1
     damage: int = 1
+    at_once: int = 0               # cuantas a la vez en el aire (0 = sin tope)
 
 
 @dataclass
@@ -607,12 +617,39 @@ SUB_KINDS = {
 }
 
 
-def _read_sub(node: Node, root: str) -> Optional["Sub"]:
-    """El arma secundaria. Sin seccion `secundaria:` no hay ninguna y arriba +
+def _read_subs(uno: Node, varias: Node, root: str) -> List["Sub"]:
+    """Las armas secundarias del juego, en orden. Se empieza con la primera y
+    se cambian cogiendo un objeto con `efecto: subarma`.
+
+    Se admiten las dos formas: `secundaria:` con una sola (como estaba el kit)
+    y `secundarias:` con varias, cada una con su nombre."""
+    if varias.data:
+        if uno.data:
+            raise ProjectError(
+                "el juego trae 'secundaria:' y 'secundarias:' a la vez",
+                hint="deja solo 'secundarias:' y pon ahi todas las armas",
+                where="jugador")
+        armas = []
+        for nombre, datos in (varias.data or {}).items():
+            arma = _read_sub(Node(datos, "jugador.secundarias.%s" % nombre), root,
+                             "jugador.secundarias.%s" % nombre)
+            if arma is None:
+                continue
+            arma.name = str(nombre)
+            armas.append(arma)
+        if not armas:
+            raise ProjectError("'secundarias:' esta vacio", where="jugador")
+        return armas
+    arma = _read_sub(uno, root, "jugador.secundaria")
+    return [arma] if arma is not None else []
+
+
+def _read_sub(node: Node, root: str, where: str = "jugador.secundaria"
+              ) -> Optional["Sub"]:
+    """Un arma secundaria. Sin seccion `secundaria:` no hay ninguna y arriba +
     accion se comporta como el boton a secas."""
     if not node.data:
         return None
-    where = "jugador.secundaria"
     kind = node.choice(["type", "tipo"], SUB_KINDS, "line")
     sprite = node.str_(["sprite", "imagen", "image"], "") or ""
     if not sprite:
@@ -634,6 +671,8 @@ def _read_sub(node: Node, root: str) -> Optional["Sub"]:
         cooldown=node.int_(["cooldown", "espera", "cadencia"], 24, 1, 300),
         cost=node.int_(["cost", "coste", "municion", "munición"], 1, 0, 99),
         damage=node.int_(["damage", "dano", "daño"], 1, 1, 99),
+        at_once=node.int_(["at_once", "a_la_vez", "en_el_aire", "simultaneas"],
+                          0, 0, 16),
     )
     _warn_unknown(node, where, [
         "type", "tipo", "sprite", "imagen", "image",
@@ -643,6 +682,7 @@ def _read_sub(node: Node, root: str) -> Optional["Sub"]:
         "speed", "velocidad", "gravity", "gravedad", "jump", "salto", "impulso",
         "range", "alcance", "cooldown", "espera", "cadencia",
         "cost", "coste", "municion", "munición", "damage", "dano", "daño",
+        "at_once", "a_la_vez", "en_el_aire", "simultaneas",
     ])
     return arma
 
@@ -695,7 +735,9 @@ def _read_player(node: Node, root: str) -> Player:
         crouch=node.bool_(["crouch", "agachado", "agacharse", "agachar"], False),
         crouch_h=node.int_(["crouch_h", "caja_agachado", "alto_agachado"], 0, 0, 64),
         attack=_read_attack(node.child("attack", "ataque"), root),
-        sub=_read_sub(node.child("sub", "secundaria", "arma_secundaria"), root),
+        subs=_read_subs(node.child("sub", "secundaria", "arma_secundaria"),
+                        node.child("subs", "secundarias", "armas_secundarias"),
+                        root),
     )
     # Sin `retroceso:` el empujon es el de siempre: lo que anda el jugador. Asi
     # un proyecto que no lo pone se comporta exactamente igual que antes.
@@ -736,6 +778,7 @@ def _read_player(node: Node, root: str) -> Player:
         "crouch", "agachado", "agacharse", "agachar",
         "crouch_h", "caja_agachado", "alto_agachado",
         "sub", "secundaria", "arma_secundaria",
+        "subs", "secundarias", "armas_secundarias",
     ])
     return player
 
@@ -782,6 +825,8 @@ def _read_item(name: str, data: Any, root: str) -> Item:
         effect=node.choice(["effect", "efecto", "tipo"], ITEM_EFFECTS, "points"),
         score=node.int_(["score", "puntos"], 10, 0, 99999),
         amount=node.int_(["amount", "cantidad"], 1, 1, 9),
+        # con 'efecto: subarma', a que arma secundaria cambia
+        weapon=node.str_(["weapon", "arma", "secundaria"], "") or "",
     )
 
 
@@ -1280,6 +1325,27 @@ def load_project(path: str) -> Project:
     breakables: Dict[str, Breakable] = {}
     for name, data_rom in (top.child("breakables", "rompibles").data or {}).items():
         breakables[str(name)] = _read_breakable(str(name), data_rom, root)
+    # el objeto que cambia de arma tiene que decir a cual, y esa tiene que
+    # existir: si no, se cogeria y no pasaria nada
+    nombres_armas = [arma.name for arma in player.subs]
+    for nombre, objeto in items.items():
+        if objeto.effect != "weapon":
+            continue
+        if not objeto.weapon:
+            raise ProjectError(
+                "el objeto '%s' cambia de arma secundaria pero no dice a cual"
+                % nombre,
+                hint="anade 'arma: %s'" % (nombres_armas[0] if nombres_armas
+                                           else "hacha"),
+                where="objetos.%s" % nombre)
+        if objeto.weapon not in nombres_armas:
+            raise ProjectError(
+                "el objeto '%s' cambia al arma '%s', que no existe"
+                % (nombre, objeto.weapon),
+                hint=("definela en 'jugador: secundarias:'; ahora mismo hay: %s"
+                      % (", ".join(nombres_armas) or "ninguna")),
+                where="objetos.%s" % nombre)
+
     for nombre, rompible in breakables.items():
         if rompible.drop and rompible.drop not in items:
             raise ProjectError(

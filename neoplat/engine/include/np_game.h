@@ -58,10 +58,16 @@ typedef struct {
     uint8_t fx;              /* 1 = `actor` es un dibujo de verdad */
 } NpAttackDef;
 
-/* El arma secundaria: se lanza con **arriba + accion** y gasta municion, que
+/* Un arma secundaria: se lanza con **arriba + accion** y gasta municion, que
  * es una cuenta aparte de la vida (los objetos con `efecto: municion` la
  * suben). Con `gravity` a cero va recta; con gravedad describe un arco y cae,
- * que es lo que distingue un hacha de un cuchillo. */
+ * que es lo que distingue un hacha de un cuchillo.
+ *
+ * Van en una tabla (np_subs) porque un juego puede llevar varias y se cambian
+ * cogiendo el objeto que las suelta, como en los clasicos: el arma que llevas
+ * en la mano es w->sub, una sola para la partida. Lo ya lanzado se queda con
+ * el arma con la que salio -cada disparo guarda su indice en `def`- asi que
+ * cambiar de arma no convierte en hacha el cuchillo que va por el aire. */
 typedef struct {
     NpActorDef actor;
     np_fix speed;
@@ -72,6 +78,10 @@ typedef struct {
     uint8_t kind;            /* NP_SUB_* */
     uint8_t cost;            /* municion que gasta cada tirada */
     uint8_t damage;
+    /* Cuantas puede haber volando a la vez. Cero = las que quepan, que es como
+     * estaba el kit; uno es lo clasico (hasta que no cae la que has tirado no
+     * sale otra) y tres es el "triple" de toda la vida. */
+    uint8_t at_once;
 } NpSubDef;
 
 typedef struct {
@@ -100,7 +110,6 @@ typedef struct {
      * dibujado mas abajo dentro del cuadro. */
     uint8_t crouch_drop;
     NpAttackDef attack;
-    NpSubDef sub;
 } NpPlayerDef;
 
 typedef struct {
@@ -174,6 +183,7 @@ typedef struct {
 extern const NpPlayerDef np_player_def;
 extern const NpEnemyDef np_enemies[];
 extern const NpItemDef np_items[];
+extern const NpSubDef np_subs[];         /* las armas secundarias del juego */
 extern const NpPlatformDef np_platforms[];
 extern const NpBreakableDef np_breakables[];
 extern const NpLevel np_levels[];
@@ -189,6 +199,7 @@ extern const uint16_t np_level_count;
 extern const uint16_t np_layer_count;
 extern const uint16_t np_enemy_count;
 extern const uint16_t np_item_count;
+extern const uint8_t np_sub_count;       /* 0 = el juego no lleva secundaria */
 extern const uint16_t np_platform_count;
 extern const uint16_t np_breakable_count;
 extern const uint16_t np_tile_count;

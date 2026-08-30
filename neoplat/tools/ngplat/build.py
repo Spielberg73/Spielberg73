@@ -76,7 +76,7 @@ class Build:
     platforms: List[ActorBuild] = field(default_factory=list)
     breakables: List[ActorBuild] = field(default_factory=list)
     attack: Optional[ActorBuild] = None       # el proyectil, si el juego lo lleva
-    sub: Optional[ActorBuild] = None          # lo que tira el arma secundaria
+    subs: List[ActorBuild] = field(default_factory=list)   # las armas secundarias
     music_order: List[str] = field(default_factory=list)   # nombres, en orden
     font: Dict[str, int] = field(default_factory=dict)
     hud_palette: int = 0
@@ -99,8 +99,7 @@ class Build:
                  + self.breakables)
         if self.attack is not None:
             todos.append(self.attack)
-        if self.sub is not None:
-            todos.append(self.sub)
+        todos.extend(self.subs)
         return todos
 
     def stats(self) -> Dict[str, int]:
@@ -252,8 +251,8 @@ def build_project(project: Project) -> Build:
     attack = (_load_actor(project.player.attack, "jugador.ataque", project.root)
               if project.player.attack is not None
               and project.player.attack.sprite else None)
-    sub = (_load_actor(project.player.sub, "jugador.secundaria", project.root)
-           if project.player.sub is not None else None)
+    subs = [_load_actor(arma, "jugador.secundarias.%s" % arma.name, project.root)
+            for arma in project.player.subs]
     enemy_index = {b.name: i for i, b in enumerate(enemies)}
     item_index = {b.name: i for i, b in enumerate(items)}
     platform_index = {b.name: i for i, b in enumerate(platforms)}
@@ -315,7 +314,7 @@ def build_project(project: Project) -> Build:
     return Build(
         project=project, rom=rom, tiles=tiles, tile_index=tile_index, tileset=tileset,
         player=player, enemies=enemies, items=items, layers=layers, levels=levels,
-        platforms=platforms, breakables=breakables, attack=attack, sub=sub,
+        platforms=platforms, breakables=breakables, attack=attack, subs=subs,
         music_order=music_order, sin_table=_sin_table(),
     )
 
@@ -359,9 +358,16 @@ def enemy_values(build: ActorBuild) -> Dict[str, object]:
     }
 
 
-def item_values(build: ActorBuild) -> Dict[str, object]:
+def item_values(build: ActorBuild, sub_index: Optional[Dict[str, int]] = None
+                ) -> Dict[str, object]:
     it = build.actor         # type: ignore[assignment]
-    return {"score": it.score, "effect": ITEM_EFFECT_ID[it.effect], "amount": it.amount}
+    # con 'efecto: subarma', `amount` es el numero del arma a la que cambia:
+    # el motor no conoce nombres, solo indices de np_subs
+    cantidad = it.amount
+    if it.effect == "weapon":
+        cantidad = (sub_index or {}).get(it.weapon, 0)
+    return {"score": it.score, "effect": ITEM_EFFECT_ID[it.effect],
+            "amount": cantidad}
 
 
 PLATFORM_AXIS_ID = {"x": 0, "y": 1}
@@ -376,12 +382,8 @@ def platform_values(build: ActorBuild) -> Dict[str, object]:
 SUB_KIND_ID = {"": 0, "line": 1, "arc": 2}
 
 
-def sub_values(project: Project) -> Dict[str, object]:
-    """Los campos de NpSubDef. Sin arma secundaria salen todos a cero."""
-    sb = project.player.sub
-    if sb is None:
-        return {"kind": 0, "speed": 0, "gravity": 0, "jump": 0, "range": 0,
-                "cooldown": 0, "cost": 0, "damage": 0}
+def sub_values(sb) -> Dict[str, object]:
+    """Los campos de NpSubDef de un arma secundaria."""
     return {
         "kind": SUB_KIND_ID[sb.kind],
         "speed": to_fixed(sb.speed),
@@ -391,6 +393,7 @@ def sub_values(project: Project) -> Dict[str, object]:
         "cooldown": sb.cooldown,
         "cost": sb.cost,
         "damage": sb.damage,
+        "at_once": sb.at_once,
     }
 
 

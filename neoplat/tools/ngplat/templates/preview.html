@@ -960,7 +960,7 @@
       text(20, 2, "KEYS " + pad(Math.min(world.keys, 99), 2)
                   + "/" + pad(Math.min(world.level.keys_needed, 99), 2));
     }
-    if (DATA.player.sub && DATA.player.sub.kind) {
+    if (DATA.player.subs && DATA.player.subs.length) {
       text(31, 2, "AMMO " + pad(Math.min(world.hearts, 99), 2));
     }
     /* La vida, igual que np_life_bar en C: los llenos son los golpes que

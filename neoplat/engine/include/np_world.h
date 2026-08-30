@@ -65,6 +65,10 @@ typedef struct {
     uint16_t prev_input[NP_MAX_PLAYERS];
     uint16_t sfx;            /* eventos de sonido de este frame (NP_SFX_*) */
     uint8_t keys, hearts, entity_count;
+    /* El arma secundaria que se lleva en la mano, indice en np_subs. Es de la
+       partida y no de cada jugador, igual que la municion: a dos, la que coge
+       uno la llevan los dos. */
+    uint8_t sub;
     /* El punto de control tocado en este nivel, en casillas. `check_on` a cero
        quiere decir que todavia no se ha tocado ninguno y se reaparece en la
        salida. Se guarda en el mundo y no en el jugador porque a dos vale para

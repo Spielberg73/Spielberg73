@@ -100,11 +100,12 @@ def build_data(build: Build) -> Dict[str, object]:
     ataque["actor"] = (actor_json(build.attack, "attack") if build.attack is not None
                        else actor_def_values(build.player))
     player["attack"] = ataque
-    # y el arma secundaria: `kind` a cero quiere decir que no hay ninguna
-    arma = dict(sub_values(project))
-    arma["actor"] = (actor_json(build.sub, "sub") if build.sub is not None
-                     else actor_def_values(build.player))
-    player["sub"] = arma
+    player["subs"] = []
+    for i, arma in enumerate(build.subs):
+        entrada = dict(sub_values(arma.actor))
+        entrada["actor"] = actor_json(arma, "sub%d" % i)
+        entrada["name"] = arma.name
+        player["subs"].append(entrada)
 
     enemies: List[Dict[str, object]] = []
     for i, enemy in enumerate(build.enemies):
@@ -114,8 +115,10 @@ def build_data(build: Build) -> Dict[str, object]:
         enemies.append(entry)
 
     items: List[Dict[str, object]] = []
+    # el objeto que cambia de arma guarda su numero, no su nombre
+    sub_index = {arma.name: i for i, arma in enumerate(build.subs)}
     for i, item in enumerate(build.items):
-        entry = dict(item_values(item))
+        entry = dict(item_values(item, sub_index))
         entry["actor"] = actor_json(item, "item%d" % i)
         entry["name"] = item.name
         items.append(entry)

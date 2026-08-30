@@ -2,8 +2,32 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.6.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.7.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.7
+
+**Varias armas secundarias, y el objeto que las cambia.** Había una y era la
+misma toda la partida; en los clásicos el hacha, el agua bendita o la cruz
+salen de un candelabro y cambian a lo que llevas.
+
+- `secundarias:` admite **varias armas** con su nombre. Se empieza con la
+  primera y se cambia cogiendo un objeto con `efecto: subarma`. `secundaria:`
+  (una sola) sigue valiendo igual que antes.
+- El arma es **de la partida**, como la munición, y al empezar un nivel se
+  vuelve a la primera. Lo que ya está volando **se queda con el arma con la que
+  salió**: cambiar de arma no convierte en hacha el cuchillo que va por el aire.
+- **`a_la_vez`** limita cuántas puede haber volando: `1` es lo clásico (hasta
+  que no cae la anterior no sale otra) y `3` es el "triple" de toda la vida.
+  Sin ponerlo salen las que quepan, como hasta ahora.
+- El género de látigo trae las dos: el cuchillo de serie (recto, tres a la vez)
+  y **el hacha** (en arco, una a la vez, cuesta el doble y hace el doble), que
+  está arriba de la escalera del primer nivel. Subir tiene premio.
+
+De paso, un arreglo del empaquetador del X68000: dos dibujos con **los mismos
+colores** gastaban dos bloques de paleta de los dieciséis que hay. Ahora los
+comparten, igual que en la Neo Geo. El proyecto de ejemplo pasó de 15 bloques a
+11, así que vuelve a haber sitio para dibujos nuevos.
 
 ## 1.6
 

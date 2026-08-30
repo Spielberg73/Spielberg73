@@ -125,14 +125,15 @@ class TestParidad(unittest.TestCase):
             assert marca in texto, "el primer nivel ya no empieza asi"
             texto = texto.replace(marca, "\n      P.k.....s", 1)
         if genero == "castlevania":
-            # El candelabro, la mejora del latigo y el punto de control estan
-            # repartidos por el nivel y el mando aleatorio no llega a ninguno:
-            # se juntan los tres a la salida para que la traza compare tambien
-            # romperlo, coger la municion, alargar el latigo y, al morir,
-            # reaparecer en la antorcha en vez de en la salida.
+            # El candelabro, la mejora del latigo, el hacha y el punto de
+            # control estan repartidos por el nivel (el hacha, arriba de la
+            # escalera) y el mando aleatorio no llega a ninguno: se juntan los
+            # cuatro a la salida para que la traza compare tambien romperlo,
+            # coger la municion, alargar el latigo, cambiar de arma secundaria
+            # y, al morir, reaparecer en la antorcha en vez de en la salida.
             marca = "P.......s...V"
             assert marca in texto, "el primer nivel ya no empieza asi"
-            texto = texto.replace(marca, "P.VM!...s....", 1)
+            texto = texto.replace(marca, "P.VMH!..s....", 1)
         if tablon:
             # el andamiaje pone la plataforma movil en el segundo nivel y la
             # traza no llega: se pone una a la salida del primero, encima del
@@ -322,7 +323,7 @@ class TestParidad(unittest.TestCase):
         self.assertEqual({c[27] for c in columnas}, {"0", "1"},
                          "en toda la traza no se toca el punto de control")
         marcados = [c for c in columnas if c[27] == "1"]
-        self.assertEqual({(c[28], c[29]) for c in marcados}, {("4", "14")},
+        self.assertEqual({(c[28], c[29]) for c in marcados}, {("5", "14")},
                          "el punto de control apuntado no es el del mapa")
         # y el que reaparece despues de morir sale ahi, no en la salida
         vueltas = [b for a, b in zip(columnas, columnas[1:])
@@ -332,7 +333,7 @@ class TestParidad(unittest.TestCase):
             x = int(c[1]) >> 8
             self.assertGreater(x, salida + 32,
                                "se reaparece en la salida, no en la antorcha")
-            self.assertLess(abs(x - 4 * 16), 16,
+            self.assertLess(abs(x - 5 * 16), 16,
                             "se reaparece lejos de la casilla marcada")
 
     def test_la_mejora_del_latigo_se_coge_y_se_pierde(self):
@@ -398,6 +399,17 @@ class TestParidad(unittest.TestCase):
         self.assertEqual({int(linea.split()[32]) for linea in otra}, {0},
                          "el de plataformas se agacha sin tenerlo puesto")
 
+    def test_el_hacha_se_coge_y_cambia_el_arma(self):
+        """El andamiaje trae dos armas secundarias -cuchillo y hacha- y el
+        hacha esta arriba de la escalera del primer nivel. Sin esto, la
+        paridad estaria comparando dos motores que siempre llevan la misma."""
+        traza, _ = self._trazas(1, "castillo")
+        armas = [int(linea.split()[33]) for linea in traza]
+        self.assertEqual(armas[0], 0, "no se empieza con la primera arma")
+        self.assertIn(1, armas, "en toda la traza no se coge el hacha")
+        # y al cambiar de nivel se vuelve a la de serie
+        self.assertEqual(sorted(set(armas)), [0, 1])
+
     def test_misma_traza_a_dos_jugadores(self):
         """Lo mismo con `jugadores: 2`: dos mandos, dos vidas, la camara en el
         punto medio y el que se queda atras pegado al borde."""
@@ -410,7 +422,7 @@ class TestParidad(unittest.TestCase):
         en su sitio y la prueba de paridad pasaria sin comprobar nada."""
         traza, _ = self._trazas(1, "dos")
         columnas = [linea.split() for linea in traza]
-        self.assertTrue(all(len(c) == 33 for c in columnas),
+        self.assertTrue(all(len(c) == 34 for c in columnas),
                         "la traza no trae las columnas del segundo jugador")
         # al empezar los dos estan dentro; luego el mando aleatorio puede
         # dejarlo sin vidas, y eso tambien tiene que salir igual en las dos

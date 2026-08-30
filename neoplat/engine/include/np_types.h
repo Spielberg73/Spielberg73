@@ -91,6 +91,7 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_ITEM_KEY    3
 #define NP_ITEM_AMMO   4         /* municion del arma secundaria */
 #define NP_ITEM_UPGRADE 5        /* mejora el arma: cada uno la alarga un paso */
+#define NP_ITEM_WEAPON  6        /* cambia el arma secundaria que llevas */
 
 /* Ranuras de animacion (las que genera el compilador para cada actor). */
 #define NP_ANIM_IDLE 0

@@ -292,7 +292,7 @@ siempre con el arma de serie. Es lo que hace que una vida valga algo. Con
 `mejoras: 0` (lo de por defecto) el objeto no hace nada y el arma es siempre la
 misma.
 
-### `secundaria` (el arma que gasta munición)
+### `secundaria` / `secundarias` (las armas que gastan munición)
 
 ```yaml
 jugador:
@@ -326,6 +326,47 @@ que es otra cosa; la munición es `municion`, `municiones` o `hearts`.
 
 La munición se vacía al empezar cada nivel, igual que las llaves, y el marcador
 la enseña como `AMMO 05` mientras el juego lleve arma secundaria.
+
+**`a_la_vez`** limita cuántas puede haber volando a la vez. Sin ponerlo salen
+las que quepan; con `1` hay que esperar a que caiga la anterior —que es lo
+clásico— y con `3` tienes el "triple" de toda la vida.
+
+#### Varias armas, y el objeto que las cambia
+
+En vez de una sola, un juego puede llevar **varias** con `secundarias:`, cada
+una con su nombre. Se empieza con la primera y se cambia cogiendo un objeto con
+`efecto: subarma`, como el hacha de los clásicos:
+
+```yaml
+jugador:
+  secundarias:
+    cuchillo:
+      tipo: recta
+      sprite: graficos/cuchillo.png
+      coste: 1
+      a_la_vez: 3
+    hacha:
+      tipo: arco
+      sprite: graficos/hacha.png
+      impulso: 4.0
+      coste: 2
+      dano: 2
+      a_la_vez: 1
+
+objetos:
+  hacha:
+    sprite: graficos/hacha.png
+    efecto: subarma
+    arma: hacha              # a cuál de 'secundarias:' cambia
+```
+
+- El arma que llevas es **de la partida**, no de cada jugador: a dos, la que
+  coge uno la llevan los dos, igual que la munición.
+- Al **empezar un nivel** se vuelve a la primera.
+- Lo que ya está volando **se queda con el arma con la que salió**: cambiar de
+  arma no convierte en hacha el cuchillo que va por el aire.
+- `secundaria:` (una sola) y `secundarias:` (varias) son excluyentes: poner las
+  dos es un error.
 
 ### Agacharse
 
@@ -549,6 +590,7 @@ objetos:
     caja: [10, 10]
     puntos: 10
     efecto: puntos       # puntos | vida | salud | llave | municion | mejora
+                         # | subarma
     cantidad: 1
     animaciones:
       quieto: {frames: [0, 1, 2, 3], velocidad: 7}
@@ -566,6 +608,12 @@ arma del jugador y la alarga (ver [`ataque`](#mejorar-el-arma)). Se para en el
 tope que marque `mejoras:`, y si el ataque no admite ninguna el objeto no hace
 nada. A diferencia de las llaves, el nivel del arma es **de cada jugador**, y se
 pierde al morir.
+
+**Cambiar de arma secundaria.** Un objeto con `efecto: subarma` y `arma: hacha`
+cambia el arma secundaria que se lleva por la que diga (ver
+[`secundarias`](#varias-armas-y-el-objeto-que-las-cambia)). El arma tiene que
+existir en `secundarias:` o `ngplat` no compila: si no, se cogería y no pasaría
+nada.
 
 ## `plataformas`
 

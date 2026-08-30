@@ -53,6 +53,7 @@ function datos(filas, opciones) {
       else if (ch === "o") { spawns.push([x * 16 + 3, y * 16 + 16 - objeto.box_h, 1, 0]); ch = "."; }
       else if (ch === "k") { spawns.push([x * 16 + 3, y * 16 + 16 - objeto.box_h, 1, 1]); ch = "."; }
       else if (ch === "M") { spawns.push([x * 16 + 3, y * 16 + 16 - objeto.box_h, 1, 3]); ch = "."; }
+      else if (ch === "H") { spawns.push([x * 16 + 3, y * 16 + 16 - objeto.box_h, 1, 4]); ch = "."; }
       else if (ch === "T") { spawns.push([x * 16, y * 16 + 16 - tablon.box_h, 3, 0]); ch = "."; }
       else if (ch === "C") { spawns.push([x * 16 + 2, y * 16 + 16 - candelabro.box_h, 4, 0]); ch = "."; }
       else if (ch === "V") { spawns.push([x * 16 + 2, y * 16 + 16 - candelabro.box_h, 4, 1]); ch = "."; }
@@ -103,19 +104,26 @@ function datos(filas, opciones) {
         fx: opciones.latigo ? 1 : 0,
         actor: actor(6, 6)
       },
-      /* el arma secundaria: por defecto ninguna, como un juego sin
-         `secundaria:` en el game.yaml */
-      sub: {
-        kind: opciones.secundaria === "arco" ? 2 : (opciones.secundaria ? 1 : 0),
-        speed: fx(opciones.subVelocidad || 3),
-        gravity: fx(opciones.subGravedad === undefined ? 0.25 : opciones.subGravedad),
-        jump: fx(opciones.subSalto === undefined ? 3 : opciones.subSalto),
-        range: opciones.subAlcance || 160,
-        cooldown: opciones.subEspera === undefined ? 24 : opciones.subEspera,
-        cost: opciones.subCoste === undefined ? 1 : opciones.subCoste,
-        damage: opciones.subDano || 1,
-        actor: actor(8, 8)
-      }
+      /* las armas secundarias: por defecto ninguna, como un juego sin
+         `secundaria:` en el game.yaml. Con `secundaria` sale una, y con
+         `secundarias` (una lista de tipos) salen varias, que es lo que hace
+         falta para probar el objeto que las cambia. */
+      subs: (opciones.secundarias || (opciones.secundaria ? [opciones.secundaria] : []))
+        .map(function (tipo, i) {
+          return {
+            kind: tipo === "arco" ? 2 : 1,
+            speed: fx(opciones.subVelocidad || 3),
+            gravity: fx(opciones.subGravedad === undefined ? 0.25 : opciones.subGravedad),
+            jump: fx(opciones.subSalto === undefined ? 3 : opciones.subSalto),
+            range: opciones.subAlcance || 160,
+            cooldown: opciones.subEspera === undefined ? 24 : opciones.subEspera,
+            cost: opciones.subCoste === undefined ? 1 : opciones.subCoste,
+            damage: opciones.subDano || 1,
+            at_once: (opciones.subALaVez || [])[i] || 0,
+            actor: actor(8, 8),
+            name: "arma" + i
+          };
+        })
     },
     enemies: [
       { actor: enemigo, speed: fx(0.5), gravity: fx(0.28), jump: fx(3.5), range: fx(96),
@@ -138,7 +146,11 @@ function datos(filas, opciones) {
       { actor: objeto, score: 0, effect: 4, amount: opciones.valorMunicion || 5,
         name: "corazon" },
       /* efecto 5 = mejora del arma: la alarga un paso y se pierde al morir */
-      { actor: objeto, score: 200, effect: 5, amount: 1, name: "mejora" }
+      { actor: objeto, score: 200, effect: 5, amount: 1, name: "mejora" },
+      /* efecto 6 = cambia el arma secundaria; `amount` es su numero */
+      { actor: objeto, score: 0, effect: 6,
+        amount: opciones.armaDelObjeto === undefined ? 1 : opciones.armaDelObjeto,
+        name: "hacha" }
     ],
     breakables: [
       /* "C": suelta la moneda; "V": no suelta nada */
@@ -1131,6 +1143,60 @@ prueba("el arma secundaria mata enemigos y rompe candelabros", function () {
     w.step(i % 8 === 0 ? (NP.IN.UP | NP.IN.ACTION) : 0);
   assert.strictEqual(entidadDe(w, 0), null, "no ha matado al enemigo");
   assert.strictEqual(entidadDe(w, 4), null, "no ha roto el candelabro");
+});
+
+prueba("el objeto cambia el arma secundaria que se lleva", function () {
+  /* dos armas: la 0 va recta y la 1 en arco. Se empieza con la 0 y el objeto
+     'H' cambia a la 1, que es lo que hace un hacha en los clasicos */
+  var w = mundo(suelo([[13, 4, "H"], [13, 2, "P"]]),
+                { secundarias: ["recta", "arco"], subEspera: 4 });
+  w.hearts = 20;
+  assert.strictEqual(w.sub, 0, "no se empieza con la primera arma");
+  correr(w, 60, NP.IN.RIGHT);
+  assert.strictEqual(w.sub, 1, "coger el objeto no ha cambiado el arma");
+
+  /* y lo que se tira ahora es la otra: en arco, o sea que baja */
+  w.step(NP.IN.UP | NP.IN.ACTION);
+  var tirada = null, i;
+  for (i = 0; i < w.entityCount; i++)
+    if (w.entities[i].active && w.entities[i].kind === 5) tirada = w.entities[i];
+  assert.ok(tirada, "no sale nada al tirar");
+  assert.strictEqual(tirada.def, 1, "sale con el arma de antes");
+  var alto = tirada.y;
+  correr(w, 40);
+  assert.ok(tirada.y > alto, "la segunda arma no cae: no va en arco");
+});
+
+prueba("lo ya lanzado se queda con el arma con la que salio", function () {
+  var w = mundo(suelo([[13, 4, "H"], [13, 2, "P"]]),
+                { secundarias: ["recta", "arco"], subEspera: 4, subAlcance: 300 });
+  w.hearts = 20;
+  w.step(NP.IN.UP | NP.IN.ACTION);       /* una recta, antes de cambiar */
+  var recta = null, i;
+  for (i = 0; i < w.entityCount; i++)
+    if (w.entities[i].active && w.entities[i].kind === 5) recta = w.entities[i];
+  var alto = recta.y;
+  correr(w, 50, NP.IN.RIGHT);            /* se coge el hacha por el camino */
+  assert.strictEqual(w.sub, 1, "no se ha cambiado de arma");
+  assert.strictEqual(recta.def, 0, "la tirada ha cambiado de arma en el aire");
+  assert.strictEqual(recta.y, alto, "la que iba recta ha empezado a caer");
+});
+
+prueba("'a_la_vez' limita cuantas van por el aire", function () {
+  function cuantas(tope) {
+    var w = mundo(suelo([[13, 2, "P"]]),
+                  { secundarias: ["recta"], subEspera: 1, subAlcance: 400,
+                    subALaVez: [tope] });
+    w.hearts = 90;
+    for (var i = 0; i < 40; i++) w.step(i % 2 ? 0 : (NP.IN.UP | NP.IN.ACTION));
+    var n = 0;
+    for (i = 0; i < w.entityCount; i++)
+      if (w.entities[i].active && w.entities[i].kind === 5) n++;
+    return n;
+  }
+  assert.strictEqual(cuantas(1), 1, "con tope de una hay mas de una en el aire");
+  assert.strictEqual(cuantas(3), 3, "con tope de tres no salen las tres");
+  assert.ok(cuantas(0) > 3, "sin tope tendria que haber mas de tres");
 });
 
 /* ------------------------------------------------- plataformas moviles */

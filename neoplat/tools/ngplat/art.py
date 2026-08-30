@@ -433,6 +433,34 @@ def cuchillo() -> Image:
     return c.image
 
 
+def hacha() -> Image:
+    """La segunda arma secundaria: gira al volar y cae en arco.
+
+    Se dibuja con los mismos colores que el cuchillo -metal, metal2 y madera-
+    a proposito: cada juego de colores distinto se lleva una paleta, y en el
+    X68000 solo hay dieciseis para todo.
+    """
+    metal, metal2 = PALETA["metal"], PALETA["metal2"]
+    madera = PALETA["madera2"]
+    hoja = Lienzo(16 * 4, 16)
+    for giro in range(4):
+        c = Lienzo(16, 16)
+        if giro % 2 == 0:                      # de canto: el mango horizontal
+            arriba = giro == 0
+            y = 7
+            c.rect(3, y, 8, 2, madera)         # mango
+            c.rect(10, y - 3 if arriba else y - 1, 4, 5, metal)   # cabeza
+            c.rect(10, y - 3 if arriba else y + 3, 4, 1, metal2)
+        else:                                  # de pie: el mango vertical
+            izquierda = giro == 1
+            x = 7
+            c.rect(x, 3, 2, 8, madera)
+            c.rect(x - 3 if izquierda else x - 1, 10, 5, 4, metal)
+            c.rect(x - 3 if izquierda else x + 3, 10, 1, 4, metal2)
+        hoja.blit(giro * 16, 0, c.image)
+    return hoja.image
+
+
 def plataforma() -> Image:
     """La plataforma movil: un tablon de dos tiles de ancho.
 
@@ -630,6 +658,7 @@ def todos() -> Dict[str, Image]:
         "graficos/candelabro.png": candelabro(),
         "graficos/corazon.png": corazon(),
         "graficos/cuchillo.png": cuchillo(),
+        "graficos/hacha.png": hacha(),
         "graficos/latigo.png": latigo(),
         "graficos/mejora.png": mejora(),
         "graficos/tiles.png": tileset(),
