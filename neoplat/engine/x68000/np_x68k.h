@@ -47,6 +47,7 @@
 #define NP_IOCS_CRTMOD   0x10     /* poner un modo de pantalla */
 #define NP_IOCS_SP_INIT  0xB0     /* preparar el chip de sprites */
 #define NP_IOCS_SP_ON    0xB1     /* y encenderlo */
+#define NP_IOCS_ADPCMOUT 0x60     /* soltar una muestra por el ADPCM */
 #define NP_MODO_ROM      3        /* 256x240 a 16 colores: el mas parecido */
 
 static __inline long np_iocs(long numero, long d1, long d2)

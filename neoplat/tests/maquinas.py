@@ -22,9 +22,10 @@ from libretro import Emulador, buscar_core  # noqa: E402
 
 # la variable de entorno con la que se puede apuntar a cada core a mano
 VARIABLE = {"megadrive": "NEOPLAT_CORE_MD", "amiga": "NEOPLAT_CORE_AMIGA",
-            "jaguar": "NEOPLAT_CORE_JAGUAR", "atarist": "NEOPLAT_CORE_ST"}
+            "jaguar": "NEOPLAT_CORE_JAGUAR", "atarist": "NEOPLAT_CORE_ST",
+            "x68000": "NEOPLAT_CORE_X68000"}
 
-MAQUINAS = ("neogeo", "megadrive", "amiga", "jaguar", "atarist")
+MAQUINAS = ("neogeo", "megadrive", "amiga", "jaguar", "atarist", "x68000")
 
 
 class _BancoNeoGeo:
@@ -84,6 +85,16 @@ def montar(sistema, ruta, sonido=False):
     elif sistema == "jaguar":
         import emulador_jaguar as maq
         opciones, empezar, esperar = {}, maq.EMPEZAR, None
+    elif sistema == "x68000":
+        import emulador_x68000 as maq
+        opciones, empezar = {}, "A"
+        # aqui `ruta` es el ejecutable .X: el disquete de arranque se monta
+        # sobre el disco de sistema de Human68k del usuario
+        if not maq._buscar_roms() or not maq._buscar_human68k():
+            return (None, "", None)
+        def esperar(emu):
+            if not maq._esperar_al_juego(emu):
+                raise RuntimeError("el juego no arranca en el X68000")
     elif sistema == "atarist":
         import emulador_st as maq
         opciones = dict(maq.OPCIONES)
@@ -100,6 +111,11 @@ def montar(sistema, ruta, sonido=False):
     core = buscar_core(maq.CORE, VARIABLE[sistema])
     if not core:
         return (None, "", None)
+    if sistema == "x68000":
+        sistema_dir, ruta = maq.preparar(ruta)
+        emu = Emulador(core, sistema=sistema_dir, opciones=opciones)
+        emu.cargar(ruta)
+        return emu, empezar, esperar
     sistema_dir = tempfile.mkdtemp(prefix="neoplat-emu-")
     if sistema == "atarist":
         tos = maq._buscar_tos()

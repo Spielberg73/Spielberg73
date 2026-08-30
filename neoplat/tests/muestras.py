@@ -1,6 +1,6 @@
 """Comprueba en un emulador de verdad que las muestras digitales suenan.
 
-Cuatro de las cinco maquinas saben tocar sonido grabado (todas menos el Atari
+Cinco de las seis maquinas saben tocar sonido grabado (todas menos el Atari
 ST, que solo tiene ondas cuadradas), cada una con un chip distinto. Que el
 compilador meta los bytes en la ROM no quiere decir que se oigan: puede fallar
 el puntero, la frecuencia, el DMA o el canal. Asi que aqui se **escucha**.
@@ -66,7 +66,8 @@ def comprobar(emu, empezar, saltar, esperar=None, arranque=200, fps=60):
 
 # El boton de saltar de cada mando, tal y como lo mapea su emulador (el mismo
 # que usan las pruebas de sonido de cada maquina).
-SALTAR = {"neogeo": "A", "megadrive": "B", "amiga": "B", "jaguar": "A"}
+SALTAR = {"neogeo": "A", "megadrive": "B", "amiga": "B", "jaguar": "A",
+          "x68000": "A"}
 
 
 def comprobar_maquina(sistema, ruta, sonido=False) -> int:

@@ -31,7 +31,7 @@ Y las seis llevan un **68000**, que es lo que hace que el motor sea uno solo.
 | Escenario | columnas de sprites | plano A del VDP | mapa de bits + blitter | mapa de bits lineal | bitplanes, movidos por la CPU | capa de fondo del chip |
 | Actores | sprites | sprites del VDP | blitter con máscara | objetos del chip | dibujados a mano, con máscara | sprites de 16×16 |
 | Colores | 4096 en pantalla | 4 paletas de 16 | una de 32, o dos de 8 | una tabla de 256 | una de 16 | 16 bloques de 16 |
-| Sonido | YM2610 (SSG) por Z80 | PSG SN76489 | Paula (4 canales) | los DAC, por el DSP de Jerry | YM2149 | YM2151 (FM) |
+| Sonido | YM2610 (SSG) por Z80 | PSG SN76489 | Paula (4 canales) | los DAC, por el DSP de Jerry | YM2149 | YM2151 (FM) y ADPCM |
 | Parallax | sí | una capa | una capa (`amiga: 8colores`) | una capa | una capa (`camara: pantallas`) | no |
 | Sale | ROMs de cartucho | `.bin` con cabecera y suma | disquete `.adf` arrancable | cartucho `.j64` | disquete `.st` arrancable | `.X` de Human68k y disquete `.xdf` |
 
@@ -668,13 +668,15 @@ Lo que aún no hace:
   las demás se ignoran. Dibujarlas con el blitter y quedarse con los 32 colores
   está medido y **no cabe**: 1.311 líneas de barrido sobre las 313 que da un
   frame ([docs/amiga.md](docs/amiga.md)).
-- **Muestras digitales en cuatro de las seis máquinas**: un efecto ya puede ser
+- **Muestras digitales en cinco de las seis máquinas**: un efecto ya puede ser
   un WAV tuyo (`muestra: sonidos/x.wav`). Lo toca Paula desde la RAM chip en el
   Amiga; en la Mega Drive se lo da al DAC del YM2612 un driver de Z80 que genera
-  el propio compilador; en la Jaguar lo lee el DSP del cartucho; y en la Neo Geo
+  el propio compilador; en la Jaguar lo lee el DSP del cartucho; en la Neo Geo
   van por los canales ADPCM-A del YM2610, con la ROM V1 que también monta el
-  compilador (con su códec, en Python puro). El Atari ST no puede: su YM2149
-  sólo hace ondas cuadradas, y ahí suenan las notas que le pongas al lado.
+  compilador (con su códec, en Python puro); y en el X68000 las saca por DMA el
+  MSM6258, con ese mismo códec, que es de la misma familia. El Atari ST no
+  puede: su YM2149 sólo hace ondas cuadradas, y ahí suenan las notas que le
+  pongas al lado.
 - **Parallax en el Atari ST con `camara: scroll`**: con `pantallas` sí se
   dibuja, y sale gratis porque la vista está quieta; deslizándose habría que
   repintar la pantalla entera cada pocos píxeles y no cabe

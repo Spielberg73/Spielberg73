@@ -93,6 +93,26 @@ def _donde_empieza(frame, fila: int):
     return None
 
 
+def preparar(ejecutable: str):
+    """Deja lista una carpeta de sistema con las ROMs y un disco de arranque.
+
+    Lo usan esta prueba y la de muestras digitales (tests/maquinas.py), que
+    necesitan lo mismo: el core busca las ROMs en <sistema>/keropi/ y el juego
+    tiene que ir dentro de un disco de Human68k.
+    """
+    sistema = tempfile.mkdtemp(prefix="neoplat-x68k-")
+    os.makedirs(os.path.join(sistema, "keropi"))
+    roms = _buscar_roms()
+    for nombre in os.listdir(roms):
+        origen = os.path.join(roms, nombre)
+        if os.path.isfile(origen):
+            with open(origen, "rb") as fh:
+                datos = fh.read()
+            with open(os.path.join(sistema, "keropi", nombre), "wb") as fh:
+                fh.write(datos)
+    return sistema, _disco_de_arranque(ejecutable, sistema)
+
+
 def _esperar_al_juego(emu) -> bool:
     """Espera a que Human68k acabe de arrancar y ejecute el juego.
 
@@ -141,18 +161,9 @@ def comprobar(ejecutable: str, capturas: str = "capturas", musica=None,
         if not condicion:
             fallos.append(mensaje)
 
-    # El core busca las ROMs en <sistema>/keropi/, asi que se le monta una
-    # carpeta de sistema con lo que haga falta y nada mas.
-    sistema = tempfile.mkdtemp(prefix="neoplat-x68k-")
-    os.makedirs(os.path.join(sistema, "keropi"))
-    for nombre in os.listdir(roms):
-        origen = os.path.join(roms, nombre)
-        if os.path.isfile(origen):
-            with open(origen, "rb") as fh:
-                datos = fh.read()
-            with open(os.path.join(sistema, "keropi", nombre), "wb") as fh:
-                fh.write(datos)
-    disco = _disco_de_arranque(ejecutable, sistema)
+    # El core busca las ROMs en <sistema>/keropi/, y el juego tiene que ir
+    # dentro de un disco de Human68k: de las dos cosas se encarga preparar().
+    sistema, disco = preparar(ejecutable)
 
     emu = Emulador(core, sistema=sistema)
     emu.cargar(disco)

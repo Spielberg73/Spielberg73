@@ -31,15 +31,29 @@ docs/x68000.md, que cuenta como y por que.
 
 from __future__ import annotations
 
+import struct
 from typing import Dict, List
 
+from .. import adpcm
 from .. import gfx
 from .. import gfx_x68k
 from ..build import Build
 from ..errors import ProjectError
 from ..paths import fuente_del_kit
-from ..sonido import codigo_ym2151, tabla_de_muestras_vacia
+from ..sonido import _bytes_c, codigo_ym2151, preparar_muestra
 from .base import Limites, Salida, Sistema, registrar
+
+# El ADPCM (un MSM6258) y la velocidad a la que se le dan las muestras.
+#
+# Los dos numeros estan medidos en el emulador: se cifro un tono de 3000 Hz a
+# una velocidad conocida y se toco con cada modo de _ADPCMOUT, mirando a que
+# frecuencia salia. Sale la escalera de siempre -3,9 / 5,2 / 7,8 / 10,4 kHz-
+# repartida en los modos $0003, $0103, $0203 y $0303; el quinto, que en teoria
+# son 15,6 kHz, no sono. Se coge el mas rapido que funciona.
+ADPCM_MODO = 0x0303                  # 10,4 kHz por los dos altavoces
+ADPCM_RITMO = 10417                  # muestras por segundo
+ADPCM_MAXIMO = 32 * 1024             # bytes de ADPCM por efecto (el doble en
+                                     # muestras: cada byte lleva dos)
 
 MAX_PATRONES = gfx_x68k.PATRONES     # los que quedan libres en la PCG RAM
 MAX_BLOQUES = gfx_x68k.BLOQUES       # bloques de paleta de 16 colores
@@ -68,6 +82,7 @@ class X68000(Sistema):
         ("x68000/arranque.S", "src/arranque.S"),
         ("x68000/x68000.ld", "x68000.ld"),
     ]
+    toca_muestras = True          # el MSM6258, que lee la RAM por DMA
     extension_ejecutable = "X"
     carpeta_salida = "disco"
     nombre_binario = "el ejecutable"
@@ -75,7 +90,7 @@ class X68000(Sistema):
         "sprites:  128 de 16x16, y el escenario va en una capa aparte",
         "patrones: 192, repartidos entre los sprites y la capa de fondo",
         "parallax: no, esta maquina solo ensena una capa de fondo",
-        "sonido:   YM2151, ocho canales de FM que toca el propio 68000",
+        "sonido:   YM2151 (ocho canales de FM) y muestras por el ADPCM",
     ]
 
     # --- colores -------------------------------------------------------
@@ -197,9 +212,11 @@ class X68000(Sistema):
         salida.resumen.append(
             "colores:  %d bloques de 16 de los %d que hay"
             % (len(banco.paletas), MAX_BLOQUES))
+        pcm = getattr(build, "pcm_bytes", 0)
         salida.resumen.append(
-            "sonido:   %d melodias y %d efectos por el YM2151"
-            % (len(build.music_order), len(_efectos_de(build))))
+            "sonido:   %d melodias y %d efectos por el YM2151%s"
+            % (len(build.music_order), len(_efectos_de(build)),
+               ", y %d KB de muestras en ADPCM" % (pcm // 1024) if pcm else ""))
         salida.resumen.append(
             "ejecutable: disco/%s.X, y disco/%s.xdf con el dentro"
             % (nombre, nombre.lower()))
@@ -268,9 +285,47 @@ def _sonido_c(build: Build) -> str:
     partes.append("const uint16_t np_snd_efecto_count = %d;" % len(efectos))
     partes.append("const uint16_t np_snd_musica_count = %d;" % len(build.music_order))
     partes.append("")
-    partes.extend(tabla_de_muestras_vacia())
+    lineas, bytes_pcm = _tabla_de_muestras([sonido.efectos[n] for n in efectos])
+    partes.extend(lineas)
+    build.pcm_bytes = bytes_pcm
     partes.append("")
     return "\n".join(partes)
+
+
+def _tabla_de_muestras(efectos):
+    """Las muestras digitales, ya cifradas en ADPCM para el MSM6258.
+
+    El chip no lee bytes crudos: lee medio byte por muestra, en el ADPCM de la
+    familia OKI, que es el mismo que ya usa la Neo Geo para su YM2610 (de ahi
+    sale el cifrador, ngplat/adpcm.py). Asi que una muestra ocupa la mitad que
+    en las otras maquinas.
+
+    En `periodo` no va un periodo sino el modo que hay que pasarle a _ADPCMOUT:
+    la velocidad y por que altavoces sale.
+    """
+    lineas: List[str] = []
+    entradas: List[str] = []
+    total = 0
+    for i, efecto in enumerate(efectos):
+        muestra = preparar_muestra(efecto, ADPCM_RITMO, ADPCM_MAXIMO * 2)
+        if muestra is None or not len(muestra):
+            entradas.append("    { 0, 0, 0, 0 },")
+            continue
+        datos = adpcm.cifrar(struct.unpack("%db" % len(muestra.datos),
+                                           muestra.datos))
+        total += len(datos)
+        lineas.append("static const uint8_t np_pcm%d[] = {" % i)
+        lineas.extend(_bytes_c(datos))
+        lineas.append("};")
+        lineas.append("")
+        frames = max(1, int(round(len(muestra.datos) * 60.0 / ADPCM_RITMO + 0.5)))
+        entradas.append("    { np_pcm%d, %d, 0x%04X, %d },"
+                        % (i, len(datos), ADPCM_MODO, frames))
+    lineas.append("const NpSndMuestra np_snd_muestras[] = {")
+    lineas.extend(entradas if entradas else ["    { 0, 0, 0, 0 },"])
+    lineas.append("    { 0, 0, 0, 0 }")
+    lineas.append("};")
+    return lineas, total
 
 
 def _nombre_ejecutable(build: Build) -> str:

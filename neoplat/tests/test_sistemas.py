@@ -1413,6 +1413,22 @@ class TestMuestras(unittest.TestCase):
         self._escuchar("megadrive",
                        os.path.join(self._construir("megadrive"), "rom/juego.bin"))
 
+    def test_el_x68000_toca_la_muestra(self):
+        """El MSM6258 no lee bytes crudos: lee ADPCM, medio byte por muestra, y
+        lo saca por DMA. La muestra se cifra al compilar."""
+        import emulador_x68000
+        from libretro import buscar_core
+        if not buscar_core(emulador_x68000.CORE, "NEOPLAT_CORE_X68000"):
+            self.skipTest("no esta instalado el core de px68k")
+        if not emulador_x68000._buscar_roms():
+            self.skipTest("no estan las ROMs del X68000 (iplrom.dat)")
+        if not emulador_x68000._buscar_human68k():
+            self.skipTest("no hay un disquete de Human68k (NEOPLAT_HUMAN68K)")
+        out = self._construir("x68000")
+        juego = [n for n in os.listdir(os.path.join(out, "disco"))
+                 if n.endswith(".X")][0]
+        self._escuchar("x68000", os.path.join(out, "disco", juego))
+
     def test_la_jaguar_toca_la_muestra(self):
         """El DSP lee el sonido del cartucho, un byte por muestra de audio, y
         lo suma a las ondas cuadradas antes de mandarlo a los DAC."""

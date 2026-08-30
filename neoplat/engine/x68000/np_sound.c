@@ -167,6 +167,28 @@ static void np_opm_instrumento(uint8_t canal)
     np_opm_volumen(canal, 0);
 }
 
+/* --- las muestras digitales --------------------------------------------
+ *
+ * El ADPCM de esta maquina es un MSM6258 y no lo toca el 68000 a mano: se le
+ * dice a la ROM donde estan los datos y ella los va sacando por DMA mientras
+ * el juego sigue a lo suyo. Los datos ya vienen cifrados del compilador, en el
+ * ADPCM de la familia OKI, y en `periodo` viene el modo (la velocidad y por
+ * que altavoces sale).
+ *
+ * _ADPCMOUT quiere la direccion en a1, el modo en d1 y el largo en d2, asi que
+ * hace falta una llamada aparte: np_iocs solo pasa los datos.
+ */
+static void np_adpcm(const NpSndMuestra *m)
+{
+    register long r0 __asm__("d0") = NP_IOCS_ADPCMOUT;
+    register long r1 __asm__("d1") = (long)m->periodo;
+    register long r2 __asm__("d2") = (long)m->largo;
+    register const uint8_t *a1 __asm__("a1") = m->datos;
+    __asm__ volatile ("trap #15"
+                      : "+d"(r0), "+d"(r1), "+d"(r2), "+a"(a1)
+                      : : "a0", "a2", "cc", "memory");
+}
+
 /* --- las secuencias ----------------------------------------------------- */
 
 void np_sound_init(void)
@@ -297,8 +319,11 @@ void np_sound_frame(const NpWorld *w)
         for (i = 0; i < NP_SFX_SLOTS; i++) {
             if ((w->sfx & (1 << i)) && np_sfx_command[i]) {
                 uint8_t indice = (uint8_t)(np_sfx_command[i] - 1);
-                if (indice < np_snd_efecto_count)
-                    np_arrancar(2, np_snd_efectos[indice], 0);
+                if (indice < np_snd_efecto_count) {
+                    const NpSndMuestra *m = &np_snd_muestras[indice];
+                    if (m->largo) np_adpcm(m);
+                    else np_arrancar(2, np_snd_efectos[indice], 0);
+                }
                 break;
             }
         }
