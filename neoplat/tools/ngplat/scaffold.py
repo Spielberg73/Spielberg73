@@ -113,12 +113,39 @@ def _nivel_1(llave: bool = False, escalera: bool = False,
     ]
 
 
-def _nivel_2(control: bool = False) -> List[str]:
-    """Segundo nivel: voladores, saltos encadenados y un hueco mas largo."""
+def _nivel_2(control: bool = False, escalera: bool = False) -> List[str]:
+    """Segundo nivel: voladores, saltos encadenados y un hueco mas largo.
+
+    Con `escalera` sube una hasta la plataforma alta del final, la del jefe:
+    en el genero de latigo las escaleras son la mitad del juego y tenerlas
+    solo en el primer nivel las dejaba en anecdota. Se sube pegado al ultimo
+    tramo, asi que hay que decidir si se pelea arriba o abajo.
+
+    Cada escalon sube una fila y avanza una columna, y el de arriba tiene que
+    dejarte **encima de la plataforma**: por eso el ultimo esta en la columna
+    de antes de donde empieza. Si acabara en el aire, te caes.
+    """
     a = ANCHO_2
     suelo_2 = {0: "P", 8: "s", 18: "^", 30: "s", 42: "^", 51: "J"}
+    fila_13 = {6: "c", 17: "V", 27: "c", 38: "c", 45: "c"}
+    escalones = {}
     if control:
         suelo_2[26] = "!"       # la antorcha, pasado el primer hueco
+    if escalera:
+        for i, fila in enumerate((14, 13, 12)):
+            escalones[fila] = {44 + i: "/"}
+        # la moneda de la 45 estorbaria a la escalera: en su sitio va la
+        # segunda mejora del latigo, que es lo que se busca subiendo
+        fila_13.pop(45, None)
+        fila_13[49] = "M"
+
+    def con_escalon(fila, base):
+        if fila not in escalones:
+            return base
+        mezcla = dict(base)
+        mezcla.update(escalones[fila])
+        return mezcla
+
     return [
         _fila("", a),
         _fila("", a),
@@ -133,9 +160,9 @@ def _nivel_2(control: bool = False) -> List[str]:
         _poner(a, {4: "ccc", 48: "ccc"}),
         _poner(a, {3: "=====", 47: "====="}),
         # el tablon que va y viene: se sube uno encima y se deja llevar
-        _poner(a, {32: "T"}),
-        _poner(a, {6: "c", 17: "V", 27: "c", 38: "c", 45: "c"}),
-        _poner(a, suelo_2),
+        _poner(a, con_escalon(12, {32: "T"})),
+        _poner(a, con_escalon(13, fila_13)),
+        _poner(a, con_escalon(14, suelo_2)),
         _suelo(a, [(24, 2), (47, 2)]),
     ]
 
@@ -291,18 +318,7 @@ sonido:
     meta:    {{notas: "do5 mi5 sol5 do6", velocidad: 6}}
     disparo: {{tipo: barrido, desde: 1200, hasta: 300, duracion: 4}}
     romper:  {{tipo: ruido, duracion: 6}}
-  musica:
-    bosque:
-      velocidad: 8          # frames que dura cada nota (mas alto = mas lento)
-      pistas:
-        - "do4 mi4 sol4 mi4 | fa4 la4 do5 la4 | sol4 si4 re5 si4 | do5 - sol4 -"
-        - "do3 -  do3 -     | fa3 -  fa3 -    | sol3 - sol3 -     | do3 - -    -"
-    cueva:
-      velocidad: 10
-      pistas:
-        - "la3 do4 mi4 do4 | sol3 si3 re4 si3 | fa3 la3 do4 la3 | mi3 - - -"
-        - "la2 -   mi3 -   | sol2 -   re3 -   | fa2 -   do3 -   | mi2 - - -"
-
+{eventos}{musica}
 # Simbolos del mapa que colocan enemigos y objetos.
 spawns:
   s: seta
@@ -447,18 +463,8 @@ sonido:
     muerte:  {{notas: "mi4 do4 la3 mi3", velocidad: 6}}
     meta:    {{notas: "la4 do5 mi5 la5", velocidad: 6}}
     disparo: {{tipo: barrido, desde: 1100, hasta: 280, duracion: 4}}
-  musica:
-    galeria:
-      velocidad: 9
-      pistas:
-        - "la3 do4 mi4 do4 | si3 re4 fa4 re4 | do4 mi4 la4 mi4 | mi4 - re4 -"
-        - "la2 -   la2 -   | si2 -   si2 -   | do3 -   do3 -   | mi2 - -   -"
-    pozo:
-      velocidad: 11
-      pistas:
-        - "re4 fa4 la4 fa4 | do4 mi4 sol4 mi4 | si3 re4 fa4 re4 | la3 - - -"
-        - "re2 -   la2 -   | do3 -   sol2 -   | si2 -   fa2 -   | la2 - - -"
-
+    romper:  {{tipo: ruido, duracion: 6}}
+{eventos}{musica}
 spawns:
   s: raton
   m: murcielago
@@ -485,6 +491,106 @@ def _nivel_yaml(nombre: str, filas: List[str], fondo: str, capas: str = "",
         % (nombre, fondo, linea_capas, linea_musica, linea_llaves, cuerpo)
     )
 
+# ------------------------------------------------------------------ musica
+#
+# Cada genero trae la suya: la de plataformas cambia con el estilo del dibujo,
+# y la de latigo es la misma en los dos porque lo que la define es el genero.
+# Las notas van en bloques de yaml ('- |') con **un compas por linea**: en una
+# sola linea larga no hay quien cuente los tiempos ni encuentre un error.
+
+_MUSICA_BOSQUE = """  musica:
+    bosque:
+      velocidad: 8          # frames que dura cada nota (mas alto = mas lento)
+      pistas:
+        - "do4 mi4 sol4 mi4 | fa4 la4 do5 la4 | sol4 si4 re5 si4 | do5 - sol4 -"
+        - "do3 -  do3 -     | fa3 -  fa3 -    | sol3 - sol3 -     | do3 - -    -"
+    cueva:
+      velocidad: 10
+      pistas:
+        - "la3 do4 mi4 do4 | sol3 si3 re4 si3 | fa3 la3 do4 la3 | mi3 - - -"
+        - "la2 -   mi3 -   | sol2 -   re3 -   | fa2 -   do3 -   | mi2 - - -"
+"""
+
+_MUSICA_HIERRO = """  musica:
+    galeria:
+      velocidad: 9
+      pistas:
+        - "la3 do4 mi4 do4 | si3 re4 fa4 re4 | do4 mi4 la4 mi4 | mi4 - re4 -"
+        - "la2 -   la2 -   | si2 -   si2 -   | do3 -   do3 -   | mi2 - -   -"
+    pozo:
+      velocidad: 11
+      pistas:
+        - "re4 fa4 la4 fa4 | do4 mi4 sol4 mi4 | si3 re4 fa4 re4 | la3 - - -"
+        - "re2 -   la2 -   | do3 -   sol2 -   | si2 -   fa2 -   | la2 - - -"
+"""
+
+# La del genero de latigo. 'castillo' son 16 compases de ocho tiempos (128
+# notas, unos 11 segundos antes de repetirse) en re menor, con la sensible
+# do# de la escala menor armonica, que es de donde sale el aire de castillo:
+# tema, respuesta, un puente que baja por cromatismos y vuelta al tema. El bajo
+# va en corcheas saltando de octava, que es lo que empuja. 'cripta' es la
+# lenta: la menor, notas largas y mucho silencio entre ellas.
+_MUSICA_LATIGO = """  musica:
+    castillo:
+      velocidad: 5          # frames que dura cada nota (mas alto = mas lento)
+      pistas:
+        - |
+          re5 mi5 fa5 sol5 la5:2 fa5 re5
+          mi5 fa5 sol5 la5 sib5:2 la5 sol5
+          fa5 sol5 la5 sib5 do#6:2 re6:2
+          la5 fa5 re5 do#5 re5:3 -
+          fa5 la5 do6 la5 sib5:2 sol5:2
+          mi5 sol5 sib5 sol5 la5:2 fa5:2
+          re5 fa5 la5 do#6 re6:2 la5:2
+          sib5 la5 sol5 fa5 mi5:2 do#5:2
+          la5:2 lab5:2 sol5:2 fa#5:2
+          fa5:2 mi5:2 mib5:2 re5:2
+          sol5 la5 sib5 do6 re6:2 do#6:2
+          re6 - la5 - fa5 - re5 -
+          re5 mi5 fa5 sol5 la5:2 fa5 re5
+          mi5 fa5 sol5 la5 sib5:2 la5 sol5
+          fa5 sol5 la5 sib5 do#6:2 re6:2
+          la5 fa5 re5 do#5 re5:4
+        - |
+          re2 re3 re2 re3 la2 la3 la2 la3
+          re2 re3 re2 re3 la2 la3 la2 la3
+          fa2 fa3 fa2 fa3 la2 la3 do#3 la3
+          re2 re3 la2 la3 re2 re3 la2 re3
+          fa2 fa3 fa2 fa3 do3 do4 do3 do4
+          la2 la3 la2 la3 mi3 mi4 mi3 mi4
+          re2 re3 re2 re3 la2 la3 la2 la3
+          la2 la3 do#3 do#4 mi3 mi4 la2 la3
+          la2 la3 la2 la3 lab2 lab3 lab2 lab3
+          sol2 sol3 sol2 sol3 fa2 fa3 fa2 fa3
+          mi2 mi3 mi2 mi3 mib2 mib3 mib2 mib3
+          re2 re3 la2 la3 re2 re3 la2 la3
+          re2 re3 re2 re3 la2 la3 la2 la3
+          re2 re3 re2 re3 la2 la3 la2 la3
+          fa2 fa3 fa2 fa3 la2 la3 do#3 la3
+          re2 re3 la2 la3 re2 re3 re2 re3
+    cripta:
+      velocidad: 8
+      pistas:
+        - |
+          la4 - do5 - mi5 - do5 -
+          si4 - re5 - sol#4 - si4 -
+          la4 - do5 - mi5 - la5 -
+          sol#5 - mi5 - do5 - si4 -
+          fa5:2 mi5:2 re5:2 do5:2
+          si4:2 la4:2 sol#4:2 si4:2
+          do5 re5 mib5 mi5 fa5:2 mi5:2
+          la5:4 sol#5:2 mi5:2
+        - |
+          la2 - mi3 - la2 - mi3 -
+          mi2 - si2 - mi2 - si2 -
+          la2 - mi3 - la2 - mi3 -
+          do3 - sol#2 - mi2 - si2 -
+          re2 - la2 - re2 - la2 -
+          mi2 - si2 - mi2 - si2 -
+          fa2 - do3 - mi2 - si2 -
+          la2 - mi3 - la2:2 mi3:2
+"""
+
 
 ESTILOS = ("bosque", "hierro")
 
@@ -509,13 +615,16 @@ class Genero:
     control: str                 # la fila del punto de control, si lo lleva
     municion: str                # el objeto de `efecto: municion`, si lo hay
     mejora: str                  # el objeto de `efecto: mejora`, si lo hay
+    musica: str                  # el bloque `musica:` entero
+    canciones: tuple             # como se llama la de cada nivel
+    eventos: str                 # efectos de sonido que anade este genero
     spawns: str                  # simbolos de mapa que anade este genero
     suelta: str                  # que suelta el rompible
     con_escaleras: bool          # si los niveles llevan una
     con_control: bool            # si los niveles llevan puntos de control
 
 
-def _genero_plataformas(nombres: Dict[str, str]) -> Genero:
+def _genero_plataformas(nombres: Dict[str, str], estilo: str) -> Genero:
     return Genero(
         nombre="plataformas",
         titulo="plataformas",
@@ -543,6 +652,10 @@ def _genero_plataformas(nombres: Dict[str, str]) -> Genero:
         control="",
         municion="",
         mejora="",
+        musica=_MUSICA_BOSQUE if estilo == "bosque" else _MUSICA_HIERRO,
+        canciones=(("bosque", "cueva") if estilo == "bosque"
+                   else ("galeria", "pozo")),
+        eventos="",
         spawns="",
         suelta=nombres["moneda"],
         con_escaleras=False,
@@ -614,6 +727,12 @@ def _genero_castlevania(nombres: Dict[str, str]) -> Genero:
                 "    cantidad: 1\n"
                 "    animaciones:\n"
                 "      quieto: {frames: [0, 1], velocidad: 10}\n"),
+        musica=_MUSICA_LATIGO,
+        canciones=("castillo", "cripta"),
+        # La antorcha del punto de control tenia el sonido sin poner: se
+        # tocaba y no sonaba nada, que es justo lo que hay que oir para saber
+        # que ya no vuelves al principio del nivel.
+        eventos='    control: {notas: "la5 do6 mi6", velocidad: 4}\n',
         spawns="  M: mejora\n",
         suelta=nombres["municion"],
         con_escaleras=True,
@@ -634,7 +753,7 @@ def genero_de(nombre: str, estilo: str) -> Genero:
     nombres = _NOMBRES[estilo]
     if nombre == "castlevania":
         return _genero_castlevania(nombres)
-    return _genero_plataformas(nombres)
+    return _genero_plataformas(nombres, estilo)
 
 
 def menu_de_generos(entrada=None, salida=None) -> str:
@@ -718,25 +837,30 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
             _nivel_yaml("BOSQUE",
                         _nivel_1(llave=True, escalera=g.con_escaleras,
                                  control=g.con_control),
-                        "#101830", musica="bosque", llaves=1)
+                        "#101830", musica=g.canciones[0], llaves=1)
             # el segundo nivel usa solo la capa lejana: se puede elegir por nivel
-            + _nivel_yaml("CUEVA", _nivel_2(control=g.con_control), "#180c20",
-                          capas="cielo", musica="cueva")
+            + _nivel_yaml("CUEVA",
+                          _nivel_2(control=g.con_control,
+                                   escalera=g.con_escaleras),
+                          "#180c20", capas="cielo", musica=g.canciones[1])
         )
         plantilla = GAME_YAML
     else:
         niveles = (
             _nivel_yaml("GALERIA",
                         _nivel_1(escalera=g.con_escaleras, control=g.con_control),
-                        "#14121e", musica="galeria")
-            + _nivel_yaml("EL POZO", _nivel_2(control=g.con_control), "#0e1018",
-                          musica="pozo")
+                        "#14121e", musica=g.canciones[0])
+            + _nivel_yaml("EL POZO",
+                          _nivel_2(control=g.con_control,
+                                   escalera=g.con_escaleras),
+                          "#0e1018", musica=g.canciones[1])
         )
         plantilla = GAME_YAML_HIERRO
     contenido = plantilla.format(
         titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles,
         fisica=g.fisica, armas=g.armas, escaleras=g.escaleras,
         control=g.control, municion=g.municion, mejora=g.mejora,
+        musica=g.musica, eventos=g.eventos,
         spawns=g.spawns, suelta=g.suelta)
     with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
               newline="\n") as fh:

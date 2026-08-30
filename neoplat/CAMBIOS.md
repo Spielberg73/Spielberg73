@@ -2,8 +2,30 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.3.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.4.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.4
+
+**El género de látigo deja de sonar como el de plataformas.** Tenía la misma
+cancioncilla de dos segundos, la antorcha del punto de control era muda y las
+escaleras salían en un rincón del primer nivel y en ningún sitio más.
+
+- **Música propia y mucho más larga**: `castillo` son 16 compases en re menor
+  con la sensible do# de la escala menor armónica —tema, respuesta, un puente
+  que baja por cromatismos y vuelta al tema—, 10,7 s antes de repetirse contra
+  los 2,1 s de antes; `cripta` es la lenta, en la menor, 8,5 s. Las dos pistas
+  de cada una duran exactamente lo mismo, así que melodía y bajo vuelven a
+  empezar juntos. Las notas se escriben con un compás por línea, que es la
+  única forma de contar los tiempos sin perderse.
+- La música pasa a ser **cosa del género**, no de la plantilla: el de
+  plataformas conserva la suya de cada estilo de dibujo.
+- **La antorcha suena** al tocarla (`control:`), que es lo que te dice que ya no
+  vuelves al principio del nivel. Y **romper un candelabro suena también en el
+  estilo `hierro`**, donde faltaba el evento y era mudo.
+- **Escaleras en los dos niveles**: la del segundo sube a la plataforma alta
+  del final, donde ahora está la segunda mejora del látigo, así que hay que
+  decidir si se pelea con el jefe arriba o abajo.
 
 ## 1.3
 

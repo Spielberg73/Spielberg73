@@ -118,6 +118,75 @@ class TestCli(unittest.TestCase):
                       "el de latigo no trae el objeto que mejora el arma")
         self.assertNotIn("upgrade", {i.effect for i in plat.items.values()})
 
+    def test_las_escaleras_estan_en_los_dos_niveles(self):
+        """La mecanica que da nombre al genero tiene que salir en todo el juego.
+
+        Estaba solo en un rincon del primer nivel: el segundo no tenia ni una,
+        asi que se podia terminar el juego sin subir una escalera.
+        """
+        from ngplat.project import load_project
+        destino = os.path.join(self.tmp, "escaleras")
+        self.assertEqual(self._ejecutar("nuevo", destino,
+                                        "--genero", "castlevania")[0], 0)
+        proyecto = load_project(destino)
+        for i, nivel in enumerate(proyecto.levels):
+            self.assertTrue(any("/" in fila for fila in nivel.rows),
+                            "el nivel %d no tiene ninguna escalera" % (i + 1))
+        # y la de arriba lleva a algo: la segunda mejora del latigo
+        self.assertTrue(any("M" in fila for fila in proyecto.levels[1].rows),
+                        "no hay nada arriba de la escalera del segundo nivel")
+
+    def test_el_genero_de_latigo_trae_su_propia_musica(self):
+        """No la misma cancioncilla del de plataformas, y no de dos segundos."""
+        from ngplat.project import load_project
+        proyectos = {}
+        for genero in ("plataformas", "castlevania"):
+            destino = os.path.join(self.tmp, "m-" + genero)
+            self.assertEqual(self._ejecutar("nuevo", destino,
+                                            "--genero", genero)[0], 0)
+            proyectos[genero] = load_project(destino)
+        plat, cast = proyectos["plataformas"], proyectos["castlevania"]
+
+        self.assertEqual(set(cast.sound.musica), {"castillo", "cripta"})
+        self.assertFalse(set(cast.sound.musica) & set(plat.sound.musica),
+                         "el de latigo toca la musica del de plataformas")
+        # y cada nivel pide la suya
+        self.assertEqual([n.music for n in cast.levels], ["castillo", "cripta"])
+
+        def frames(musica):
+            return [sum(paso.duracion for paso in pista) for pista in musica.pistas]
+
+        for nombre, musica in cast.sound.musica.items():
+            largos = frames(musica)
+            self.assertEqual(len(set(largos)), 1,
+                             "las dos pistas de '%s' no duran lo mismo: %s"
+                             % (nombre, largos))
+            self.assertGreaterEqual(
+                largos[0], 480,
+                "'%s' dura %d frames: se repite antes de ocho segundos"
+                % (nombre, largos[0]))
+        mas_larga_plat = max(max(frames(m)) for m in plat.sound.musica.values())
+        self.assertGreater(max(max(frames(m)) for m in cast.sound.musica.values()),
+                           mas_larga_plat * 3,
+                           "la del castillo no es mucho mas larga que la de antes")
+
+    def test_la_antorcha_suena(self):
+        """El punto de control tenia el evento sin poner y se tocaba en mudo."""
+        from ngplat.project import load_project
+        destino = os.path.join(self.tmp, "antorcha")
+        self.assertEqual(self._ejecutar("nuevo", destino,
+                                        "--genero", "castlevania")[0], 0)
+        proyecto = load_project(destino)
+        self.assertIn("control", proyecto.sound.efectos,
+                      "tocar la antorcha no suena")
+        # y romper un candelabro tambien, en los dos estilos de dibujo
+        for estilo in ("bosque", "hierro"):
+            otro = os.path.join(self.tmp, "romper-" + estilo)
+            self.assertEqual(self._ejecutar("nuevo", otro, "--estilo", estilo,
+                                            "--genero", "castlevania")[0], 0)
+            self.assertIn("romper", load_project(otro).sound.efectos,
+                          "romper un candelabro no suena en el estilo " + estilo)
+
     def test_un_genero_que_no_existe_no_cuela(self):
         destino = os.path.join(self.tmp, "inventado")
         with self.assertRaises(SystemExit):
