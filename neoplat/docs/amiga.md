@@ -264,6 +264,25 @@ sale lo que cuesta, y las cuentas salen en la misma unidad que el presupuesto
 - para medir una función sola, llamarla 100 veces seguidas y dividir da una
   cifra mucho más limpia que medirla una vez.
 
+## El joystick, y el segundo botón
+
+El joystick del Amiga es de cuadratura: arriba y abajo salen de un *xor* de dos
+bits de `JOY1DAT` (el puerto de la derecha) o `JOY0DAT` (el del ratón, donde va
+el segundo mando). El **disparo** está en CIAA_PRA —bit 7 en el puerto de la
+derecha, bit 6 en el del ratón— y el **segundo botón** en POTGOR, bits 14 y 10;
+para leerlo hay que haber escrito antes `POTGO = 0xFF00`.
+
+| | |
+|---|---|
+| disparo | saltar **y** empezar la partida |
+| segundo botón | **acción**: atacar y, con arriba, tirar el arma secundaria |
+| botón del ratón | empezar, a un jugador (a dos ese puerto es del segundo) |
+
+Que el disparo valga también de start es lo que permite jugar con un mando de
+un solo botón: se empieza y se salta con él, y lo único que se pierde es el
+ataque. Start solo se mira en el título y al acabar la partida, así que llevarlo
+pegado al salto no molesta mientras se juega.
+
 ## Cómo suena
 
 Paula tiene cuatro canales que leen una onda de la RAM chip por DMA y la

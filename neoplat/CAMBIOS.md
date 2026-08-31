@@ -2,8 +2,32 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.8.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.9.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.9
+
+**El botón de acción ya existe en el Amiga y en el Atari ST.** En esas dos
+máquinas no estaba leído: el juego se compilaba igual, pero ahí **no se podía
+ni atacar ni tirar el arma secundaria**. En las otras cuatro sí (Neo Geo botón
+B, Mega Drive C, Jaguar B, X68000 B).
+
+- **Amiga**: el **segundo botón** del joystick pasa a ser el de acción, y el
+  disparo se queda con saltar *y* empezar la partida. Así un mando de un solo
+  botón sigue sirviendo para todo menos para atacar, y el de dos gana el
+  ataque.
+- **Atari ST**: el joystick sólo tiene un botón (que salta y empieza), así que
+  atacar va por teclado: <kbd>X</kbd> o <kbd>Control</kbd>.
+- **En el preview**, la barra de teclas ya dice <kbd>X</kbd> atacar y
+  <kbd>↑</kbd>+<kbd>X</kbd> arma secundaria —que era la pregunta que nadie
+  podía contestar mirando la pantalla— y <kbd>↓</kbd> ahora dice también
+  agacharse.
+- Y hay **una tabla de mandos por máquina** en
+  [docs/formato.md](docs/formato.md#los-mandos), que no existía.
+
+Comprobado en los emuladores de verdad (PUAE y Hatari) midiendo el sonido del
+disparo: al pulsar el botón de acción suena, y con otro botón cualquiera no.
+Quitar el mapeo tira las dos pruebas.
 
 ## 1.8
 

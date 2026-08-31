@@ -71,6 +71,8 @@ OPCIONES = {
     "hatari_mapper_down": "JOYSTICK_DOWN",
     "hatari_mapper_a": "RETROK_SPACE",    # las teclas tambien valen
     "hatari_mapper_x": "RETROK_RETURN",
+    # el boton de accion del ST es una tecla: el joystick solo tiene una
+    "hatari_mapper_y": "RETROK_x",
 }
 
 
@@ -105,7 +107,7 @@ def _esperar_al_juego(emu) -> bool:
 
 
 def comprobar(disco: str, capturas: str = "capturas", musica=None,
-              salto=None, pantallas: bool = False) -> int:
+              salto=None, disparo=None, pantallas: bool = False) -> int:
     core = buscar_core(CORE, "NEOPLAT_CORE_ST")
     if not core:
         print("el core de Hatari no esta instalado: se salta la prueba")
@@ -116,6 +118,8 @@ def comprobar(disco: str, capturas: str = "capturas", musica=None,
         return 0
     os.makedirs(capturas, exist_ok=True)
     franja_del_salto = banda_del_efecto(musica, salto) if musica and salto else None
+    franja_del_disparo = (banda_del_efecto(musica, disparo)
+                          if musica and disparo else None)
     fallos = []
 
     def exigir(condicion, mensaje):
@@ -182,6 +186,43 @@ def comprobar(disco: str, capturas: str = "capturas", musica=None,
                   saltando / max(1.0, quieto)))
         print("efecto de salto: %.1f veces mas fuerte que el fondo"
               % (saltando / max(1.0, quieto)))
+
+    # --- el boton de accion: la tecla X ----------------------------------
+    #
+    # El joystick del ST tiene un solo boton (que salta), asi que atacar y
+    # tirar el arma secundaria van por teclado. No estaba puesto: en el ST no
+    # habia forma de pegar. Se comprueba por el sonido, que es lo unico que
+    # dice si la tecla ha llegado al motor.
+    if franja_del_disparo:
+        # El efecto del disparo solo asoma por encima de la musica en su primer
+        # frame (es un barrido que baja), asi que la senal es mas floja que la
+        # del salto. Para que no dependa del volumen de la cancion se compara
+        # con **otro boton que no hace nada**: si el de accion suena mas que
+        # ese, la pulsacion ha llegado al motor.
+        def pico(boton=None):
+            emu.pulsar()
+            emu.avanzar(40)              # que se apague lo de antes
+            mejor = 0.0
+            for i in range(60):
+                emu.pulsar(boton) if (boton and i % 20 == 0) else emu.pulsar()
+                mejor = max(mejor, pico_por_frame(emu.escuchar, 1, emu.ritmo,
+                                                  *franja_del_disparo))
+            return mejor
+
+        quieto = pico()
+        otro = pico("X")
+        atacando = pico("Y")
+        referencia = max(quieto, otro)
+        exigir(atacando > referencia * 1.6,
+               "la tecla de atacar no ataca: entre %.0f y %.0f Hz suena %.1f veces mas "
+               "que sin tocar nada y %.1f veces mas que con otro boton, y "
+               "deberia notarse mucho mas"
+               % (franja_del_disparo[0], franja_del_disparo[1],
+                  atacando / max(1.0, quieto), atacando / max(1.0, otro)))
+        print("boton de accion: %.1f veces mas fuerte que el fondo (otro boton, %.1f)"
+              % (atacando / max(1.0, referencia), otro / max(1.0, quieto)))
+
+
 
     # --- 4) se juega ----------------------------------------------------
     movimiento = 0.0
@@ -254,5 +295,6 @@ if __name__ == "__main__":
     sys.exit(comprobar(disco, argumentos[1] if len(argumentos) > 1 else "capturas",
                        musica_al_empezar(p) if p else None,
                        p.sound.efectos.get("salto") if p else None,
+                       p.sound.efectos.get("disparo") if p else None,
                        pantallas="--pantallas" in opciones
                                  or bool(p and p.camera == "pantallas")))

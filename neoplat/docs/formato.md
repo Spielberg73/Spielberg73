@@ -78,6 +78,27 @@ ngplat compilar --sistema megadrive
 Valen los nombres alternativos de siempre: `genesis` o `md` para la Mega Drive,
 `a500` para el Amiga, `aes` o `mvs` para la Neo Geo.
 
+### Los mandos
+
+| | moverse | saltar | **acción** (atacar; con ↑, arma secundaria) | empezar |
+|---|---|---|---|---|
+| preview | flechas o WASD | <kbd>Z</kbd>, <kbd>K</kbd>, <kbd>espacio</kbd> | <kbd>X</kbd> (o <kbd>L</kbd>) | <kbd>Enter</kbd> |
+| Neo Geo | palanca | botón A | **botón B** | START |
+| Mega Drive | cruceta | B (o A) | **botón C** | START |
+| Atari Jaguar | cruceta | botón A | **botón B** | PAUSE |
+| Sharp X68000 | palanca | botón A | **botón B** | botón A |
+| Amiga | joystick | disparo | **segundo botón** | disparo (o el botón del ratón) |
+| Atari ST | joystick o flechas | disparo o <kbd>espacio</kbd> | **<kbd>X</kbd> o <kbd>Control</kbd>** | disparo o <kbd>Enter</kbd> |
+
+El **arma secundaria** se tira con **arriba + acción**; el botón a secas hace el
+ataque normal. En el Amiga y en el Atari ST el joystick de siempre tiene **un
+solo botón**, así que ahí ese botón salta *y* empieza la partida, y la acción va
+por el segundo botón (Amiga) o por el teclado (ST). Con un mando de un botón se
+juega igual, pero sin atacar.
+
+A dos jugadores, en el preview el segundo va con **WASD**, salta con <kbd>G</kbd>
+y ataca con <kbd>H</kbd>.
+
 ### Dos jugadores
 
 Con `jugadores: 2` juegan dos a la vez, cada uno con su mando, en la misma
@@ -105,8 +126,8 @@ Dónde se enchufa el segundo mando en cada máquina:
 | Atari ST | el **puerto 0**, que es el del ratón, igual que en el Amiga. El teclado sigue siendo solo del primero |
 | X68000 | el **puerto B** del 8255; el A es el del primer jugador |
 
-En el preview, el segundo jugador va con **WASD** y salta con **G**. A un
-jugador, WASD sigue valiendo como las flechas.
+En el preview, el segundo jugador va con **WASD**, salta con **G** y ataca con
+**H**. A un jugador, WASD sigue valiendo como las flechas.
 
 Las seis se comprueban en emulador (`tests/test_sistemas.py`,
 `TestDosJugadores`): se juega la misma partida tres veces, con un mando, con el

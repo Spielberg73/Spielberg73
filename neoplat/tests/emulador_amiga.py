@@ -71,7 +71,7 @@ def _desplazamiento(antes, ahora, maximo=70):
 
 
 def comprobar(adf: str, capturas: str = "capturas", musica=None,
-              salto=None, parallax: bool = False,
+              salto=None, disparo=None, parallax: bool = False,
               pantallas: bool = False) -> int:
     core = buscar_core(CORE, "NEOPLAT_CORE_AMIGA")
     if not core:
@@ -79,6 +79,8 @@ def comprobar(adf: str, capturas: str = "capturas", musica=None,
         return 0
     os.makedirs(capturas, exist_ok=True)
     franja_del_salto = banda_del_efecto(musica, salto) if musica and salto else None
+    franja_del_disparo = (banda_del_efecto(musica, disparo)
+                          if musica and disparo else None)
     fallos = []
 
     def exigir(condicion, mensaje):
@@ -110,8 +112,12 @@ def comprobar(adf: str, capturas: str = "capturas", musica=None,
            "la pantalla de titulo hace ruido: la musica es solo de la partida")
     print("titulo: %dx%d con %d colores" % (titulo[0], titulo[1], cuantos))
 
-    # --- 2) empieza la partida (start = segundo boton del joystick) ------
-    emu.pulsar("A")
+    # --- 2) empieza la partida ------------------------------------------
+    #
+    # El start se lo lleva el **disparo** (que ademas salta): el segundo boton
+    # es el de accion, para poder atacar. Un joystick de un solo boton empieza
+    # la partida igual.
+    emu.pulsar("B")
     emu.avanzar(20)
     emu.pulsar()
     emu.avanzar(60)
@@ -147,6 +153,42 @@ def comprobar(adf: str, capturas: str = "capturas", musica=None,
                   saltando / max(1.0, quieto)))
         print("efecto de salto: %.1f veces mas fuerte que el fondo"
               % (saltando / max(1.0, quieto)))
+
+    # --- el boton de accion: el segundo del joystick ---------------------
+    #
+    # Es lo que hacia falta para atacar y para tirar el arma secundaria, y en
+    # el Amiga no estaba leido: el segundo boton valia de start y no habia
+    # ningun boton de accion. Se comprueba por el sonido, que es lo unico que
+    # dice si la pulsacion ha llegado al motor: al disparar suena su efecto.
+    if franja_del_disparo:
+        # El efecto del disparo solo asoma por encima de la musica en su primer
+        # frame (es un barrido que baja), asi que la senal es mas floja que la
+        # del salto. Para que no dependa del volumen de la cancion se compara
+        # con **otro boton que no hace nada**: si el de accion suena mas que
+        # ese, la pulsacion ha llegado al motor.
+        def pico(boton=None):
+            emu.pulsar()
+            emu.avanzar(40)              # que se apague lo de antes
+            mejor = 0.0
+            for i in range(60):
+                emu.pulsar(boton) if (boton and i % 20 == 0) else emu.pulsar()
+                mejor = max(mejor, pico_por_frame(emu.escuchar, 1, emu.ritmo,
+                                                  *franja_del_disparo))
+            return mejor
+
+        quieto = pico()
+        otro = pico("X")
+        atacando = pico("A")
+        referencia = max(quieto, otro)
+        exigir(atacando > referencia * 1.6,
+               "el segundo boton no ataca: entre %.0f y %.0f Hz suena %.1f veces mas "
+               "que sin tocar nada y %.1f veces mas que con otro boton, y "
+               "deberia notarse mucho mas"
+               % (franja_del_disparo[0], franja_del_disparo[1],
+                  atacando / max(1.0, quieto), atacando / max(1.0, otro)))
+        print("boton de accion: %.1f veces mas fuerte que el fondo (otro boton, %.1f)"
+              % (atacando / max(1.0, referencia), otro / max(1.0, quieto)))
+
 
     # --- 3b) el parallax va mas despacio que el suelo --------------------
     #
@@ -188,6 +230,7 @@ def comprobar(adf: str, capturas: str = "capturas", musica=None,
                "velocidades distintas" % (abs(fondo), abs(suelo)))
         print("parallax: el suelo se mueve %d pixeles y el fondo %d (%.2f del scroll)"
               % (abs(suelo), abs(fondo), abs(fondo) / max(1, abs(suelo))))
+
 
     # --- 4) se juega ----------------------------------------------------
     movimiento = 0.0
@@ -249,6 +292,7 @@ if __name__ == "__main__":
     sys.exit(comprobar(disco, argumentos[1] if len(argumentos) > 1 else "capturas",
                        musica_al_empezar(p) if p else None,
                        p.sound.efectos.get("salto") if p else None,
+                       p.sound.efectos.get("disparo") if p else None,
                        parallax=bool(p and p.amiga_modo == "8colores" and p.layers),
                        pantallas="--pantallas" in opciones
                                  or bool(p and p.camera == "pantallas")))

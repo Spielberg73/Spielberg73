@@ -176,6 +176,11 @@ void np_st_init(void)
 #define ST_TECLA_ABAJO     0x50
 #define ST_TECLA_ESPACIO   0x39
 #define ST_TECLA_ENTRAR    0x1C
+/* La X, al lado de la Z y del espacio, es la de atacar: la misma que en el
+   preview del navegador. El joystick del ST tiene un solo boton -que salta- y
+   sin esta tecla no habia forma de pegar ni de tirar el arma secundaria. */
+#define ST_TECLA_X         0x2D
+#define ST_TECLA_CONTROL   0x1D
 
 static volatile uint16_t np_teclas;   /* lo que sigue pulsado */
 static volatile uint16_t np_joystick[2];   /* [0] puerto 1, [1] puerto 0 */
@@ -191,6 +196,8 @@ static void np_tecla(uint8_t codigo, uint16_t pulsada)
     case ST_TECLA_ARRIBA:    bit = NP_IN_UP; break;
     case ST_TECLA_ABAJO:     bit = NP_IN_DOWN; break;
     case ST_TECLA_ESPACIO:   bit = NP_IN_JUMP; break;
+    case ST_TECLA_X:         bit = NP_IN_ACTION; break;
+    case ST_TECLA_CONTROL:   bit = NP_IN_ACTION; break;
     case ST_TECLA_ENTRAR:    bit = NP_IN_START; break;
     default: return;
     }

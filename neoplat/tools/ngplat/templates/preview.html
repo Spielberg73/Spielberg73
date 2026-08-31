@@ -214,9 +214,11 @@
 <div class="bar">
   <span><kbd>&larr;</kbd><kbd>&rarr;</kbd> moverse</span>
   <span><kbd>Z</kbd> / <kbd>espacio</kbd> saltar</span>
-  <span><kbd>&darr;</kbd> bajar de plataforma</span>
+  <span><kbd>X</kbd> atacar</span>
+  <span id="teclas-secundaria" hidden><kbd>&uarr;</kbd>+<kbd>X</kbd> arma secundaria</span>
+  <span><kbd>&darr;</kbd> agacharse / bajar de plataforma</span>
   <span><kbd>Enter</kbd> empezar</span>
-  <span id="teclas-2p" hidden>jugador 2: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> moverse &middot; <kbd>G</kbd> saltar</span>
+  <span id="teclas-2p" hidden>jugador 2: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> moverse &middot; <kbd>G</kbd> saltar &middot; <kbd>H</kbd> atacar</span>
   <span><kbd>R</kbd> reiniciar</span>
   <span><kbd>E</kbd> editar</span>
   <span class="solo-editor"><kbd>1</kbd>&hellip;<kbd>6</kbd> herramientas</span>
@@ -542,6 +544,10 @@
     KEYS2 = {};
   } else {
     document.getElementById("teclas-2p").hidden = false;
+  }
+  /* la fila de teclas solo habla del arma secundaria si el juego la lleva */
+  if ((DATA.player.subs || []).length) {
+    document.getElementById("teclas-secundaria").hidden = false;
   }
   var PAD = {
     left: NPCore.IN.LEFT, right: NPCore.IN.RIGHT, down: NPCore.IN.DOWN,

@@ -247,6 +247,14 @@ Al arrancar se le pide al IKBD que calle el ratón (`$12`) y que avise del
 joystick (`$14`), pero los paquetes que ya venían de camino hay que tragárselos
 igual: si no, sus dos bytes de desplazamiento se leerían como si fueran teclas.
 
+**El botón de acción es una tecla.** El joystick del ST tiene un solo botón, y
+ese salta (y empieza la partida, que si no un mando de un botón no podría
+arrancar el juego). Atacar —y con arriba, tirar el arma secundaria— va con la
+tecla <kbd>X</kbd> o con <kbd>Control</kbd>: sin ellas, en el ST no había forma
+de pegar. Las teclas que lee el juego son las flechas, <kbd>espacio</kbd>
+(saltar), <kbd>X</kbd> / <kbd>Control</kbd> (atacar) y <kbd>Enter</kbd>
+(empezar).
+
 La cabecera del paquete es lo que dice de qué puerto viene, y por eso con
 `jugadores: 2` no hay nada que configurar: el **puerto 1** (el conector del
 joystick de siempre) es el primer jugador y el **puerto 0** (el del ratón) el

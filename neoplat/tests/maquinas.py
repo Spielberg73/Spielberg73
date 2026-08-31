@@ -108,7 +108,9 @@ def montar(sistema, ruta, sonido=False):
         import emulador_amiga as maq
         opciones = {"puae_kickstart": "aros", "puae_model": "A500",
                     "puae_video_standard": "PAL"}
-        empezar, esperar = "A", None
+        # en el Amiga el start es el **disparo**: el segundo boton es el de
+        # accion, para poder atacar
+        empezar, esperar = "B", None
     elif sistema == "jaguar":
         import emulador_jaguar as maq
         opciones, empezar, esperar = {}, maq.EMPEZAR, None

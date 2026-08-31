@@ -476,7 +476,15 @@ void np_wait_vblank(void)
  * va el joystick de siempre) tiene los datos en JOY1DAT, el disparo en el bit 7
  * de CIAA_PRA y el segundo boton en el bit 14 de POTGOR; el de la izquierda (el
  * del raton, que es donde se enchufa el segundo mando) los tiene en JOY0DAT, el
- * bit 6 y el bit 10. */
+ * bit 6 y el bit 10.
+ *
+ * El **segundo boton es el de accion** (pegar, disparar y, con arriba, el arma
+ * secundaria). Antes valia de start y el juego se quedaba sin boton de accion:
+ * en el Amiga no habia forma de atacar. El start se lo queda ahora el disparo,
+ * que ademas salta, igual que en el X68000 y en el Atari ST: asi un joystick de
+ * un solo boton sigue sirviendo para empezar y para jugar, y el de dos gana el
+ * ataque. Start solo se mira en el titulo y al acabar la partida, asi que que
+ * el disparo lo lleve puesto no molesta mientras se juega. */
 static uint16_t np_input_de(uint16_t joy, uint8_t disparo, uint16_t boton2)
 {
     uint16_t salida = 0;
@@ -488,17 +496,17 @@ static uint16_t np_input_de(uint16_t joy, uint8_t disparo, uint16_t boton2)
     if (joy & 0x0200) salida |= NP_IN_LEFT;
     if (abajo) salida |= NP_IN_DOWN;
     if (arriba) salida |= NP_IN_UP;
-    if (!(CIAA_PRA & disparo)) salida |= NP_IN_JUMP;
-    if (!(POTGOR & boton2)) salida |= NP_IN_START;
+    if (!(CIAA_PRA & disparo)) salida |= NP_IN_JUMP | NP_IN_START;
+    if (!(POTGOR & boton2)) salida |= NP_IN_ACTION;
     return salida;
 }
 
 uint16_t np_input_read(void)
 {
     uint16_t salida = np_input_de(JOY1DAT, 0x80, 0x4000);
-    /* A un jugador, el boton del raton tambien vale de start: hay joysticks de
-     * un solo boton y si no, no habria manera de empezar. A dos no, porque ese
-     * boton es el salto del segundo jugador. */
+    /* A un jugador, el boton del raton tambien vale de start: es lo mas a mano
+     * que hay si el joystick esta en el otro puerto. A dos no, porque ese boton
+     * es el salto del segundo jugador. */
     if (np_player_count < 2 && !(CIAA_PRA & 0x40)) salida |= NP_IN_START;
     return salida;
 }
