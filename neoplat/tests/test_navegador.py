@@ -48,6 +48,26 @@ class TestNavegador(unittest.TestCase):
         )
         return resultado
 
+    def test_dos_jugadores_en_el_navegador(self):
+        """Que las teclas del segundo llegan al segundo y no al primero.
+
+        Esto no lo puede comprobar ni la paridad con el motor en C (que solo
+        mira la simulacion) ni las pruebas de emulador (que miran las
+        maquinas)."""
+        resultado = self._ejecutar("--dos", os.path.join(self.tmp, "capturas-dos"))
+        self.assertEqual(resultado.returncode, 0,
+                         resultado.stdout + resultado.stderr)
+        self.assertIn("dos jugadores", resultado.stdout)
+
+    def test_guardar_y_recuperar_desde_el_navegador(self):
+        """El camino entero: se edita en la pagina, se pulsa Ctrl+S y el
+        game.yaml del disco cambia, con su copia en el historial."""
+        resultado = self._ejecutar("--guardado",
+                                   os.path.join(self.tmp, "capturas-guardado"))
+        self.assertEqual(resultado.returncode, 0,
+                         resultado.stdout + resultado.stderr)
+        self.assertIn("guardar y recuperar", resultado.stdout)
+
     def test_el_juego_y_el_editor_en_un_navegador(self):
         preview = os.path.join(self.tmp, "preview.html")
         generado = subprocess.run(

@@ -2,8 +2,32 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.9.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.10.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.10
+
+Dos deudas, ninguna función nueva.
+
+**Los ejemplos que van en el ZIP estaban cinco versiones por detrás.** Su héroe
+tenía seis poses (sin atacar, sin subir, sin agacharse y sin la de recibir un
+golpe), su escenario no traía los tiles de escalera ni de antorcha, y el
+`game.yaml` no sabía nada de agacharse ni de llevar más de un arma secundaria.
+Compilaban y se jugaban —eso lo comprobaba la batería— pero quien abría el
+ejemplo del kit veía el NeoPlat de antes.
+
+- **`bosque-magico`**: héroe de once poses, agacharse, y **dos armas
+  secundarias** (el cuchillo de siempre y el hacha, que sube y cae en arco),
+  con el objeto que las cambia arriba de una plataforma.
+- **`cueva-de-hierro`**: lo mismo en seis colores; sigue cabiendo en el doble
+  plano del Amiga (7 colores de 32).
+
+**Las pruebas del navegador que faltaban.** En 1.8 entró la principal en la
+batería de siempre; las otras dos —dos jugadores en el preview, y guardar y
+recuperar con el servidor detrás— seguían sólo en `make test-navegador`, que es
+justo el sitio donde las cosas se quedan desfasadas sin que nadie se entere.
+Ahora se ejecutan con las demás, y las dos comprobaciones que contaban
+fotogramas a mano se los preguntan al proyecto, así que no vuelven a caducar.
 
 ## 1.9
 

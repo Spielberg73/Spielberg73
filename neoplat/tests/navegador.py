@@ -420,8 +420,12 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
                      colores: d.lienzo.indicesUsados().length,
                      cuenta: document.getElementById('dib-cuenta').textContent }; }""")
         print("abierto:", json.dumps(abierto))
-        exigir(abierto["hoja"] == "player" and abierto["frames"] == 6,
-               "el jugador no se ha abierto entero: %s" % abierto)
+        # los fotogramas no se cuentan a mano: se le preguntan al propio
+        # proyecto, que es lo unico que no se queda desfasado
+        poses = pagina.evaluate("() => window.NeoPlat.data.player.actor.frames")
+        exigir(abierto["hoja"] == "player" and abierto["frames"] == poses,
+               "el jugador no se ha abierto entero (%d de %d poses): %s"
+               % (abierto["frames"], poses, abierto))
         exigir(not abierto["vacio"], "el dibujo del jugador ha salido en blanco")
         exigir(abierto["colores"] > 1, "no ha sacado la paleta del PNG")
         exigir("de 15" in abierto["cuenta"],
@@ -463,7 +467,9 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
             i.onload = () => listo([i.width, i.height]);
             i.src = window.NeoPlat.dibujos.png(); })""")
         print("png del jugador:", json.dumps(medidas))
-        exigir(medidas == [96, 16], "el PNG no mide lo que la hoja: %s" % medidas)
+        exigir(medidas == [poses * 16, 16],
+               "el PNG no mide lo que la hoja (%d poses de 16x16): %s"
+               % (poses, medidas))
 
         # --- lo que dibujas se ve en el juego, sin guardar ----------------
         #

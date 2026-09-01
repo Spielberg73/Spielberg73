@@ -29,11 +29,15 @@ jugador:
   vida: 2
   doble_salto: no
   pisar_enemigos: si
+  agachado: si         # con abajo: ni andas ni saltas, pero lo que pasa por
+                       # encima ya no te toca
   animaciones:
     quieto: {frames: [0], velocidad: 30}
     correr: {frames: [1, 2, 3, 2], velocidad: 6}
     saltar: {frames: [4]}
     caer:   {frames: [5]}
+    dano:   {frames: [9]}     # la pose de recibir un golpe
+    agachado: {frames: [10]}
 
 tiles:
   imagen: graficos/tiles.png

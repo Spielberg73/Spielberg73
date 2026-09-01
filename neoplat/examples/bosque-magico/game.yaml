@@ -27,11 +27,16 @@ jugador:
   vida: 2              # golpes que aguanta antes de perder una vida
   doble_salto: no
   pisar_enemigos: si
+  agachado: si         # con abajo: ni andas ni saltas, pero disparas por
+                       # abajo y lo que pasa por encima ya no te toca
   animaciones:
     quieto: {frames: [0], velocidad: 30}
     correr: {frames: [1, 2, 3, 2], velocidad: 6}
     saltar: {frames: [4]}
     caer:   {frames: [5]}
+    dano:   {frames: [9]}     # la pose de recibir un golpe
+    atacar: {frames: [7], velocidad: 6}
+    agachado: {frames: [10]}
   # El boton de accion. Quitalo entero y el jugador solo podra pisar enemigos.
   ataque:
     tipo: disparo            # disparo (sale un proyectil) o golpe (cuerpo a cuerpo)
@@ -45,19 +50,38 @@ jugador:
     dano: 1
     animaciones:
       quieto: {frames: [0, 1, 2, 1], velocidad: 4}
-  # El arma secundaria: se tira con **arriba + accion** y gasta municion (los
-  # corazones). 'tipo: arco' la haria caer describiendo una parabola.
-  secundaria:
-    tipo: recta
-    sprite: graficos/cuchillo.png
-    frame: [16, 16]
-    caja: [10, 4]
-    desplazamiento: [3, 6]
-    velocidad: 4.0
-    alcance: 200
-    espera: 24
-    coste: 1
-    dano: 1
+  # Las armas secundarias: se tiran con **arriba + accion** y gastan municion
+  # (los corazones). Se empieza con la primera y se cambia cogiendo el objeto
+  # de la otra; 'a_la_vez' dice cuantas caben en el aire.
+  secundarias:
+    cuchillo:
+      tipo: recta            # va recto hasta que choca
+      sprite: graficos/cuchillo.png
+      frame: [16, 16]
+      caja: [10, 4]
+      desplazamiento: [3, 6]
+      velocidad: 4.0
+      alcance: 200
+      espera: 24
+      coste: 1
+      dano: 1
+      a_la_vez: 3
+    hacha:
+      tipo: arco             # sube y cae: hay que medir
+      sprite: graficos/hacha.png
+      frame: [16, 16]
+      caja: [12, 12]
+      desplazamiento: [2, 2]
+      velocidad: 2.2
+      impulso: 4.0
+      gravedad: 0.20
+      alcance: 200
+      espera: 30
+      coste: 2
+      dano: 2
+      a_la_vez: 1
+      animaciones:
+        quieto: {frames: [0, 1, 2, 3], velocidad: 4}
 
 tiles:
   imagen: graficos/tiles.png
@@ -117,6 +141,16 @@ objetos:
     cantidad: 5
     animaciones:
       quieto: {frames: [0, 1], velocidad: 12}
+  # 'efecto: subarma' cambia el arma secundaria que llevas por la que diga
+  hacha:
+    sprite: graficos/hacha.png
+    frame: [16, 16]
+    caja: [12, 12]
+    puntos: 100
+    efecto: subarma
+    arma: hacha
+    animaciones:
+      quieto: {frames: [0, 1, 2, 3], velocidad: 6}
 
 # Rompibles: no hacen nada hasta que les pegas, y entonces sueltan lo que
 # lleven dentro. Es el bucle de los clasicos de latigo: pegarle a todo.
@@ -192,6 +226,7 @@ spawns:
   k: llave
   T: tablon
   V: candelabro
+  H: hacha
 
 niveles:
   - nombre: "BOSQUE"
@@ -209,7 +244,7 @@ niveles:
       ...............ccc..............................
       ..............=====.............................
       ................................................
-      .....ccc..............................ccc.......
+      .....ccc..............................cHc.......
       ....=====............................=====......
       ................................................
       ......................c..........c..............
