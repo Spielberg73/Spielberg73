@@ -214,6 +214,15 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
         src.append("    }," if i + 1 < len(build.subs) else "    }")
     src.append("};")
     src.append("const uint8_t np_sub_count = %d;" % len(build.subs))
+    # Como sale cada una en el marcador. Cinco letras: es lo que dejan libres
+    # las llaves y la cuenta de municion.
+    src.append("const char np_sub_names[][6] = {")
+    if not build.subs:
+        src.append('    "AMMO"')
+    for i, arma in enumerate(build.subs):
+        etiqueta = arma.actor.label
+        src.append('    "%s"%s' % (etiqueta, "," if i + 1 < len(build.subs) else ""))
+    src.append("};")
     src.append("")
 
     # --- enemigos

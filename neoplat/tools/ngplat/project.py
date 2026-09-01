@@ -325,6 +325,7 @@ class Sub(Actor):
     cost: int = 1
     damage: int = 1
     at_once: int = 0               # cuantas a la vez en el aire (0 = sin tope)
+    label: str = ""                # como sale en el marcador (5 letras)
 
 
 @dataclass
@@ -617,6 +618,11 @@ SUB_KINDS = {
 }
 
 
+# Lo que sabe escribir la fuente del marcador (ver FONT_CHARS en gfx.py): es
+# lo unico que puede llevar el nombre corto de un arma.
+LETRAS_MARCADOR = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-.:!?/"
+
+
 def _read_subs(uno: Node, varias: Node, root: str) -> List["Sub"]:
     """Las armas secundarias del juego, en orden. Se empieza con la primera y
     se cambian cogiendo un objeto con `efecto: subarma`.
@@ -639,9 +645,32 @@ def _read_subs(uno: Node, varias: Node, root: str) -> List["Sub"]:
             armas.append(arma)
         if not armas:
             raise ProjectError("'secundarias:' esta vacio", where="jugador")
+        _etiquetas(armas)
         return armas
     arma = _read_sub(uno, root, "jugador.secundaria")
-    return [arma] if arma is not None else []
+    if arma is None:
+        return []
+    _etiquetas([arma])
+    return [arma]
+
+
+def _etiquetas(armas: List["Sub"]) -> None:
+    """Como sale cada arma en el marcador cuando no lo dice `marcador:`.
+
+    Con una sola arma no hay nada que distinguir y el hueco pone "AMMO", que es
+    lo que ponia el kit de siempre; en cuanto hay dos, el nombre del arma es la
+    unica forma de saber cual llevas, asi que salen las cinco primeras letras
+    de su nombre."""
+    for arma in armas:
+        if arma.label:
+            continue
+        if len(armas) == 1:
+            arma.label = "AMMO"
+            continue
+        # del nombre solo valen las letras que tiene la fuente: un arma que se
+        # llame "latigo con nen" se queda sin nada que ensenar y vuelve a "AMMO"
+        corto = "".join(c for c in arma.name.upper() if c in LETRAS_MARCADOR)
+        arma.label = corto[:5].strip() or "AMMO"
 
 
 def _read_sub(node: Node, root: str, where: str = "jugador.secundaria"
@@ -673,6 +702,7 @@ def _read_sub(node: Node, root: str, where: str = "jugador.secundaria"
         damage=node.int_(["damage", "dano", "daño"], 1, 1, 99),
         at_once=node.int_(["at_once", "a_la_vez", "en_el_aire", "simultaneas"],
                           0, 0, 16),
+        label=(node.str_(["label", "marcador", "etiqueta"], "") or "").upper(),
     )
     _warn_unknown(node, where, [
         "type", "tipo", "sprite", "imagen", "image",
@@ -683,7 +713,26 @@ def _read_sub(node: Node, root: str, where: str = "jugador.secundaria"
         "range", "alcance", "cooldown", "espera", "cadencia",
         "cost", "coste", "municion", "munición", "damage", "dano", "daño",
         "at_once", "a_la_vez", "en_el_aire", "simultaneas",
+        "label", "marcador", "etiqueta",
     ])
+    # En el marcador caben cinco letras: es lo que dejan libre las llaves y la
+    # cuenta de municion, y el marcador de estas maquinas no da para mas. Sin
+    # `marcador:` se cogen las cinco primeras del nombre.
+    if len(arma.label) > 5:
+        raise ProjectError(
+            "'marcador: %s' tiene %d letras y en el marcador caben cinco"
+            % (arma.label, len(arma.label)),
+            hint="ponle un nombre corto, como 'HACHA' o 'CRUZ'",
+            where=where)
+    # Y con las letras que tiene la fuente del marcador: la de estas maquinas
+    # no lleva ni acentos ni enes, que se verian como huecos.
+    for letra in arma.label:
+        if letra not in LETRAS_MARCADOR:
+            raise ProjectError(
+                "'marcador: %s' lleva un caracter ('%s') que no esta en la "
+                "fuente del marcador" % (arma.label, letra),
+                hint="solo letras de la A a la Z, numeros y espacios",
+                where=where)
     return arma
 
 

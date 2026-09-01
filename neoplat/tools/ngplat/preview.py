@@ -105,6 +105,7 @@ def build_data(build: Build) -> Dict[str, object]:
         entrada = dict(sub_values(arma.actor))
         entrada["actor"] = actor_json(arma, "sub%d" % i)
         entrada["name"] = arma.name
+        entrada["label"] = arma.actor.label      # como sale en el marcador
         player["subs"].append(entrada)
 
     enemies: List[Dict[str, object]] = []

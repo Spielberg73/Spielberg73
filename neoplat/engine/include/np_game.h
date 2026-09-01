@@ -200,6 +200,10 @@ extern const uint16_t np_layer_count;
 extern const uint16_t np_enemy_count;
 extern const uint16_t np_item_count;
 extern const uint8_t np_sub_count;       /* 0 = el juego no lleva secundaria */
+/* Como se llama cada arma secundaria en el marcador: cinco letras, que es lo
+   que deja libre la cuenta de llaves. Con una sola arma pone "AMMO", que es
+   lo de siempre; con varias hace falta saber cual llevas. */
+extern const char np_sub_names[][6];
 extern const uint16_t np_platform_count;
 extern const uint16_t np_breakable_count;
 extern const uint16_t np_tile_count;

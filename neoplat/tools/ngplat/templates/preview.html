@@ -981,8 +981,12 @@
       text(20, 2, "KEYS " + pad(Math.min(world.keys, 99), 2)
                   + "/" + pad(Math.min(world.level.keys_needed, 99), 2));
     }
+    /* Delante de la cuenta va el nombre corto del arma que llevas, que con una
+       sola arma es "AMMO": con dos o mas no habria forma de saber cual es.
+       Igual que np_extras_bar en C. */
     if (DATA.player.subs && DATA.player.subs.length) {
-      text(31, 2, "AMMO " + pad(Math.min(world.hearts, 99), 2));
+      var arma = (DATA.player.subs[world.sub] || DATA.player.subs[0]).label;
+      text(31, 2, arma + " " + pad(Math.min(world.hearts, 99), 2));
     }
     /* La vida, igual que np_life_bar en C: los llenos son los golpes que
        quedan y los puntos los perdidos. Con `vida: 1` no sale (no hay nada que

@@ -1713,7 +1713,6 @@ static void np_dos_digitos(char *out, uint8_t valor)
 void np_extras_bar(char *out, const NpWorld *w)
 {
     static const char llaves[] = "KEYS ";
-    static const char municion[] = "AMMO ";
     uint8_t i, piden = w->level ? w->level->keys_needed : 0;
 
     for (i = 0; i < NP_EXTRAS_BAR; i++) out[i] = ' ';
@@ -1724,10 +1723,17 @@ void np_extras_bar(char *out, const NpWorld *w)
         out[7] = '/';
         np_dos_digitos(out + 8, piden);
     }
-    /* la municion solo tiene sentido si el juego lleva arma secundaria */
+    /* La municion solo tiene sentido si el juego lleva arma secundaria, y con
+       mas de una hay que decir **cual llevas**: por eso lo que va delante de la
+       cuenta no es "AMMO" a secas sino lo que diga `np_sub_names` del arma que
+       llevas (con una sola arma es "AMMO", como siempre). La cuenta va pegada
+       al nombre y no en una columna fija: asi "AMMO 05" se queda como estaba y
+       "HACHA 05", que es una letra mas largo, tambien cabe en los veinte
+       huecos de la linea. */
     if (np_sub_count) {
-        for (i = 0; i < 5; i++) out[11 + i] = municion[i];
-        np_dos_digitos(out + 16, w->hearts);
+        const char *etiqueta = np_sub_names[w->sub];
+        for (i = 0; i < 5 && etiqueta[i]; i++) out[11 + i] = etiqueta[i];
+        np_dos_digitos(out + 12 + i, w->hearts);
     }
 }
 

@@ -351,7 +351,9 @@ rompibles). **Ojo con el nombre**: `efecto: corazon` a secas significa *salud*,
 que es otra cosa; la munición es `municion`, `municiones` o `hearts`.
 
 La munición se vacía al empezar cada nivel, igual que las llaves, y el marcador
-la enseña como `AMMO 05` mientras el juego lleve arma secundaria.
+la enseña como `AMMO 05` mientras el juego lleve arma secundaria. Con **varias**
+armas, en el sitio de `AMMO` va el nombre corto de la que llevas (`HACHA 05`):
+ver más abajo.
 
 **`a_la_vez`** limita cuántas puede haber volando a la vez. Sin ponerlo salen
 las que quepan; con `1` hay que esperar a que caiga la anterior —que es lo
@@ -371,6 +373,7 @@ jugador:
       sprite: graficos/cuchillo.png
       coste: 1
       a_la_vez: 3
+      marcador: DAGA         # como sale en el marcador (5 letras)
     hacha:
       tipo: arco
       sprite: graficos/hacha.png
@@ -393,6 +396,23 @@ objetos:
   arma no convierte en hacha el cuchillo que va por el aire.
 - `secundaria:` (una sola) y `secundarias:` (varias) son excluyentes: poner las
   dos es un error.
+
+**El marcador dice cuál llevas.** Con una sola arma pone `AMMO 05` y no hay
+nada que distinguir; en cuanto hay dos, `AMMO 05` no dice si eso son cinco
+cuchillos o cinco hachas, así que en su sitio sale el **nombre corto** del arma
+que llevas puesta y cambia al cambiarla:
+
+```
+KEYS 01/03 DAGA 05          <- llevas el cuchillo
+KEYS 01/03 HACHA 05         <- coges el hacha y cambia
+```
+
+Sin `marcador:` se cogen las cinco primeras letras del nombre del arma
+(`cuchillo` -> `CUCHI`), que casi nunca es lo que quieres: por eso está
+`marcador:`. Caben **cinco letras** —es lo que dejan libre las llaves y la
+cuenta de munición en la línea, que es de veinte— y solo las que sabe escribir
+la fuente del marcador (A-Z, números y `- . : ! ? /`); más largo o con una eñe,
+el compilador lo dice y no genera nada.
 
 ### Agacharse
 
@@ -739,7 +759,7 @@ usa:
 | `SCORE`, `LIVES` | siempre |
 | `TIME` | con `tiempo:` distinto de 0 |
 | `KEYS 01/03` | en los niveles con `llaves:` |
-| `AMMO 05` | con arma `secundaria:` |
+| `AMMO 05` | con arma `secundaria:` (con varias, el nombre de la que llevas: `HACHA 05`) |
 | `BOSS ####` | con un jefe en pantalla |
 | `LIFE ###.` | con `vida:` mayor que 1 |
 

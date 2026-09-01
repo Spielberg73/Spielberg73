@@ -56,6 +56,8 @@ jugador:
   secundarias:
     cuchillo:
       tipo: recta            # va recto hasta que choca
+      marcador: DAGA         # con dos armas o mas, el marcador dice
+                             # cual llevas en vez de poner 'AMMO'
       sprite: graficos/cuchillo.png
       frame: [16, 16]
       caja: [10, 4]
@@ -68,6 +70,7 @@ jugador:
       a_la_vez: 3
     hacha:
       tipo: arco             # sube y cae: hay que medir
+      marcador: HACHA
       sprite: graficos/hacha.png
       frame: [16, 16]
       caja: [12, 12]

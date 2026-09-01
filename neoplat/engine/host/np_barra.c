@@ -6,9 +6,11 @@
  * esta en el segundo nivel), asi que se comprueba aqui: tests/test_marcador.py
  * ejecuta este programa y compara las lineas una a una.
  *
- * Con un argumento cualquiera imprime la de vida en vez de la del jefe: la de
- * vida depende de `np_player_def.health`, que es del proyecto, y asi la prueba
- * puede montar un proyecto con la vida que quiera y llamar al mismo programa.
+ * Con un argumento cualquiera imprime la de vida en vez de la del jefe, y con
+ * uno que empiece por 'e' la de "lo que llevas" (llaves y municion): las dos
+ * dependen del proyecto -de `np_player_def.health` una y de las armas
+ * secundarias la otra-, asi que la prueba monta el proyecto que quiere y llama
+ * a este mismo programa.
  */
 #include <stdio.h>
 
@@ -61,10 +63,45 @@ static void vida(void)
     printf("titulo [%s]\n", barra);
 }
 
+/* La linea de "lo que llevas": llaves y municion. Con mas de un arma
+   secundaria en el hueco de la municion va el nombre corto del arma, asi que
+   se recorren todas las que tenga el proyecto. La prueba monta el proyecto que
+   quiere y llama a este mismo programa. */
+static void extras(void)
+{
+    static const unsigned char llaves[][2] = {{0, 0}, {1, 3}, {3, 3}, {12, 99}};
+    NpWorld w;
+    NpLevel nivel;
+    unsigned i, arma;
+    char barra[NP_EXTRAS_BAR + 6];
+
+    nivel = np_levels[0];
+    w.level = &nivel;
+    w.hearts = 5;
+    w.sub = 0;
+    for (i = 0; i < sizeof(llaves) / sizeof(llaves[0]); i++) {
+        w.keys = llaves[i][0];
+        nivel.keys_needed = llaves[i][1];
+        np_extras_bar(barra, &w);
+        printf("llaves %u/%u [%s]\n", (unsigned)w.keys,
+               (unsigned)nivel.keys_needed, barra);
+    }
+    w.keys = 0;
+    nivel.keys_needed = 0;
+    for (arma = 0; arma < (np_sub_count ? np_sub_count : 1u); arma++) {
+        w.sub = (uint8_t)arma;
+        for (i = 0; i < 3; i++) {
+            w.hearts = (unsigned char)(i == 0 ? 0 : (i == 1 ? 5 : 123));
+            np_extras_bar(barra, &w);
+            printf("arma %u %u [%s]\n", arma, (unsigned)w.hearts, barra);
+        }
+    }
+}
+
 int main(int argc, char **argv)
 {
-    (void)argv;
-    if (argc > 1) vida();
+    if (argc > 1 && argv[1][0] == 'e') extras();
+    else if (argc > 1) vida();
     else jefe();
     return 0;
 }

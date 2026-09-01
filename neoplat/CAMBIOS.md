@@ -2,8 +2,37 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.10.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.11.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.11
+
+**El marcador dice qué arma secundaria llevas.** Desde 1.7 un juego puede
+llevar varias armas y cambiarlas cogiendo un objeto, pero el marcador seguía
+poniendo `AMMO 05`, que no dice si eso son cinco cuchillos o cinco hachas: la
+única forma de saberlo era tirar una y mirar qué salía. Ahora en el sitio de
+`AMMO` va el nombre corto del arma que llevas puesta, y cambia al cambiarla.
+
+```
+KEYS 01/03 DAGA 05          <- llevas el cuchillo
+KEYS 01/03 HACHA 05         <- coges el hacha y cambia
+```
+
+- Se pone con **`marcador:`** en cada arma de `secundarias:` (cinco letras, las
+  que sabe escribir la fuente del marcador). Sin ponerlo salen las cinco
+  primeras del nombre del arma, que casi nunca es lo que quieres (`cuchillo`
+  sale como `CUCHI`), así que el andamiaje y los ejemplos lo traen puesto.
+- Con **una sola** arma se queda como estaba, `AMMO 05`: no hay nada que
+  distinguir. Si aun así el juego pone `marcador:`, manda el suyo.
+- La cuenta va pegada al nombre en vez de en una columna fija, así el nombre
+  más largo (`HACHA 99`) sigue cabiendo en los veinte huecos de la línea junto
+  con las llaves.
+- Sale en las seis máquinas y en el preview a la vez, porque las seis escriben
+  esa línea con la misma función del motor.
+
+**Y la línea de "lo que llevas" ya tiene pruebas.** Era la única del marcador
+sin ninguna: se compila el motor con cuatro proyectos (sin arma, con una, con
+una que trae nombre y con dos) y se comparan las veinte columnas una a una.
 
 ## 1.10
 

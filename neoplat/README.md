@@ -295,7 +295,9 @@ bucle entero de los clásicos de látigo: pegarle a todo, recoger corazones y
 gastarlos en el cuchillo o en el hacha. Se puede llevar **más de una**: se
 empieza con la primera y se cambia cogiendo un objeto con `efecto: subarma`, y
 con `a_la_vez:` decides cuántas caben en el aire (una es lo clásico, tres es el
-triple de toda la vida). El ataque además puede tener `preparacion:` (frames en los que
+triple de toda la vida). Con dos o más, el marcador deja de poner `AMMO 05` y
+pone el nombre de la que llevas (`HACHA 05`), que es lo único que te dice cuál
+tienes en la mano. El ataque además puede tener `preparacion:` (frames en los que
 el brazo todavía sale y no hace daño) y `clavado:` (mientras pegas, no te
 mueves), y al recibir daño sales despedido con `retroceso:` y te quedas
 `aturdido:` frames sin control: un roce al borde de una plataforma pasa a
@@ -327,9 +329,9 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.10.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
-| `neoplat-kit-1.10.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.10.zip` | el `ngplat.exe` y su LEEME |
+| `neoplat-docs-1.11.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
+| `neoplat-kit-1.11.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.11.zip` | el `ngplat.exe` y su LEEME |
 
 El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
 plantillas; no necesita Python ni nada instalado. Con **doble clic** —sin
