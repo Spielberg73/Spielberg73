@@ -217,40 +217,7 @@ tiles:
     'G': {{tile: 4, tipo: meta}}
 {escaleras}{control}
 enemigos:
-  seta:
-    sprite: graficos/enemigo.png
-    caja: [12, 11]
-    comportamiento: patrulla
-    velocidad: 0.4
-    puntos: 100
-    animaciones:
-      quieto: {{frames: [0, 1], velocidad: 14}}
-      correr: {{frames: [0, 1], velocidad: 10}}
-  mosca:
-    sprite: graficos/enemigo.png
-    caja: [12, 11]
-    comportamiento: volador
-    velocidad: 0.6
-    amplitud: 28
-    periodo: 150
-    puntos: 200
-    animaciones:
-      quieto: {{frames: [0, 1], velocidad: 6}}
-  # Un jefe es un enemigo con 'jefe: si': aguanta varios pisotones, el marcador
-  # ensena lo que le queda y al matarlo se acaba el nivel.
-  jefazo:
-    sprite: graficos/enemigo.png
-    caja: [12, 11]
-    comportamiento: perseguidor
-    velocidad: 0.5
-    rango: 160
-    vida: 5
-    puntos: 1000
-    jefe: si
-    animaciones:
-      quieto: {{frames: [0, 1], velocidad: 8}}
-      correr: {{frames: [0, 1], velocidad: 5}}
-
+{bichos}{jefe}
 objetos:
   moneda:
     sprite: graficos/moneda.png
@@ -326,13 +293,10 @@ sonido:
 {eventos}{musica}
 # Simbolos del mapa que colocan enemigos y objetos.
 spawns:
-  s: seta
-  m: mosca
-  c: moneda
+{bichos_spawn}  c: moneda
   k: llave
   T: tablon
   V: candelabro
-  J: jefazo
 {spawns}
 niveles:
 {niveles}"""
@@ -388,40 +352,7 @@ tiles:
     'G': {{tile: 4, tipo: meta}}
 {escaleras}{control}
 enemigos:
-  raton:
-    sprite: graficos/enemigo.png
-    caja: [12, 11]
-    comportamiento: patrulla
-    velocidad: 0.4
-    puntos: 100
-    animaciones:
-      quieto: {{frames: [0, 1], velocidad: 14}}
-      correr: {{frames: [0, 1], velocidad: 10}}
-  murcielago:
-    sprite: graficos/enemigo.png
-    caja: [12, 11]
-    comportamiento: volador
-    velocidad: 0.6
-    amplitud: 28
-    periodo: 150
-    puntos: 200
-    animaciones:
-      quieto: {{frames: [0, 1], velocidad: 6}}
-  # Un jefe es un enemigo con 'jefe: si': aguanta varios pisotones, el marcador
-  # ensena lo que le queda y al matarlo se acaba el nivel.
-  guardian:
-    sprite: graficos/enemigo.png
-    caja: [12, 11]
-    comportamiento: perseguidor
-    velocidad: 0.5
-    rango: 160
-    vida: 5
-    puntos: 1000
-    jefe: si
-    animaciones:
-      quieto: {{frames: [0, 1], velocidad: 8}}
-      correr: {{frames: [0, 1], velocidad: 5}}
-
+{bichos}{jefe}
 objetos:
   gema:
     sprite: graficos/gema.png
@@ -472,12 +403,9 @@ sonido:
     romper:  {{tipo: ruido, duracion: 6}}
 {eventos}{musica}
 spawns:
-  s: raton
-  m: murcielago
-  c: gema
+{bichos_spawn}  c: gema
   T: viga
   V: brasero
-  J: guardian
 {spawns}
 niveles:
 {niveles}"""
@@ -627,10 +555,105 @@ class Genero:
     canciones: tuple             # como se llama la de cada nivel
     eventos: str                 # efectos de sonido que anade este genero
     spawns: str                  # simbolos de mapa que anade este genero
+    bichos: str                  # los enemigos del genero (menos el jefe)
+    bichos_spawn: str            # los simbolos de esos enemigos y el del jefe
+    jefe: str                    # el jefe del genero
     suelta: str                  # que suelta el rompible
     con_escaleras: bool          # si los niveles llevan una
     con_control: bool            # si los niveles llevan puntos de control
 
+
+# Los bichos de plataformas: el mismo dibujo con dos comportamientos, que es lo
+# que ensena que el comportamiento y el dibujo son cosas distintas.
+def _bichos_plataformas(nombres: Dict[str, str]) -> str:
+    return ("  %s:\n"
+            "    sprite: graficos/enemigo.png\n"
+            "    caja: [12, 11]\n"
+            "    comportamiento: patrulla\n"
+            "    velocidad: 0.4\n"
+            "    puntos: 100\n"
+            "    animaciones:\n"
+            "      quieto: {frames: [0, 1], velocidad: 14}\n"
+            "      correr: {frames: [0, 1], velocidad: 10}\n"
+            "  %s:\n"
+            "    sprite: graficos/enemigo.png\n"
+            "    caja: [12, 11]\n"
+            "    comportamiento: volador\n"
+            "    velocidad: 0.6\n"
+            "    amplitud: 28\n"
+            "    periodo: 150\n"
+            "    puntos: 200\n"
+            "    animaciones:\n"
+            "      quieto: {frames: [0, 1], velocidad: 6}\n"
+            % (nombres["andar"], nombres["volar"]))
+
+
+# Y los del genero de latigo, que son otros y se dibujan aparte: aqui no se
+# pisa a nadie, asi que un bicho con 'vida: 2' son dos latigazos, y eso es lo
+# que obliga a acercarse, pegar y salir. El murcielago va por el aire a la
+# altura de la cabeza: agachandote pasa por encima.
+_BICHOS_CASTLEVANIA = (
+    "  esqueleto:\n"
+    "    sprite: graficos/esqueleto.png\n"
+    "    caja: [10, 15]\n"
+    "    comportamiento: patrulla\n"
+    "    velocidad: 0.35\n"
+    "    vida: 2                # dos latigazos: aqui no se pisa a nadie\n"
+    "    puntos: 200\n"
+    "    animaciones:\n"
+    "      quieto: {frames: [0, 1], velocidad: 16}\n"
+    "      correr: {frames: [0, 1], velocidad: 10}\n"
+    "  murcielago:\n"
+    "    sprite: graficos/murcielago.png\n"
+    "    caja: [12, 8]\n"
+    "    comportamiento: volador\n"
+    "    velocidad: 0.7\n"
+    "    amplitud: 24           # cuanto sube y baja\n"
+    "    periodo: 110           # frames que tarda en subir y bajar\n"
+    "    puntos: 200\n"
+    "    animaciones:\n"
+    "      quieto: {frames: [0, 1], velocidad: 5}\n"
+)
+
+# El jefe. Va aparte de los otros bichos porque el comentario que lo explica
+# vale para los dos generos: lo que cambia es a que se parece y como pega.
+def _jefe_plataformas(nombres: Dict[str, str]) -> str:
+    return ("  # Un jefe es un enemigo con 'jefe: si': aguanta varios pisotones,\n"
+            "  # el marcador ensena lo que le queda y al matarlo se acaba el nivel.\n"
+            "  %s:\n"
+            "    sprite: graficos/enemigo.png\n"
+            "    caja: [12, 11]\n"
+            "    comportamiento: perseguidor\n"
+            "    velocidad: 0.5\n"
+            "    rango: 160\n"
+            "    vida: 5\n"
+            "    puntos: 1000\n"
+            "    jefe: si\n"
+            "    animaciones:\n"
+            "      quieto: {frames: [0, 1], velocidad: 8}\n"
+            "      correr: {frames: [0, 1], velocidad: 5}\n"
+            % nombres["jefe"])
+
+
+# El del genero de latigo: el encapuchado. Aguanta mas porque aqui no se pisa
+# a nadie y cada golpe es un latigazo, y va mas despacio para que se pueda
+# torear: acercarse, pegar y salir.
+_JEFE_CASTLEVANIA = (
+    "  # Un jefe es un enemigo con 'jefe: si': aguanta varios golpes, el\n"
+    "  # marcador ensena lo que le queda y al matarlo se acaba el nivel.\n"
+    "  muerte:\n"
+    "    sprite: graficos/muerte.png\n"
+    "    caja: [12, 14]\n"
+    "    comportamiento: perseguidor\n"
+    "    velocidad: 0.4\n"
+    "    rango: 200             # desde donde te huele\n"
+    "    vida: 5                # cinco latigazos, y aqui no vale pisarlo\n"
+    "    puntos: 2000\n"
+    "    jefe: si\n"
+    "    animaciones:\n"
+    "      quieto: {frames: [0, 1], velocidad: 10}\n"
+    "      correr: {frames: [0, 1], velocidad: 6}\n"
+)
 
 def _genero_plataformas(nombres: Dict[str, str], estilo: str) -> Genero:
     return Genero(
@@ -671,6 +694,10 @@ def _genero_plataformas(nombres: Dict[str, str], estilo: str) -> Genero:
                    else ("galeria", "pozo")),
         eventos="",
         spawns="",
+        bichos=_bichos_plataformas(nombres),
+        bichos_spawn="  s: %s\n  m: %s\n  J: %s\n" % (
+            nombres["andar"], nombres["volar"], nombres["jefe"]),
+        jefe=_jefe_plataformas(nombres),
         suelta=nombres["moneda"],
         con_escaleras=False,
         con_control=False,
@@ -804,6 +831,9 @@ def _genero_castlevania(nombres: Dict[str, str]) -> Genero:
         # que ya no vuelves al principio del nivel.
         eventos='    control: {notas: "la5 do6 mi6", velocidad: 4}\n',
         spawns="  M: mejora\n  H: hacha\n",
+        bichos=_BICHOS_CASTLEVANIA,
+        bichos_spawn="  s: esqueleto\n  m: murcielago\n  J: muerte\n",
+        jefe=_JEFE_CASTLEVANIA,
         suelta=nombres["municion"],
         con_escaleras=True,
         con_control=True,
@@ -814,8 +844,10 @@ GENEROS = ("plataformas", "castlevania")
 
 # Como se llama cada cosa en cada estilo de dibujo.
 _NOMBRES = {
-    "bosque": {"moneda": "moneda", "municion": "corazon"},
-    "hierro": {"moneda": "gema", "municion": "chispa"},
+    "bosque": {"moneda": "moneda", "municion": "corazon",
+               "andar": "seta", "volar": "mosca", "jefe": "jefazo"},
+    "hierro": {"moneda": "gema", "municion": "chispa",
+               "andar": "raton", "volar": "murcielago", "jefe": "guardian"},
 }
 
 
@@ -931,7 +963,8 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
         fisica=g.fisica, armas=g.armas, escaleras=g.escaleras, animos=g.animos,
         control=g.control, municion=g.municion, mejora=g.mejora,
         musica=g.musica, eventos=g.eventos, arma=g.arma,
-        spawns=g.spawns, suelta=g.suelta)
+        spawns=g.spawns, suelta=g.suelta,
+        bichos=g.bichos, bichos_spawn=g.bichos_spawn, jefe=g.jefe)
     with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
               newline="\n") as fh:
         fh.write(contenido)

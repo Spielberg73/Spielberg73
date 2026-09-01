@@ -170,6 +170,55 @@ class TestCli(unittest.TestCase):
                            mas_larga_plat * 3,
                            "la del castillo no es mucho mas larga que la de antes")
 
+    def test_el_genero_de_latigo_trae_sus_propios_bichos(self):
+        """Con los mismos bichos y el mismo dibujo, un juego de latigo parece el
+        de plataformas con otro sprite en la mano. Aqui patrulla un esqueleto
+        que aguanta dos golpes -no se puede pisar a nadie, asi que hay que
+        acercarse y pegar-, vuela un murcielago y el jefe es otro."""
+        from ngplat.project import load_project
+        proyectos = {}
+        for genero in ("plataformas", "castlevania"):
+            destino = os.path.join(self.tmp, "b-" + genero)
+            self.assertEqual(self._ejecutar("nuevo", destino,
+                                            "--genero", genero)[0], 0)
+            proyectos[genero] = (destino, load_project(destino))
+        (_, plat), (carpeta, cast) = proyectos["plataformas"], proyectos["castlevania"]
+
+        self.assertEqual(sorted(cast.enemies), ["esqueleto", "muerte", "murcielago"])
+        self.assertFalse(set(cast.enemies) & set(plat.enemies),
+                         "el de latigo trae los bichos del de plataformas")
+        # y cada uno con su dibujo, que es de lo que va esto: en el de
+        # plataformas los tres comparten hoja a proposito
+        hojas = {e.sprite for e in cast.enemies.values()}
+        self.assertEqual(len(hojas), 3, "los tres bichos comparten dibujo")
+        for hoja in hojas:
+            self.assertTrue(os.path.exists(os.path.join(carpeta, hoja)),
+                            "falta el dibujo %s" % hoja)
+        # el esqueleto aguanta dos latigazos: uno solo seria como pisarlo
+        self.assertEqual(cast.enemies["esqueleto"].health, 2)
+        self.assertTrue(cast.enemies["muerte"].boss)
+        # y los simbolos del mapa apuntan a los bichos de este genero
+        simbolos = cast.levels[0].spawns
+        for simbolo, quien in (("s", "esqueleto"), ("m", "murcielago"),
+                               ("J", "muerte")):
+            self.assertEqual(simbolos.get(simbolo), quien,
+                             "el simbolo '%s' no pone un %s" % (simbolo, quien))
+
+    def test_los_dos_estilos_dibujan_los_bichos_del_latigo(self):
+        """El genero y el estilo son ejes distintos: el murcielago tiene que
+        existir en los dos, y en el de seis colores con esos seis."""
+        from ngplat import art, art_hierro
+        for modulo, tope in ((art, 15), (art_hierro, 6)):
+            dibujos = modulo.todos()
+            for nombre in ("graficos/esqueleto.png", "graficos/murcielago.png",
+                           "graficos/muerte.png"):
+                self.assertIn(nombre, dibujos, modulo.__name__)
+                imagen = dibujos[nombre]
+                self.assertEqual((imagen.width, imagen.height), (32, 16), nombre)
+                colores = {c for c in imagen.colors() if c[3]}
+                self.assertTrue(colores, "%s esta en blanco" % nombre)
+                self.assertLessEqual(len(colores), tope, nombre)
+
     def test_la_antorcha_suena(self):
         """El punto de control tenia el evento sin poner y se tocaba en mudo."""
         from ngplat.project import load_project

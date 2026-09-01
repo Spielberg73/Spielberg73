@@ -1233,6 +1233,20 @@ static const NpPlayer *np_nearest_player(const NpWorld *w, np_fix x)
     return mejor;
 }
 
+/* Si hay donde pisar justo al otro lado del borde por el que va el enemigo.
+   Lo usan los dos que andan por el suelo: el que patrulla para darse la vuelta
+   y el que persigue para plantarse en vez de tirarse por el agujero. */
+static uint8_t np_suelo_delante(const NpWorld *w, const NpEntity *e,
+                                const NpActorDef *a, uint8_t hacia_la_derecha)
+{
+    int32_t borde = hacia_la_derecha ? NP_F2I(e->x + NP_I2F(a->box_w) - 1) + 1
+                                     : NP_F2I(e->x) - 1;
+    int32_t debajo = NP_F2I(e->y + NP_I2F(a->box_h));
+    uint8_t tipo = np_tile_kind_at(w->level, borde >> NP_TILE_SHIFT,
+                                   debajo >> NP_TILE_SHIFT);
+    return (uint8_t)(tipo == NP_TILE_SOLID || tipo == NP_TILE_PLATFORM);
+}
+
 static void np_enemy_update(NpWorld *w, NpEntity *e)
 {
     const NpEnemyDef *d = &np_enemies[e->def];
@@ -1260,6 +1274,15 @@ static void np_enemy_update(NpWorld *w, NpEntity *e)
         } else {
             e->vx = np_approach(e->vx, 0, d->speed);
         }
+        /* Un perseguidor va detras de ti mires donde mires, y con un agujero
+           delante se tira por el y se pierde: si el que se cae es el jefe, el
+           nivel ya no se puede terminar y no hay forma de saber por que. Con
+           `borde: si` -lo de siempre- se planta en el borde y espera ahi. El
+           que patrulla se da la vuelta mas abajo; este no, porque darse la
+           vuelta seria dejar de perseguir. */
+        if (d->edge_turn && e->vx != 0 && e->vy == 0
+            && !np_suelo_delante(w, e, a, (uint8_t)(e->vx > 0)))
+            e->vx = 0;
         break;
     }
     case NP_AI_JUMPER:
@@ -1292,15 +1315,9 @@ static void np_enemy_update(NpWorld *w, NpEntity *e)
         if (hit_down && e->vy > 0) e->vy = 0;
         if (hit_up && e->vy < 0) e->vy = 0;
 
-        if (hit_down && d->edge_turn && d->behavior == NP_AI_PATROL) {
-            int32_t edge = e->facing ? NP_F2I(e->x + NP_I2F(a->box_w) - 1) + 1
-                                     : NP_F2I(e->x) - 1;
-            int32_t below = NP_F2I(e->y + NP_I2F(a->box_h)) ;
-            uint8_t kind = np_tile_kind_at(w->level, edge >> NP_TILE_SHIFT,
-                                           below >> NP_TILE_SHIFT);
-            if (kind != NP_TILE_SOLID && kind != NP_TILE_PLATFORM)
-                e->facing = (uint8_t)!e->facing;
-        }
+        if (hit_down && d->edge_turn && d->behavior == NP_AI_PATROL
+            && !np_suelo_delante(w, e, a, e->facing))
+            e->facing = (uint8_t)!e->facing;
     }
 
     /* Nota: `facing` manda sobre `vx` (es lo que decide la direccion del

@@ -905,6 +905,14 @@
     return mejor;
   };
 
+  /* Si hay donde pisar al otro lado del borde. Igual que np_suelo_delante. */
+  World.prototype.sueloDelante = function (e, a, haciaLaDerecha) {
+    var borde = haciaLaDerecha ? F2I(e.x + I2F(a.box_w) - 1) + 1 : F2I(e.x) - 1;
+    var debajo = F2I(e.y + I2F(a.box_h));
+    var tipo = this.tileKindAt(borde >> TILE_SHIFT, debajo >> TILE_SHIFT);
+    return tipo === TILE_SOLID || tipo === TILE_PLATFORM;
+  };
+
   World.prototype.enemyUpdate = function (e) {
     var d = this.data.enemies[e.def], a = d.actor, p = this.nearestPlayer(e.x);
     switch (d.behavior) {
@@ -923,6 +931,10 @@
         var dx = p.x - e.x;
         if (abs(dx) <= d.range) { e.vx = dx > 0 ? d.speed : -d.speed; e.facing = dx > 0 ? 1 : 0; }
         else e.vx = approach(e.vx, 0, d.speed);
+        /* con un agujero delante se planta en el borde en vez de tirarse por
+           el: ver np_enemy_update en np_world.c */
+        if (d.edge_turn && e.vx !== 0 && e.vy === 0 &&
+            !this.sueloDelante(e, a, e.vx > 0)) e.vx = 0;
         break;
       }
       case AI_JUMPER:
@@ -946,12 +958,8 @@
       e.y = this.moveY(e.x, e.y, a.box_w, a.box_h, e.vy, 0, moveOut);
       if (moveOut.hitDown && e.vy > 0) e.vy = 0;
       if (moveOut.hitUp && e.vy < 0) e.vy = 0;
-      if (moveOut.hitDown && d.edge_turn && d.behavior === AI_PATROL) {
-        var edge = e.facing ? F2I(e.x + I2F(a.box_w) - 1) + 1 : F2I(e.x) - 1;
-        var below = F2I(e.y + I2F(a.box_h));
-        var kind = this.tileKindAt(edge >> TILE_SHIFT, below >> TILE_SHIFT);
-        if (kind !== TILE_SOLID && kind !== TILE_PLATFORM) e.facing = e.facing ? 0 : 1;
-      }
+      if (moveOut.hitDown && d.edge_turn && d.behavior === AI_PATROL &&
+          !this.sueloDelante(e, a, e.facing)) e.facing = e.facing ? 0 : 1;
     }
 
     /* `facing` manda sobre `vx`: recalcularlo aqui deshacia el giro en los

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Tuple
 
+from . import art
 from .art import Lienzo
 from .png import Image
 
@@ -209,6 +210,39 @@ def enemigo() -> Image:
     hoja = Lienzo(32, 16)
     for i in range(2):
         hoja.blit(i * 16, 0, _enemigo_frame(i))
+    return hoja.image
+
+
+# --- los bichos del genero de latigo --------------------------------------
+#
+# Aqui no se vuelven a dibujar: se cogen las siluetas de `art.py` y se pintan
+# con los seis colores. Un murcielago es un murcielago en los dos estilos -lo
+# que dice de que juego es el dibujo es su silueta-, y lo que cambia entre un
+# estilo y otro es la disciplina de color: en la cueva lo que se ve es lo que
+# brilla, asi que el bicho entero va en `claro` y el unico acento son los ojos
+# en `rojo`, como el resto de los actores de esta paleta.
+
+def murcielago() -> Image:
+    colores = {"w": CLARO, "b": CLARO, "s": LINEA, "L": ROJO}
+    hoja = Lienzo(32, 16)
+    for i, frame in enumerate(art._MURCIELAGO):
+        hoja.blit(i * 16, 0, art.patron(list(frame), colores))
+    return hoja.image
+
+
+def esqueleto() -> Image:
+    colores = {"h": CLARO, "s": LINEA, "L": LINEA}
+    hoja = Lienzo(32, 16)
+    for i, frame in enumerate(art._ESQUELETO):
+        hoja.blit(i * 16, 0, art.patron(list(frame), colores))
+    return hoja.image
+
+
+def muerte() -> Image:
+    colores = {"c": CLARO, "o": LINEA, "L": ROJO}
+    hoja = Lienzo(32, 16)
+    for i, frame in enumerate(art._MUERTE):
+        hoja.blit(i * 16, 0, art.patron(list(frame), colores))
     return hoja.image
 
 
@@ -517,6 +551,9 @@ def todos() -> Dict[str, Image]:
     return {
         "graficos/heroe.png": heroe(),
         "graficos/enemigo.png": enemigo(),
+        "graficos/murcielago.png": murcielago(),
+        "graficos/esqueleto.png": esqueleto(),
+        "graficos/muerte.png": muerte(),
         "graficos/gema.png": gema(),
         "graficos/plataforma.png": plataforma(),
         "graficos/candelabro.png": brasero(),

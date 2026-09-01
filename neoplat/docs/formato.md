@@ -608,9 +608,16 @@ Comportamientos:
 |---|---|---|
 | `patrulla` | anda y da la vuelta en paredes y bordes | `girar_en_borde` |
 | `volador` | flota subiendo y bajando, ignora la gravedad | `amplitud`, `periodo` |
-| `perseguidor` | va hacia el jugador si está cerca | `rango` |
+| `perseguidor` | va hacia el jugador si está cerca, y **se planta en el borde** de un agujero en vez de tirarse | `rango`, `girar_en_borde` |
 | `saltarin` | salta cada cierto tiempo | `salto`, `intervalo` |
 | `fijo` | no se mueve | — |
+
+**`girar_en_borde`** vale para los dos que andan por el suelo, y hace cosas
+distintas en cada uno: el que patrulla se da la vuelta y el que persigue se para
+en el borde y te espera ahí (darse la vuelta sería dejar de perseguirte). Con
+`girar_en_borde: no` los dos se tiran por el agujero y se pierden, que a veces
+es justo lo que quieres —bichos que salen y caen— pero **nunca** en un jefe: si
+el jefe se cae, el nivel no se puede terminar.
 
 **Jefes.** Un enemigo con `jefe: si` es el jefe del nivel: sube su `vida` para
 que aguante varios pisotones, el marcador enseña una barra con lo que le queda

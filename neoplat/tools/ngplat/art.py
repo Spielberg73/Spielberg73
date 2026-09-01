@@ -273,6 +273,171 @@ def enemigo() -> Image:
     return hoja.image
 
 
+# --- los bichos del genero de latigo --------------------------------------
+#
+# El genero de latigo trae los suyos en vez de la seta y la mosca: un esqueleto
+# que patrulla y aguanta dos golpes -con el latigo hay que pegarle dos veces, y
+# eso es justo lo que obliga a medir la distancia- y un murcielago que va y
+# viene por el aire. Van aparte del bicho de plataformas porque lo que se ve
+# tiene que decir a que juego estas jugando.
+#
+# Estos dos se dibujan con un **patron**: una lista de filas de texto, una letra
+# por pixel, en vez de rectangulos. Un murcielago con las alas abiertas no es un
+# monton de rectangulos, y escrito asi se ve en el propio codigo lo que sale.
+
+def patron(filas: List[str], colores: Dict[str, RGBA]) -> Image:
+    """Un fotograma escrito como dibujo: cada letra de `colores` pinta su
+    color y cualquier otra cosa ('.') deja el pixel transparente."""
+    c = Lienzo(len(filas[0]), len(filas))
+    for y, fila in enumerate(filas):
+        for x, letra in enumerate(fila):
+            if letra in colores:
+                c.px(x, y, colores[letra])
+    return c.image
+
+
+# alas arriba y alas abajo: el cuerpo se queda donde esta y baten alrededor
+_MURCIELAGO = (
+    ("................",
+     ".w............w.",
+     ".ww..b....b..ww.",
+     ".www.bbbbbb.www.",
+     "swwwwbLbbLbwwwws",
+     ".swwwbbbbbbwww..",
+     "...swwbbbbwws...",
+     "......sbbbs.....",
+     "......bb.bb.....",
+     "................",
+     "................",
+     "................",
+     "................",
+     "................",
+     "................",
+     "................"),
+    ("................",
+     "................",
+     ".....b....b.....",
+     ".....bbbbbb.....",
+     "....wbLbbLbw....",
+     "...wwbbbbbbww...",
+     "..www.bbbb.www..",
+     ".www..sbbs..www.",
+     "sww...bb.bb...ww",
+     ".w............w.",
+     "................",
+     "................",
+     "................",
+     "................",
+     "................",
+     "................"),
+)
+
+# de pie y dando el paso: se mueven las piernas y los brazos
+_ESQUELETO = (
+    ("................",
+     ".....hhhhhh.....",
+     "....hhhhhhhh....",
+     "....hLLhhLLh....",
+     "....hLLhhLLh....",
+     "....hhhLLhhh....",
+     ".....hLhLhh.....",
+     "......hhhh......",
+     "...hhhhhhhhhh...",
+     "...h.hhhhhh.h...",
+     "...h.hsshss.h...",
+     "...h.hhhhhh.h...",
+     "...ss.hhhh.ss...",
+     ".....hh..hh.....",
+     ".....hh..hh.....",
+     "....hhh..hhh...."),
+    ("................",
+     ".....hhhhhh.....",
+     "....hhhhhhhh....",
+     "....hLLhhLLh....",
+     "....hLLhhLLh....",
+     "....hhhLLhhh....",
+     ".....hLhLhh.....",
+     "...h..hhhh......",
+     "...hhhhhhhhhh...",
+     ".....hhhhhh.h...",
+     "....shsshsshh...",
+     ".....hhhhhh.h...",
+     "....s.hhhh.ss...",
+     "....hh....hh....",
+     "...hh......hh...",
+     "..hhh......hhh.."),
+)
+
+
+# El jefe del genero de latigo: un encapuchado que flota y persigue. El de
+# plataformas es el mismo bicho de siempre a lo grande, y este tenia que ser
+# otra cosa: es el que cierra el nivel.
+_MUERTE = (
+    ("................",
+     "......cccc......",
+     ".....cccccc.....",
+     "....cc.oo.cc....",
+     "....coLooLoc....",
+     "....ccoooocc....",
+     "....cccccccc....",
+     "...cccccccccc...",
+     "..cccccccccccc..",
+     "..cccccccccccc..",
+     ".cccccccccccccc.",
+     ".cccccccccccccc.",
+     ".ccc.cccc.ccccc.",
+     "..c..cccc..cccc.",
+     ".....c..c...cc..",
+     "................"),
+    ("................",
+     "................",
+     "......cccc......",
+     ".....cccccc.....",
+     "....cc.oo.cc....",
+     "....coLooLoc....",
+     "....ccoooocc....",
+     "....cccccccc....",
+     "...cccccccccc...",
+     "..cccccccccccc..",
+     "..cccccccccccc..",
+     ".cccccccccccccc.",
+     ".ccccc.cccc.ccc.",
+     ".cccc..ccc..c...",
+     "..cc...c..c.....",
+     "................"),
+)
+
+
+def murcielago() -> Image:
+    """El murcielago del castillo: alas oscuras, cuerpo claro y dos ojos."""
+    colores = {"w": PALETA["enemigo2"], "b": PALETA["enemigo"],
+               "s": PALETA["linea"], "L": PALETA["ojo"]}
+    hoja = Lienzo(32, 16)
+    for i, frame in enumerate(_MURCIELAGO):
+        hoja.blit(i * 16, 0, patron(list(frame), colores))
+    return hoja.image
+
+
+def esqueleto() -> Image:
+    """El esqueleto: hueso claro, cuencas negras y sombra en las costillas."""
+    colores = {"h": PALETA["metal"], "s": PALETA["metal2"],
+               "L": PALETA["linea"]}
+    hoja = Lienzo(32, 16)
+    for i, frame in enumerate(_ESQUELETO):
+        hoja.blit(i * 16, 0, patron(list(frame), colores))
+    return hoja.image
+
+
+def muerte() -> Image:
+    """El encapuchado: manto morado, la cara en sombra y dos ojos."""
+    colores = {"c": PALETA["enemigo2"], "o": PALETA["linea"],
+               "L": PALETA["camisa"]}
+    hoja = Lienzo(32, 16)
+    for i, frame in enumerate(_MUERTE):
+        hoja.blit(i * 16, 0, patron(list(frame), colores))
+    return hoja.image
+
+
 def _moneda_frame(ancho: int) -> Image:
     c = Lienzo(16, 16)
     oro, oro2 = PALETA["oro"], PALETA["oro2"]
@@ -651,6 +816,9 @@ def todos() -> Dict[str, Image]:
     return {
         "graficos/heroe.png": heroe(),
         "graficos/enemigo.png": enemigo(),
+        "graficos/murcielago.png": murcielago(),
+        "graficos/esqueleto.png": esqueleto(),
+        "graficos/muerte.png": muerte(),
         "graficos/moneda.png": moneda(),
         "graficos/bala.png": bala(),
         "graficos/llave.png": llave(),

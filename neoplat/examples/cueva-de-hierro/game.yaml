@@ -60,8 +60,8 @@ enemigos:
       quieto: {frames: [0, 1], velocidad: 14}
       correr: {frames: [0, 1], velocidad: 10}
   murcielago:
-    sprite: graficos/enemigo.png
-    caja: [12, 11]
+    sprite: graficos/murcielago.png
+    caja: [12, 8]
     comportamiento: volador
     velocidad: 0.6
     amplitud: 28

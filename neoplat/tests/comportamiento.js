@@ -132,9 +132,14 @@ function datos(filas, opciones) {
       { actor: enemigo, speed: fx(0.5), gravity: 0, jump: 0, range: fx(96),
         amplitude: fx(24), period: 64, interval: 90, score: 200, behavior: 1,
         health: 1, damage: 1, stompable: 1, edge_turn: 0, name: "volador" },
-      { actor: enemigo, speed: 0, gravity: fx(0.28), jump: 0, range: fx(96),
-        amplitude: fx(24), period: 120, interval: 90, score: 1000, behavior: 4,
-        health: opciones.bossHealth || 3, damage: 1, stompable: 1, edge_turn: 1,
+      /* el jefe esta quieto salvo que la prueba lo mande perseguir: es la
+         forma de probar al perseguidor sin montar otro enemigo */
+      { actor: enemigo, speed: opciones.jefePersigue ? fx(0.5) : 0,
+        gravity: fx(0.28), jump: 0, range: fx(opciones.jefeRango || 96),
+        amplitude: fx(24), period: 120, interval: 90, score: 1000,
+        behavior: opciones.jefePersigue ? 2 : 4,
+        health: opciones.bossHealth || 3, damage: 1, stompable: 1,
+        edge_turn: opciones.jefeBorde === undefined ? 1 : opciones.jefeBorde,
         boss: 1, name: "jefe" }
     ],
     items: [
@@ -582,6 +587,34 @@ prueba("el enemigo que patrulla gira en el borde", function () {
     assert.ok(enemigo.active, "el enemigo se ha caido del mapa");
   }
   assert.ok(giro, "el enemigo no ha girado en el borde");
+});
+
+/* Un perseguidor va detras del jugador mire donde mire, asi que con un agujero
+   por medio se tiraba por el y se perdia. Si el que se cae es el jefe, el nivel
+   no se puede terminar y no hay nada en pantalla que lo explique. */
+prueba("el perseguidor se planta en el borde en vez de tirarse", function () {
+  var filas = suelo([[13, 14, "J"], [13, 3, "P"]]);
+  filas[14] = "#".repeat(8) + "....." + "#".repeat(11);   // agujero de x=8 a x=12
+  var w = mundo(filas, { jefePersigue: true, jefeRango: 300 });
+  var jefe = w.entities[0];
+  var x0 = NP.F2I(jefe.x);
+  for (var i = 0; i < 600; i++) {
+    w.step(0);
+    assert.ok(jefe.active, "el jefe se ha caido por el agujero en el frame " + i);
+  }
+  var x1 = NP.F2I(jefe.x);
+  assert.ok(x1 < x0, "el jefe no se ha movido hacia el jugador: " + x0 + " -> " + x1);
+  assert.ok(x1 >= 13 * 16 - 8 && x1 <= 13 * 16 + 2,
+            "el jefe no se ha parado en el borde del agujero: x=" + x1);
+});
+
+prueba("con 'borde: no' el perseguidor si se tira", function () {
+  var filas = suelo([[13, 14, "J"], [13, 3, "P"]]);
+  filas[14] = "#".repeat(8) + "....." + "#".repeat(11);
+  var w = mundo(filas, { jefePersigue: true, jefeRango: 300, jefeBorde: 0 });
+  var jefe = w.entities[0], caido = false;
+  for (var i = 0; i < 600 && !caido; i++) { w.step(0); caido = !jefe.active; }
+  assert.ok(caido, "'borde: no' ya no deja que el enemigo se tire");
 });
 
 prueba("el enemigo volador oscila alrededor de su altura", function () {

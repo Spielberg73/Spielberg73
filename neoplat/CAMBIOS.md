@@ -2,8 +2,39 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.11.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.12.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.12
+
+**El género de látigo trae sus propios bichos.** Hasta ahora los dos géneros
+compartían la seta y la mosca —y encima los tres enemigos, jefe incluido,
+usaban el **mismo dibujo**—, así que un juego de castillo se veía como el de
+plataformas con otro sprite en la mano. Ahora el género de látigo trae los
+suyos, cada uno con su hoja:
+
+- **Esqueleto**: patrulla despacio y **aguanta dos latigazos**. Aquí no se pisa
+  a nadie, así que dos golpes son acercarse, pegar y salir: es lo que obliga a
+  medir la distancia, que es de lo que va este género.
+- **Murciélago**: va y viene por el aire a la altura de la cabeza. Agachándote
+  te pasa por encima.
+- **La muerte**: un encapuchado que te persigue y aguanta cinco latigazos, en
+  vez del mismo bicho de siempre a lo grande.
+
+Están dibujados en los **dos estilos**: el de bosque con su paleta y el de
+hierro con los seis colores contados del doble plano del Amiga. El género y el
+estilo siguen siendo ejes distintos. Y el ejemplo `cueva-de-hierro`, cuyo bicho
+volador ya se llamaba murciélago, por fin **parece** un murciélago.
+
+**Un perseguidor ya no se tira por los agujeros.** Al ponerle un jefe
+perseguidor al segundo nivel salió un fallo del motor que llevaba ahí desde
+siempre: `girar_en_borde` solo lo miraba el que patrulla, así que un
+perseguidor seguía al jugador hasta el borde de un agujero y se caía del mapa.
+Si el que se caía era el jefe —y matar al jefe es lo que termina ese nivel— el
+nivel se quedaba **imposible de terminar**, sin nada en pantalla que lo
+explicara. Ahora el perseguidor se planta en el borde y espera ahí; darse la
+vuelta como el que patrulla sería dejar de perseguir. Con `girar_en_borde: no`
+se sigue tirando, que a veces es lo que quieres.
 
 ## 1.11
 
