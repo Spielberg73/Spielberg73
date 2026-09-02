@@ -2,8 +2,36 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.13.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.14.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.14
+
+**El X68000 ya tiene parallax.** Era lo último que le faltaba a esa máquina, y
+llevaba apuntado como "si algún día se averigua cómo enseñar la segunda capa".
+Resulta que no era por ahí.
+
+- La sonda anterior barrió los bits del chip de sprites con **el mismo mapa en
+  las dos tablas**, así que no había forma de distinguir "solo se ve una capa"
+  de "se ven las dos, una encima de otra". Repetida con dibujos distintos y en
+  sitios distintos —rojo a la izquierda en una tabla, verde a la derecha en la
+  otra— el resultado es concluyente: en las 160 combinaciones de `$EB0808` y
+  `$EB0810` **nunca** salen los dos. Su capa se la queda el escenario.
+- Pero el X68000 tiene **otra pantalla** que el kit no usaba para nada: la
+  gráfica (GVRAM), con su propio scroll por hardware. La misma sonda dice que
+  se ve **a la vez** que la capa de fondo y por detrás de ella, y que moviendo
+  `$E80018` se desplaza sola. Ahí va el parallax.
+- Cuesta **dos registros por frame** y no gasta ni un patrón de la PCG (que son
+  192 y hacen falta): la capa se escribe una vez al empezar el nivel, repetida
+  hasta llenar los 512 píxeles de la página.
+
+Medido en el emulador, corriendo a la derecha: el suelo se desplaza 67 píxeles
+y el cielo 14, o sea el 0,21 del scroll, que es exactamente la `velocidad: 0.2`
+de esa capa en el `game.yaml`. Quitar el scroll de la capa tira la prueba.
+
+La pantalla gráfica es una sola página en este modo, así que se dibuja **una
+capa por nivel** (la más lejana) y el compilador lo dice cuando el juego trae
+más, igual que hace el Amiga en doble plano.
 
 ## 1.13
 

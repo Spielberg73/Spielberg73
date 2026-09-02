@@ -46,9 +46,10 @@ El X68000 es el otro caso raro, por lo contrario: es la que más ayuda da (sus
 patrones son de 16×16, justo el tile del kit) y a la vez la que menos
 documentación fiable tiene. Se portó **midiendo el hardware en el emulador**
 con una sonda que enciende bits y mira lo que sale por pantalla;
-[docs/x68000.md](docs/x68000.md) cuenta qué dijo cada prueba: por qué esta
-máquina se queda sin parallax y con 192 patrones en vez de 256, y cómo se
-midió la tabla de notas del YM2151, que no es la que dice la documentación.
+[docs/x68000.md](docs/x68000.md) cuenta qué dijo cada prueba: por qué su chip
+de sprites solo enseña una capa (y el parallax acabó en la pantalla gráfica,
+que es otro chip), por qué quedan 192 patrones en vez de 256, y cómo se midió
+la tabla de notas del YM2151, que no es la que dice la documentación.
 
 ## Instalación
 
@@ -331,9 +332,9 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.13.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
-| `neoplat-kit-1.13.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.13.zip` | el `ngplat.exe` y su LEEME |
+| `neoplat-docs-1.14.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
+| `neoplat-kit-1.14.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.14.zip` | el `ngplat.exe` y su LEEME |
 
 El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
 plantillas; no necesita Python ni nada instalado. Con **doble clic** —sin
@@ -693,9 +694,10 @@ marcador desplazado en vertical, es lo segundo.
 
 Lo que aún no hace:
 
-- **Varias capas de parallax en Amiga**: con `amiga: 8colores` el juego usa el
-  modo *dual playfield* del OCS y se dibuja **una** capa, movida por hardware;
-  las demás se ignoran. Dibujarlas con el blitter y quedarse con los 32 colores
+- **Varias capas de parallax en Amiga y en X68000**: con `amiga: 8colores` el
+  juego usa el modo *dual playfield* del OCS y se dibuja **una** capa, movida
+  por hardware; las demás se ignoran. En el X68000 pasa lo mismo por otra
+  razón: la pantalla gráfica es una sola página en ese modo. Dibujarlas con el blitter y quedarse con los 32 colores
   está medido y **no cabe**: 1.311 líneas de barrido sobre las 313 que da un
   frame ([docs/amiga.md](docs/amiga.md)).
 - **Muestras digitales en cinco de las seis máquinas**: un efecto ya puede ser

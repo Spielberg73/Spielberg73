@@ -12,10 +12,11 @@
  *   sprites  los actores (jugadores, enemigos, objetos, disparos)
  *   texto    el marcador (np_hud.c), que asi no gasta ni un patron de PCG
  *
- * Del parallax no hay: el chip tiene dos capas, pero encendiendo las dos y
- * dandole a cada una su tabla de nombres nunca se ven los dos dibujos a la vez
- * (probado bit a bit en el emulador, ver np_x68k.h). Asi que la capa se la
- * queda el escenario, que es lo que no se puede dibujar de otra forma.
+ * El parallax no va en el chip de sprites: tiene dos capas, pero encendiendo
+ * las dos nunca se ven los dos dibujos a la vez (probado bit a bit en el
+ * emulador, ver np_x68k.h), asi que su capa se la queda el escenario. Va en la
+ * **pantalla grafica**, que es otro chip: se ve a la vez, por detras, y tiene
+ * su propio scroll por hardware.
  *
  * La tabla de nombres es de 64x64 casillas y se repite sola, asi que un nivel
  * mas largo que 64 casillas se dibuja columna a columna segun avanza la camara,
@@ -142,6 +143,74 @@ static void np_scroll(const NpWorld *w)
     *NP_BG0_Y = (uint16_t)(int16_t)w->cam_y;
 }
 
+/* --- el parallax: la pantalla grafica ------------------------------------
+ *
+ * La unica capa del chip de sprites se la lleva el escenario, asi que el
+ * parallax va en la pantalla grafica (GVRAM), que se ve a la vez, por detras,
+ * y tiene su propio scroll por hardware. Ver np_x68k.h.
+ *
+ * La pagina es de 512 pixeles de ancho y se repite sola, asi que la capa se
+ * escribe repetida hasta llenarla: luego el scroll da la vuelta solo y no hay
+ * que tocar nada por frame mas que dos registros.
+ */
+
+static const NpCapaX68k *np_capa_puesta;
+
+static void np_capa_borrar(void)
+{
+    uint32_t i, cuantos = (uint32_t)NP_GVRAM_ANCHO * NP_GVRAM_ALTO;
+    for (i = 0; i < cuantos; i++) NP_GVRAM[i] = 0;
+}
+
+/* Escribe la imagen de una capa en la GVRAM, repetida a lo ancho. */
+static void np_capa_cargar(const NpCapaX68k *capa)
+{
+    const uint8_t *datos = &np_capa_datos[capa->offset];
+    uint16_t bytes_fila = (uint16_t)(capa->ancho / 2);
+    uint16_t y, x;
+
+    for (y = 0; y < capa->alto; y++) {
+        volatile uint16_t *destino;
+        const uint8_t *fila = datos + (uint32_t)y * bytes_fila;
+        uint16_t pantalla_y = (uint16_t)(capa->y + y);
+        if (pantalla_y >= NP_GVRAM_ALTO) break;
+        destino = &NP_GVRAM[(uint32_t)pantalla_y * NP_GVRAM_ANCHO];
+        for (x = 0; x < NP_GVRAM_ANCHO; x += 2) {
+            uint8_t par = fila[(x % capa->ancho) / 2];
+            destino[x] = (uint16_t)(par >> 4);
+            destino[x + 1] = (uint16_t)(par & 15);
+        }
+    }
+}
+
+/* La capa del nivel, o ninguna. Se llama al empezar cada nivel. */
+static void np_capa_nivel(const NpWorld *w)
+{
+    uint8_t numero = np_capa_de_nivel[w->level_index];
+    uint16_t i;
+
+    np_capa_puesta = 0;
+    np_capa_borrar();
+    if (!numero) {
+        *NP_VC_R2 = NP_VC_SPRITES | NP_VC_TEXTO;
+        return;
+    }
+    np_capa_puesta = &np_capas[numero - 1];
+    for (i = 0; i < 16; i++) NP_PALETA_GFX[i] = np_capa_puesta->paleta[i];
+    np_capa_cargar(np_capa_puesta);
+    *NP_VC_R2 = NP_VC_SPRITES | NP_VC_TEXTO | NP_VC_GRAFICA;
+}
+
+/* Y el scroll, que es lo unico que cuesta por frame: dos registros. */
+static void np_capa_scroll(const NpWorld *w)
+{
+    int32_t x;
+    if (!np_capa_puesta) return;
+    x = (w->cam_x * (int32_t)np_capa_puesta->speed) >> 8;
+    *NP_SCROLL_X = (uint16_t)(x & (NP_GVRAM_ANCHO - 1));
+    *NP_SCROLL_Y = 0;
+}
+
 /* --- los actores -------------------------------------------------------- */
 
 static uint16_t np_sprite_siguiente;
@@ -199,6 +268,7 @@ void np_video_frame(const NpWorld *w)
         ultima_columna = columna;
         /* por donde no hay capa ni sprite se ve el color 0 de la paleta
            grafica, asi que ese es el fondo del nivel */
+        np_capa_nivel(w);
         NP_PALETA_GFX[0] = w->level->background;
         for (c = columna - 1; c <= columna + NP_COLUMNAS + 1; c++)
             np_columna_escenario(w, c);
@@ -214,6 +284,7 @@ void np_video_frame(const NpWorld *w)
     }
 
     np_scroll(w);
+    np_capa_scroll(w);
 
     np_sprite_siguiente = 0;
     for (i = 0; i < w->entity_count; i++) {

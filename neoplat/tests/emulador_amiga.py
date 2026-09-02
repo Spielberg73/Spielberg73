@@ -22,7 +22,8 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from camara import Vigia, comprobar_salto  # noqa: E402
+from camara import (Vigia, comprobar_salto,  # noqa: E402
+                    desplazamiento, perfiles)
 from libretro import (Emulador, buscar_core, colores, distintos,  # noqa: E402
                       franja, guardar_png)
 from sonido import (banda_del_efecto, comprobar_melodia, comprobar_titulo,  # noqa: E402
@@ -35,39 +36,6 @@ FPS = 50
 FRANJA_FONDO = (78, 112)     # el cielo: ahi solo se ve la capa de parallax
 FRANJA_SUELO = (225, 250)    # el suelo del escenario, con sus bordes
 FRAMES_ANTES_DE_MEDIR = 110  # lo que tarda la camara en despegarse del borde
-
-
-def _perfiles(frames, y0, y1):
-    """Firma de cada columna de una franja, en varios frames a la vez.
-
-    Comparar columnas enteras y no filas sueltas evita que un suelo liso, que
-    es igual desplazado o sin desplazar, de una medida cualquiera. Las firmas
-    se numeran para poder compararlas de un tiron.
-    """
-    numeros, salida = {}, []
-    for ancho, _alto, pixeles in frames:
-        fila = []
-        for x in range(ancho):
-            firma = tuple(pixeles[y * ancho + x] for y in range(y0, y1))
-            if firma not in numeros:
-                numeros[firma] = len(numeros)
-            fila.append(numeros[firma])
-        salida.append(fila)
-    return salida
-
-
-def _desplazamiento(antes, ahora, maximo=70):
-    """Cuantos pixeles se ha movido una franja entre dos frames, y si la medida
-    es de fiar (cuantas columnas casan con ese desplazamiento)."""
-    mejor, acierto = 0, 0.0
-    ancho = len(antes)
-    for d in range(-maximo, maximo + 1):
-        iguales = sum(1 for x in range(maximo, ancho - maximo)
-                      if antes[x + d] == ahora[x])
-        razon = iguales / (ancho - 2 * maximo)
-        if razon > acierto:
-            mejor, acierto = d, razon
-    return mejor, acierto
 
 
 def comprobar(adf: str, capturas: str = "capturas", musica=None,
@@ -208,16 +176,16 @@ def comprobar(adf: str, capturas: str = "capturas", musica=None,
             fotos.append(emu.frame)
         emu.pulsar()
         guardar_png(fotos[0], os.path.join(capturas, "amiga_parallax_antes.png"))
-        cielos = _perfiles(fotos, *FRANJA_FONDO)
-        suelos = _perfiles(fotos, *FRANJA_SUELO)
+        cielos = perfiles(fotos, *FRANJA_FONDO)
+        suelos = perfiles(fotos, *FRANJA_SUELO)
         fondo = suelo = 0
         fiable_f = fiable_s = 0.0
         for i in range(1, len(fotos)):
-            paso, fiable = _desplazamiento(suelos[0], suelos[i])
+            paso, fiable = desplazamiento(suelos[0], suelos[i])
             if paso >= suelo or fiable < 0.5:
                 break                      # la camara ha dejado de avanzar
             suelo, fiable_s = paso, fiable
-            fondo, fiable_f = _desplazamiento(cielos[0], cielos[i])
+            fondo, fiable_f = desplazamiento(cielos[0], cielos[i])
             guardar_png(fotos[i], os.path.join(capturas, "amiga_parallax.png"))
         exigir(suelo < 0, "el escenario no se ha movido al correr a la derecha")
         exigir(fiable_f > 0.5,

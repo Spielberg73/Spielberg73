@@ -8,18 +8,25 @@ es una casilla de la tabla de nombres.
 
 El reparto de la pantalla:
 
+  grafica  la capa de parallax, con su propio scroll (GVRAM)
   capa BG  el escenario, con scroll por hardware
   sprites  los actores (128, de 16x16)
   texto    el marcador, en el plano de texto, que asi no gasta ni un patron
 
-Dos cosas que salieron de probarlo en el emulador y no de la documentacion:
+Tres cosas que salieron de probarlo en el emulador y no de la documentacion:
 
-  - El chip tiene dos capas de fondo, pero no se consiguio que se vieran las
-    dos a la vez con ninguna combinacion de sus registros. Asi que la capa se
-    la queda el escenario y **el parallax no se dibuja en esta maquina**.
+  - El chip de sprites tiene dos capas de fondo, pero no se consiguio que se
+    vieran las dos a la vez con ninguna combinacion de sus registros (probado
+    poniendo dibujos distintos en cada tabla). Asi que su capa se la queda el
+    escenario.
+  - El parallax va entonces en la **pantalla grafica**, que es otro chip: se ve
+    a la vez que la capa, por detras, y tiene su propio scroll por hardware. En
+    el modo de pantalla del kit es una sola pagina de 512 pixeles de ancho que
+    se repite sola, asi que se dibuja **una capa por nivel**, la mas lejana.
   - El limite de verdad no son los sprites sino los **192 patrones** de la PCG
     RAM: son 256, pero los 64 ultimos son la tabla de nombres de la capa, que
-    vive dentro de la misma memoria.
+    vive dentro de la misma memoria. Las capas de parallax no gastan patrones,
+    porque no son tiles: son una imagen en la GVRAM.
 
 Y por eso el color 15 del primer bloque de paleta se lo queda el marcador: el
 plano de texto lee de la paleta de sprites, no tiene una suya.
@@ -32,7 +39,7 @@ docs/x68000.md, que cuenta como y por que.
 from __future__ import annotations
 
 import struct
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from .. import adpcm
 from .. import gfx
@@ -89,7 +96,7 @@ class X68000(Sistema):
     notas = [
         "sprites:  128 de 16x16, y el escenario va en una capa aparte",
         "patrones: 192, repartidos entre los sprites y la capa de fondo",
-        "parallax: no, esta maquina solo ensena una capa de fondo",
+        "parallax: si, en la pantalla grafica (una capa por nivel)",
         "sonido:   YM2151 (ocho canales de FM) y muestras por el ADPCM",
     ]
 
@@ -113,9 +120,12 @@ class X68000(Sistema):
         for actor in build.actor_builds():
             banco.empaquetar_hoja(actor.sheet)
 
-        # El parallax se queda fuera: esta maquina solo ensena una capa de
-        # fondo y se la lleva el escenario. Se quitan antes de empaquetar para
-        # que no gasten patrones, que aqui son 192 y hacen falta.
+        # El parallax no va en el chip de sprites -su unica capa se la lleva
+        # el escenario- sino en la **pantalla grafica**, que se ve a la vez y
+        # tiene su propio scroll. Las capas se guardan aparte como imagenes y
+        # se quitan de aqui para que no gasten patrones de la PCG, que son 192
+        # y hacen falta.
+        capas = _capas_gvram(build)
         build.info_parallax = len(build.layers)
         for nivel in build.levels:
             nivel.layers = []
@@ -145,6 +155,7 @@ class X68000(Sistema):
         build.info = {
             "banco": banco,
             "glifos": glifos,
+            "capas": capas,
             "stats": {
                 "patrones": banco.cuantos,
                 "bytes_pcg": banco.cuantos * gfx_x68k.PATRON_BYTES,
@@ -154,7 +165,24 @@ class X68000(Sistema):
                 "#define NP_PCG_PATRONES %d" % banco.cuantos,
                 "#define NP_PCG_BYTES %d" % (banco.cuantos * gfx_x68k.PATRON_BYTES),
                 "#define NP_FONT_COUNT %d" % len(glifos),
+                "#define NP_CAPA_COUNT %d" % len(capas["capas"]),
+                "#define NP_CAPA_BYTES %d" % max(1, len(capas["datos"])),
                 "extern const uint8_t np_pcg_data[NP_PCG_BYTES];",
+                "",
+                "/* Una capa de parallax lista para la pantalla grafica: la",
+                "   imagen en 4 bits por pixel (dos pixeles por byte) y como",
+                "   se mueve. Va aqui y no en np_x68k.h porque la escribe el",
+                "   compilador, como las demas tablas del juego. */",
+                "typedef struct {",
+                "    uint32_t offset;         /* donde empieza en np_capa_datos */",
+                "    uint16_t ancho, alto;    /* en pixeles */",
+                "    uint16_t y;              /* donde empieza en la pantalla */",
+                "    uint16_t speed;          /* 8.8: 256 = como el escenario */",
+                "    uint16_t paleta[16];     /* la paleta de la grafica */",
+                "} NpCapaX68k;",
+                "extern const uint8_t np_capa_datos[NP_CAPA_BYTES];",
+                "extern const NpCapaX68k np_capas[];",
+                "extern const uint8_t np_capa_de_nivel[];",
             ],
         }
 
@@ -177,10 +205,10 @@ class X68000(Sistema):
                     "el nivel '%s' tiene %d casillas de alto y la tabla de "
                     "nombres llega a 64: lo que pase de ahi no se dibuja"
                     % (nivel.name, nivel.height))
-        if getattr(build, "info_parallax", 0):
+        if getattr(build, "info_parallax", 0) > 1:
             avisos.append(
-                "el juego tiene %d capa(s) de parallax y el X68000 solo ensena "
-                "una capa de fondo, que se lleva el escenario: no se dibujan"
+                "el juego tiene %d capas de parallax y aqui se dibuja una por "
+                "nivel (la mas lejana): la pantalla grafica es una sola pagina"
                 % build.info_parallax)
         if len(banco.paletas) and _usa_el_ultimo(banco, COLOR_HUD):
             avisos.append(
@@ -352,6 +380,71 @@ def _glifo_1bpp(pixeles) -> List[int]:
     return filas
 
 
+
+# --- el parallax, en la pantalla grafica ---------------------------------
+#
+# El chip de sprites solo ensena una capa de fondo y esa se la lleva el
+# escenario. Pero esta maquina tiene ademas una **pantalla grafica** (la GVRAM
+# de $C00000), con su propio scroll por hardware, que se ve a la vez que la
+# capa y por detras de ella. Medido en el emulador con una sonda: pintando
+# franjas en la GVRAM y encendiendo la capa se ven las dos cosas, y moviendo
+# $E80018 la grafica se desplaza sola. Ahi va el parallax.
+#
+# En el modo de pantalla del kit la grafica es **una sola pagina** de 512
+# pixeles de ancho que se repite, asi que se dibuja una capa por nivel: la mas
+# lejana, que es la que mas se nota.
+
+GVRAM_ANCHO = 512
+
+
+def _capa_bitmap(capa) -> Tuple[bytes, int, int]:
+    """La imagen de una capa, otra vez entera y en 4 bits por pixel.
+
+    El motor la recibe asi -dos pixeles por byte- y la va escribiendo en la
+    GVRAM repetida hasta llenar los 512 pixeles de ancho de la pagina.
+    """
+    ancho, alto = capa.cols * 16, capa.rows * 16
+    filas = []
+    for y in range(alto):
+        fila = bytearray()
+        for x in range(0, ancho, 2):
+            izq = capa.dibujos[capa.tiles[(y // 16) * capa.cols + (x // 16)]][
+                (y % 16) * 16 + (x % 16)]
+            der = capa.dibujos[capa.tiles[(y // 16) * capa.cols + ((x + 1) // 16)]][
+                (y % 16) * 16 + ((x + 1) % 16)]
+            fila.append(((izq & 15) << 4) | (der & 15))
+        filas.append(bytes(fila))
+    return b"".join(filas), ancho, alto
+
+
+def _capas_gvram(build: Build) -> Dict[str, object]:
+    """Los datos de las capas de parallax para la pantalla grafica."""
+    datos = bytearray()
+    capas = []
+    for capa in build.layers:
+        bits, ancho, alto = _capa_bitmap(capa)
+        # el color 0 de la pantalla grafica es el fondo del nivel (lo pone el
+        # motor), asi que los de la capa empiezan en el 1, como en el resto
+        # del kit
+        colores = [0] + [gfx_x68k.x68k_color(c) for c in capa.palette.colors]
+        colores += [0] * (16 - len(colores))
+        capas.append({
+            "nombre": capa.name,
+            "offset": len(datos),
+            "ancho": ancho,
+            "alto": alto,
+            "y": max(0, min(capa.layer.offset_y, 255)),
+            # 8.8: 256 = se mueve igual que el escenario
+            "velocidad": int(round(capa.layer.speed_x * 256)) & 0xFFFF,
+            "paleta": colores[:16],
+        })
+        datos.extend(bits)
+    # que capa lleva cada nivel: la primera de las suyas (la mas lejana), o
+    # ninguna. El numero es el indice + 1, como la musica.
+    de_nivel = [(nivel.layers[0] + 1) if nivel.layers else 0
+                for nivel in build.levels]
+    return {"datos": bytes(datos), "capas": capas, "de_nivel": de_nivel}
+
 def _c_bytes(datos, por_linea=16) -> str:
     lineas = []
     for i in range(0, len(datos), por_linea):
@@ -381,7 +474,42 @@ def _graficos_c(build: Build, banco: gfx_x68k.BancoX68k) -> str:
         "};",
         "",
     ]
+    partes.extend(_capas_c(build.info["capas"]))
     return "\n".join(partes)
+
+
+def _capas_c(capas: Dict[str, object]) -> List[str]:
+    """Las capas de parallax: la imagen en 4 bits por pixel y su ficha.
+
+    Van en la pantalla grafica, no en la PCG (ver _capas_gvram)."""
+    datos = capas["datos"]
+    partes = [
+        "/* Las capas de parallax, para la pantalla grafica: dos pixeles por",
+        "   byte, y cada capa se repite hasta llenar los 512 de la pagina. */",
+        "const uint8_t np_capa_datos[NP_CAPA_BYTES] = {",
+        _c_bytes(datos if datos else b"\x00"),
+        "};",
+        "",
+        "const NpCapaX68k np_capas[] = {",
+    ]
+    if not capas["capas"]:
+        partes.append("    { 0, 0, 0, 0, 0, { 0 } }")
+    for capa in capas["capas"]:
+        partes.append("    /* %s */" % capa["nombre"])
+        partes.append("    { %d, %d, %d, %d, %d, {" % (
+            capa["offset"], capa["ancho"], capa["alto"], capa["y"],
+            capa["velocidad"]))
+        partes.append("        " + ", ".join("0x%04x" % c for c in capa["paleta"]))
+        partes.append("    } },")
+    partes.append("};")
+    partes.append("")
+    partes.append("/* Que capa lleva cada nivel: indice + 1, cero = ninguna. */")
+    partes.append("const uint8_t np_capa_de_nivel[] = {")
+    numeros = capas["de_nivel"] or [0]
+    partes.append("    " + ", ".join(str(n) for n in numeros))
+    partes.append("};")
+    partes.append("")
+    return partes
 
 
 def _makefile(build: Build, nombre: str) -> str:

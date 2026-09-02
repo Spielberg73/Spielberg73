@@ -33,15 +33,18 @@ import sys
 import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from camara import Vigia, comprobar_salto  # noqa: E402
+from camara import Vigia, comprobar_salto, recorrido  # noqa: E402
 from libretro import (Emulador, buscar_core, colores, distintos,  # noqa: E402
                       franja, guardar_png)
 from sonido import (banda_del_efecto, comprobar_melodia,  # noqa: E402
-                    nivel, pico_por_frame)
+                    comprobar_titulo, nivel, pico_por_frame)
 
 CORE = "px68k"
 FPS = 60
 FRAMES_DE_ARRANQUE = 2400      # tope: Human68k tarda lo suyo en llegar al disco
+FRANJA_FONDO = (40, 100)       # el cielo: ahi solo se ve la capa de parallax
+FRANJA_SUELO = (200, 222)      # el suelo del escenario, con sus bordes
+FRAMES_ANTES_DE_MEDIR = 110    # lo que tarda la camara en despegarse del borde
 ANCHO, ALTO = 320, 224         # el modo que pide el juego; Human68k usa 768x512
 
 
@@ -146,7 +149,8 @@ def _esperar_al_juego(emu) -> bool:
 
 
 def comprobar(ejecutable: str, capturas: str = "capturas", musica=None,
-              salto=None, pantallas: bool = False) -> int:
+              salto=None, pantallas: bool = False, parallax: bool = False,
+              titulo_musica: str = "") -> int:
     core = buscar_core(CORE, "NEOPLAT_CORE_X68000")
     if not core:
         print("el core de px68k no esta instalado: se salta la prueba")
@@ -187,6 +191,8 @@ def comprobar(ejecutable: str, capturas: str = "capturas", musica=None,
     guardar_png(titulo, os.path.join(capturas, "x68000_titulo.png"))
     cuantos = len(colores(titulo))
     exigir(cuantos > 3, "la pantalla de titulo solo tiene %d colores" % cuantos)
+    if musica:
+        comprobar_titulo(exigir, nivel(emu.escuchar(20)), titulo_musica)
     # el marcador va en el plano de texto, en las tres primeras filas de 8
     exigir(len(set(franja(titulo, 8))) > 1, "no se ve el marcador arriba")
     # Y el nombre del juego, que se escribe en la fila 2 y empieza siempre en
@@ -236,6 +242,45 @@ def comprobar(ejecutable: str, capturas: str = "capturas", musica=None,
                   saltando / max(1.0, quieto)))
         print("efecto de salto: %.1f veces mas fuerte que el fondo"
               % (saltando / max(1.0, quieto)))
+
+    # --- 3b) el parallax va mas despacio que el suelo --------------------
+    #
+    # Aqui la capa de fondo no la dibuja el chip de sprites -su unica capa se
+    # la lleva el escenario- sino la pantalla grafica, que tiene su propio
+    # scroll por hardware. Se corre a la derecha tomando fotos cada pocos
+    # frames y se suma cuanto se desplaza la franja del cielo y cuanto la del
+    # suelo: si las dos van igual, no hay parallax que valga.
+    if parallax:
+        for _ in range(FRAMES_ANTES_DE_MEDIR):
+            emu.pulsar("RIGHT")
+            emu.avanzar(1)
+        fotos = [emu.frame]
+        for _ in range(14):
+            for _ in range(3):            # pasos cortos: ver camara.recorrido
+                emu.pulsar("RIGHT")
+                emu.avanzar(1)
+            fotos.append(emu.frame)
+        emu.pulsar()
+        guardar_png(fotos[0], os.path.join(capturas, "x68000_parallax_antes.png"))
+        guardar_png(fotos[-1], os.path.join(capturas, "x68000_parallax.png"))
+        suelo, fiable_s = recorrido(fotos, *FRANJA_SUELO)
+        fondo, fiable_f = recorrido(fotos, *FRANJA_FONDO)
+        exigir(fiable_s > 0.5 and fiable_f > 0.5,
+               "no se puede medir el desplazamiento: casan el %.0f%% de las "
+               "columnas del suelo y el %.0f%% del cielo"
+               % (fiable_s * 100, fiable_f * 100))
+        exigir(abs(suelo) > 20,
+               "el escenario apenas se ha movido al correr a la derecha (%d px)"
+               % suelo)
+        exigir(fondo != 0, "la capa de fondo no se mueve: no hay parallax")
+        exigir((fondo > 0) == (suelo > 0),
+               "la capa de fondo se mueve al reves que el escenario (%d y %d)"
+               % (fondo, suelo))
+        exigir(abs(fondo) < abs(suelo) / 2,
+               "la capa de fondo se mueve %d pixeles y el suelo %d: no van a "
+               "velocidades distintas" % (abs(fondo), abs(suelo)))
+        print("parallax: el suelo se mueve %d pixeles y el fondo %d (%.2f del "
+              "scroll)" % (abs(suelo), abs(fondo), abs(fondo) / max(1, abs(suelo))))
 
     # --- 4) se juega: el escenario se mueve y los actores tambien --------
     movimiento = 0.0
@@ -300,4 +345,8 @@ if __name__ == "__main__":
                        argumentos[1] if len(argumentos) > 1 else "capturas",
                        musica_al_empezar(p) if p else None,
                        p.sound.efectos.get("salto") if p else None,
-                       pantallas="--pantallas" in sys.argv[1:]))
+                       pantallas="--pantallas" in sys.argv[1:],
+                       # el parallax solo se puede medir si el primer nivel
+                       # lleva capa: la pantalla grafica dibuja una por nivel
+                       parallax=bool(p and p.levels and p.levels[0].layers),
+                       titulo_musica=p.sound.titulo if p else ""))

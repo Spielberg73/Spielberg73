@@ -62,3 +62,61 @@ def comprobar_salto(vigia: Vigia, exigir) -> None:
            "%.0f%% de la pantalla" % ((1 - mayor) * 100))
     print("camara por pantallas: quieta el %.0f%% de los frames y el salto "
           "cambia el %.0f%% de la pantalla" % (quietos * 100, (1 - mayor) * 100))
+
+
+# --- medir el parallax ---------------------------------------------------
+#
+# Lo usan las maquinas que dibujan capas de fondo con scroll propio (el
+# Amiga en doble plano y el X68000 en la pantalla grafica): se corre a la
+# derecha y se mide cuanto se desplaza cada franja de la pantalla.
+
+def perfiles(frames, y0, y1):
+    """Firma de cada columna de una franja, en varios frames a la vez.
+
+    Comparar columnas enteras y no filas sueltas evita que un suelo liso, que
+    es igual desplazado o sin desplazar, de una medida cualquiera. Las firmas
+    se numeran para poder compararlas de un tiron.
+    """
+    numeros, salida = {}, []
+    for ancho, _alto, pixeles in frames:
+        fila = []
+        for x in range(ancho):
+            firma = tuple(pixeles[y * ancho + x] for y in range(y0, y1))
+            if firma not in numeros:
+                numeros[firma] = len(numeros)
+            fila.append(numeros[firma])
+        salida.append(fila)
+    return salida
+
+
+def recorrido(fotos, y0, y1, maximo=12):
+    """Cuanto se ha desplazado una franja en total, sumando paso a paso.
+
+    Medir del primer frame al ultimo no vale cuando el dibujo se repite: un
+    suelo de tiles de 16 pixeles desplazado 64 se ve igual que sin mover, y la
+    medida sale cero. Sumando desplazamientos pequenos -menos de lo que dura el
+    motivo- cada paso es inequivoco y el total sale bien.
+
+    Devuelve (pixeles en total, la peor fiabilidad de los pasos).
+    """
+    perfil = perfiles(fotos, y0, y1)
+    total, peor = 0, 1.0
+    for i in range(1, len(perfil)):
+        paso, fiable = desplazamiento(perfil[i - 1], perfil[i], maximo=maximo)
+        total += paso
+        peor = min(peor, fiable)
+    return total, peor
+
+
+def desplazamiento(antes, ahora, maximo=70):
+    """Cuantos pixeles se ha movido una franja entre dos frames, y si la medida
+    es de fiar (cuantas columnas casan con ese desplazamiento)."""
+    mejor, acierto = 0, 0.0
+    ancho = len(antes)
+    for d in range(-maximo, maximo + 1):
+        iguales = sum(1 for x in range(maximo, ancho - maximo)
+                      if antes[x + d] == ahora[x])
+        razon = iguales / (ancho - 2 * maximo)
+        if razon > acierto:
+            mejor, acierto = d, razon
+    return mejor, acierto

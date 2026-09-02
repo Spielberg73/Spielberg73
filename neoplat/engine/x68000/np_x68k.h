@@ -25,9 +25,9 @@
  *   - La tabla de nombres **es la propia PCG**: $EBC000 y $EBE000 son los
  *     patrones 128-191 y 192-255. Quien usa capa de fondo se queda sin ellos.
  *   - De las dos capas de fondo que tiene el chip, en el emulador solo se
- *     ensena una: con las dos encendidas y cada una leyendo una tabla, nunca
- *     se ven los dos dibujos a la vez. Asi que el escenario va en la capa y el
- *     parallax no se dibuja en esta maquina.
+ *     ensena una: con las dos encendidas, cada una leyendo su tabla y con
+ *     dibujos distintos en cada una, nunca se ven los dos a la vez. Asi que el
+ *     escenario va en la capa, y el parallax en la pantalla grafica (abajo).
  *   - El plano de texto (el marcador) lee de la **paleta de sprites**, bloque
  *     0. Por eso el color 15 de ese bloque se reserva para el marcador, igual
  *     que en el Atari ST.
@@ -198,6 +198,28 @@ static __inline long np_iocs(long numero, long d1, long d2)
 #define NP_ALTO          NP_SCREEN_H
 #define NP_COLUMNAS      (NP_ANCHO / NP_TILE)     /* 20 columnas de tiles */
 #define NP_FILAS         (NP_ALTO / NP_TILE)      /* 14 filas */
+
+/* --- el parallax: la pantalla grafica -----------------------------------
+ *
+ * La capa del chip de sprites se la lleva el escenario, pero esta maquina
+ * tiene ademas una pantalla grafica (GVRAM en $C00000) con su propio scroll
+ * por hardware, y se ve **a la vez** que la capa y por detras de ella. Medido
+ * en el emulador con una sonda: pintando franjas en la GVRAM y encendiendo la
+ * capa se ven las dos cosas, y moviendo $E80018 la grafica se desplaza sola.
+ *
+ * En el modo de pantalla del kit la grafica es **una sola pagina** de 512
+ * pixeles de ancho que se repite sola, asi que se dibuja una capa por nivel:
+ * la mas lejana, que es la que mas se nota.
+ */
+#define NP_GVRAM         ((volatile uint16_t *)0xC00000)
+#define NP_GVRAM_ANCHO   512
+#define NP_GVRAM_ALTO    256
+#define NP_SCROLL_X      ((volatile uint16_t *)0xE80018)
+#define NP_SCROLL_Y      ((volatile uint16_t *)0xE8001A)
+#define NP_VC_GRAFICA    0x0001   /* VC_R2: la pagina 0 de la grafica */
+
+/* La ficha de una capa (NpCapaX68k) la escribe el compilador en gamedata.h,
+   igual que las demas tablas del juego. */
 
 void np_video_init(void);
 void np_video_frame(const NpWorld *w);
