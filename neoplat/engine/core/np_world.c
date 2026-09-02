@@ -221,6 +221,7 @@ const NpActorDef *np_entity_def(const NpEntity *e)
     if (e->kind == NP_KIND_SUBSHOT) return &np_subs[e->def].actor;
     if (e->kind == NP_KIND_MELEE) return &np_player_def.attack.actor;
     if (e->kind == NP_KIND_ENEMY_SHOT) return &np_enemy_shots[e->def].actor;
+    if (e->kind == NP_KIND_PRISONER) return &np_prisoners[e->def].actor;
     return &np_items[e->def].actor;
 }
 
@@ -347,6 +348,9 @@ static void np_spawn_entities(NpWorld *w)
             e->facing = 1;           /* sale hacia la derecha o hacia abajo */
         } else if (e->kind == NP_KIND_BREAKABLE) {
             e->health = np_breakables[e->def].health;
+        } else if (e->kind == NP_KIND_PRISONER) {
+            e->health = 1;
+            e->timer = 0;            /* cero = sigue atado */
         } else {
             e->health = 1;
         }
@@ -802,6 +806,18 @@ static void np_subshot_update(NpWorld *w, NpEntity *e)
         NpEntity *otra = &w->entities[i];
         const NpActorDef *ea;
         if (!otra->active) continue;
+        if (otra->kind == NP_KIND_PRISONER) {
+            ea = np_entity_def(otra);
+            if (!np_boxes_overlap(e->x, e->y, a->box_w, a->box_h,
+                                  otra->x, otra->y, ea->box_w, ea->box_h))
+                continue;
+            if (!otra->timer) {
+                otra->active = 0;
+                w->sfx |= NP_SFX_HURT;
+            }
+            e->active = 0;
+            return;
+        }
         if (otra->kind != NP_KIND_ENEMY && otra->kind != NP_KIND_BREAKABLE) continue;
         ea = np_entity_def(otra);
         if (!np_boxes_overlap(e->x, e->y, a->box_w, a->box_h,
@@ -848,6 +864,20 @@ static void np_shot_update(NpWorld *w, NpEntity *e)
         NpEntity *otra = &w->entities[i];
         const NpActorDef *ea;
         if (!otra->active) continue;
+        if (otra->kind == NP_KIND_PRISONER) {
+            /* Al prisionero no hay que dispararle: si le das, se acabo y no
+               suma nada. Es el precio de disparar a lo loco. */
+            ea = np_entity_def(otra);
+            if (!np_boxes_overlap(e->x, e->y, a->box_w, a->box_h,
+                                  otra->x, otra->y, ea->box_w, ea->box_h))
+                continue;
+            if (!otra->timer) {                  /* atado: se pierde */
+                otra->active = 0;
+                w->sfx |= NP_SFX_HURT;
+            }
+            e->active = 0;
+            return;
+        }
         if (otra->kind != NP_KIND_ENEMY && otra->kind != NP_KIND_BREAKABLE) continue;
         ea = np_entity_def(otra);
         if (!np_boxes_overlap(e->x, e->y, a->box_w, a->box_h,
@@ -1406,6 +1436,61 @@ static uint8_t np_suelo_delante(const NpWorld *w, const NpEntity *e,
     return (uint8_t)(tipo == NP_TILE_SOLID || tipo == NP_TILE_PLATFORM);
 }
 
+/* ------------------------------------------------------- los prisioneros */
+/*
+ * El rehen atado de Guerrilla War. Es el unico actor del kit al que **no** hay
+ * que dispararle: si lo tocas se suelta, suma sus puntos y echa a correr hasta
+ * perderse de vista; si le pega un tiro tuyo -o una granada-, se acabo y no
+ * suma nada. Eso es lo que obliga a mirar antes de disparar, que es justo lo
+ * que hace distinto un juego de rescatar de uno de arrasar.
+ *
+ * `timer` a cero quiere decir que sigue atado; en cuanto se suelta lleva la
+ * cuenta atras de la huida.
+ */
+static void np_prisoner_free(NpWorld *w, NpEntity *e, const NpPlayer *p)
+{
+    const NpPrisonerDef *d = &np_prisoners[e->def];
+    if (e->timer) return;                       /* ya iba corriendo */
+    e->timer = d->escape ? d->escape : 1;
+    w->score += d->score;
+    w->sfx |= NP_SFX_COIN;
+    /* Echa a correr **al reves de donde estas**: asi no se te cruza por
+       delante justo cuando lo acabas de soltar. */
+    if (np_vista_cenital) {
+        e->vy = (e->y < p->y) ? -d->speed : d->speed;
+        e->vx = 0;
+    } else {
+        e->vx = (e->x < p->x) ? -d->speed : d->speed;
+        e->facing = (uint8_t)(e->vx > 0);
+    }
+}
+
+static void np_prisoner_update(NpWorld *w, NpEntity *e)
+{
+    const NpPrisonerDef *d = &np_prisoners[e->def];
+    const NpActorDef *a = &d->actor;
+    int hit_x = 0, hit_down = 0, hit_up = 0;
+
+    if (!e->timer) {                            /* atado: solo se anima */
+        np_anim_set(&e->anim, &e->anim_frame, &e->anim_timer, NP_ANIM_IDLE);
+        np_anim_tick(a, e->anim, &e->anim_frame, &e->anim_timer);
+        return;
+    }
+    e->timer--;
+    if (!e->timer) { e->active = 0; return; }   /* se ha perdido de vista */
+    if (e->vx) {
+        e->x = np_move_x(w->level, e->x, e->y, a->box_w, a->box_h, e->vx, &hit_x);
+        if (hit_x) e->vx = -e->vx;              /* rebota en las paredes */
+    }
+    if (e->vy) {
+        e->y = np_move_y(w->level, e->x, e->y, a->box_w, a->box_h, e->vy, 1,
+                         &hit_down, &hit_up);
+        if (hit_down || hit_up) e->vy = -e->vy;
+    }
+    np_anim_set(&e->anim, &e->anim_frame, &e->anim_timer, NP_ANIM_RUN);
+    np_anim_tick(a, e->anim, &e->anim_frame, &e->anim_timer);
+}
+
 /* --------------------------------------------- lo que tiran los enemigos */
 /*
  * Con `dispara:` un enemigo deja de ser un obstaculo que hay que esquivar y
@@ -1736,6 +1821,11 @@ static void np_touch_entities(NpWorld *w)
             if (e->kind == NP_KIND_MELEE) continue;  /* es tu propio latigo */
             if (e->kind == NP_KIND_PLATFORM) continue;   /* es suelo, no un bicho */
             if (e->kind == NP_KIND_BREAKABLE) continue;  /* hay que pegarle */
+            if (e->kind == NP_KIND_ENEMY_SHOT) continue; /* se mira en su update */
+            if (e->kind == NP_KIND_PRISONER) {
+                np_prisoner_free(w, e, p);               /* tocarlo lo suelta */
+                continue;
+            }
             if (e->kind == NP_KIND_ITEM) {
                 np_collect(w, quien, e);
                 continue;
@@ -1934,6 +2024,7 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
         if (e->kind == NP_KIND_SHOT) np_shot_update(w, e);
         else if (e->kind == NP_KIND_SUBSHOT) np_subshot_update(w, e);
         else if (e->kind == NP_KIND_ENEMY_SHOT) np_enemy_shot_update(w, e);
+        else if (e->kind == NP_KIND_PRISONER) np_prisoner_update(w, e);
         else if (e->kind == NP_KIND_ENEMY) np_enemy_update(w, e);
         else if (e->kind == NP_KIND_BREAKABLE) np_breakable_update(w, e);
         else np_item_update(w, e);

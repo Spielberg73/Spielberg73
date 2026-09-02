@@ -350,6 +350,19 @@ class Breakable(Actor):
 
 
 @dataclass
+class Prisoner(Actor):
+    """Un prisionero atado, de los de Guerrilla War.
+
+    No hace dano ni se le puede matar de un pisoton: esta ahi esperando. Si le
+    tocas, se suelta y echa a correr (y suma puntos); si le pegas un tiro, se
+    acabo, y ese es el castigo por disparar a lo loco. Es el unico actor del
+    kit al que **no** hay que dispararle."""
+    score: int = 500
+    speed: float = 1.2            # lo que corre al soltarse
+    escape: int = 90              # frames corriendo antes de perderse de vista
+
+
+@dataclass
 class Platform(Actor):
     """Plataforma movil: va y viene, y el que se sube encima va con ella."""
     axis: str = "x"          # "x" (de lado) o "y" (arriba y abajo)
@@ -413,6 +426,7 @@ class Project:
     items: Dict[str, Item]
     platforms: Dict[str, "Platform"]
     breakables: Dict[str, "Breakable"]
+    prisoners: Dict[str, "Prisoner"]
     layers: Dict[str, Layer]
     sound: "sonido_mod.Sonido"
     levels: List[Level]
@@ -420,7 +434,7 @@ class Project:
 
     def spawn_names(self) -> List[str]:
         return (list(self.enemies) + list(self.items) + list(self.platforms)
-                + list(self.breakables))
+                + list(self.breakables) + list(self.prisoners))
 
 
 # ------------------------------------------------------------------- lectura
@@ -797,6 +811,30 @@ def _read_breakable(name: str, data: Any, root: str) -> "Breakable":
         score=node.int_(["score", "puntos"], 0, 0, 99999),
         health=node.int_(["health", "salud", "vida"], 1, 1, 99),
     )
+
+
+def _read_prisoner(name: str, data: Any, root: str) -> "Prisoner":
+    where = "prisioneros.%s" % name
+    node = Node(data, where)
+    sprite = node.str_(["sprite", "imagen", "image"], required=True)
+    _require_file(root, sprite, where)
+    fw, fh, bw, bh, bx, by = _actor_geometry(node, where, (16, 16))
+    anims = _read_animations(node.child("animations", "animaciones", "anims"), where)
+    prisionero = Prisoner(
+        name=name, sprite=sprite, frame_w=fw, frame_h=fh,
+        box_w=bw, box_h=bh, box_x=bx, box_y=by, animations=anims,
+        score=node.int_(["score", "puntos"], 500, 0, 99999),
+        speed=node.num(["speed", "velocidad"], 1.2, 0.0, 8.0),
+        escape=node.int_(["escape", "huida", "corre"], 90, 0, 600),
+    )
+    _warn_unknown(node, where, [
+        "sprite", "imagen", "image", "frame", "fotograma", "tamano_frame",
+        "hitbox", "caja", "colision", "colisión", "tamano", "tamaño", "size",
+        "hitbox_offset", "offset_caja", "desplazamiento",
+        "animations", "animaciones", "anims",
+        "score", "puntos", "speed", "velocidad", "escape", "huida", "corre",
+    ])
+    return prisionero
 
 
 def _read_player(node: Node, root: str) -> Player:
@@ -1473,6 +1511,11 @@ def load_project(path: str) -> Project:
     breakables: Dict[str, Breakable] = {}
     for name, data_rom in (top.child("breakables", "rompibles").data or {}).items():
         breakables[str(name)] = _read_breakable(str(name), data_rom, root)
+
+    prisoners: Dict[str, Prisoner] = {}
+    for name, data_pri in (top.child("prisoners", "prisioneros",
+                                     "rehenes").data or {}).items():
+        prisoners[str(name)] = _read_prisoner(str(name), data_pri, root)
     # el objeto que cambia de arma tiene que decir a cual, y esa tiene que
     # existir: si no, se cogeria y no pasaria nada
     nombres_armas = [arma.name for arma in player.subs]
@@ -1517,9 +1560,11 @@ def load_project(path: str) -> Project:
 
     global_spawns = {str(k): str(v) for k, v in
                      (top.child("spawns", "simbolos", "símbolos").data or {}).items()}
-    # Los enemigos con gravedad necesitan suelo debajo; los voladores no.
+    # Los enemigos con gravedad necesitan suelo debajo; los voladores no. Y
+    # mirando desde arriba no lo necesita ninguno: ahi no hay de donde caerse.
     necesitan_suelo = {
-        name: enemy.gravity > 0 and enemy.behavior != "flyer"
+        name: (view != "cenital" and enemy.gravity > 0
+               and enemy.behavior != "flyer")
         for name, enemy in enemies.items()
     }
     jefes = {name for name, enemy in enemies.items() if enemy.boss}
@@ -1530,7 +1575,8 @@ def load_project(path: str) -> Project:
     sound = _read_sound(top.raw("sound", "sonido", "audio"), root)
     levels = _read_levels(
         top.raw("levels", "niveles"), tiles,
-        list(enemies) + list(items) + list(platforms) + list(breakables),
+        list(enemies) + list(items) + list(platforms) + list(breakables)
+        + list(prisoners),
         global_spawns, default_bg, warnings, necesitan_suelo, list(layers),
         list(sound.musica), jefes=jefes, llaves=llaves,
     )
@@ -1539,6 +1585,7 @@ def load_project(path: str) -> Project:
         "game", "juego", "player", "jugador", "tiles", "tileset", "bloques",
         "enemies", "enemigos", "items", "objetos", "levels", "niveles",
         "platforms", "plataformas", "breakables", "rompibles",
+        "prisoners", "prisioneros", "rehenes",
         "spawns", "simbolos", "símbolos", "backgrounds", "fondos", "capas",
         "sound", "sonido", "audio",
     }
@@ -1547,6 +1594,7 @@ def load_project(path: str) -> Project:
         raise ProjectError(
             "seccion desconocida '%s'" % extra_top[0],
             hint="secciones validas: juego, jugador, tiles, enemigos, objetos, "
+                 "prisioneros, "
                  "fondos, sonido, spawns, niveles",
             where=os.path.basename(path),
         )
@@ -1567,6 +1615,7 @@ def load_project(path: str) -> Project:
         amiga_modo=amiga_modo,
         time_limit=time_limit, hud=hud, player=player, tileset=tileset, tiles=tiles,
         enemies=enemies, items=items, platforms=platforms,
-        breakables=breakables, layers=layers, sound=sound, levels=levels,
+        breakables=breakables, prisoners=prisoners,
+        layers=layers, sound=sound, levels=levels,
         warnings=warnings,
     )

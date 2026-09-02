@@ -142,6 +142,18 @@ class Jaguar(Sistema):
 
     def comprobar(self, build: Build) -> List[str]:
         avisos: List[str] = []
+        # El escenario se dibuja en un mapa de bits de 704x256 que hace de
+        # ventana: cabe el doble de pantalla a lo ancho, pero de alto se queda
+        # en 16 casillas. Sin esta comprobacion un nivel alto compilaba tan
+        # tranquilo y luego se veia partido, que es peor que no compilar.
+        alto_max = MAPA_ALTO // 16
+        for nivel in build.levels:
+            if nivel.height > alto_max:
+                self.error(
+                    "el nivel '%s' tiene %d casillas de alto y en la Jaguar el "
+                    "mapa de bits llega a %d" % (nivel.name, nivel.height, alto_max),
+                    "haz los niveles mas bajos y mas largos",
+                )
         for nivel in build.levels:
             if len(nivel.layers) > 1:
                 avisos.append(

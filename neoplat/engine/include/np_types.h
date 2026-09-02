@@ -68,6 +68,7 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_KIND_SUBSHOT 5        /* lo que tira el arma secundaria */
 #define NP_KIND_MELEE 6          /* el latigo: solo se ve, no toca a nadie */
 #define NP_KIND_ENEMY_SHOT 7     /* lo que tira un enemigo con `dispara:` */
+#define NP_KIND_PRISONER 8       /* el rehen: se suelta tocandolo */
 
 /* El arma secundaria: se lanza con arriba + accion y gasta municion. */
 #define NP_SUB_NONE  0

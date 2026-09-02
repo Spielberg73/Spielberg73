@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Dict, List
 
-from . import art, art_hierro, art_sonido
+from . import art, art_comando, art_hierro, art_sonido
 from .errors import ProjectError
 from .png import write_png
 from .wav import escribir as escribir_wav
@@ -171,6 +171,106 @@ def _nivel_2(control: bool = False, escalera: bool = False) -> List[str]:
     ]
 
 
+# --------------------------------------------------- los niveles cenitales
+#
+# Un juego de comando **sube**: se empieza abajo y la meta esta arriba del
+# todo. Lo que lo hace jugable no es la longitud sino los recodos: el camino
+# tuerce, se estrecha entre sacos y arboles, y en cada recodo hay algo -una
+# torreta que guarda el paso, un prisionero metido en un recinto, un rio que
+# hay que rodear-. Un pasillo recto de treinta filas seria un pasillo; esto es
+# un camino.
+
+CENITAL_ANCHO = 20                   # una pantalla justa de ancho
+CENITAL_ALTO = 32                    # algo mas de dos pantallas de alto
+
+
+def _fila_cenital(mapa: str) -> str:
+    """Completa una fila a lo ancho del nivel con arboles a los lados."""
+    fila = mapa[:CENITAL_ANCHO]
+    return fila + "A" * (CENITAL_ANCHO - len(fila))
+
+
+def _nivel_comando_1() -> List[str]:
+    """El campamento: se sube por un camino que tuerce dos veces, con el rio
+    cortando por la mitad y prisioneros metidos en los recintos."""
+    filas = [
+        "AAAAAA..,G,..AAAAAA",
+        "AAAAA.,,,,,,,.AAAAA",
+        "AAAA..,,,,,,,..AAAA",
+        "AAA..#,,,,,,,#..AAA",
+        "AAA..#,,,t,,,#..AAA",
+        "AAA.,,,,,,,,,,,.AAA",
+        "AA..,,,,,,,,,g,,.AA",
+        "AA.,,,#######,,,.AA",
+        "AA.,,,#.....#,,,.AA",
+        "AA.,s,#..R..#,,,.AA",
+        "AA.,,,#.....#,,,.AA",
+        "AA.,,,###.###,,,.AA",
+        "AA.,,,,,g,,,,,,,.AA",
+        "AA.~~~~~~~,,,,,,.AA",
+        "AA.~~~~~~~,,,,,,.AA",
+        "AAA.~~~~~,,,s,,.AAA",
+        "AAA..,,,,,,,,,.AAAA",
+        "AAA.,,,,,T,,,,.AAAA",
+        "AA.,,,,,,,,,,,,.AAA",
+        "AA.,,##,,,,,##,,.AA",
+        "AA.,,#R,,s,,R#,,.AA",
+        "AA.,,##,,,,,##,,.AA",
+        "AA.,,,,,,,,,,,,,.AA",
+        "AA.,,,,,,t,,,,,,.AA",
+        "AA..,,,,,g,,,,,.AAA",
+        "AAA.,,,,,,,,,,.AAAA",
+        "AAA..,,,,s,,,,.AAAA",
+        "AAAA..,,,,,,,.AAAAA",
+        "AAAA...,,,,,..AAAAA",
+        "AAAAA..,,c,,.AAAAAA",
+        "AAAAA..,,,,,.AAAAAA",
+        "AAAAA...P....AAAAAA",
+    ]
+    return [_fila_cenital(f) for f in filas]
+
+
+def _nivel_comando_2() -> List[str]:
+    """El bunker: mas estrecho, mas torretas y el jefe arriba del todo. Aqui
+    los prisioneros estan **detras** de las torretas, para que no valga con
+    correr en linea recta."""
+    filas = [
+        "AAAAAA..,G,..AAAAAA",
+        "AAAAA.,,,,,,,.AAAAA",
+        "AAAA.,,,,B,,,,.AAAA",
+        "AAAA.,,,,,,,,,.AAAA",
+        "AAAA.#########.AAAA",
+        "AAAA.,,,,,,,,,.AAAA",
+        "AAA.,,,t,,,t,,,.AAA",
+        "AAA.,,,,,,,,,,,.AAA",
+        "AAA.,,#,,,,,#,,.AAA",
+        "AAA.,R#,,s,,#R,.AAA",
+        "AAA.,,#,,,,,#,,.AAA",
+        "AAA.,,,,,,,,,,,.AAA",
+        "AA..,,,,,,,,,,,,.AA",
+        "AA.~~~~~,,,~~~~~.AA",
+        "AA.~~~~,,g,,~~~~.AA",
+        "AA.~~~,,,,,,,~~~.AA",
+        "AA.,,,,,,,,,,,,,.AA",
+        "AA.,,,,,,T,,,,,,.AA",
+        "AA.,,,,,,,,,,,,,.AA",
+        "AA.,,####,####,,.AA",
+        "AA.,,#,,,,,,,#,,.AA",
+        "AA.,,#,,,t,,,#,,.AA",
+        "AA.,,#,,,,,,,#,,.AA",
+        "AA.,,##,,R,,##,,.AA",
+        "AA.,,g,,,,,,,,,,.AA",
+        "AAA.,,,,s,,,,s,.AAA",
+        "AAA.,,,,,,,,,,,.AAA",
+        "AAAA.,,,,,,,,,.AAAA",
+        "AAAA..,,,c,,,.AAAAA",
+        "AAAAA.,,,,,,.AAAAAA",
+        "AAAAA..,,,,..AAAAAA",
+        "AAAAA...P....AAAAAA",
+    ]
+    return [_fila_cenital(f) for f in filas]
+
+
 GAME_YAML = """# Proyecto NeoPlat: un juego de plataformas que compila para Neo Geo.
 #
 #   ngplat probar     -> abre el preview jugable en el navegador
@@ -298,6 +398,220 @@ spawns:
   T: tablon
   V: candelabro
 {spawns}
+niveles:
+{niveles}"""
+
+
+# El genero de comando se ve **desde arriba**, asi que no comparte plantilla
+# con los otros dos: no hay suelo, ni saltos, ni plataformas, y hasta la
+# leyenda de tiles es otra (el agua mata, los sacos frenan). Duplicar el yaml
+# por cada estilo si seria un error -por eso los dos de vista lateral comparten
+# huecos-, pero duplicarlo por **modo de juego** es lo unico honrado: describe
+# otro juego.
+GAME_YAML_COMANDO = """# Proyecto NeoPlat de vista cenital: un juego de comando.
+#
+#   ngplat probar     -> abre el preview jugable en el navegador
+#   ngplat compilar   -> genera el proyecto en C y las ROMs graficas
+#
+# Se ve desde arriba, como los recreativos de comando de los ochenta: andas en
+# ocho direcciones, disparas hacia donde miras, tiras granadas con el otro
+# boton y subes la pantalla rescatando prisioneros.
+
+juego:
+  titulo: "{titulo}"
+  autor: "{autor}"
+  vista: cenital       # desde arriba: sin gravedad y en ocho direcciones
+  jugadores: 1         # 1 o 2 a la vez, cada uno con su mando
+  vidas: 3
+  tiempo: 0            # segundos por nivel (0 = sin limite)
+  camara: scroll
+  amiga: 32colores
+  fondo: "#183018"
+
+jugador:
+  sprite: graficos/heroe.png
+  frame: [16, 16]
+  caja: [10, 12]       # la caja, mas pequena que el dibujo: se juega mejor
+  velocidad: 1.4       # pixeles por frame en las cuatro direcciones
+  friccion: 0.35
+  vida: 3              # golpes que aguanta antes de perder una vida
+  retroceso: 2.0       # el empujon al recibir un tiro
+  aturdido: 16
+  animaciones:
+    # De frente, de espaldas y de lado: el motor elige segun hacia donde andas,
+    # y las diagonales salen espejando la de lado.
+    quieto: {{frames: [0], velocidad: 30}}
+    abajo:  {{frames: [1, 2], velocidad: 8}}
+    arriba: {{frames: [3, 4], velocidad: 8}}
+    correr: {{frames: [5, 6], velocidad: 8}}
+    atacar: {{frames: [7], velocidad: 6}}
+    dano:   {{frames: [8]}}
+  # El fusil: dispara hacia donde miras, en las ocho direcciones.
+  ataque:
+    tipo: disparo
+    sprite: graficos/bala.png
+    frame: [16, 16]
+    caja: [4, 4]
+    desplazamiento: [6, 6]
+    velocidad: 4.5
+    alcance: 160
+    espera: 10           # se dispara rapido: es un juego de tirar sin parar
+    dano: 1
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 4}}
+  # La granada va en el **boton de saltar**: aqui no hay nada que saltar.
+  secundarias:
+    granada:
+      tipo: recta
+      marcador: GRAN
+      sprite: graficos/granada.png
+      frame: [16, 16]
+      caja: [8, 8]
+      desplazamiento: [4, 4]
+      velocidad: 3.0
+      alcance: 80        # llega hasta donde llega: hay que acercarse
+      espera: 40
+      coste: 1
+      dano: 3            # se lleva por delante lo que pille
+      a_la_vez: 1
+      animaciones:
+        quieto: {{frames: [0, 1, 2, 3], velocidad: 5}}
+
+tiles:
+  imagen: graficos/tiles.png
+  leyenda:
+    '.': {{tile: 0, tipo: vacio}}      # hierba
+    ',': {{tile: 5, tipo: vacio}}      # camino
+    'o': {{tile: 6, tipo: vacio}}      # crater
+    'A': {{tile: 1, tipo: solido}}     # arboles
+    '#': {{tile: 2, tipo: solido}}     # sacos terreros
+    '~': {{tile: 3, tipo: peligro}}    # el rio: no se cruza a nado
+    'G': {{tile: 4, tipo: meta}}       # la base: hasta aqui hay que llegar
+    'T': {{tile: 7, tipo: control}}    # la tienda: si te matan, vuelves aqui
+
+enemigos:
+  # Los soldados patrullan y **te disparan**: `dispara:` es lo que convierte
+  # una pantalla en un juego de comando.
+  soldado:
+    sprite: graficos/soldado.png
+    caja: [10, 12]
+    comportamiento: patrulla
+    velocidad: 0.5
+    puntos: 200
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 16}}
+      correr: {{frames: [0, 1], velocidad: 10}}
+    dispara:
+      sprite: graficos/tiro.png
+      frame: [16, 16]
+      caja: [4, 4]
+      desplazamiento: [6, 6]
+      velocidad: 2.2
+      alcance: 180
+      espera: 100        # la cadencia es lo que decide si un sitio se pasa
+      dano: 1
+      animaciones:
+        quieto: {{frames: [0, 1], velocidad: 5}}
+  # La torreta no se mueve, pero tampoco se calla: es la que guarda un paso.
+  torreta:
+    sprite: graficos/torreta.png
+    caja: [14, 14]
+    comportamiento: fijo
+    vida: 3
+    puntos: 500
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 20}}
+    dispara:
+      sprite: graficos/tiro.png
+      frame: [16, 16]
+      caja: [4, 4]
+      desplazamiento: [6, 6]
+      velocidad: 2.6
+      alcance: 200
+      espera: 70
+      dano: 1
+      animaciones:
+        quieto: {{frames: [0, 1], velocidad: 5}}
+  # Un jefe es un enemigo con 'jefe: si': el marcador ensena lo que le queda y
+  # al matarlo se acaba el nivel.
+  bunker:
+    sprite: graficos/torreta.png
+    caja: [14, 14]
+    comportamiento: fijo
+    vida: 10
+    puntos: 3000
+    jefe: si
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 8}}
+    dispara:
+      sprite: graficos/tiro.png
+      frame: [16, 16]
+      caja: [4, 4]
+      desplazamiento: [6, 6]
+      velocidad: 3.0
+      alcance: 260
+      espera: 34
+      dano: 1
+      animaciones:
+        quieto: {{frames: [0, 1], velocidad: 4}}
+
+# Los prisioneros: **a estos no hay que dispararles**. Si los tocas, se sueltan
+# y suman; si les das un tiro, se pierden. Es lo que obliga a mirar antes de
+# apretar el gatillo.
+prisioneros:
+  prisionero:
+    sprite: graficos/prisionero.png
+    caja: [10, 12]
+    puntos: 500
+    velocidad: 1.6       # lo que corre al soltarse
+    escape: 100          # frames corriendo antes de perderse de vista
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 24}}
+      correr: {{frames: [2, 3], velocidad: 6}}
+
+objetos:
+  # Las granadas se recargan: 'efecto: municion' es el contador del arma
+  # secundaria, que aqui es la granada.
+  caja:
+    sprite: graficos/granada.png
+    frame: [16, 16]
+    caja: [8, 8]
+    puntos: 50
+    efecto: municion
+    cantidad: 3
+    animaciones:
+      quieto: {{frames: [0, 2], velocidad: 14}}
+  medalla:
+    sprite: graficos/bala.png
+    frame: [16, 16]
+    caja: [6, 6]
+    puntos: 100
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 6}}
+
+# Sonido. Un juego de comando es sobre todo tiros, asi que el disparo es corto
+# y seco: si durase mas, con la cadencia que tiene se pisarian unos a otros.
+sonido:
+  efectos:
+    empezar: {{notas: "do5 mi5 sol5", velocidad: 4}}
+    disparo: {{tipo: barrido, desde: 1600, hasta: 500, duracion: 3}}
+    golpe:   {{tipo: ruido, duracion: 8}}
+    romper:  {{tipo: ruido, duracion: 12}}
+    moneda:  {{notas: "mi6 sol6 do7", velocidad: 3}}
+    control: {{notas: "sol5 do6", velocidad: 5}}
+    muerte:  {{notas: "sol4 mi4 do4 sol3", velocidad: 6}}
+    meta:    {{notas: "do5 mi5 sol5 do6", velocidad: 6}}
+    salto:   {{tipo: barrido, desde: 400, hasta: 900, duracion: 5}}
+{musica}
+# Simbolos del mapa que colocan enemigos, prisioneros y objetos.
+spawns:
+  s: soldado
+  t: torreta
+  B: bunker
+  R: prisionero
+  g: caja
+  c: medalla
+
 niveles:
 {niveles}"""
 
@@ -644,6 +958,93 @@ _MUSICA_LATIGO = """  musica:
 ESTILOS = ("bosque", "hierro")
 
 
+# La del genero de comando: marchas. Bajo que camina en corcheas -es lo que
+# empuja- y melodias que suben por la escala menor, que es lo que suena a
+# operacion militar de los ochenta. Cuatro: la del titulo, una por nivel y la
+# del bunker.
+_MUSICA_COMANDO = """  musica:
+    himno:
+      velocidad: 9
+      pistas:
+        - |
+          la4 - do5 - mi5 - la5 -
+          sol5 - mi5 - do5 - mi5 -
+          fa5 - do5 - la4 - do5 -
+          mi5 - re5 - do5:2 - -
+        - |
+          la2 - mi3 - la2 - mi3 -
+          do3 - sol3 - do3 - sol3 -
+          fa2 - do3 - fa2 - do3 -
+          mi2 - si2 - la2:2 - -
+    avanzada:
+      velocidad: 7
+      pistas:
+        - |
+          la4 - la4 do5 mi5 - re5 -
+          do5 - si4 la4 si4 - mi4 -
+          la4 - la4 do5 mi5 - fa5 -
+          mi5 - re5 do5 si4 - - -
+          do5 - do5 mi5 sol5 - fa5 -
+          mi5 - re5 do5 re5 - la4 -
+          la4 do5 mi5 la5 sol5 mi5 do5 la4
+          mi4:2 la4:2 mi4:2 la4:2
+        - |
+          la2 la3 la2 la3 la2 la3 la2 la3
+          mi2 mi3 mi2 mi3 mi2 mi3 mi2 mi3
+          fa2 fa3 fa2 fa3 fa2 fa3 fa2 fa3
+          mi2 mi3 mi2 mi3 mi2 mi3 mi2 mi3
+          do3 do4 do3 do4 do3 do4 do3 do4
+          sol2 sol3 sol2 sol3 sol2 sol3 sol2 sol3
+          la2 la3 do3 do4 mi3 mi2 la2 la3
+          la2:2 mi3:2 la2:2 mi3:2
+    patrulla:
+      velocidad: 8
+      pistas:
+        - |
+          mi4 - sol4 la4 si4 - la4 -
+          sol4 - mi4 - re4 - mi4 -
+          do5 - si4 la4 sol4 - la4 -
+          si4 - sol4 - mi4 - - -
+          la4 - do5 re5 mi5 - re5 -
+          do5 - la4 - sol4 - la4 -
+          mi5 re5 do5 si4 la4 sol4 mi4 sol4
+          la4:2 mi4:2 la4:2 - -
+        - |
+          la2 - mi3 - la2 - mi3 -
+          mi2 - si2 - mi2 - si2 -
+          do3 - sol3 - do3 - sol3 -
+          mi2 - si2 - mi2 - - -
+          la2 - mi3 - la2 - mi3 -
+          fa2 - do3 - fa2 - do3 -
+          la2 la3 do3 do4 mi3 mi2 la2 mi3
+          la2:2 mi3:2 la2:2 - -
+    asalto:
+      velocidad: 6
+      pistas:
+        - |
+          re5 - do#5 re5 mi5 - fa5 -
+          mi5 - re5 do#5 re5 - la4 -
+          re5 - mi5 fa5 sol5 - la5 -
+          fa5 mi5 re5 do#5 re5 - - -
+          la5 - la5 sol5 fa5 - mi5 -
+          re5 - mi5 fa5 mi5 - re5 -
+          do#5 re5 mi5 fa5 sol5 la5 sib5 la5
+          re5:2 la4:2 re5:2 - -
+        - |
+          re2 re3 re2 re3 la2 la3 la2 la3
+          si2 si3 si2 si3 fa2 fa3 fa2 fa3
+          sol2 sol3 sol2 sol3 re3 re2 re3 re2
+          la2 la3 la2 la3 re2 re3 re2 re3
+          fa2 fa3 fa2 fa3 do#3 do#3 do#3 do#3
+          si2 si3 si2 si3 sol2 sol3 sol2 sol3
+          la2 la3 do3 do4 mi3 mi2 la2 la3
+          re2:2 la2:2 re2:2 - -
+  # Las dos canciones que no son de ningun nivel se dicen aqui por su nombre.
+  titulo: himno
+  jefe: asalto
+"""
+
+
 # --------------------------------------------------------------- generos
 #
 # El **genero** decide como se juega y el **estilo** como se ve: son dos ejes
@@ -955,7 +1356,7 @@ def _genero_castlevania(nombres: Dict[str, str]) -> Genero:
     )
 
 
-GENEROS = ("plataformas", "castlevania")
+GENEROS = ("plataformas", "castlevania", "comando")
 
 # Como se llama cada cosa en cada estilo de dibujo.
 _NOMBRES = {
@@ -966,10 +1367,29 @@ _NOMBRES = {
 }
 
 
+def _genero_comando(nombres: Dict[str, str], estilo: str) -> Genero:
+    """El de vista cenital.
+
+    No arma su game.yaml a trozos como los otros dos -se ve desde arriba, asi
+    que casi nada de la fisica de saltar le sirve- y tiene su propia plantilla
+    entera. De este objeto solo se usa como se llama y que promete, que es lo
+    que sale en el menu de `ngplat nuevo`.
+    """
+    return replace(
+        _genero_plataformas(nombres, estilo),
+        nombre="comando",
+        titulo="comando",
+        resumen=("visto desde arriba: ocho direcciones, granadas y subir la "
+                 "pantalla rescatando prisioneros."),
+    )
+
+
 def genero_de(nombre: str, estilo: str) -> Genero:
     nombres = _NOMBRES[estilo]
     if nombre == "castlevania":
         return _genero_castlevania(nombres)
+    if nombre == "comando":
+        return _genero_comando(nombres, estilo)
     return _genero_plataformas(nombres, estilo)
 
 
@@ -1013,7 +1433,9 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
       `genero` decide **como se juega**: 'plataformas' salta, pisa enemigos y
       dispara, con el salto corregible en el aire; 'castlevania' pega con
       latigo, sube escaleras, gasta municion y no corrige el salto, asi que un
-      golpe al borde de una plataforma te tira al vacio.
+      golpe al borde de una plataforma te tira al vacio; 'comando' se ve
+      **desde arriba** -otra cosa entera- y va de subir la pantalla a tiros
+      rescatando prisioneros.
 
       `estilo` decide **como se ve**: 'bosque' es el de siempre y 'hierro'
       viene dibujado con seis colores, listo para el doble plano del Amiga.
@@ -1038,6 +1460,12 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
     creados: List[str] = []
 
     dibujos = art.todos() if estilo == "bosque" else art_hierro.todos()
+    if genero == "comando":
+        # Se ve desde arriba: el heroe de perfil, los tiles de plataformas y
+        # los bichos de saltar no sirven de nada aqui, asi que los dibujos de
+        # este genero pisan a los del estilo.
+        dibujos = dict(dibujos)
+        dibujos.update(art_comando.todos(estilo))
     for relativo, imagen in dibujos.items():
         ruta = os.path.join(destino, relativo)
         write_png(ruta, imagen)
@@ -1048,6 +1476,27 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
         for relativo, muestra in art_sonido.todos().items():
             escribir_wav(os.path.join(destino, relativo), muestra)
             creados.append(relativo)
+
+    if genero == "comando":
+        # Se sube: se empieza abajo y la meta esta arriba del todo.
+        niveles = (
+            _nivel_yaml("EL CAMPAMENTO", _nivel_comando_1(),
+                        "#183018", musica="avanzada")
+            + _nivel_yaml("EL BUNKER", _nivel_comando_2(),
+                          "#20281c", musica="patrulla")
+        )
+        contenido = GAME_YAML_COMANDO.format(
+            titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles,
+            musica=_MUSICA_COMANDO)
+        with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
+                  newline="\n") as fh:
+            fh.write(contenido)
+        creados.append("game.yaml")
+        with open(os.path.join(destino, ".gitignore"), "w", encoding="utf-8",
+                  newline="\n") as fh:
+            fh.write("build/\npreview.html\n.neoplat/\n")
+        creados.append(".gitignore")
+        return creados
 
     if estilo == "bosque":
         niveles = (

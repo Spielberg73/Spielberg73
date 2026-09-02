@@ -112,6 +112,18 @@ typedef struct {
     NpAttackDef attack;
 } NpPlayerDef;
 
+/* Un prisionero de los de Guerrilla War: esta atado y esperando. Si lo tocas
+ * se suelta, suma sus puntos y echa a correr hasta perderse de vista; si le
+ * pegas un tiro, se acabo. Es el unico actor del kit al que **no** hay que
+ * dispararle, y eso es lo que le da sentido: obliga a mirar antes de disparar.
+ */
+typedef struct {
+    NpActorDef actor;
+    uint16_t score;          /* lo que vale soltarlo */
+    np_fix speed;            /* lo que corre al soltarse */
+    uint16_t escape;         /* frames corriendo antes de perderse de vista */
+} NpPrisonerDef;
+
 /* Lo que tira un enemigo con `dispara:`. Es un actor mas -su dibujo y su
  * caja- con lo justo para volar: a que velocidad, cuanto llega, cada cuanto
  * sale y cuanto duele. Sin esto un enemigo solo hace dano al tocarte; con
@@ -197,6 +209,7 @@ typedef struct {
 extern const NpPlayerDef np_player_def;
 extern const NpEnemyDef np_enemies[];
 extern const NpEnemyShotDef np_enemy_shots[];   /* lo que tiran ellos */
+extern const NpPrisonerDef np_prisoners[];     /* los rehenes que rescatas */
 extern const NpItemDef np_items[];
 extern const NpSubDef np_subs[];         /* las armas secundarias del juego */
 extern const NpPlatformDef np_platforms[];
@@ -219,6 +232,7 @@ extern const uint8_t np_music_boss;
 extern const uint16_t np_layer_count;
 extern const uint16_t np_enemy_count;
 extern const uint8_t np_enemy_shot_count;
+extern const uint8_t np_prisoner_count;
 extern const uint16_t np_item_count;
 extern const uint8_t np_sub_count;       /* 0 = el juego no lleva secundaria */
 /* Como se llama cada arma secundaria en el marcador: cinco letras, que es lo

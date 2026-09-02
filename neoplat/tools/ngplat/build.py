@@ -79,6 +79,7 @@ class Build:
     levels: List[LevelBuild]
     platforms: List[ActorBuild] = field(default_factory=list)
     breakables: List[ActorBuild] = field(default_factory=list)
+    prisoners: List[ActorBuild] = field(default_factory=list)   # los rehenes
     attack: Optional[ActorBuild] = None       # el proyectil, si el juego lo lleva
     subs: List[ActorBuild] = field(default_factory=list)   # las armas secundarias
     # Los disparos de los enemigos que llevan `dispara:`. Van en su propia
@@ -105,7 +106,7 @@ class Build:
         para no mover los indices de lo que ya estaba, que es lo que guardan
         los niveles."""
         todos = ([self.player] + self.enemies + self.items + self.platforms
-                 + self.breakables)
+                 + self.breakables + self.prisoners)
         if self.attack is not None:
             todos.append(self.attack)
         todos.extend(self.subs)
@@ -123,6 +124,7 @@ class Build:
             "objetos": len(self.items),
             "plataformas": len(self.platforms),
             "rompibles": len(self.breakables),
+            "prisioneros": len(self.prisoners),
             "bytes_mapas": sum(len(lv.cells) for lv in self.levels),
         }
         datos.update(self.info.get("stats", {}))     # lo que anada cada sistema
@@ -277,6 +279,11 @@ def build_project(project: Project) -> Build:
     item_index = {b.name: i for i, b in enumerate(items)}
     platform_index = {b.name: i for i, b in enumerate(platforms)}
     breakable_index = {b.name: i for i, b in enumerate(breakables)}
+    prisoners = [
+        _load_actor(pri, "prisioneros.%s" % name, project.root)
+        for name, pri in project.prisoners.items()
+    ]
+    prisoner_index = {b.name: i for i, b in enumerate(prisoners)}
 
     music_order = list(project.sound.musica)
     music_index = {name: i + 1 for i, name in enumerate(music_order)}
@@ -307,6 +314,11 @@ def build_project(project: Project) -> Build:
                     elif name in breakable_index:
                         kind, index = 4, breakable_index[name]
                         actor = breakables[index].actor
+                    elif name in prisoner_index:
+                        # 8 = NP_KIND_PRISONER: el `kind` del spawn es el mismo
+                        # numero que el de la entidad, no otro
+                        kind, index = 8, prisoner_index[name]
+                        actor = prisoners[index].actor
                     else:
                         kind, index = 1, item_index[name]
                         actor = items[index].actor
@@ -338,7 +350,7 @@ def build_project(project: Project) -> Build:
         project=project, rom=rom, tiles=tiles, tile_index=tile_index, tileset=tileset,
         player=player, enemies=enemies, items=items, layers=layers, levels=levels,
         platforms=platforms, breakables=breakables, attack=attack, subs=subs,
-        enemy_shots=enemy_shots,
+        enemy_shots=enemy_shots, prisoners=prisoners,
         music_order=music_order, music_title=music_title, music_boss=music_boss,
         sin_table=_sin_table(),
     )
@@ -431,6 +443,12 @@ def sub_values(sb) -> Dict[str, object]:
         "damage": sb.damage,
         "at_once": sb.at_once,
     }
+
+
+def prisoner_values(build: ActorBuild) -> Dict[str, object]:
+    """Los campos de NpPrisonerDef: lo que vale soltarlo y lo que corre."""
+    pr = build.actor         # type: ignore[assignment]
+    return {"score": pr.score, "speed": to_fixed(pr.speed), "escape": pr.escape}
 
 
 def breakable_values(build: ActorBuild, item_index: Dict[str, int]) -> Dict[str, object]:

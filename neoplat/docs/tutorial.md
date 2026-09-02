@@ -14,12 +14,16 @@ que tipo de juego quieres hacer?
 
   1) plataformas   salto controlado en el aire, disparo y pisar enemigos
   2) castlevania   salto sin control, latigo, escaleras y arma secundaria
+  3) comando       visto desde arriba: ocho direcciones, granadas y prisioneros
 
 elige [1]:
 ```
 
 El género no es un adorno: cambia la física del salto, el arma, si puedes
-pisar enemigos y hasta el mapa del primer nivel. Si ya lo tienes claro, pásalo
+pisar enemigos y hasta el mapa del primer nivel. El tercero cambia más aún: se
+ve **desde arriba**, así que no hay gravedad ni saltos, se anda en ocho
+direcciones y se sube la pantalla a tiros (mira
+[«un juego visto desde arriba»](#un-juego-visto-desde-arriba) al final). Si ya lo tienes claro, pásalo
 directo y se salta el menú:
 
 ```bash
@@ -238,7 +242,7 @@ El juego que has escrito vale igual para una Mega Drive, para un Amiga o para
 un Atari ST: solo cambia cómo se dibuja y cómo suena, no lo que pasa.
 
 ```bash
-../ngplat sistemas                       # las cinco máquinas y sus límites
+../ngplat sistemas                       # las seis máquinas y sus límites
 ../ngplat compilar --sistema megadrive   # -> build/megadrive/rom/juego.bin
 ../ngplat compilar --sistema amiga       # -> build/amiga/disco/MiJuego.adf
 ../ngplat compilar --sistema jaguar      # -> build/jaguar/rom/MiJuego.j64
@@ -279,6 +283,58 @@ También puedes dejarlo escrito en el `game.yaml` y olvidarte:
 juego:
   sistema: megadrive
 ```
+
+## Un juego visto desde arriba
+
+```bash
+./ngplat nuevo micomando --genero comando
+```
+
+Este género es otra cosa. Se ve **desde arriba**, como el Ikari Warriors o el
+Guerrilla War: no hay gravedad ni saltos, y el nivel no se cruza de izquierda a
+derecha sino que **se sube**. Empiezas abajo del todo y la base está arriba.
+
+Los mandos cambian con la vista:
+
+- **Flechas**: te mueves en las **ocho** direcciones, diagonales incluidas.
+- <kbd>X</kbd>: disparas **hacia donde miras**, sea la dirección que sea.
+- <kbd>Z</kbd> / <kbd>espacio</kbd>: en vez de saltar, **tira una granada**. El
+  marcador enseña cuántas te quedan (`GRAN 03`) y se recargan con las cajas.
+
+El mapa se dibuja igual que en los otros géneros, solo que alto y estrecho:
+
+```yaml
+  - nombre: "EL CAMPAMENTO"
+    mapa: |
+      AAAAAA..,G,..AAAAAAA
+      AAAAA.,,,,,,,.AAAAAA
+      ...
+      AAAAA...P....AAAAAAA
+```
+
+`P` abajo, `G` arriba, y entre medias un camino que **tuerce**: los recodos son
+lo que hace que se juegue, porque un pasillo recto se sube andando y ya. Lo que
+lo estrecha son los árboles (`A`), los sacos terreros (`#`) y el río (`~`), que
+es de los que matan.
+
+Lo nuevo de este género son dos cosas:
+
+- **Los enemigos disparan.** Los soldados y las torretas llevan un bloque
+  `dispara:` con su cadencia (`espera:`) y su alcance. Esa cadencia es lo que
+  decide si un sitio se puede pasar o no: súbela y el paso se cierra.
+- **Los prisioneros.** El símbolo `R` pone un preso atado. Si lo **tocas**, se
+  suelta y suma 500 puntos; si le **disparas**, lo pierdes y no suma nada. Es lo
+  que te obliga a mirar antes de apretar el gatillo. Están explicados en
+  [formato.md](formato.md#prisioneros).
+
+Todo lo demás es igual: los mismos gráficos PNG, el mismo editor con
+<kbd>E</kbd> y el mismo `ngplat compilar`.
+
+Un aviso sobre las máquinas: estos niveles son de **32 casillas de alto**, y el
+Amiga y la Jaguar dibujan el escenario en un mapa de bits que llega a 16. Ahí
+`ngplat comprobar` te lo dice y no compila. Para esas dos, o bajas el nivel a 16
+casillas o lo haces de lado como los otros géneros. En Neo Geo, Mega Drive,
+Atari ST y X68000 entra tal cual.
 
 ## Cuando algo falla
 

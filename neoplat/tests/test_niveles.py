@@ -1,8 +1,9 @@
 """Los niveles de ejemplo tienen que poder terminarse.
 
-Un bot que solo sabe andar a la derecha y saltar cuando ve un obstaculo juega
-cada nivel de principio a fin. Si el bot no llega a la meta, el nivel pide
-precision imposible o tiene una trampa injusta.
+Un bot juega cada nivel de principio a fin: de lado anda a la derecha y salta
+cuando ve un obstaculo, y desde arriba busca el camino hasta la meta y sube
+disparando. Si el bot no llega a la meta, el nivel pide precision imposible o
+tiene una trampa injusta.
 """
 
 import json
@@ -73,6 +74,36 @@ class TestNivelesJugables(unittest.TestCase):
         self.assertEqual(resultado.returncode, 0,
                          "el bot no puede terminar el proyecto de castlevania:\n"
                          + resultado.stdout)
+
+    def test_el_proyecto_de_comando_tambien_se_termina(self):
+        """El genero de comando se ve desde arriba y se juega subiendo, asi que
+        el bot que anda hacia la derecha no vale: hay otro que busca el camino
+        hasta la meta. Sus dos niveles tienen que poder terminarse."""
+        destino = os.path.join(self.tmp, "comando")
+        crear_proyecto(destino, "COMANDO", "TEST", genero="comando")
+        resultado = self._jugar(destino)
+        self.assertEqual(resultado.returncode, 0,
+                         "el bot no puede terminar el proyecto de comando:\n"
+                         + resultado.stdout)
+
+    def test_avisa_cuando_el_camino_de_arriba_esta_cortado(self):
+        """Y lo contrario: si un nivel cenital se queda sin paso, el bot tiene
+        que decir que no hay camino, no soltar un 'no llega a tiempo' que no
+        explica nada. Aqui cerramos una fila entera con sacos terreros."""
+        destino = os.path.join(self.tmp, "comando-cortado")
+        crear_proyecto(destino, "CORTADO", "TEST", genero="comando")
+        ruta = os.path.join(destino, "game.yaml")
+        with open(ruta, encoding="utf-8") as fh:
+            texto = fh.read()
+        fila = "AA.,,,,,g,,,,,,,.AAA"
+        assert fila in texto, "el nivel de comando ya no tiene esa fila"
+        texto = texto.replace(fila, "#" * len(fila), 1)
+        with open(ruta, "w", encoding="utf-8") as fh:
+            fh.write(texto)
+        resultado = self._jugar(destino)
+        self.assertNotEqual(resultado.returncode, 0,
+                            "el bot dice que sube por un nivel tapiado")
+        self.assertIn("no hay camino", resultado.stdout, resultado.stdout)
 
     def test_avisa_cuando_la_llave_no_esta_en_el_camino(self):
         """El bot solo anda hacia la derecha. Si la llave que abre la meta esta

@@ -16,7 +16,7 @@ from typing import Dict, List
 from . import gfx, sistemas
 from .claves import tabla_para_el_editor
 from .build import (Build, actor_def_values, attack_values, breakable_values,
-                    enemy_shot_values, enemy_values, item_values,
+                    enemy_shot_values, enemy_values, item_values, prisoner_values,
                     platform_values, player_values,
                     sub_values, tile_tables)
 from .paths import PREVIEW_DIR, TEMPLATES_DIR
@@ -115,6 +115,13 @@ def build_data(build: Build) -> Dict[str, object]:
         entry["actor"] = actor_json(enemy, "enemy%d" % i)
         entry["name"] = enemy.name
         enemies.append(entry)
+
+    prisoners: List[Dict[str, object]] = []
+    for i, pri in enumerate(build.prisoners):
+        entry = dict(prisoner_values(pri))
+        entry["actor"] = actor_json(pri, "prisoner%d" % i)
+        entry["name"] = pri.name
+        prisoners.append(entry)
 
     # lo que tiran los enemigos que llevan `dispara:`
     enemy_shots: List[Dict[str, object]] = []
@@ -248,6 +255,7 @@ def build_data(build: Build) -> Dict[str, object]:
         "player": player,
         "enemies": enemies,
         "enemy_shots": enemy_shots,
+        "prisoners": prisoners,
         "items": items,
         "platforms": platforms,
         "breakables": breakables,

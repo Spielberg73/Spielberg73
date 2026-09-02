@@ -512,8 +512,9 @@ def build_parser() -> argparse.ArgumentParser:
                               "del Amiga)")
     p_nuevo.add_argument("--genero", choices=GENEROS, default=None,
                          help="como se juega: 'plataformas' (saltar, pisar y "
-                              "disparar) o 'castlevania' (latigo, escaleras y "
-                              "municion). Sin esto, se pregunta")
+                              "disparar), 'castlevania' (latigo, escaleras y "
+                              "municion) o 'comando' (visto desde arriba, ocho "
+                              "direcciones y prisioneros). Sin esto, se pregunta")
     p_nuevo.set_defaults(func=cmd_nuevo)
 
     p_check = sub.add_parser("comprobar", aliases=["check"],

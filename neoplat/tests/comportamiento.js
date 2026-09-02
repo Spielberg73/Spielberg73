@@ -60,6 +60,7 @@ function datos(filas, opciones) {
       else if (ch === "C") { spawns.push([x * 16 + 2, y * 16 + 16 - candelabro.box_h, 4, 0]); ch = "."; }
       else if (ch === "V") { spawns.push([x * 16 + 2, y * 16 + 16 - candelabro.box_h, 4, 1]); ch = "."; }
       else if (ch === "J") { spawns.push([x * 16 + 2, y * 16 + 16 - enemigo.box_h, 0, 2]); ch = "."; }
+      else if (ch === "R") { spawns.push([x * 16 + 2, y * 16 + 16 - enemigo.box_h, 8, 0]); ch = "."; }
       assert.ok(ch in LEYENDA, "simbolo desconocido: " + ch);
       celdas.push(LEYENDA[ch]);
     }
@@ -148,6 +149,14 @@ function datos(filas, opciones) {
         health: opciones.bossHealth || 3, damage: 1, stompable: 1,
         edge_turn: opciones.jefeBorde === undefined ? 1 : opciones.jefeBorde,
         boss: 1, name: "jefe" }
+    ],
+    /* los prisioneros: tocarlos los suelta, dispararles los pierde */
+    prisoners: [
+      { actor: actor(12, 14), score: opciones.rehenPuntos === undefined ? 500
+                                     : opciones.rehenPuntos,
+        speed: fx(opciones.rehenVelocidad || 1.2),
+        escape: opciones.rehenEscape === undefined ? 90 : opciones.rehenEscape,
+        name: "prisionero" }
     ],
     /* lo que tiran los enemigos con `dispara:`; el enemigo guarda su numero */
     enemy_shots: [
@@ -675,6 +684,68 @@ prueba("fuera de la partida no suena nada", function () {
   var w = mundo(suelo([[13, 3, "P"]]), { musicaNivel: 2, musicaTitulo: 5 });
   w.state = NP.STATE.GAME_OVER;
   assert.strictEqual(w.musicaAhora(), 0, "en el game over sigue sonando algo");
+});
+
+/* --------------------------------------------------- los prisioneros */
+/*
+ * El rehen atado de Guerrilla War: si lo tocas se suelta y suma; si le pegas
+ * un tiro, se acabo. Es el unico actor del kit al que no hay que dispararle, y
+ * eso es lo que obliga a mirar antes de disparar.
+ */
+
+function primerRehen(w) {
+  for (var i = 0; i < w.entityCount; i++)
+    if (w.entities[i].active && w.entities[i].kind === 8) return w.entities[i];
+  return null;
+}
+
+prueba("tocar a un prisionero lo suelta y suma puntos", function () {
+  var w = mundo(suelo([[13, 3, "P"], [13, 6, "R"]]));
+  var rehen = primerRehen(w);
+  assert.ok(rehen, "no ha salido el prisionero");
+  assert.strictEqual(rehen.timer, 0, "no empieza atado");
+  assert.strictEqual(w.score, 0);
+  correr(w, 60, NP.IN.RIGHT);
+  assert.ok(w.score >= 500, "soltarlo no ha sumado: " + w.score);
+  assert.ok(rehen.timer > 0, "sigue atado despues de tocarlo");
+});
+
+prueba("el prisionero suelto echa a correr y se pierde de vista", function () {
+  var w = mundo(suelo([[13, 3, "P"], [13, 6, "R"]]), { rehenEscape: 40 });
+  var rehen = primerRehen(w);
+  correr(w, 60, NP.IN.RIGHT);
+  assert.ok(rehen.vx !== 0, "no ha echado a correr");
+  correr(w, 60);
+  assert.ok(!rehen.active, "no se ha ido");
+});
+
+prueba("solo suma una vez, por mucho que lo toques", function () {
+  var w = mundo(suelo([[13, 3, "P"], [13, 6, "R"]]), { rehenEscape: 600 });
+  correr(w, 90, NP.IN.RIGHT);
+  var puntos = w.score;
+  correr(w, 120, NP.IN.RIGHT);
+  assert.strictEqual(w.score, puntos, "ha vuelto a sumar al tocarlo otra vez");
+});
+
+prueba("dispararle a un prisionero lo pierde y no suma", function () {
+  var w = mundo(suelo([[13, 3, "P"], [13, 8, "R"]]), { ataque: "disparo" });
+  var rehen = primerRehen(w);
+  w.step(NP.IN.ACTION);
+  correr(w, 90);
+  assert.ok(!rehen.active, "el tiro no se lo ha llevado por delante");
+  assert.strictEqual(w.score, 0, "dispararle ha sumado puntos");
+});
+
+prueba("un prisionero ya suelto no lo mata tu propio tiro", function () {
+  /* Ya corre: el tiro que sale detras no tiene que castigarte otra vez. */
+  var w = mundo(suelo([[13, 3, "P"], [13, 5, "R"]]),
+                { ataque: "disparo", rehenEscape: 600 });
+  correr(w, 40, NP.IN.RIGHT);
+  var rehen = primerRehen(w);
+  assert.ok(rehen && rehen.timer > 0, "no se ha soltado");
+  w.step(NP.IN.ACTION);
+  correr(w, 20);
+  assert.ok(rehen.active, "el tiro se ha llevado a un prisionero ya suelto");
 });
 
 /* ------------------------------------------ enemigos que te disparan */

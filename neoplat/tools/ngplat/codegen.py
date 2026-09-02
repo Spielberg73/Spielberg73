@@ -16,7 +16,7 @@ from .sonido import EVENTOS
 from .build import (
     ANIM_SLOTS, Build, actor_def_values, attack_values, breakable_values,
     enemy_values, item_values, layer_values, platform_values, player_values,
-    enemy_shot_values, sub_values, tile_tables,
+    enemy_shot_values, prisoner_values, sub_values, tile_tables,
 )
 from .fixed import FIXED_ONE
 from .paths import ENGINE_DIR, TEMPLATES_DIR
@@ -249,6 +249,23 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
         src.append("    }," if i + 1 < len(build.enemies) else "    }")
     src.append("};")
     src.append("const uint16_t np_enemy_count = %d;" % len(build.enemies))
+    src.append("")
+
+    # --- los prisioneros: se sueltan tocandolos y se pierden a tiros
+    src.append("/* Los prisioneros, en el orden de 'prisioneros:'. */")
+    for i, pri in enumerate(build.prisoners):
+        src.append(_anim_arrays("np_prisoner%d" % i, pri))
+    src.append("const NpPrisonerDef np_prisoners[] = {")
+    if not build.prisoners:
+        src.append("    { %s, 0, 0, 0 }" % _actor_vacio())
+    for i, pri in enumerate(build.prisoners):
+        pv = prisoner_values(pri)
+        src.append("    {")
+        src.append(_actor_def("np_prisoner%d" % i, actor_def_values(pri)) + ",")
+        src.append("        %d, %d, %d" % (pv["score"], pv["speed"], pv["escape"]))
+        src.append("    }," if i + 1 < len(build.prisoners) else "    }")
+    src.append("};")
+    src.append("const uint8_t np_prisoner_count = %d;" % len(build.prisoners))
     src.append("")
 
     # --- lo que tiran los enemigos que llevan `dispara:`

@@ -34,6 +34,7 @@
   var KIND_ENEMY = 0, KIND_ITEM = 1, KIND_SHOT = 2, KIND_PLATFORM = 3;
   var KIND_BREAKABLE = 4, KIND_SUBSHOT = 5, KIND_MELEE = 6;
   var KIND_ENEMY_SHOT = 7;      /* lo que tira un enemigo con `dispara:` */
+  var KIND_PRISONER = 8;        /* el rehen: se suelta tocandolo */
   /* el arma secundaria: 0 ninguna, 1 recta, 2 en arco */
   var SUB_NONE = 0, SUB_LINE = 1, SUB_ARC = 2;
   /* por donde va y viene una plataforma movil */
@@ -246,6 +247,7 @@
     if (e.kind === KIND_SUBSHOT) return this.data.player.subs[e.def];
     if (e.kind === KIND_MELEE) return this.data.player.attack;
     if (e.kind === KIND_ENEMY_SHOT) return this.data.enemy_shots[e.def];
+    if (e.kind === KIND_PRISONER) return this.data.prisoners[e.def];
     return this.data.items[e.def];
   };
 
@@ -298,6 +300,9 @@
         e.facing = 1;             /* sale hacia la derecha o hacia abajo */
       } else if (e.kind === KIND_BREAKABLE) {
         e.health = this.data.breakables[e.def].health;
+      } else if (e.kind === KIND_PRISONER) {
+        e.health = 1;
+        e.timer = 0;              /* cero = sigue atado */
       }
       this.entities.push(e);
       this.entityCount++;
@@ -578,6 +583,15 @@
     for (i = 0; i < this.entityCount; i++) {
       var otra = this.entities[i];
       if (!otra.active) continue;
+      /* al prisionero no hay que dispararle: si le das, se acabo */
+      if (otra.kind === KIND_PRISONER) {
+        var pa2 = this.entityDef(otra).actor;
+        if (!overlap(e.x, e.y, a.box_w, a.box_h,
+                     otra.x, otra.y, pa2.box_w, pa2.box_h)) continue;
+        if (!otra.timer) { otra.active = 0; this.sfx |= SFX.HURT; }
+        e.active = 0;
+        return;
+      }
       if (otra.kind !== KIND_ENEMY && otra.kind !== KIND_BREAKABLE) continue;
       var ea = this.entityDef(otra).actor;
       if (!overlap(e.x, e.y, a.box_w, a.box_h,
@@ -688,6 +702,15 @@
     for (i = 0; i < this.entityCount; i++) {
       var otra = this.entities[i];
       if (!otra.active) continue;
+      /* al prisionero no hay que dispararle: si le das, se acabo */
+      if (otra.kind === KIND_PRISONER) {
+        var pa2 = this.entityDef(otra).actor;
+        if (!overlap(e.x, e.y, a.box_w, a.box_h,
+                     otra.x, otra.y, pa2.box_w, pa2.box_h)) continue;
+        if (!otra.timer) { otra.active = 0; this.sfx |= SFX.HURT; }
+        e.active = 0;
+        return;
+      }
       if (otra.kind !== KIND_ENEMY && otra.kind !== KIND_BREAKABLE) continue;
       var ea = this.entityDef(otra).actor;
       if (!overlap(e.x, e.y, a.box_w, a.box_h,
@@ -1105,6 +1128,46 @@
     animTick(a, e);
   };
 
+  /* ------------------------------------------------ los prisioneros
+   *
+   * Traduccion literal de np_prisoner_free / np_prisoner_update. `timer` a
+   * cero quiere decir que sigue atado. */
+  World.prototype.prisonerFree = function (e, p) {
+    var d = this.data.prisoners[e.def];
+    if (e.timer) return;
+    e.timer = d.escape ? d.escape : 1;
+    this.score += d.score;
+    this.sfx |= SFX.COIN;
+    if (this.cenital()) {
+      e.vy = (e.y < p.y) ? -d.speed : d.speed;
+      e.vx = 0;
+    } else {
+      e.vx = (e.x < p.x) ? -d.speed : d.speed;
+      e.facing = e.vx > 0 ? 1 : 0;
+    }
+  };
+
+  World.prototype.prisonerUpdate = function (e) {
+    var d = this.data.prisoners[e.def], a = d.actor;
+    if (!e.timer) {
+      animSet(e, ANIM_IDLE);
+      animTick(a, e);
+      return;
+    }
+    e.timer--;
+    if (!e.timer) { e.active = 0; return; }
+    if (e.vx) {
+      e.x = this.moveX(e.x, e.y, a.box_w, a.box_h, e.vx, moveOut);
+      if (moveOut.hit) e.vx = -e.vx;
+    }
+    if (e.vy) {
+      e.y = this.moveY(e.x, e.y, a.box_w, a.box_h, e.vy, 1, moveOut);
+      if (moveOut.hitDown || moveOut.hitUp) e.vy = -e.vy;
+    }
+    animSet(e, ANIM_RUN);
+    animTick(a, e);
+  };
+
   World.prototype.enemyUpdate = function (e) {
     var d = this.data.enemies[e.def], a = d.actor, p = this.nearestPlayer(e.x);
     switch (d.behavior) {
@@ -1261,6 +1324,8 @@
         if (e.kind === KIND_MELEE) continue;     /* es tu propio latigo */
         if (e.kind === KIND_PLATFORM) continue;  /* es suelo, no un bicho */
         if (e.kind === KIND_BREAKABLE) continue; /* hay que pegarle */
+        if (e.kind === KIND_ENEMY_SHOT) continue;   /* se mira en su update */
+        if (e.kind === KIND_PRISONER) { this.prisonerFree(e, p); continue; }
         if (e.kind === KIND_ITEM) { this.collect(quien, e); continue; }
         var d = this.data.enemies[e.def];
         /* Misma ventana de pisado que np_world.c: cayendo y con los pies por
@@ -1403,6 +1468,7 @@
       if (e.kind === KIND_SHOT) this.shotUpdate(e);
       else if (e.kind === KIND_SUBSHOT) this.subshotUpdate(e);
       else if (e.kind === KIND_ENEMY_SHOT) this.enemyShotUpdate(e);
+      else if (e.kind === KIND_PRISONER) this.prisonerUpdate(e);
       else if (e.kind === KIND_ENEMY) this.enemyUpdate(e);
       else if (e.kind === KIND_BREAKABLE) this.breakableUpdate(e);
       else this.itemUpdate(e);

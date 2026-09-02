@@ -212,11 +212,14 @@
 <p class="sub">preview NeoPlat &middot; @SISTEMA@ &middot; 320&times;224 &middot; misma simulacion que la ROM &middot; @AUTHOR@</p>
 <div class="frame"><canvas id="pantalla" width="320" height="224"></canvas></div>
 <div class="bar">
-  <span><kbd>&larr;</kbd><kbd>&rarr;</kbd> moverse</span>
-  <span><kbd>Z</kbd> / <kbd>espacio</kbd> saltar</span>
-  <span><kbd>X</kbd> atacar</span>
+  <span id="teclas-mover"><kbd>&larr;</kbd><kbd>&rarr;</kbd> moverse</span>
+  <span id="teclas-mover-8" hidden><kbd>&larr;</kbd><kbd>&rarr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd> moverse en 8 direcciones</span>
+  <span id="teclas-saltar"><kbd>Z</kbd> / <kbd>espacio</kbd> saltar</span>
+  <span id="teclas-atacar"><kbd>X</kbd> atacar</span>
+  <span id="teclas-disparar" hidden><kbd>X</kbd> disparar hacia donde miras</span>
   <span id="teclas-secundaria" hidden><kbd>&uarr;</kbd>+<kbd>X</kbd> arma secundaria</span>
-  <span><kbd>&darr;</kbd> agacharse / bajar de plataforma</span>
+  <span id="teclas-granada" hidden><kbd>Z</kbd> / <kbd>espacio</kbd> lanzar granada</span>
+  <span id="teclas-agachar"><kbd>&darr;</kbd> agacharse / bajar de plataforma</span>
   <span><kbd>Enter</kbd> empezar</span>
   <span id="teclas-2p" hidden>jugador 2: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> moverse &middot; <kbd>G</kbd> saltar &middot; <kbd>H</kbd> atacar</span>
   <span><kbd>R</kbd> reiniciar</span>
@@ -545,9 +548,21 @@
   } else {
     document.getElementById("teclas-2p").hidden = false;
   }
-  /* la fila de teclas solo habla del arma secundaria si el juego la lleva */
+  /* la fila de teclas se adapta a la vista y a las armas que lleve el juego */
+  var CENITAL = DATA.view === "cenital";
+  function verTecla(id, visible) {
+    var el = document.getElementById(id);
+    if (el) el.hidden = !visible;
+  }
+  verTecla("teclas-mover", !CENITAL);
+  verTecla("teclas-mover-8", CENITAL);
+  verTecla("teclas-saltar", !CENITAL);
+  verTecla("teclas-atacar", !CENITAL);
+  verTecla("teclas-disparar", CENITAL);
+  verTecla("teclas-agachar", !CENITAL);
   if ((DATA.player.subs || []).length) {
-    document.getElementById("teclas-secundaria").hidden = false;
+    verTecla("teclas-secundaria", !CENITAL);
+    verTecla("teclas-granada", CENITAL);
   }
   var PAD = {
     left: NPCore.IN.LEFT, right: NPCore.IN.RIGHT, down: NPCore.IN.DOWN,

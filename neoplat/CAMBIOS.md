@@ -2,8 +2,64 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.16.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.17.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.17
+
+**El género comando**, entero. La 1.16 dejó el motor mirando desde arriba; esta
+lo convierte en un juego que se puede hacer sin escribir nada:
+
+```bash
+./ngplat nuevo micomando --genero comando
+```
+
+Salen dos niveles jugables, el héroe dibujado de frente, de espaldas y de lado,
+soldados y torretas que te disparan, granadas, cajas de munición y prisioneros,
+con su música y sus efectos. Es el tercer género del menú de `ngplat nuevo`.
+
+**Los prisioneros.** Un tipo de bicho nuevo, `prisioneros:`, que es el que le da
+carácter al género: se sueltan **tocándolos** (suman puntos y echan a correr),
+pero si les disparas mientras están atados **los pierdes** y no suman nada. Es
+la única cosa del kit que castiga por apretar el gatillo, y es justo lo que hace
+que se mire antes de disparar.
+
+```yaml
+prisioneros:
+  prisionero:
+    sprite: graficos/prisionero.png
+    puntos: 500
+    velocidad: 1.6
+    escape: 100        # frames corriendo antes de perderse de vista
+```
+
+Como todo lo demás, son una entidad más de la lista: se dibujan solos en las
+seis máquinas y en el preview, y entran en la comprobación de paridad.
+
+**Los niveles se suben.** Los dos del género son altos y estrechos (20x32
+casillas, algo más de dos pantallas), se empieza abajo y la base está arriba, y
+el camino **tuerce**: los recodos, el río que corta por la mitad y los recintos
+de sacos terreros son lo que hace que se juegue, porque un pasillo recto se sube
+andando y ya.
+
+**Un bot que sabe subir.** El que comprueba que un nivel se puede terminar solo
+sabía andar hacia la derecha y saltar, que en una vista cenital no lleva a
+ninguna parte. Ahora hay dos: el de siempre y uno que busca el camino hasta la
+meta, sube por él y dispara a lo que se le acerca —sin llevarse por delante a
+un preso que tenga en la línea de tiro—. Vale para las pruebas y para el botón
+«¿se puede terminar?» del editor, que en cenital ya dice a qué **altura** se
+quedó en vez de a qué x.
+
+**La fila de teclas del preview** se ajusta a la vista: en cenital dice ocho
+direcciones, disparar y lanzar granada, y deja de hablar de saltar y agacharse.
+
+**Y un límite que estaba escrito pero no se miraba**: la Jaguar dibuja el
+escenario en un mapa de bits de 704x256, o sea 16 casillas de alto, igual que el
+Amiga. El Amiga lo comprobaba y la Jaguar no, así que un nivel alto compilaba
+tan tranquilo y luego se veía partido. Ahora `ngplat comprobar --sistema jaguar`
+lo dice antes. Los dos niveles del género comando son de 32 casillas: entran en
+Neo Geo, Mega Drive, Atari ST y X68000, y en esas dos máquinas hay que bajarlos
+a 16 (o subirles el mapa de bits, que es lo siguiente).
 
 ## 1.16
 

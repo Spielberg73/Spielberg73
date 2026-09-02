@@ -107,6 +107,7 @@ el nivel de partida.
 |---|---|
 | `plataformas` | saltas, pisas enemigos y disparas, y el salto se corrige en el aire. Lo de toda la vida |
 | `castlevania` | pegas con **látigo** (que se ve, y se alarga con cada mejora), te agachas, subes escaleras y tiras cuchillos o el hacha gastando munición. El salto **no** se corrige, un golpe te tira al vacío y hay puntos de control. Trae sus propios bichos: esqueleto, murciélago y un encapuchado de jefe |
+| `comando` | **se ve desde arriba**: andas en ocho direcciones, disparas hacia donde miras, tiras granadas con el botón de saltar y subes la pantalla rescatando prisioneros. Los soldados y las torretas **te disparan**; a los presos atados, no: si les das, los pierdes |
 
 Si prefieres decirlo de una:
 
@@ -332,9 +333,9 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.16.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
-| `neoplat-kit-1.16.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.16.zip` | el `ngplat.exe` y su LEEME |
+| `neoplat-docs-1.17.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
+| `neoplat-kit-1.17.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.17.zip` | el `ngplat.exe` y su LEEME |
 
 El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
 plantillas; no necesita Python ni nada instalado. Con **doble clic** —sin
@@ -349,7 +350,7 @@ make paquetes-exe PYTHON_WINDOWS="wine /ruta/a/python.exe"
 
 pero el que se reparte lo hace la acción de GitHub en un `windows-latest`, que
 es lo único que garantiza que el binario es el que va a usar la gente. La
-acción, además, lo ejecuta: crea un proyecto y compila para las cinco máquinas.
+acción, además, lo ejecuta: crea un proyecto y compila para las seis máquinas.
 
 **Está comprobado que sale lo mismo por los dos caminos**: un proyecto generado
 con el `.exe` en Windows es byte a byte idéntico a uno generado con `./ngplat`
@@ -369,6 +370,7 @@ archivo nuevo y que el `.exe` se quede sin él; así salta antes de repartirlo.
 |---|---|
 | `ngplat nuevo <carpeta>` | Crea un proyecto jugable con gráficos de ejemplo, preguntando el género |
 | `ngplat nuevo <carpeta> --genero castlevania` | Lo mismo, con látigo, escaleras, munición y puntos de control en vez de saltar y pisar |
+| `ngplat nuevo <carpeta> --genero comando` | Lo mismo, pero visto desde arriba: ocho direcciones, granadas, enemigos que disparan y prisioneros que rescatar |
 | `ngplat nuevo <carpeta> --estilo hierro` | Lo mismo, pero dibujado con seis colores y listo para el doble plano del Amiga |
 | `ngplat comprobar [proyecto]` | Valida el `game.yaml` y dice cuánto ocupa el juego |
 | `ngplat probar [proyecto]` | Abre el preview y el editor, y se queda sirviéndolo |

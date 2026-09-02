@@ -731,6 +731,51 @@ cambia el arma secundaria que se lleva por la que diga (ver
 existir en `secundarias:` o `ngplat` no compila: si no, se cogería y no pasaría
 nada.
 
+## `prisioneros`
+
+Los rehenes de los juegos de comando. Se **sueltan tocándolos**, no
+disparándoles: son los únicos bichos del kit que castigan por apretar el gatillo.
+
+```yaml
+prisioneros:
+  prisionero:
+    sprite: graficos/prisionero.png
+    frame: [16, 16]
+    caja: [10, 12]
+    puntos: 500          # lo que suma rescatarlo
+    velocidad: 1.6       # lo que corre al soltarse
+    escape: 100          # frames corriendo antes de perderse de vista
+    animaciones:
+      quieto: {frames: [0, 1], velocidad: 24}   # atado
+      correr: {frames: [2, 3], velocidad: 6}    # ya suelto
+```
+
+Se colocan en el mapa como cualquier otra cosa, con su símbolo en
+[`spawns`](#spawns):
+
+```yaml
+spawns:
+  R: prisionero
+```
+
+Cómo se comporta:
+
+- **Atado** se queda quieto donde lo pongas, con la animación `quieto`.
+- **Al tocarlo** suma `puntos`, suena el efecto `moneda` y echa a correr con la
+  animación `correr` durante `escape` frames; después desaparece.
+- **Si le disparas mientras está atado** —con el arma, con la secundaria o con
+  lo que sea del jugador— se pierde: desaparece **sin sumar nada** y suena el
+  golpe. Una vez suelto ya no le pasa nada: los tiros le atraviesan.
+- Los enemigos no le hacen nada: es cosa tuya no llevártelo por delante.
+
+`escape` es solo estética, pero cuenta: con 0 desaparece en el sitio, y con un
+número alto se queda corriendo por la pantalla un buen rato.
+
+Los prisioneros no son exclusivos de `vista: cenital`: de lado también se sueltan
+tocándolos, solo que echan a correr a un lado en vez de hacia arriba. Pero es en
+cenital donde tienen sentido: en una pantalla que se sube a tiros, decidir si
+disparas o no es medio juego.
+
 ## `plataformas`
 
 ```yaml

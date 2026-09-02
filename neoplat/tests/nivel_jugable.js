@@ -26,8 +26,15 @@ if (require.main === module) {
                   i + 1, nivel.name, r.frames, r.muertes);
     } else {
       fallos++;
-      console.log("  FALLO nivel %d (%s): %s (llego a x=%d de %d)",
-                  i + 1, nivel.name, r.motivo, r.avance, nivel.width * 16);
+      /* En vista cenital se sube, asi que lo que se cuenta es hasta donde
+         subio: decir "x=" ahi seria mentir sobre lo que hizo el bot. */
+      if (data.view === "cenital") {
+        console.log("  FALLO nivel %d (%s): %s (subio hasta y=%d de %d)",
+                    i + 1, nivel.name, r.motivo, r.avance, nivel.height * 16);
+      } else {
+        console.log("  FALLO nivel %d (%s): %s (llego a x=%d de %d)",
+                    i + 1, nivel.name, r.motivo, r.avance, nivel.width * 16);
+      }
     }
   });
   process.exit(fallos ? 1 : 0);

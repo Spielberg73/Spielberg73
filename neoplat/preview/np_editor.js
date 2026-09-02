@@ -939,12 +939,18 @@
     editor.comprobarJugable = function (NPCore) {
       aplicarAlMotor();
       var resultado = NPBot.jugar(NPCore, DATA, editor.nivel, { frames: 8000 });
+      /* En vista cenital el bot sube, asi que donde se quedo es una altura:
+         llevar la vista a una 'x' que no existe seria mandar al que edita a
+         mirar el sitio equivocado. */
+      var donde = resultado.x !== undefined ? " (x=" + resultado.x + ")"
+                : resultado.y !== undefined ? " (y=" + resultado.y + ")" : "";
       editor.mensaje = resultado.ok
         ? "el bot lo termina (" + Math.round(resultado.frames / 60) + " s, " +
           resultado.muertes + " muertes)"
-        : "el bot no lo termina: " + resultado.motivo +
-          (resultado.x !== undefined ? " (x=" + resultado.x + ")" : "");
+        : "el bot no lo termina: " + resultado.motivo + donde;
       if (!resultado.ok && resultado.x !== undefined) editor.irA(resultado.x);
+      else if (!resultado.ok && resultado.y !== undefined)
+        editor.irA(editor.camX + anchoVista() / 2, resultado.y);
       alCambiar();
       return resultado;
     };
