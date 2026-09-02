@@ -155,6 +155,57 @@
     return this.ponerValor(rango, alias, valor);
   };
 
+  /**
+   * Pone (o anade) una clave con una **lista de textos** debajo:
+   *
+   *     pistas:
+   *       - "do4 mi4 sol4"
+   *       - |
+   *         la2 - mi3 -
+   *         do3 - sol3 -
+   *
+   * Hace falta para las pistas de una musica, que son lo unico del yaml con
+   * varias lineas de texto: en una sola linea saldria kilometrica y sin los
+   * saltos una cancion no hay quien la lea.
+   */
+  Yaml.prototype.ponerLista = function (rango, alias, elementos) {
+    if (!rango) return false;
+    var encontrada = this.clave(rango, alias);
+    var sangria, destino, fin, quitadas = 0;
+    if (encontrada) {
+      sangria = encontrada.partes.sangria.length;
+      destino = encontrada.linea;
+      fin = destino + 1;
+      while (fin < this.lineas.length) {
+        var linea = this.lineas[fin];
+        if (esHueco(linea) || sangriaDe(linea) <= sangria) break;
+        fin++;
+      }
+      quitadas = fin - destino;
+      this.lineas.splice(destino, quitadas);
+    } else {
+      sangria = this.sangriaHijos(rango);
+      destino = rango.fin;
+      while (destino > rango.inicio && esHueco(this.lineas[destino - 1])) destino--;
+    }
+    var hueco = Array(sangria + 1).join(" ");
+    var nuevas = [hueco + alias[0] + ":"];
+    elementos.forEach(function (texto) {
+      var partes = String(texto).split("\n");
+      /* el bloque literal del yaml deja un salto al final: no es una linea */
+      while (partes.length > 1 && partes[partes.length - 1] === "") partes.pop();
+      if (partes.length <= 1) {
+        nuevas.push(hueco + "  - " + entrecomillar(partes[0] || ""));
+      } else {
+        nuevas.push(hueco + "  - |");
+        partes.forEach(function (l) { nuevas.push(hueco + "    " + l); });
+      }
+    });
+    this.lineas.splice.apply(this.lineas, [destino, 0].concat(nuevas));
+    rango.fin += nuevas.length - quitadas;
+    return true;
+  };
+
   /** Busca una subseccion dentro de un rango y, si no esta, la crea vacia. */
   Yaml.prototype.asegurarSubseccion = function (rango, alias) {
     if (!rango) return null;

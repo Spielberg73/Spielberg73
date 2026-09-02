@@ -17,7 +17,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from . import wav
 from .errors import ProjectError
@@ -219,6 +219,11 @@ class Efecto:
     pasos: List[Paso] = field(default_factory=list)
     muestra: Optional[wav.Muestra] = None
     ruta: str = ""                    # el archivo del que salio, para avisos
+    # Lo que ponia en el game.yaml, tal cual: `tipo`, `notas`, `desde`... Los
+    # pasos son el resultado de compilarlo y no se puede volver atras (de una
+    # lista de hercios no sale un "do4 mi4"), asi que el editor necesita esto
+    # para poder ensenar y cambiar lo que el usuario escribio.
+    fuente: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def digital(self) -> bool:
@@ -231,6 +236,8 @@ class Musica:
     velocidad: int                    # frames por nota
     pistas: List[List[Paso]] = field(default_factory=list)
     bucle: bool = True
+    # Las lineas de notas tal cual venian, por lo mismo que en Efecto.
+    fuente: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

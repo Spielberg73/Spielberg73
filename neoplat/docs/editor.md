@@ -177,6 +177,47 @@ el juego sin salir del navegador. Si has abierto el `preview.html` a pelo
 (`file://`) no hay con quien hablar y el botón lo descarga para que lo pongas a
 mano.
 
+## Sonido
+
+La pestaña **sonido** cambia lo que suena, y lo deja oír sin salir del editor.
+
+**Efectos.** Los doce momentos que el juego produce solo (`empezar`, `salto`,
+`doble_salto`, `moneda`, `pisar`, `golpe`, `muerte`, `meta`, `vida`, `disparo`,
+`romper` y `control`) salen listados, con o sin sonido. En cada uno eliges de
+qué tipo es y ajustas sus números:
+
+| tipo | para qué | qué se ajusta |
+|---|---|---|
+| `notas` | melodías cortas (moneda, meta, empezar) | las notas y los frames que dura cada una |
+| `barrido` | saltos y disparos: la frecuencia sube o baja | de qué Hz a qué Hz y en cuántos pasos |
+| `ruido` | golpes y explosiones | cuántos frames dura y el «color» del ruido |
+
+**«Sin sonido»** se lo quita, y elegir un tipo en un momento que estaba mudo se
+lo pone. El botón **escuchar** lo toca ahí mismo. Si un efecto lleva un WAV
+(`muestra:`), el WAV se queda donde está: lo que edites es el recambio para la
+máquina que no sabe tocar sonido grabado.
+
+**Música.** Eliges la canción, sus frames por nota, el volumen y si va en bucle,
+y escribes las dos pistas —melodía y acompañamiento— en su recuadro:
+
+```
+do4 mi4 sol4 mi4 | fa4 la4 do5 la4
+sol4 si4 re5 si4 | do5 -   sol4 -
+```
+
+Las notas van en castellano (`do re mi fa sol la si`) o en inglés
+(`c d e f g a b`), con `#` o `b` detrás, el número de octava (4 si no pones
+ninguno), `-` para un silencio, `|` para separar compases y `:2` para alargar
+una nota. Dos pistas como mucho: el tercer canal del chip se lo quedan los
+efectos. Abajo te dice cuánto dura una vuelta, y si escribes una nota que no
+existe te lo dice en rojo en vez de tragársela.
+
+**Escuchar** toca la canción entera y **parar** la corta.
+
+Lo que se oye aquí es **exactamente** lo que va a sonar en la máquina: el
+navegador compila las notas con el mismo procedimiento que el kit, y hay una
+prueba que compara los dos paso a paso.
+
 ## Revisar
 
 Una lista en vivo de lo que está mal en el nivel, con clic para ir al sitio:

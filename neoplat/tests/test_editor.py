@@ -113,6 +113,40 @@ class TestEditor(unittest.TestCase):
         self.assertNotIn(simbolos["fantasma"], editado.tiles)
         self.assertNotIn(simbolos["gema"], editado.tiles)
 
+    def test_el_sonido_editado_llega_al_yaml(self):
+        """El viaje de ida y vuelta del sonido: el editor lo escribe y el kit
+        lo vuelve a leer. Si escribiera algo que `sonido.py` no entiende, o
+        cambiara los pasos por el camino, esto falla."""
+        editado = load_project(self.proyecto_editado)
+        empezar = editado.sound.efectos["empezar"]
+        self.assertEqual(empezar.fuente["notas"], "sol5 do6 mi6")
+        self.assertEqual(empezar.fuente["velocidad"], 5)
+        self.assertEqual(len(empezar.pasos), 3)
+        self.assertEqual(empezar.pasos[0].duracion, 5)
+        self.assertAlmostEqual(empezar.pasos[0].frecuencia, 783.99, places=1)
+
+        cueva = editado.sound.musica["cueva"]
+        self.assertEqual(cueva.velocidad, 11)
+        self.assertEqual(cueva.fuente["pistas"], ["mi4 sol4 si4 mi5", "mi3 - si2 -"])
+        self.assertEqual(len(cueva.pistas[0]), 4)
+        self.assertEqual(cueva.pistas[0][0].duracion, 11)
+
+    def test_el_sonido_que_no_se_toca_se_queda_igual(self):
+        """Lo de al lado no se puede reescribir: el efecto de la moneda lleva
+        su muestra, y una cancion que nadie ha tocado tiene que salir con los
+        mismos pasos que entro."""
+        editado = load_project(self.proyecto_editado)
+        for nombre in ("salto", "moneda", "golpe"):
+            viejo = self.original.sound.efectos[nombre]
+            nuevo = editado.sound.efectos[nombre]
+            self.assertEqual(nuevo.fuente, viejo.fuente, nombre)
+            self.assertEqual(nuevo.ruta, viejo.ruta, nombre)
+        antes = self.original.sound.musica["bosque"]
+        ahora = editado.sound.musica["bosque"]
+        self.assertEqual(ahora.velocidad, antes.velocidad)
+        self.assertEqual([[p.frecuencia, p.duracion] for p in ahora.pistas[0]],
+                         [[p.frecuencia, p.duracion] for p in antes.pistas[0]])
+
     def test_no_se_pierde_nada_de_lo_que_no_se_toca(self):
         editado = load_project(self.proyecto_editado)
         self.assertEqual(editado.title, self.original.title)

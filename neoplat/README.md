@@ -163,6 +163,11 @@ edites; <kbd>Enter</kbd> y lo estás jugando otra vez.
 - **Cámara a elegir**: `scroll` (el escenario se desliza, como en consola) o
   `pantallas` (la vista salta de una pantalla fija a la siguiente, como en los
   ordenadores de 8 bits). Es la misma opción para las seis máquinas.
+- **El sonido, con botón de escuchar**: los doce momentos que el juego produce
+  (saltar, coger una moneda, recibir un golpe…) con su tipo —notas, barrido o
+  ruido— y sus números, y las canciones con sus dos pistas de notas. Lo oyes ahí
+  mismo, y suena **exactamente** lo que va a sonar en la máquina: el navegador
+  compila las notas con el mismo procedimiento que el kit.
 - **Revisión en vivo**: te avisa de que falta la salida o la meta, de enemigos
   colgados en el aire o de un hueco más ancho de lo que cruza tu salto. Y un
   botón que **lanza un bot a terminarse el nivel** para comprobar que es posible.
@@ -333,9 +338,9 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.18.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
-| `neoplat-kit-1.18.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.18.zip` | el `ngplat.exe` y su LEEME |
+| `neoplat-docs-1.19.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
+| `neoplat-kit-1.19.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.19.zip` | el `ngplat.exe` y su LEEME |
 
 El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
 plantillas; no necesita Python ni nada instalado. Con **doble clic** —sin
@@ -443,11 +448,12 @@ neoplat/
 │   ├── np_editor.js        el editor (dibujo, propiedades, validación)
 │   ├── np_yaml.js          reescribe el game.yaml sin tocar lo demás
 │   ├── np_pixel.js         el editor de dibujos (sprites, tiles y fondos)
+│   ├── np_sonido.js        compila notas, barridos y ruido (gemelo de sonido.py)
 │   └── np_bot.js           el bot que comprueba si un nivel se puede terminar
 ├── examples/
 │   ├── bosque-magico/      juego de ejemplo listo para compilar
 │   └── cueva-de-hierro/    el mismo motor con seis colores y parallax en Amiga
-└── tests/                  274 pruebas + 38 de jugabilidad + 66 del editor +
+└── tests/                  424 pruebas + 129 de jugabilidad + 81 del editor +
                             bot que se pasa los niveles + emuladores y navegador
 ```
 

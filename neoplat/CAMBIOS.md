@@ -2,8 +2,39 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.18.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.19.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.19
+
+**La pestaña «sonido» del editor.** Hasta ahora el editor cambiaba el mapa, la
+física, los enemigos y los dibujos, pero para tocar un efecto o una canción
+había que ir al `game.yaml` a mano. Ya no:
+
+- **Los doce momentos** que el juego produce solo (`empezar`, `salto`,
+  `doble_salto`, `moneda`, `pisar`, `golpe`, `muerte`, `meta`, `vida`,
+  `disparo`, `romper`, `control`) salen listados, con sonido o sin él. En cada
+  uno eliges el tipo —**notas**, **barrido** o **ruido**— y ajustas sus números.
+  «Sin sonido» se lo quita; elegir un tipo en uno que estaba mudo se lo pone.
+- **Botón de escuchar** en cada efecto y en cada canción, sin salir del editor
+  ni volver al juego.
+- **La música**, con sus frames por nota, su volumen, si va en bucle y las dos
+  pistas de notas en su recuadro. Debajo dice cuánto dura una vuelta, y una
+  nota que no existe sale en rojo en vez de colarse.
+- Todo se escribe en el `game.yaml` como estaba escrito: los efectos en una
+  línea (`salto: {tipo: barrido, desde: 320, ...}`) y las pistas en bloque, con
+  sus saltos de línea. Lo que no tocas no se reescribe.
+
+**Y lo importante: lo que se oye es lo que va a sonar.** El navegador no puede
+usar el compilador del kit (es Python), así que hay un gemelo suyo en
+JavaScript, `preview/np_sonido.js`, con las mismas notas, el mismo barrido y el
+mismo ruido. Que los dos den exactamente los mismos pasos no se supone: hay una
+prueba que los compara nota a nota sobre melodías, barridos y ruidos, y otra
+que comprueba que lo que uno rechaza el otro también.
+
+Un efecto con `muestra:` (un WAV tuyo) se puede editar sin perder el WAV: lo
+que cambias es el recambio de notas para la máquina que no sabe tocar sonido
+grabado.
 
 ## 1.18
 

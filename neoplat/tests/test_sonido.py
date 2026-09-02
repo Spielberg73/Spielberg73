@@ -55,6 +55,98 @@ class TestNotas(unittest.TestCase):
             sonido_mod.parsear_notas("do0", 4, 12, "t")
 
 
+class TestGemeloEnJavaScript(unittest.TestCase):
+    """El compilador de sonido del navegador tiene que dar lo mismo que este.
+
+    El editor deja cambiar los efectos y la musica, y para que suenen al
+    momento hay un gemelo de `sonido.py` en JavaScript (preview/np_sonido.js).
+    Si los dos no dan exactamente los mismos pasos, lo que se oye al editar no
+    seria lo que va a la ROM, que es justo lo que este kit promete que no pasa.
+    """
+
+    CASOS = [
+        {"tipo": "notas", "notas": "do4 mi4 sol4", "velocidad": 4, "volumen": 12},
+        {"tipo": "notas", "notas": "la4 - do5:2 | sol#3 reb5", "velocidad": 8,
+         "volumen": 9},
+        {"tipo": "notas", "notas": "c4 d4 e4 f4 g4 a4 b4 c5", "velocidad": 6,
+         "volumen": 15},
+        {"tipo": "notas", "notas": "do1 do8", "velocidad": 3, "volumen": 0},
+        {"tipo": "notas", "notas": "la4\nsi4\n\ndo5", "velocidad": 5, "volumen": 11},
+        {"tipo": "barrido", "desde": 320.0, "hasta": 900.0, "duracion": 6,
+         "volumen": 12},
+        {"tipo": "barrido", "desde": 1600.0, "hasta": 500.0, "duracion": 3,
+         "volumen": 7},
+        {"tipo": "barrido", "desde": 300.0, "hasta": 300.0, "duracion": 2,
+         "volumen": 12},
+        {"tipo": "ruido", "duracion": 8, "tono": 16, "volumen": 12},
+        {"tipo": "ruido", "duracion": 60, "tono": 1, "volumen": 3},
+        {"tipo": "ruido", "duracion": 1, "tono": 31, "volumen": 15},
+    ]
+
+    def _en_python(self, caso):
+        volumen = caso["volumen"]
+        if caso["tipo"] == "notas":
+            pasos = sonido_mod.parsear_notas(caso["notas"], caso["velocidad"],
+                                             volumen, "prueba")
+        elif caso["tipo"] == "barrido":
+            pasos = sonido_mod.barrido(caso["desde"], caso["hasta"],
+                                       caso["duracion"], volumen, "prueba")
+        else:
+            pasos = sonido_mod.ruido(caso["duracion"], volumen, caso["tono"])
+        # los mismos numeros que le llegan al navegador en DATA
+        return [[round(p.frecuencia, 2), p.duracion, p.volumen, p.ruido]
+                for p in pasos]
+
+    def test_los_dos_compiladores_dan_los_mismos_pasos(self):
+        import json
+        import shutil
+        import subprocess
+        if not shutil.which("node"):
+            self.skipTest("node no esta instalado")
+        guion = (
+            "var S = require(%s);\n"
+            "var casos = JSON.parse(require('fs').readFileSync(0, 'utf8'));\n"
+            "console.log(JSON.stringify(casos.map(function (c) {\n"
+            "  return S.compilar(c);\n"
+            "})));\n"
+        ) % json.dumps(os.path.join(KIT, "preview", "np_sonido.js"))
+        salida = subprocess.run(
+            ["node", "-e", guion], input=json.dumps(self.CASOS),
+            capture_output=True, text=True, check=True)
+        enjs = json.loads(salida.stdout)
+        for caso, resultado in zip(self.CASOS, enjs):
+            with self.subTest(caso=caso):
+                self.assertFalse(resultado.get("error"), resultado.get("error"))
+                self.assertEqual(resultado["pasos"], self._en_python(caso))
+
+    def test_una_nota_imposible_se_cuenta_en_los_dos(self):
+        """Y los errores tambien tienen que coincidir: si Python no compila
+        'do0', el editor no puede decir que si y dejarte guardarlo."""
+        import json
+        import shutil
+        import subprocess
+        if not shutil.which("node"):
+            self.skipTest("node no esta instalado")
+        malos = [{"tipo": "notas", "notas": "do0", "velocidad": 4, "volumen": 12},
+                 {"tipo": "notas", "notas": "xx4", "velocidad": 4, "volumen": 12},
+                 {"tipo": "notas", "notas": "", "velocidad": 4, "volumen": 12}]
+        for caso in malos:
+            with self.subTest(caso=caso):
+                with self.assertRaises(ProjectError):
+                    sonido_mod.parsear_notas(caso["notas"], 4, 12, "prueba")
+        guion = (
+            "var S = require(%s);\n"
+            "var casos = JSON.parse(require('fs').readFileSync(0, 'utf8'));\n"
+            "console.log(JSON.stringify(casos.map(\n"
+            "  function (c) { return S.compilar(c).error || ''; })));\n"
+        ) % json.dumps(os.path.join(KIT, "preview", "np_sonido.js"))
+        salida = subprocess.run(
+            ["node", "-e", guion], input=json.dumps(malos),
+            capture_output=True, text=True, check=True)
+        for error in json.loads(salida.stdout):
+            self.assertTrue(error, "el editor deja pasar una nota que no compila")
+
+
 class TestEnsamblador(unittest.TestCase):
     """Codificaciones conocidas del juego de instrucciones del Z80."""
 

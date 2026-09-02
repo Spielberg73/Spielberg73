@@ -185,6 +185,16 @@ canción toca.
 Las seis máquinas y el preview llaman a esa función y se limitan a mandar el
 número al chip, así que una regla nueva se escribe una sola vez.
 
+## Cambiarlo sin salir del navegador
+
+`ngplat probar` + <kbd>E</kbd> abre el editor, y su pestaña **sonido** cambia
+los efectos y la música con botón de escuchar. Lo que se oye ahí es lo mismo
+que va a sonar en la máquina: el navegador compila las notas con
+`preview/np_sonido.js`, que es el gemelo de `tools/ngplat/sonido.py`, y una
+prueba los compara paso a paso sobre una tanda de melodías, barridos y ruidos
+(`tests/test_sonido.py::TestGemeloEnJavaScript`). Está contado en
+[editor.md](editor.md#sonido).
+
 ## Lo que aún no hace
 
 - **Muestras digitales en el Atari ST.** Las otras cinco ya las tocan; el

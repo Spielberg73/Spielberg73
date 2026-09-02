@@ -22,6 +22,8 @@
     ? require("./np_yaml.js") : root.NPYaml;
   var NPBot = (typeof require === "function" && typeof module !== "undefined")
     ? require("./np_bot.js") : root.NPBot;
+  var NPSonido = (typeof require === "function" && typeof module !== "undefined")
+    ? require("./np_sonido.js") : root.NPSonido;
 
   var COMPORTAMIENTOS = ["patrulla", "volador", "perseguidor", "saltarin", "fijo"];
   var EFECTOS = ["puntos", "vida", "salud", "llave"];
@@ -137,7 +139,17 @@
             puntos: o.score,
             efecto: EFECTOS[o.effect] || "puntos", cantidad: o.amount
           };
-        })
+        }),
+        /* El sonido, tal como se escribio en el yaml: `{tipo: barrido, desde:
+           400, ...}` por efecto y `{velocidad, volumen, bucle, pistas}` por
+           cancion. Los pasos que come el motor salen de compilar esto con
+           np_sonido.js, que es el gemelo de sonido.py. */
+        sonido: {
+          efectos: clonar((DATA.sonido && DATA.sonido.fuente) || {}),
+          musica: ((DATA.sonido && DATA.sonido.musica) || []).map(function (m) {
+            return clonar(m.fuente || {});
+          })
+        }
       };
     }
 
@@ -495,6 +507,31 @@
         else if (grupo === "jugador") editor.modelo.jugador[campo] = valor;
         else if (grupo === "enemigo") editor.modelo.enemigos[indice][campo] = valor;
         else if (grupo === "objeto") editor.modelo.objetos[indice][campo] = valor;
+        else if (grupo === "efecto") editor.modelo.sonido.efectos[indice][campo] = valor;
+        else if (grupo === "musica") editor.modelo.sonido.musica[indice][campo] = valor;
+      });
+      aplicarAlMotor();
+      return true;
+    };
+
+    /* ------------------------------------------------------------ sonido */
+
+    /** El bit del evento, igual que EVENTO_BIT en sonido.py: 1 << su orden. */
+    editor.bitDeMomento = function (nombre) {
+      var lista = (DATA.sonido && DATA.sonido.momentos) || [];
+      var i = lista.indexOf(nombre);
+      return i < 0 ? 0 : (1 << i);
+    };
+
+    /**
+     * Le pone sonido a un momento que no lo tenia, o se lo quita.
+     * Los momentos son fijos (los produce el motor), asi que "anadir" es
+     * empezar a describir uno de la lista, no inventarse nada.
+     */
+    editor.ponerEfecto = function (nombre, fuente) {
+      cambioSuelto(function () {
+        if (fuente) editor.modelo.sonido.efectos[nombre] = fuente;
+        else delete editor.modelo.sonido.efectos[nombre];
       });
       aplicarAlMotor();
       return true;
@@ -1078,8 +1115,36 @@
       DATA.time_limit = Math.round(editor.modelo.juego.tiempo);
       DATA.camara_pantallas = editor.modelo.juego.camara === "pantallas" ? 1 : 0;
       DATA.amiga_modo = editor.modelo.juego.amiga;
+      aplicarSonido();
       for (var i = 0; i < editor.modelo.filas.length; i++) reconstruirNivel(i);
     }
+
+    /**
+     * Los efectos y la musica del editor, compilados a pasos para que el
+     * preview suene con lo que se acaba de escribir. Los errores no paran
+     * nada: el paso malo se queda sin sonido y el panel lo dice.
+     */
+    function aplicarSonido() {
+      if (!NPSonido || !DATA.sonido) return;
+      var fuentes = editor.modelo.sonido.efectos;
+      DATA.sonido.efectos = {};
+      DATA.sonido.eventos = {};
+      Object.keys(fuentes).forEach(function (nombre) {
+        var bit = editor.bitDeMomento(nombre);
+        if (!bit) return;
+        DATA.sonido.efectos[nombre] = NPSonido.compilar(fuentes[nombre]).pasos;
+        DATA.sonido.eventos[String(bit)] = nombre;
+      });
+      editor.modelo.sonido.musica.forEach(function (fuente, i) {
+        var tema = DATA.sonido.musica[i];
+        if (!tema) return;
+        var salida = NPSonido.compilarMusica(fuente);
+        tema.pistas = salida.pistas;
+        tema.velocidad = Math.round(Number(fuente.velocidad));
+        tema.bucle = fuente.bucle ? 1 : 0;
+      });
+    }
+    editor.aplicarSonido = aplicarSonido;
     editor.aplicarAlMotor = aplicarAlMotor;
 
     editor.aplicar = function () {
@@ -1119,6 +1184,97 @@
           var dentro = y.asegurarSubseccion(actor, ALIAS.animaciones);
           y.ponerValorPlano(dentro, [ranura], enLinea(animaciones[clave][ranura]));
         });
+      });
+    }
+
+    /* --------------------------------------------- el sonido, al yaml */
+
+    var ALIAS_SONIDO = ["sonido", "sound"];
+    var ALIAS_EFECTOS = ["efectos", "effects", "sfx"];
+    var ALIAS_MUSICA = ["musica", "music", "m\u00fasica", "canciones"];
+
+    /** Un efecto, en una linea: `salto: {tipo: barrido, desde: 400, ...}`. */
+    function efectoEnLinea(f) {
+      var partes = [];
+      if (f.tipo === "barrido") {
+        partes.push("tipo: barrido",
+                    "desde: " + NPYaml.numero(f.desde, 0),
+                    "hasta: " + NPYaml.numero(f.hasta, 0),
+                    "duracion: " + NPYaml.numero(f.duracion, 0));
+      } else if (f.tipo === "ruido") {
+        partes.push("tipo: ruido",
+                    "duracion: " + NPYaml.numero(f.duracion, 0));
+        if (Number(f.tono) !== 16) partes.push("tono: " + NPYaml.numero(f.tono, 0));
+      } else if (f.tipo === "muestra") {
+        partes.push("muestra: " + f.muestra);
+      } else {
+        partes.push("notas: " + NPYaml.entrecomillar(f.notas || ""),
+                    "velocidad: " + NPYaml.numero(f.velocidad, 0));
+      }
+      /* la muestra es un eje aparte de `tipo:`: un efecto puede ser un WAV y
+         llevar ademas notas de recambio para la maquina que no lo toca */
+      if (f.muestra && f.tipo !== "muestra") partes.push("muestra: " + f.muestra);
+      if (Number(f.volumen) !== 12) partes.push("volumen: " + NPYaml.numero(f.volumen, 0));
+      return "{" + partes.join(", ") + "}";
+    }
+
+    /**
+     * Escribe los efectos y la musica que se hayan cambiado.
+     *
+     * Los efectos van en una linea, que es como los escribe el andamiaje. La
+     * musica no: sus pistas son lo unico del yaml con varias lineas de texto,
+     * y en una sola linea una cancion no hay quien la lea.
+     */
+    function escribirSonido(y, sonido, base) {
+      if (!sonido || !base) return;
+      var hayEfectos = false, hayMusica = false;
+      Object.keys(sonido.efectos).forEach(function (nombre) {
+        if (cambio(sonido.efectos[nombre], base.efectos[nombre])) hayEfectos = true;
+      });
+      Object.keys(base.efectos).forEach(function (nombre) {
+        if (!(nombre in sonido.efectos)) hayEfectos = true;
+      });
+      sonido.musica.forEach(function (m, i) {
+        if (cambio(m, base.musica[i])) hayMusica = true;
+      });
+      if (!hayEfectos && !hayMusica) return;
+
+      var raiz = y.seccion(ALIAS_SONIDO, 0, undefined, 0);
+      if (!raiz) {
+        /* un proyecto sin `sonido:` es un proyecto mudo: se le crea la
+           seccion antes de los niveles, que es donde la deja el andamiaje */
+        y.anadirEnSeccion(ALIAS_SONIDO, [], ["niveles", "levels"]);
+        raiz = y.seccion(ALIAS_SONIDO, 0, undefined, 0);
+      }
+      if (!raiz) return;
+
+      if (hayEfectos) {
+        var efectos = y.asegurarSubseccion(raiz, ALIAS_EFECTOS);
+        Object.keys(sonido.efectos).forEach(function (nombre) {
+          if (!cambio(sonido.efectos[nombre], base.efectos[nombre])) return;
+          y.ponerValorPlano(efectos, [nombre], efectoEnLinea(sonido.efectos[nombre]));
+        });
+        Object.keys(base.efectos).forEach(function (nombre) {
+          if (!(nombre in sonido.efectos)) y.quitarClave(efectos, [nombre]);
+        });
+      }
+      if (!hayMusica) return;
+      sonido.musica.forEach(function (m, i) {
+        if (!cambio(m, base.musica[i])) return;
+        var nombre = (DATA.sonido.musica[i] || {}).nombre;
+        if (!nombre) return;
+        /* la seccion se busca **cada vez**: escribir las pistas de una
+           cancion mueve de sitio las lineas de las demas */
+        var dentro = y.seccion(ALIAS_SONIDO, 0, undefined, 0);
+        var musica = dentro && y.seccion(ALIAS_MUSICA, dentro.inicio, dentro.fin,
+                                         y.sangriaHijos(dentro));
+        var cancion = musica && y.seccion([nombre], musica.inicio, musica.fin);
+        if (!cancion) return;
+        y.ponerValor(cancion, ["velocidad"], NPYaml.numero(m.velocidad, 0));
+        if (Number(m.volumen) !== 11)
+          y.ponerValor(cancion, ["volumen"], NPYaml.numero(m.volumen, 0));
+        if (!m.bucle) y.ponerValor(cancion, ["bucle"], NPYaml.siNo(false));
+        y.ponerLista(cancion, ["pistas"], m.pistas);
       });
     }
 
@@ -1187,6 +1343,9 @@
 
       // las animaciones que se hayan cambiado en el editor de dibujos
       escribirAnimaciones(y, modelo.animaciones);
+
+      // el sonido: los efectos y la musica que se hayan tocado
+      escribirSonido(y, modelo.sonido, base.sonido);
 
       // los que se han borrado
       editor.borrados.forEach(function (borrado) {

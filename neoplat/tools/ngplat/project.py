@@ -1143,25 +1143,34 @@ def _read_sound(raw: Any, root: str = ".", where: str = "sonido") -> "sonido_mod
                 "el efecto '%s' no dice que tiene que sonar" % clave,
                 hint="pon 'notas:', 'tipo: barrido', 'tipo: ruido' o 'muestra:'",
                 where=sub_where)
+        # `fuente` guarda lo que ponia en el yaml, que es lo unico con lo que
+        # el editor puede ensenar y cambiar el efecto: de los pasos ya
+        # compilados no se vuelve a "do4 mi4".
+        fuente = {"tipo": tipo or "muestra", "volumen": volumen}
         if tipo == "notas":
             texto = sub.str_(["notas", "notes", "melodia"], required=True)
             velocidad = sub.int_(["speed", "velocidad", "duracion", "duración"], 4, 1, 60)
             pasos = sonido_mod.parsear_notas(texto or "", velocidad, volumen, sub_where)
+            fuente.update(notas=texto or "", velocidad=velocidad)
         elif tipo == "barrido":
             desde = sub.num(["from", "desde"], 300.0, 30.0, 4000.0)
             hasta = sub.num(["to", "hasta"], 900.0, 30.0, 4000.0)
             duracion = sub.int_(["duration", "duracion", "duración", "pasos"], 8, 2, 60)
             pasos = sonido_mod.barrido(desde, hasta, duracion, volumen, sub_where)
+            fuente.update(desde=desde, hasta=hasta, duracion=duracion)
         elif tipo == "ruido":
             duracion = sub.int_(["duration", "duracion", "duración"], 8, 1, 60)
-            pasos = sonido_mod.ruido(duracion, volumen,
-                                     sub.int_(["tono", "tone"], 16, 1, 31))
+            tono = sub.int_(["tono", "tone"], 16, 1, 31)
+            pasos = sonido_mod.ruido(duracion, volumen, tono)
+            fuente.update(duracion=duracion, tono=tono)
         else:
             pasos = []                       # solo muestra, sin recambio
         if ruta_muestra:
             muestra = _leer_muestra(root, ruta_muestra, sub_where)
+            fuente["muestra"] = ruta_muestra
         resultado.efectos[nombre] = sonido_mod.Efecto(
-            nombre=nombre, pasos=pasos, muestra=muestra, ruta=ruta_muestra or "")
+            nombre=nombre, pasos=pasos, muestra=muestra, ruta=ruta_muestra or "",
+            fuente=fuente)
 
     musicas = node.child("music", "musica", "música", "canciones")
     for clave, valor in (musicas.data or {}).items():
@@ -1193,7 +1202,9 @@ def _read_sound(raw: Any, root: str = ".", where: str = "sonido") -> "sonido_mod
             for i, pista in enumerate(pistas_raw)
         ]
         resultado.musica[nombre] = sonido_mod.Musica(
-            nombre=nombre, velocidad=velocidad, pistas=pistas, bucle=bucle)
+            nombre=nombre, velocidad=velocidad, pistas=pistas, bucle=bucle,
+            fuente={"velocidad": velocidad, "volumen": volumen, "bucle": bucle,
+                    "pistas": [str(p) for p in pistas_raw]})
 
     # Las dos canciones que no son de ningun nivel. Se dicen por su nombre, y
     # el nombre tiene que existir: escribirlo mal y quedarte sin musica en el

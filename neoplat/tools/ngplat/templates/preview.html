@@ -86,6 +86,29 @@
   .grupo-titulo { color: #cfd6e4; font-size: 12px; text-transform: uppercase;
                   letter-spacing: .14em; margin-top: 4px; }
   .nota { color: #7d8799; font-size: 12px; }
+  /* --- el panel de sonido --- */
+  .efecto {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+    border-bottom: 1px solid #1d2331; padding: 5px 0; font-size: 12px;
+    color: #8b95a8;
+  }
+  .efecto > .quien { flex: 0 0 100px; color: #cfd6e4; font-family: ui-monospace, monospace; }
+  .efecto input[type=number], .efecto select, .efecto input[type=text] {
+    background: #131722; border: 1px solid #2b3245; border-radius: 5px;
+    color: #cfd6e4; font: inherit; font-size: 12px; padding: 3px 6px; width: 74px;
+  }
+  .efecto input[type=text] { width: 210px; }
+  .efecto select { width: 104px; }
+  .efecto .fallo { color: #e8756b; flex: 1 0 100%; }
+  .efecto.mudo > .quien { color: #6b7488; }
+  .pista { display: flex; align-items: flex-start; gap: 8px; margin-top: 6px;
+           font-size: 12px; color: #8b95a8; }
+  .pista > span { flex: 0 0 92px; padding-top: 4px; }
+  .pista textarea {
+    flex: 1; min-height: 72px; background: #131722; border: 1px solid #2b3245;
+    border-radius: 5px; color: #cfd6e4; padding: 5px 7px; resize: vertical;
+    font: 12px ui-monospace, monospace; line-height: 1.5;
+  }
   .problemas { display: flex; flex-direction: column; gap: 4px; }
   .problemas button {
     text-align: left; background: #161a25; border: 1px solid #2b3245;
@@ -257,6 +280,7 @@
     <button type="button" data-panel="juego">juego y fisica</button>
     <button type="button" data-panel="actores">enemigos y objetos</button>
     <button type="button" data-panel="dibujos">dibujos</button>
+    <button type="button" data-panel="sonido">sonido</button>
     <button type="button" data-panel="revisar">revisar<span class="contador" id="es-problemas" hidden>0</span></button>
     <button type="button" data-panel="yaml">game.yaml</button>
     <button type="button" data-panel="rom">compilar</button>
@@ -433,6 +457,30 @@
     </div>
   </div>
 
+  <div class="panel" id="panel-sonido">
+    <div class="barra">
+      <span class="etiqueta">efectos</span>
+      <span class="nota">los momentos los produce el juego; tu decides como suena
+        cada uno. Pulsa <b>escuchar</b> para oirlo sin salir del editor.</span>
+    </div>
+    <div id="son-efectos"></div>
+    <div class="grupo-titulo">musica</div>
+    <div class="barra">
+      <span class="etiqueta">cancion</span>
+      <select id="son-cancion"></select>
+      <button type="button" id="son-tocar">escuchar</button>
+      <button type="button" id="son-parar">parar</button>
+    </div>
+    <div class="campos" id="son-campos"></div>
+    <div id="son-pistas"></div>
+    <p class="nota" id="son-aviso"></p>
+    <p class="nota">las notas van en castellano (<code>do re mi fa sol la si</code>)
+      o en ingles (<code>c d e f g a b</code>), con <code>#</code> o <code>b</code>
+      detras, el numero de octava (4 si no pones ninguno), <code>-</code> para un
+      silencio, <code>|</code> para separar compases y <code>:2</code> para alargar
+      una nota. Dos pistas como mucho: el tercer canal del chip es de los efectos.</p>
+  </div>
+
   <div class="panel" id="panel-revisar">
     <div class="barra">
       <button type="button" id="ed-bot">¿se puede terminar?</button>
@@ -498,6 +546,9 @@
 </script>
 <script>
 @PIXEL@
+</script>
+<script>
+@SONIDO@
 </script>
 <script>
 @EDITOR@
@@ -806,6 +857,50 @@
       }
     },
 
+    /* --- escuchar desde el editor ---------------------------------------
+     *
+     * En modo edicion el bucle del juego no llama a tick(), asi que un efecto
+     * puesto a mano se quedaria en la primera nota. Aqui se le da cuerda con
+     * un temporizador propio, a los mismos 60 pasos por segundo que el driver
+     * de la consola, y se para solo cuando la secuencia acaba. */
+    reloj: null,
+
+    darCuerda: function () {
+      var yo = this;
+      if (this.reloj) return;
+      this.reloj = setInterval(function () {
+        yo.tick();
+        var suena = yo.efecto || yo.pistas.length;
+        if (!suena) yo.pararAudicion();
+      }, 1000 / 60);
+    },
+
+    escucharPasos: function (pasos) {
+      this.iniciar();
+      if (!this.ctx || !pasos || !pasos.length) return;
+      this.efecto = { pasos: pasos, i: 0, resto: 0 };
+      this.darCuerda();
+    },
+
+    escucharTema: function (tema) {
+      this.iniciar();
+      if (!this.ctx || !tema) return;
+      this.pistas = [];
+      for (var i = 0; i < tema.pistas.length && i < 2; i++)
+        this.pistas.push({ pasos: tema.pistas[i], i: 0, resto: 0, bucle: 0 });
+      /* que el bucle del juego vuelva a poner la cancion del nivel al salir */
+      this.tema = -2;
+      this.darCuerda();
+    },
+
+    pararAudicion: function () {
+      if (this.reloj) { clearInterval(this.reloj); this.reloj = null; }
+      this.efecto = null;
+      this.pistas = [];
+      this.tema = -2;
+      this.callar();
+    },
+
     alternarSilencio: function () {
       this.silencio = !this.silencio;
       if (this.silencio) this.callar();
@@ -823,6 +918,7 @@
      * la vez. Hay que callarlos a mano (y lo mismo al esconder la pestana, que
      * tampoco recibe frames pero si se oye). */
     pausar: function () {
+      if (this.reloj) { clearInterval(this.reloj); this.reloj = null; }
       if (!this.ctx) return;
       this.callar();
       this.efecto = null;
@@ -1355,6 +1451,197 @@
     campoBool(fis, "agacharse", "jugador", "agachado", null, p.agachado);
   }
 
+  /* --- el panel de sonido ---------------------------------------------
+   *
+   * Los efectos y la musica se escriben aqui igual que en el game.yaml -notas,
+   * barridos y ruido- y se compilan con np_sonido.js, que es el gemelo del
+   * sonido.py del kit. Por eso lo que se oye al pulsar "escuchar" es
+   * exactamente lo que va a sonar en la maquina: no hay dos formas de
+   * compilar una cancion, hay una y esta probada contra la otra.
+   */
+
+  var cancionElegida = 0;
+
+  function nombresDeMomentos() {
+    return (DATA.sonido && DATA.sonido.momentos) || [];
+  }
+
+  function fuenteNueva(tipo) {
+    if (tipo === "barrido")
+      return { tipo: "barrido", desde: 400, hasta: 900, duracion: 8, volumen: 12 };
+    if (tipo === "ruido")
+      return { tipo: "ruido", duracion: 8, tono: 16, volumen: 12 };
+    return { tipo: "notas", notas: "do5 sol5", velocidad: 4, volumen: 12 };
+  }
+
+  function construirSonido() {
+    var cont = document.getElementById("son-efectos");
+    if (!cont) return;
+    cont.innerHTML = "";
+    var efectos = editor.modelo.sonido.efectos;
+
+    nombresDeMomentos().forEach(function (momento) {
+      var fuente = efectos[momento];
+      var fila = crearElemento(cont, "div", "efecto" + (fuente ? "" : " mudo"));
+      crearElemento(fila, "span", "quien").textContent = momento;
+
+      var tipos = [["", "sin sonido"], ["notas", "notas"],
+                   ["barrido", "barrido"], ["ruido", "ruido"]];
+      var elegido = fuente ? (fuente.tipo === "muestra" ? "notas" : fuente.tipo) : "";
+      var select = crearElemento(fila, "select");
+      tipos.forEach(function (t) {
+        var op = crearElemento(select, "option");
+        op.value = t[0];
+        op.textContent = t[1];
+      });
+      select.value = elegido;
+      select.addEventListener("change", function () {
+        if (!select.value) editor.ponerEfecto(momento, null);
+        else {
+          var nueva = fuenteNueva(select.value);
+          /* si el efecto era una muestra, el WAV se queda: `muestra:` es un
+             eje aparte de `tipo:` y lo otro es el recambio para el ST */
+          if (fuente && fuente.muestra) nueva.muestra = fuente.muestra;
+          editor.ponerEfecto(momento, nueva);
+        }
+        construirSonido();
+      });
+      if (!fuente) return;
+
+      function numero(texto, campo, min, max, paso) {
+        crearElemento(fila, "span").textContent = texto;
+        var nodo = crearElemento(fila, "input");
+        nodo.type = "number";
+        nodo.min = min; nodo.max = max; nodo.step = paso || 1;
+        nodo.value = fuente[campo];
+        nodo.addEventListener("change", function () {
+          var v = Math.max(min, Math.min(max, Number(nodo.value) || 0));
+          nodo.value = v;
+          editor.ponerPropiedad("efecto", campo, v, momento);
+          construirSonido();
+        });
+      }
+
+      if (fuente.tipo === "barrido") {
+        numero("de (Hz)", "desde", 30, 4000, 10);
+        numero("a (Hz)", "hasta", 30, 4000, 10);
+        numero("pasos", "duracion", 2, 60);
+      } else if (fuente.tipo === "ruido") {
+        numero("frames", "duracion", 1, 60);
+        numero("tono", "tono", 1, 31);
+      } else {
+        crearElemento(fila, "span").textContent = "notas";
+        var texto = crearElemento(fila, "input");
+        texto.type = "text";
+        texto.value = fuente.notas || "";
+        texto.addEventListener("change", function () {
+          editor.ponerPropiedad("efecto", "notas", texto.value, momento);
+          construirSonido();
+        });
+        numero("frames/nota", "velocidad", 1, 60);
+      }
+      numero("volumen", "volumen", 0, 15);
+
+      var boton = crearElemento(fila, "button");
+      boton.type = "button";
+      boton.textContent = "escuchar";
+      boton.addEventListener("click", function () {
+        var salida = NPSonido.compilar(editor.modelo.sonido.efectos[momento]);
+        audio.escucharPasos(salida.pasos);
+      });
+
+      if (fuente.muestra) {
+        var aviso = crearElemento(fila, "span");
+        aviso.textContent = "suena el WAV " + fuente.muestra +
+          " donde se pueda; esto es el recambio";
+      }
+      var salida = NPSonido.compilar(fuente);
+      if (salida.error) crearElemento(fila, "span", "fallo").textContent = salida.error;
+    });
+
+    construirMusica();
+  }
+
+  function construirMusica() {
+    var lista = (DATA.sonido && DATA.sonido.musica) || [];
+    var select = document.getElementById("son-cancion");
+    var campos = document.getElementById("son-campos");
+    var pistas = document.getElementById("son-pistas");
+    var aviso = document.getElementById("son-aviso");
+    select.innerHTML = "";
+    campos.innerHTML = "";
+    pistas.innerHTML = "";
+    aviso.textContent = "";
+    if (!lista.length) {
+      aviso.textContent = "este juego no tiene musica: anade un bloque " +
+        "'musica:' al game.yaml y vuelve a lanzar `ngplat probar`.";
+      return;
+    }
+    if (cancionElegida >= lista.length) cancionElegida = 0;
+    lista.forEach(function (m, i) {
+      var op = crearElemento(select, "option");
+      op.value = String(i);
+      op.textContent = m.nombre;
+    });
+    select.value = String(cancionElegida);
+    select.onchange = function () {
+      cancionElegida = Number(select.value);
+      construirMusica();
+    };
+
+    var fuente = editor.modelo.sonido.musica[cancionElegida];
+    if (!fuente) return;
+
+    function numero(texto, campo, min, max) {
+      var fila = crearElemento(campos, "label", "campo");
+      crearElemento(fila, "span").textContent = texto;
+      var nodo = crearElemento(fila, "input");
+      nodo.type = "number";
+      nodo.min = min; nodo.max = max; nodo.step = 1;
+      nodo.value = fuente[campo];
+      nodo.addEventListener("change", function () {
+        var v = Math.max(min, Math.min(max, Number(nodo.value) || 0));
+        nodo.value = v;
+        editor.ponerPropiedad("musica", campo, v, cancionElegida);
+      });
+    }
+    numero("frames por nota", "velocidad", 1, 60);
+    numero("volumen", "volumen", 0, 15);
+    var filaBucle = crearElemento(campos, "label", "campo");
+    crearElemento(filaBucle, "span").textContent = "en bucle";
+    var caja = crearElemento(filaBucle, "input");
+    caja.type = "checkbox";
+    caja.checked = !!fuente.bucle;
+    caja.addEventListener("change", function () {
+      editor.ponerPropiedad("musica", "bucle", caja.checked, cancionElegida);
+    });
+
+    (fuente.pistas || []).forEach(function (texto, i) {
+      var fila = crearElemento(pistas, "div", "pista");
+      crearElemento(fila, "span").textContent =
+        i === 0 ? "pista 1 (melodia)" : "pista 2 (acompanamiento)";
+      var area = crearElemento(fila, "textarea");
+      area.value = texto;
+      area.addEventListener("change", function () {
+        var copia = (editor.modelo.sonido.musica[cancionElegida].pistas || []).slice();
+        copia[i] = area.value;
+        editor.ponerPropiedad("musica", "pistas", copia, cancionElegida);
+        construirMusica();
+      });
+    });
+    var salida = NPSonido.compilarMusica(fuente);
+    if (salida.error) {
+      aviso.textContent = salida.error;
+      aviso.style.color = "#e8756b";
+    } else {
+      aviso.style.color = "";
+      aviso.textContent = "dura " + Math.round(
+        Math.max.apply(null, salida.pistas.map(function (p) {
+          return p.reduce(function (t, paso) { return t + paso[1]; }, 0);
+        }).concat([0])) / 60) + " segundos por vuelta";
+    }
+  }
+
   /* --- crear enemigos y objetos, con su dibujo ------------------------ */
 
   var lienzoPixel = null;          // dibujo en curso (np_pixel.js)
@@ -1852,6 +2139,7 @@
     construirNivel();
     construirJuego();
     construirActores();
+    construirSonido();
   }
 
   /* --- editor de dibujos ----------------------------------------------
@@ -2878,6 +3166,10 @@
   conClic("ed-borrar-sel", function () { editor.borrarSeleccion(); });
   conClic("ed-jugar", function () { editor.aplicar(); });
   conClic("ed-bot", function () { editor.comprobarJugable(NPCore); });
+  conClic("son-tocar", function () {
+    audio.escucharTema(DATA.sonido.musica[cancionElegida]);
+  });
+  conClic("son-parar", function () { audio.pararAudicion(); });
   conClic("ed-nuevo-enemigo", function () { abrirCreador("enemigo"); });
   conClic("ed-nuevo-objeto", function () { abrirCreador("objeto"); });
   conClic("creador-crear", crearActorDesdeFormulario);

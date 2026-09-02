@@ -260,6 +260,102 @@ prueba("las llaves del nivel llegan al motor y al yaml", function () {
   assert.ok(/llaves:\s*2/.test(yaml), "el yaml no recoge las llaves:\n" + yaml);
 });
 
+/* ------------------------------------------------------------ sonido */
+
+prueba("cambiar un efecto llega al motor y al yaml", function () {
+  var e = nuevoEditor();
+  e.ponerPropiedad("efecto", "notas", "la5 do6 mi6", "empezar");
+  e.ponerPropiedad("efecto", "velocidad", 7, "empezar");
+  var pasos = e.data.sonido.efectos.empezar;
+  assert.strictEqual(pasos.length, 3, "el preview sigue con el efecto de antes");
+  assert.strictEqual(pasos[0][0], 880, "la5 no son 880 Hz");
+  assert.strictEqual(pasos[0][1], 7, "no ha cogido los frames por nota");
+  var yaml = e.exportarYaml();
+  assert.ok(/empezar: \{notas: "la5 do6 mi6", velocidad: 7\}/.test(yaml),
+            "el yaml no recoge el efecto:\n" + yaml);
+});
+
+prueba("un barrido se escribe con sus tres numeros", function () {
+  var e = nuevoEditor();
+  e.ponerPropiedad("efecto", "desde", 500, "salto");
+  e.ponerPropiedad("efecto", "hasta", 1200, "salto");
+  e.ponerPropiedad("efecto", "duracion", 10, "salto");
+  assert.strictEqual(e.data.sonido.efectos.salto.length, 10);
+  assert.ok(/salto:\s+\{tipo: barrido, desde: 500, hasta: 1200, duracion: 10\}/
+            .test(e.exportarYaml()), "el yaml no recoge el barrido");
+});
+
+prueba("el WAV de un efecto no se pierde al tocarle las notas", function () {
+  /* `muestra:` es un eje aparte de `tipo:`: si el editor se lo comiera, el
+     juego perderia el sonido grabado sin decir nada. */
+  var e = nuevoEditor();
+  e.ponerPropiedad("efecto", "notas", "do6 mi6", "moneda");
+  var yaml = e.exportarYaml();
+  assert.ok(/moneda:\s+\{notas: "do6 mi6", velocidad: 3, muestra: sonidos\/moneda\.wav\}/
+            .test(yaml), "se ha comido la muestra:\n" + yaml);
+});
+
+prueba("quitarle el sonido a un momento lo borra del yaml", function () {
+  var e = nuevoEditor();
+  assert.ok(e.data.sonido.efectos.muerte, "la muerte no sonaba ya de antes");
+  e.ponerEfecto("muerte", null);
+  assert.ok(!e.data.sonido.efectos.muerte, "el preview lo sigue tocando");
+  var yaml = e.exportarYaml();
+  assert.ok(!/^\s*muerte:/m.test(yaml), "sigue en el yaml:\n" + yaml);
+});
+
+prueba("ponerle sonido a un momento que no lo tenia", function () {
+  var e = nuevoEditor();
+  assert.ok(!e.data.sonido.efectos.vida, "ese momento ya sonaba");
+  e.ponerEfecto("vida", { tipo: "notas", notas: "do5 sol5 do6",
+                          velocidad: 5, volumen: 12 });
+  var bit = e.bitDeMomento("vida");
+  assert.ok(bit, "el momento no tiene bit");
+  assert.strictEqual(e.data.sonido.eventos[String(bit)], "vida",
+                     "el motor no sabe que ese bit suena");
+  assert.ok(/vida: \{notas: "do5 sol5 do6", velocidad: 5\}/.test(e.exportarYaml()),
+            "no lo ha escrito en el yaml");
+});
+
+prueba("cambiar la musica llega al motor y al yaml", function () {
+  var e = nuevoEditor();
+  e.ponerPropiedad("musica", "velocidad", 12, 0);
+  e.ponerPropiedad("musica", "pistas", ["do4 re4 mi4", "do3 - -"], 0);
+  assert.strictEqual(e.data.sonido.musica[0].velocidad, 12);
+  assert.strictEqual(e.data.sonido.musica[0].pistas[0].length, 3,
+                     "el preview sigue con la cancion de antes");
+  var yaml = e.exportarYaml();
+  assert.ok(/velocidad: 12/.test(yaml), "no ha escrito la velocidad");
+  assert.ok(/- "do4 re4 mi4"/.test(yaml), "no ha escrito la pista:\n" + yaml);
+});
+
+prueba("una pista de varias lineas se escribe como bloque", function () {
+  /* Una cancion larga en una sola linea no hay quien la lea, y el andamiaje
+     las escribe con '- |'. El editor tiene que devolverlas asi. */
+  var e = nuevoEditor();
+  e.ponerPropiedad("musica", "pistas", ["do4 mi4\nsol4 -", "do3 -"], 0);
+  var yaml = e.exportarYaml();
+  assert.ok(/pistas:\n\s+- \|\n\s+do4 mi4\n\s+sol4 -\n\s+- "do3 -"/.test(yaml),
+            "no ha escrito el bloque:\n" + yaml);
+});
+
+prueba("una nota que no existe se cuenta y no rompe nada", function () {
+  var e = nuevoEditor();
+  e.ponerPropiedad("efecto", "notas", "zz9", "empezar");
+  assert.deepStrictEqual(e.data.sonido.efectos.empezar, [],
+                         "una nota imposible no puede sonar");
+});
+
+prueba("el sonido que no se toca no se reescribe", function () {
+  var e = nuevoEditor();
+  e.ponerPropiedad("efecto", "notas", "do6", "empezar");
+  var yaml = e.exportarYaml();
+  assert.ok(/salto:\s+\{tipo: barrido, desde: 320, hasta: 900, duracion: 6\}/
+            .test(yaml), "ha reescrito un efecto que nadie ha tocado");
+  assert.ok(/velocidad: 8 {10}# frames que dura cada nota/.test(yaml),
+            "ha tocado la musica, con su comentario incluido");
+});
+
 /* ------------------------------------------------------- animaciones */
 
 prueba("cambiar una animacion llega al motor y al yaml", function () {
@@ -949,6 +1045,13 @@ if (process.argv[3]) {
     tipo: "objeto", nombre: "gema", hoja: salida.hojasDisponibles()[1].hoja,
     caja: [10, 10], props: { puntos: 50, efecto: "vida" }
   });
+  /* sonido: se cambia un efecto y una cancion, sin anadir ni quitar ninguno,
+     para que se vea que lo demas sigue en su sitio */
+  salida.ponerPropiedad("efecto", "notas", "sol5 do6 mi6", "empezar");
+  salida.ponerPropiedad("efecto", "velocidad", 5, "empezar");
+  salida.ponerPropiedad("musica", "velocidad", 11, 1);
+  salida.ponerPropiedad("musica", "pistas",
+                        ["mi4 sol4 si4 mi5", "mi3 - si2 -"], 1);
   fs.writeFileSync(process.argv[3], salida.exportarYaml());
 }
 

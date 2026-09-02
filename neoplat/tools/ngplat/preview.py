@@ -14,6 +14,7 @@ import os
 from typing import Dict, List
 
 from . import gfx, sistemas
+from . import sonido as sonido_mod
 from .claves import tabla_para_el_editor
 from .build import (Build, actor_def_values, attack_values, breakable_values,
                     enemy_shot_values, enemy_values, item_values, prisoner_values,
@@ -218,6 +219,11 @@ def build_data(build: Build) -> Dict[str, object]:
                      for paso in efecto.pasos]
             for nombre, efecto in project.sound.efectos.items()
         },
+        # Lo que ponia en el game.yaml (`tipo`, `notas`, `desde`...). Los pasos
+        # de arriba son el resultado de compilarlo y no se puede deshacer, asi
+        # que sin esto el editor no podria ensenar ni cambiar un efecto.
+        "fuente": {nombre: dict(efecto.fuente)
+                   for nombre, efecto in project.sound.efectos.items()},
         "musica": [
             {
                 "nombre": nombre,
@@ -225,9 +231,13 @@ def build_data(build: Build) -> Dict[str, object]:
                 "bucle": 1 if tema.bucle else 0,
                 "pistas": [[[round(paso.frecuencia, 2), paso.duracion, paso.volumen]
                             for paso in pista] for pista in tema.pistas],
+                "fuente": dict(tema.fuente),
             }
             for nombre, tema in project.sound.musica.items()
         ],
+        # Los momentos que el motor puede sonorizar, para que el editor pueda
+        # ofrecer tambien los que este juego no usa todavia.
+        "momentos": list(sonido_mod.EVENTOS),
         # Las dos que no son de ningun nivel, en numero de musica (indice + 1,
         # cero = ninguna), igual que np_music_title / np_music_boss en C.
         "titulo": build.music_title,
@@ -302,7 +312,8 @@ def render_html(build: Build) -> str:
     with open(os.path.join(PREVIEW_DIR, "np_core.js"), "r", encoding="utf-8") as fh:
         core = fh.read()
     piezas = {}
-    for nombre in ("np_editor.js", "np_yaml.js", "np_bot.js", "np_pixel.js"):
+    for nombre in ("np_editor.js", "np_yaml.js", "np_bot.js", "np_pixel.js",
+                   "np_sonido.js"):
         with open(os.path.join(PREVIEW_DIR, nombre), "r", encoding="utf-8") as fh:
             piezas[nombre] = fh.read()
     with open(os.path.join(TEMPLATES_DIR, "preview.html"), "r", encoding="utf-8") as fh:
@@ -313,6 +324,7 @@ def render_html(build: Build) -> str:
     html = html.replace("@YAML@", piezas["np_yaml.js"])
     html = html.replace("@BOT@", piezas["np_bot.js"])
     html = html.replace("@PIXEL@", piezas["np_pixel.js"])
+    html = html.replace("@SONIDO@", piezas["np_sonido.js"])
     html = html.replace("@DATA@", data)
     sistema = build.sistema or sistemas.obtener(build.project.system)
     html = html.replace("@TITLE@", build.project.title)
