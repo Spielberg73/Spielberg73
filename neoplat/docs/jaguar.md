@@ -36,9 +36,14 @@ STOP
 
 Eso cambia el reparto del trabajo respecto a las otras máquinas:
 
-- **El escenario** es un mapa de bits lineal de 704 × 256 píxeles, **un byte por
-  píxel**. Se dibuja columna a columna según entra por el borde, igual que en el
-  Amiga, pero copiando bytes: sin bitplanes y sin máscaras.
+- **El escenario** es un mapa de bits lineal de **un byte por píxel**. Se dibuja
+  columna a columna según entra por el borde, igual que en el Amiga, pero
+  copiando bytes: sin bitplanes y sin máscaras. Su forma la elige el juego —la
+  decide el nivel más alto—: 704 × 256 (44 × 16 casillas) para uno que se cruza,
+  o 352 × 512 (22 × 32) para uno que **se sube**. Los dos ocupan los mismos
+  176 KB. En la forma alta no hay ventana —sobrarían dos casillas a los lados—,
+  así que el nivel tiene que caber entero de ancho y el escenario se pinta una
+  vez al entrar; `ngplat comprobar --sistema jaguar` lo dice antes de compilar.
 - **El scroll es gratis.** Se mueve la dirección de los datos del objeto (de
   ocho en ocho píxeles, que es lo que permite el campo) y el resto del
   desplazamiento se hace con su posición X.

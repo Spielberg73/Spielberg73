@@ -90,8 +90,17 @@
 #define NP_OBJ_TRANS  (1u << 15)    /* en la mitad alta: color 0 transparente */
 
 /* --- pantalla ----------------------------------------------------------- */
+/* La forma del mapa de bits la elige gamedata.h: los mismos 176 KB puestos a
+   lo ancho (704x256: 44 casillas x 16, para un juego que se cruza) o a lo alto
+   (352x512: 22 x 32, para uno que se sube y cabe entero dentro). El alto de un
+   nivel no puede pasar de NP_MAPA_ALTO / NP_TILE: hacia abajo el scroll es
+   solo mover el puntero del objeto, no hay ventana. */
+#ifndef NP_MAPA_ANCHO
 #define NP_MAPA_ANCHO 704           /* el doble de ancho que la pantalla     */
+#endif
+#ifndef NP_MAPA_ALTO
 #define NP_MAPA_ALTO 256
+#endif
 #define NP_TILE 16
 #define NP_HUD_ALTO 24
 #define NP_FONDO_ALTO 224           /* alto del mapa de bits del parallax     */

@@ -28,7 +28,22 @@ from ..paths import fuente_del_kit
 from ..sonido import PAULA_CLOCK, periodo_paula, tabla_de_muestras_c
 from .base import Limites, Salida, Sistema, registrar
 
-ALTO_MAX_TILES = gfx_amiga.TILE_PX          # el mapa de bits son 256 lineas
+# El mapa de bits del escenario ocupa lo mismo pase lo que pase (22 KB por
+# plano); lo que cambia es su forma, y con ella lo que se puede hacer:
+#
+#   ancha  704x256  44 casillas x 16. Es una ventana: cabe el doble de pantalla
+#                   a lo ancho y se va dibujando la columna que entra por el
+#                   borde, asi que el nivel puede ser todo lo largo que quieras.
+#   alta   352x512  22 x 32. Aqui no hay ventana que valga -sobrarian dos
+#                   casillas- asi que el nivel tiene que caber entero de ancho.
+#                   A cambio se puede subir el doble.
+#
+# La eleccion no se pregunta: la decide el nivel mas alto del juego.
+VENTANA_ANCHA = (704, 256)
+VENTANA_ALTA = (352, 512)
+ALTO_MAX_TILES = VENTANA_ANCHA[1] // gfx_amiga.TILE_PX      # 16 casillas
+ALTO_MAX_TILES_ALTA = VENTANA_ALTA[1] // gfx_amiga.TILE_PX  # 32
+ANCHO_MAX_TILES_ALTA = VENTANA_ALTA[0] // gfx_amiga.TILE_PX # 22
 COLOR_HUD = 31                              # el ultimo color, reservado
 MAX_COLORES_JUEGO = COLOR_HUD               # los otros 31 son del juego
 
@@ -36,7 +51,7 @@ MAX_COLORES_JUEGO = COLOR_HUD               # los otros 31 son del juego
 # el juego delante con los colores 0-7 y el parallax detras con los 8-15.
 COLOR_HUD_DOBLE = 7
 COLORES_POR_PLANO = 8
-ANCHO_PARALLAX = 704 - 320                  # lo que el plano de atras puede correr
+ANCHO_PARALLAX = VENTANA_ANCHA[0] - 320     # lo que el plano de atras puede correr
 MAX_TILES = 1024                            # 160 KB de dibujos: de sobra en chip
 
 
@@ -173,10 +188,17 @@ class Amiga(Sistema):
         build.hud_palette = 0
         build.paletas = [colores[0:16], colores[16:32]]
         build.tile_gfx = [build.tileset.first_tile + t.index for t in build.tiles]
+        # La forma del mapa de bits: la decide el nivel mas alto del juego. Un
+        # juego de los de siempre no se entera; uno que se sube se lleva el
+        # mapa estrecho y alto sin tener que pedirlo.
+        alto_max = max([n.height for n in build.levels] or [0])
+        ventana = VENTANA_ALTA if alto_max > ALTO_MAX_TILES else VENTANA_ANCHA
+
         build.info = {
             "banco": banco,
             "glifos": glifos,
             "colores": colores,
+            "ventana": ventana,
             "stats": {
                 "dibujos_16x16": banco.cuantos,
                 "bytes_dibujos": len(banco.tiles),
@@ -189,6 +211,8 @@ class Amiga(Sistema):
                 "#define NP_TILE_COUNT %d" % banco.cuantos,
                 "#define NP_FONT_COUNT %d" % len(glifos),
                 "#define NP_PLANOS %d" % planos,
+                "#define NP_MAPA_ANCHO %d" % ventana[0],
+                "#define NP_MAPA_ALTO %d" % ventana[1],
             ],
         }
 
@@ -200,12 +224,29 @@ class Amiga(Sistema):
                 "de tus dibujos se han cambiado por el mas parecido de los que "
                 "caben. Si quieres mandar tu en los colores, dibuja con siete"
                 % build.info["stats"]["aproximados"])
+        ancho_px, alto_px = build.info.get("ventana", VENTANA_ANCHA)
+        alto_tiles = alto_px // gfx_amiga.TILE_PX
+        ancho_tiles = ancho_px // gfx_amiga.TILE_PX
+        alta = (ancho_px, alto_px) == VENTANA_ALTA
         for nivel in build.levels:
-            if nivel.height > ALTO_MAX_TILES:
+            if nivel.height > alto_tiles:
                 self.error(
                     "el nivel '%s' tiene %d casillas de alto y en el Amiga el mapa "
-                    "de bits llega a %d" % (nivel.name, nivel.height, ALTO_MAX_TILES),
+                    "de bits llega a %d" % (nivel.name, nivel.height, alto_tiles),
                     "haz los niveles mas bajos y mas largos",
+                )
+            # Con el mapa de bits alto no hay ventana: el nivel entero tiene
+            # que caber de ancho. Es el precio de poder subir 32 casillas, y
+            # merece la pena decirlo con esas palabras.
+            if alta and nivel.width > ancho_tiles:
+                self.error(
+                    "el nivel '%s' mide %d x %d casillas: en el Amiga, un juego con "
+                    "niveles de mas de %d casillas de alto se lleva el mapa de bits "
+                    "estrecho, y ahi el nivel no puede pasar de %d de ancho"
+                    % (nivel.name, nivel.width, nivel.height, ALTO_MAX_TILES,
+                       ancho_tiles),
+                    "o estrechas el nivel, o lo bajas a %d casillas de alto y "
+                    "vuelve a haber ancho de sobra" % ALTO_MAX_TILES,
                 )
         for nivel in build.levels:
             if nivel.layers and not build.info.get("doble"):
@@ -222,12 +263,13 @@ class Amiga(Sistema):
                 break
         if build.info.get("doble"):
             for capa in build.layers:
-                if capa.cols * gfx_amiga.TILE_PX > ANCHO_PARALLAX:
+                margen = ancho_px - 320
+                if capa.cols * gfx_amiga.TILE_PX > margen:
                     avisos.append(
                         "la capa '%s' mide %d pixeles de ancho y el plano de atras "
                         "solo puede correr %d antes de tener que volver al "
                         "principio: se parara en el borde"
-                        % (capa.name, capa.cols * gfx_amiga.TILE_PX, ANCHO_PARALLAX))
+                        % (capa.name, capa.cols * gfx_amiga.TILE_PX, margen))
                     break
         return avisos
 

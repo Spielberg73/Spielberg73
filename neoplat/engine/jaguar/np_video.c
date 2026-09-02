@@ -26,6 +26,11 @@ static uint16_t np_usados;                      /* frases ocupadas este frame  *
 
 static uint16_t np_vdb, np_vde, np_ancho_reloj, np_alto_lineas;
 static int32_t np_base_tile;                    /* primera columna dibujada    */
+/* Un nivel que cabe entero de ancho en el mapa de bits no necesita ventana:
+   se pinta al entrar y ya no se toca. Es lo que permite el mapa de bits alto
+   y estrecho de los juegos que se suben, donde no queda margen para irlo
+   corriendo. */
+static uint8_t np_mapa_fijo;
 static const NpLevel *np_nivel_actual;
 
 /* --- la lista de objetos ------------------------------------------------ */
@@ -183,7 +188,8 @@ static void np_columna(const NpWorld *w, int32_t tile_x)
 static void np_redibujar_todo(const NpWorld *w)
 {
     int32_t i;
-    np_base_tile = (w->cam_x / NP_TILE) - 1;
+    np_mapa_fijo = (uint8_t)(w->level->width * NP_TILE <= NP_MAPA_ANCHO);
+    np_base_tile = np_mapa_fijo ? 0 : (w->cam_x / NP_TILE) - 1;
     if (np_base_tile < 0) np_base_tile = 0;
     for (i = 0; i < NP_MAPA_ANCHO / NP_TILE; i++) np_columna(w, np_base_tile + i);
     /* el mapa de bits no lo lee el programa, lo lee el chip: sin la barrera el
@@ -292,7 +298,7 @@ void np_video_frame(const NpWorld *w)
 #endif
         np_redibujar_todo(w);
         ultima_columna = columna;
-    } else {
+    } else if (!np_mapa_fijo) {
         while (ultima_columna < columna) {
             ultima_columna++;
             np_columna(w, ultima_columna + NP_SCREEN_W / NP_TILE);

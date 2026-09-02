@@ -273,9 +273,10 @@ make run          # con Hatari instalado, mete el disquete y arranca
 
 Cada máquina tiene lo suyo, y `ngplat comprobar --sistema <máquina>` te lo dice
 antes de compilar: la Mega Drive solo muestra 64 colores y una capa de fondo,
-el Amiga 32 colores y niveles de hasta 16 casillas de alto, y el Atari ST 15
-colores, sin parallax y con una pantalla de 200 líneas en vez de 224. Si algo
-no cabe, el mensaje te dice qué es y qué quitar.
+el Amiga 32 colores y niveles de hasta 16 casillas de alto (o 32, si el nivel no
+pasa de 22 de ancho), y el Atari ST 15 colores, sin parallax y con una pantalla
+de 200 líneas en vez de 224. Si algo no cabe, el mensaje te dice qué es y qué
+quitar.
 
 También puedes dejarlo escrito en el `game.yaml` y olvidarte:
 
@@ -330,11 +331,12 @@ Lo nuevo de este género son dos cosas:
 Todo lo demás es igual: los mismos gráficos PNG, el mismo editor con
 <kbd>E</kbd> y el mismo `ngplat compilar`.
 
-Un aviso sobre las máquinas: estos niveles son de **32 casillas de alto**, y el
-Amiga y la Jaguar dibujan el escenario en un mapa de bits que llega a 16. Ahí
-`ngplat comprobar` te lo dice y no compila. Para esas dos, o bajas el nivel a 16
-casillas o lo haces de lado como los otros géneros. En Neo Geo, Mega Drive,
-Atari ST y X68000 entra tal cual.
+Sobre las máquinas: estos niveles son de **32 casillas de alto** y entran en las
+seis. El Amiga y la Jaguar dibujan el escenario en un mapa de bits que se puede
+poner ancho (44 × 16 casillas) o alto (22 × 32), y lo eligen solos según el nivel
+más alto del juego; a cambio, con la forma alta el nivel tiene que caber entero
+de ancho: 22 casillas. Si te pasas, `ngplat comprobar` te lo dice con esas
+palabras antes de compilar.
 
 ## Cuando algo falla
 

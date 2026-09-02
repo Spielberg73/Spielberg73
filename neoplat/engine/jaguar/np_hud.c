@@ -134,11 +134,13 @@ void np_hud_draw(const NpWorld *w)
         }
     }
 
-    /* La vida del jugador. Va en la fila 2, la ultima de la banda: es
-       la de los mensajes, que solo salen fuera de la partida.
-       Fuera de la partida np_life_bar la deja en blanco sola, asi que aqui no
-       hay que saber nada del estado: se escribe lo que salga. */
-    {
+    /* La vida del jugador. Va en la fila 2, que es tambien la de los mensajes.
+       Fuera de la partida np_life_bar deja la barra en blanco, y **eso no
+       vale**: escribir un espacio borra lo que hubiera debajo, asi que la
+       barra en blanco se comia el principio del mensaje (salia "VEL CLEAR" en
+       vez de "LEVEL CLEAR"). Fuera de la partida la fila es del mensaje y no
+       se toca; igual que en el X68000, donde ya estaba visto. */
+    if (w->state == NP_STATE_PLAY) {
         uint32_t ahora = ((uint32_t)w->state << 16)
                        | ((uint32_t)w->players[0].health << 8)
                        | (uint32_t)w->players[1].health;

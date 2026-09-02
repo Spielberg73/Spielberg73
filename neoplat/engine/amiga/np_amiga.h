@@ -101,8 +101,24 @@
 #else
 #define NP_DOBLE_PLANO 0
 #endif
+/* La forma del mapa de bits la elige gamedata.h, porque no es la misma para un
+   juego que se cruza de izquierda a derecha que para uno que se sube. Son los
+   mismos 22 KB por plano puestos de una manera o de otra:
+
+     704x256  (por defecto)  44 casillas de ancho x 16 de alto: cabe el doble
+                             de pantalla a lo ancho y se dibuja la columna que
+                             entra por el borde
+     352x512                 22 x 32: el nivel entero cabe dentro, no hace
+                             falta dibujar nada mientras se juega
+
+   El limite de alto de un nivel es NP_MAPA_ALTO / NP_TILE, porque el scroll
+   vertical es solo mover el puntero: no hay ventana que valga hacia abajo. */
+#ifndef NP_MAPA_ANCHO
 #define NP_MAPA_ANCHO 704                       /* pixeles del mapa de bits */
+#endif
+#ifndef NP_MAPA_ALTO
 #define NP_MAPA_ALTO 256
+#endif
 #define NP_BYTES_FILA (NP_MAPA_ANCHO / 8)       /* 88 bytes por plano y fila */
 #define NP_PASO_FILA (NP_BYTES_FILA * NP_PLANOS) /* entrelazado: 440 bytes */
 #define NP_TILE 16

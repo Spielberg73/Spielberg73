@@ -22,7 +22,17 @@ from .base import Limites, Salida, Sistema, registrar
 COLOR_HUD = 255                       # el ultimo color, para el marcador
 PCM_MAXIMO = 128 * 1024               # por efecto; el cartucho da de sobra
 MAX_TILES = 4096
-MAPA_ANCHO, MAPA_ALTO = 704, 256      # el mapa de bits del escenario
+# El mapa de bits del escenario ocupa 176 KB pase lo que pase; lo que cambia es
+# su forma, y la decide el nivel mas alto del juego:
+#
+#   ancha  704x256  44 casillas x 16. Es una ventana: se dibuja la columna que
+#                   entra por el borde, asi que el nivel puede ser larguisimo.
+#   alta   352x512  22 x 32, para los juegos que se suben. Aqui no hay ventana
+#                   -sobrarian dos casillas-, asi que el nivel tiene que caber
+#                   entero de ancho.
+VENTANA_ANCHA = (704, 256)
+VENTANA_ALTA = (352, 512)
+MAPA_ANCHO, MAPA_ALTO = VENTANA_ANCHA  # el mapa de bits del escenario
 
 
 class Jaguar(Sistema):
@@ -118,6 +128,12 @@ class Jaguar(Sistema):
         for nivel in build.levels:
             nivel.background = self.color(nivel.background_rgb)
 
+        # La forma del mapa de bits: un juego de los de siempre no se entera y
+        # uno que se sube se lleva el estrecho y alto sin tener que pedirlo.
+        alto_max = max([n.height for n in build.levels] or [0])
+        ventana = (VENTANA_ALTA if alto_max > VENTANA_ANCHA[1] // 16
+                   else VENTANA_ANCHA)
+
         build.font = fuente
         build.hud_palette = 0
         build.paletas = [colores[i:i + 16] for i in range(0, 256, 16)]
@@ -134,25 +150,40 @@ class Jaguar(Sistema):
                 "bytes_dibujos": len(banco.tiles),
                 "colores": len(unica.colores),
             },
+            "ventana": ventana,
             "cabecera": [
                 "#define NP_TILE_COUNT %d" % banco.cuantos,
                 "#define NP_FONT_COUNT %d" % len(glifos),
+                "#define NP_MAPA_ANCHO %d" % ventana[0],
+                "#define NP_MAPA_ALTO %d" % ventana[1],
             ],
         }
 
     def comprobar(self, build: Build) -> List[str]:
         avisos: List[str] = []
-        # El escenario se dibuja en un mapa de bits de 704x256 que hace de
-        # ventana: cabe el doble de pantalla a lo ancho, pero de alto se queda
-        # en 16 casillas. Sin esta comprobacion un nivel alto compilaba tan
-        # tranquilo y luego se veia partido, que es peor que no compilar.
-        alto_max = MAPA_ALTO // 16
+        # El escenario se dibuja en un mapa de bits que hace de ventana, y su
+        # forma limita el nivel. Sin estas comprobaciones un nivel que no cabe
+        # compilaba tan tranquilo y luego se veia partido, que es peor que no
+        # compilar.
+        ancho_px, alto_px = build.info.get("ventana", VENTANA_ANCHA)
+        alto_tiles, ancho_tiles = alto_px // 16, ancho_px // 16
+        alta = (ancho_px, alto_px) == VENTANA_ALTA
         for nivel in build.levels:
-            if nivel.height > alto_max:
+            if nivel.height > alto_tiles:
                 self.error(
                     "el nivel '%s' tiene %d casillas de alto y en la Jaguar el "
-                    "mapa de bits llega a %d" % (nivel.name, nivel.height, alto_max),
+                    "mapa de bits llega a %d" % (nivel.name, nivel.height, alto_tiles),
                     "haz los niveles mas bajos y mas largos",
+                )
+            if alta and nivel.width > ancho_tiles:
+                self.error(
+                    "el nivel '%s' mide %d x %d casillas: en la Jaguar, un juego con "
+                    "niveles de mas de %d casillas de alto se lleva el mapa de bits "
+                    "estrecho, y ahi el nivel no puede pasar de %d de ancho"
+                    % (nivel.name, nivel.width, nivel.height,
+                       VENTANA_ANCHA[1] // 16, ancho_tiles),
+                    "o estrechas el nivel, o lo bajas a %d casillas de alto y "
+                    "vuelve a haber ancho de sobra" % (VENTANA_ANCHA[1] // 16),
                 )
         for nivel in build.levels:
             if len(nivel.layers) > 1:

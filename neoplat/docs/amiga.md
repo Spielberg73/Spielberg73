@@ -22,18 +22,39 @@ mover entero por hardware y un blitter que dibuja encima.
 ## Cómo dibuja NeoPlat
 
 ```
-mapa de bits   704 × 256 píxeles, 5 bitplanes entrelazados (RAM chip)
+mapa de bits   704 × 256 o 352 × 512 píxeles, 5 bitplanes entrelazados (chip)
 scroll         por hardware: se mueven los punteros y BPLCON1 hace el resto
 escenario      solo se dibuja la columna de tiles que entra
 actores        con el blitter, recortados por su máscara
 marcador       su propia franja de 320 × 24, enganchada por el copper
 ```
 
-El mapa de bits es **el doble de ancho que la pantalla** a propósito. Según
-avanza la cámara se va dibujando la columna de 16 píxeles que entra por la
-derecha; cuando la cámara se acerca al final del mapa se vuelve a empezar por
-la izquierda repintando lo que se ve (cuesta un frame, y pasa cada 350 píxeles
-de scroll).
+### La forma del mapa de bits
+
+Ocupa lo mismo siempre —22 KB por plano— pero se puede poner de dos maneras, y
+**la elige el juego, no tú**: la decide el nivel más alto que tenga.
+
+| forma | casillas | para qué |
+|---|---|---|
+| 704 × 256 | 44 × 16 | lo de siempre: un juego que se cruza de izquierda a derecha |
+| 352 × 512 | 22 × 32 | un juego que **se sube** (`vista: cenital`, o cualquier nivel de más de 16 casillas de alto) |
+
+Con la forma ancha el mapa es **el doble de ancho que la pantalla** a propósito.
+Según avanza la cámara se va dibujando la columna de 16 píxeles que entra por la
+derecha; cuando la cámara se acerca al final del mapa se vuelve a empezar por la
+izquierda repintando lo que se ve (cuesta un frame, y pasa cada 350 píxeles de
+scroll).
+
+Con la forma alta no hay ventana que valga: sobrarían dos casillas a los lados,
+así que la cámara se pasaría el rato repintando la pantalla entera. Por eso el
+nivel tiene que **caber entero de ancho** (22 casillas), y entonces el escenario
+se pinta una vez al entrar y ya no se toca: mientras se sube, el scroll vertical
+es solo mover el puntero de los bitplanes. `ngplat comprobar --sistema amiga` lo
+dice antes de compilar si el nivel no cabe.
+
+Hacia abajo no hay ventana en ninguna de las dos formas —el scroll vertical es
+el puntero y nada más—, así que el alto del nivel no puede pasar del alto del
+mapa de bits: 16 casillas en la forma ancha, 32 en la alta.
 
 **Entrelazado** quiere decir que cada fila lleva las cinco palabras de los
 cinco bitplanes seguidas, en vez de tener los cinco planos uno detrás de otro.

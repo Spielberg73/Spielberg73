@@ -222,6 +222,9 @@ def _compilador_de(sistema) -> str:
         "amiga": ["m68k-amigaos-gcc", "vc", "m68k-elf-gcc", "m68k-linux-gnu-gcc"],
         "jaguar": ["m68k-linux-gnu-gcc", "m68k-elf-gcc"],
         "atarist": ["m68k-atari-mint-gcc", "m68k-elf-gcc", "m68k-linux-gnu-gcc"],
+        # los mismos dos que busca su Makefile: si no estan los dos listados
+        # aqui, `--make` se niega a llamar a un make que habria funcionado
+        "x68000": ["m68k-elf-gcc", "m68k-linux-gnu-gcc"],
     }
     for nombre in candidatos.get(sistema.nombre, ["m68k-elf-gcc"]):
         if shutil.which(nombre):
@@ -236,6 +239,7 @@ def _como_instalar(sistema) -> str:
         "amiga": "apt install gcc-m68k-linux-gnu   (o vbcc / m68k-amigaos-gcc)",
         "jaguar": "apt install gcc-m68k-linux-gnu   (el GPU y el DSP no se usan)",
         "atarist": "apt install gcc-m68k-linux-gnu   (o m68k-atari-mint-gcc)",
+        "x68000": "apt install gcc-m68k-linux-gnu   (o el m68k-elf-gcc que uses)",
     }.get(sistema.nombre, "un gcc para 68000")
 
 

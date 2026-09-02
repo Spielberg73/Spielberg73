@@ -808,6 +808,116 @@ def _musica_del_titulo(prueba):
     return proyecto.sound.titulo if proyecto else ""
 
 
+class TestNivelesAltos(unittest.TestCase):
+    """Niveles de 32 casillas de alto en las seis maquinas.
+
+    El Amiga y la Jaguar no dibujan el escenario con un mapa de nombres como
+    las demas, sino en un mapa de bits que hace de ventana. Ese mapa era de
+    704x256 fijos, o sea 16 casillas de alto, y ahi no cabe un juego que se
+    sube. Ahora la forma la elige el juego: los mismos bytes puestos a 352x512
+    dan 32 casillas de alto a cambio de que el nivel quepa entero de ancho.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix="neoplat-altos-")
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def _proyecto(self, nombre, ancho, alto, sistema):
+        """Un proyecto de vista cenital con un nivel del tamano que se pida."""
+        from ngplat.scaffold import crear_proyecto
+        raiz = os.path.join(self.tmp, nombre)
+        if not os.path.isdir(raiz):
+            crear_proyecto(raiz, "ALTOS", "TEST", genero="comando")
+            yaml = os.path.join(raiz, "game.yaml")
+            with open(yaml, encoding="utf-8") as fh:
+                texto = fh.read()
+            filas = ["A" + "," * (ancho - 2) + "A" for _ in range(alto)]
+            filas[0] = "A" * (ancho // 2) + "G" + "A" * (ancho - ancho // 2 - 1)
+            filas[-1] = "A" * (ancho // 2) + "P" + "A" * (ancho - ancho // 2 - 1)
+            mapa = "\n".join("      " + f for f in filas)
+            corte = texto.index("niveles:")
+            texto = (texto[:corte] + 'niveles:\n  - nombre: "LA TORRE"\n'
+                     '    fondo: "#183018"\n    mapa: |\n' + mapa + "\n")
+            with open(yaml, "w", encoding="utf-8") as fh:
+                fh.write(texto)
+        return cargar_demo(raiz, sistema)
+
+    def test_un_nivel_alto_vale_en_las_seis_maquinas(self):
+        """Lo que no se podia hacer y ahora se puede: el mismo nivel de 20x32
+        pasa la revision de las seis, sin avisos raros."""
+        for nombre in ("neogeo", "megadrive", "amiga", "jaguar", "atarist",
+                       "x68000"):
+            with self.subTest(sistema=nombre):
+                build = self._proyecto("torre", 20, 32, nombre)
+                sistemas.obtener(nombre).comprobar(build)
+
+    def test_el_proyecto_de_comando_compila_para_las_seis(self):
+        """Y lo mismo con el juego que sale de `ngplat nuevo --genero comando`,
+        que es el que se va a encontrar cualquiera: sus dos niveles son de 32
+        de alto, y hasta ahora el Amiga lo rechazaba y la Jaguar lo dejaba
+        pasar para verse partido."""
+        from ngplat.scaffold import crear_proyecto
+        raiz = os.path.join(self.tmp, "comando")
+        if not os.path.isdir(raiz):
+            crear_proyecto(raiz, "COMANDO", "TEST", genero="comando")
+        for nombre in ("neogeo", "megadrive", "amiga", "jaguar", "atarist",
+                       "x68000"):
+            with self.subTest(sistema=nombre):
+                build = cargar_demo(raiz, nombre)
+                sistema = sistemas.obtener(nombre)
+                sistema.comprobar(build)
+                generar_para_sistema(
+                    build, os.path.join(self.tmp, "comando-" + nombre),
+                    sistema, "202")
+
+    def test_el_mapa_de_bits_cambia_de_forma_solo(self):
+        """Nadie elige la forma: la decide el nivel mas alto. Se mira en el
+        gamedata.h, que es lo que de verdad compila la maquina."""
+        for nombre, ancho, alto, esperado in (
+                ("amiga", 20, 32, (352, 512)),
+                ("jaguar", 20, 32, (352, 512)),
+                ("amiga", 40, 14, (704, 256)),
+                ("jaguar", 40, 14, (704, 256))):
+            with self.subTest(sistema=nombre, alto=alto):
+                build = self._proyecto("%dx%d" % (ancho, alto), ancho, alto, nombre)
+                sistema = sistemas.obtener(nombre)
+                sistema.comprobar(build)
+                out = os.path.join(self.tmp, "gen-%s-%d" % (nombre, alto))
+                generar_para_sistema(build, out, sistema, "202")
+                with open(os.path.join(out, "src", "gamedata.h"),
+                          encoding="utf-8") as fh:
+                    texto = fh.read()
+                self.assertIn("#define NP_MAPA_ANCHO %d" % esperado[0], texto)
+                self.assertIn("#define NP_MAPA_ALTO %d" % esperado[1], texto)
+                # y lo importante: los dos tamanos ocupan lo mismo
+                self.assertEqual(esperado[0] * esperado[1], 704 * 256)
+
+    def test_alto_y_ancho_a_la_vez_no_cabe_y_se_dice(self):
+        """El precio del mapa de bits estrecho: con 32 de alto el nivel tiene
+        que caber entero de ancho. Si no cabe hay que decirlo con esas
+        palabras, no dejar que compile y se vea partido."""
+        for nombre in ("amiga", "jaguar"):
+            with self.subTest(sistema=nombre):
+                build = self._proyecto("ancho-y-alto", 30, 32, nombre)
+                with self.assertRaises(ProjectError) as caja:
+                    sistemas.obtener(nombre).comprobar(build)
+                self.assertIn("22", str(caja.exception))
+                self.assertIn("LA TORRE", str(caja.exception))
+
+    def test_pasarse_de_alto_sigue_siendo_un_error(self):
+        """Y el limite de verdad sigue estando: 32 casillas, no las que sea."""
+        for nombre in ("amiga", "jaguar"):
+            with self.subTest(sistema=nombre):
+                build = self._proyecto("altisimo", 20, 40, nombre)
+                with self.assertRaises(ProjectError) as caja:
+                    sistemas.obtener(nombre).comprobar(build)
+                self.assertIn("32", str(caja.exception))
+
+
 class TestCompilacionReal(unittest.TestCase):
     """Con un compilador de 68000 instalado, se construye de verdad."""
 

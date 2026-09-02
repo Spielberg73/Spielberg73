@@ -2,8 +2,50 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.17.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.18.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.18
+
+**Escenarios altos en las seis máquinas.** El género comando salió con niveles
+de 32 casillas de alto, y de las seis sólo cuatro los admitían: el Amiga y la
+Jaguar no dibujan el escenario con un mapa de nombres sino en un mapa de bits
+que hace de ventana, y ese mapa era de 704 × 256 fijos. Dieciséis casillas de
+alto. Ahí no cabe un juego que se sube.
+
+Ahora la **forma** del mapa de bits la elige el juego, y ocupa lo mismo en las
+dos: los mismos bytes puestos de otra manera.
+
+| forma | casillas | para qué |
+|---|---|---|
+| 704 × 256 | 44 × 16 | lo de siempre: un juego que se cruza |
+| 352 × 512 | 22 × 32 | un juego que **se sube** |
+
+No hay nada que elegir en el `game.yaml`: la decide el nivel más alto que tenga
+el juego. El precio de la forma alta es que el nivel tiene que **caber entero de
+ancho** (22 casillas): con dos casillas de margen no hay ventana que valga, la
+cámara se pasaría el rato repintando la pantalla entera. A cambio, mientras se
+sube no se dibuja nada: el escenario se pinta al entrar y el scroll vertical es
+sólo mover un puntero. Si un nivel se pasa, `ngplat comprobar` lo dice con esas
+palabras y no compila.
+
+Probado subiendo una torre de 20 × 32 hasta la meta **en las seis máquinas de
+verdad**: Neo Geo (el banco del kit), Mega Drive, Amiga (PUAE), Jaguar (Virtual
+Jaguar), Atari ST (Hatari) y X68000 (px68k). Las seis tardan lo mismo en
+subirla, así que ninguna se queda sin frames por el camino.
+
+**Y tres cosas que salieron por el camino:**
+
+- **«VEL CLEAR».** Al terminar un nivel, el Amiga, el Atari ST y la Jaguar se
+  comían las dos primeras letras del mensaje: la barra de vida se repintaba en
+  blanco sobre la misma fila y borraba lo que había debajo. El X68000 ya lo
+  tenía visto y arreglado; ahora lo están las cuatro.
+- **La Jaguar no miraba el alto de los niveles.** El límite estaba escrito en la
+  documentación pero no se comprobaba: un nivel alto compilaba tan tranquilo y
+  luego se veía partido.
+- **`--make` para el X68000** se negaba a llamar a un `make` que habría
+  funcionado: buscaba sólo `m68k-elf-gcc` cuando su Makefile acepta también el
+  `m68k-linux-gnu-gcc` de Debian y Ubuntu.
 
 ## 1.17
 

@@ -21,6 +21,10 @@ typedef struct {
 static NpRastro np_rastros[NP_MAX_RASTROS];
 static uint8_t np_rastro_count;
 static int32_t np_base_tile;          /* primera columna de tiles dibujada */
+/* Un nivel que cabe entero en el mapa de bits no necesita ventana: se pinta al
+   entrar y ya no se toca. Es lo que hace posible un juego que se sube, donde el
+   mapa de bits es estrecho y alto y no queda margen para ir corriendolo. */
+static uint8_t np_mapa_fijo;
 static const NpLevel *np_nivel_actual;
 
 /* Lista del copper. Tiene dos partes: la de arriba pinta el marcador desde
@@ -228,7 +232,8 @@ static void np_columna(const NpWorld *w, int32_t tile_x)
 static void np_redibujar_todo(const NpWorld *w)
 {
     int32_t i;
-    np_base_tile = (w->cam_x / NP_TILE) - 1;
+    np_mapa_fijo = (uint8_t)(w->level->width * NP_TILE <= NP_MAPA_ANCHO);
+    np_base_tile = np_mapa_fijo ? 0 : (w->cam_x / NP_TILE) - 1;
     if (np_base_tile < 0) np_base_tile = 0;
     for (i = 0; i < NP_MAPA_ANCHO / NP_TILE; i++) np_columna(w, np_base_tile + i);
     np_rastro_count = 0;
@@ -396,18 +401,22 @@ void np_video_frame(const NpWorld *w)
         ultima_columna = columna;
     } else {
         np_repintar_rastros(w);
-        while (ultima_columna < columna) {
-            ultima_columna++;
-            np_columna(w, ultima_columna + NP_SCREEN_W / NP_TILE);
-        }
-        while (ultima_columna > columna) {
-            ultima_columna--;
-            np_columna(w, ultima_columna);
-        }
-        /* si la camara se acerca al final del mapa de bits, se vuelve a empezar */
-        if (w->cam_x - np_base_tile * NP_TILE > NP_MAPA_ANCHO - NP_SCREEN_W - NP_TILE * 2) {
-            np_redibujar_todo(w);
-            ultima_columna = columna;
+        if (!np_mapa_fijo) {
+            while (ultima_columna < columna) {
+                ultima_columna++;
+                np_columna(w, ultima_columna + NP_SCREEN_W / NP_TILE);
+            }
+            while (ultima_columna > columna) {
+                ultima_columna--;
+                np_columna(w, ultima_columna);
+            }
+            /* si la camara se acerca al final del mapa de bits, se vuelve a
+               empezar */
+            if (w->cam_x - np_base_tile * NP_TILE >
+                NP_MAPA_ANCHO - NP_SCREEN_W - NP_TILE * 2) {
+                np_redibujar_todo(w);
+                ultima_columna = columna;
+            }
         }
     }
 
