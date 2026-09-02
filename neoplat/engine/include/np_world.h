@@ -121,4 +121,10 @@ void np_life_bar(char *out, const NpWorld *w, uint8_t quien);
    y repintar solo los cuadrados, que es lo unico que se mueve. */
 uint8_t np_life_pips(void);
 
+/* Que musica toca ahora mismo, en numero de musica (indice + 1, cero =
+   silencio). Lo decide el motor y no cada maquina: en el titulo suena la del
+   titulo, jugando la del nivel, y si hay un jefe en pantalla y el juego lleva
+   musica de jefe, esa. Asi la regla es una y suena igual en las seis. */
+uint8_t np_music_now(const NpWorld *w);
+
 #endif /* NP_WORLD_H */

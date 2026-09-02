@@ -351,6 +351,10 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
         )
     src.append("};")
     src.append("const uint16_t np_level_count = %d;" % len(build.levels))
+    # Las dos canciones que no son de ningun nivel: la del titulo y la del
+    # jefe. El numero es el indice + 1, como en los niveles.
+    src.append("const uint8_t np_music_title = %d;" % build.music_title)
+    src.append("const uint8_t np_music_boss = %d;" % build.music_boss)
     src.append("")
 
     return {

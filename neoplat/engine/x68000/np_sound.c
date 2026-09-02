@@ -311,8 +311,10 @@ void np_sound_frame(const NpWorld *w)
 {
 #if NP_SOUND_ENABLED
     uint8_t i;
-    uint8_t musica = (w->state == NP_STATE_PLAY && w->level->music)
-        ? (uint8_t)(w->level->music - 1) : 0xFF;
+    /* Cual toca lo decide el motor (np_music_now): aqui solo se pasa del
+       numero de musica al indice de la tabla. */
+    uint8_t suena = np_music_now(w);
+    uint8_t musica = suena ? (uint8_t)(suena - 1) : 0xFF;
     np_tocar_musica(musica);
 
     if (w->sfx) {

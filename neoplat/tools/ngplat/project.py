@@ -1077,8 +1077,26 @@ def _read_sound(raw: Any, root: str = ".", where: str = "sonido") -> "sonido_mod
         resultado.musica[nombre] = sonido_mod.Musica(
             nombre=nombre, velocidad=velocidad, pistas=pistas, bucle=bucle)
 
+    # Las dos canciones que no son de ningun nivel. Se dicen por su nombre, y
+    # el nombre tiene que existir: escribirlo mal y quedarte sin musica en el
+    # titulo sin que nadie te diga nada seria lo peor de los dos mundos.
+    for campo, claves in (("titulo", ["titulo", "título", "title", "musica_titulo"]),
+                          ("jefe", ["jefe", "boss", "musica_jefe"])):
+        nombre = node.str_(claves, "")
+        if not nombre:
+            continue
+        if nombre not in resultado.musica:
+            raise ProjectError(
+                "la musica '%s' no existe" % nombre,
+                hint="las que hay son: %s" % (", ".join(resultado.musica) or "ninguna"),
+                where="%s.%s" % (where, campo),
+            )
+        setattr(resultado, campo, nombre)
+
     _warn_unknown(node, where, ["effects", "efectos", "sfx", "music", "musica",
-                                "música", "canciones"])
+                                "música", "canciones",
+                                "titulo", "título", "title", "musica_titulo",
+                                "jefe", "boss", "musica_jefe"])
     return resultado
 
 

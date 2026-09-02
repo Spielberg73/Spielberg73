@@ -196,6 +196,11 @@ extern const np_fix np_sin_table[64];    /* seno en 24.8, un ciclo completo */
 extern const uint8_t np_sfx_command[NP_SFX_SLOTS];
 
 extern const uint16_t np_level_count;
+/* Las dos canciones que no son de ningun nivel, en numero de musica (indice +
+   1, cero = ninguna): la del titulo y la del jefe. Quien decide cual suena en
+   cada momento es np_music_now(), y las seis maquinas le hacen caso. */
+extern const uint8_t np_music_title;
+extern const uint8_t np_music_boss;
 extern const uint16_t np_layer_count;
 extern const uint16_t np_enemy_count;
 extern const uint16_t np_item_count;

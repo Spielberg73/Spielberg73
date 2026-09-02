@@ -1044,8 +1044,7 @@
       latched = 0;
       latched2 = 0;
       if (world.sfx) audio.evento(world.sfx);
-      audio.tocarMusica(world.state === NPCore.STATE.PLAY ?
-                        (world.level.music || 0) - 1 : -1);
+      audio.tocarMusica(world.musicaAhora() - 1);   /* -1 = silencio */
       audio.tick();
       acc -= 1000 / 60;
       steps++;

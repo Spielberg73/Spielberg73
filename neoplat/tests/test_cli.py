@@ -147,7 +147,8 @@ class TestCli(unittest.TestCase):
             proyectos[genero] = load_project(destino)
         plat, cast = proyectos["plataformas"], proyectos["castlevania"]
 
-        self.assertEqual(set(cast.sound.musica), {"castillo", "cripta"})
+        self.assertEqual(set(cast.sound.musica),
+                         {"castillo", "cripta", "presagio", "duelo"})
         self.assertFalse(set(cast.sound.musica) & set(plat.sound.musica),
                          "el de latigo toca la musica del de plataformas")
         # y cada nivel pide la suya
@@ -161,14 +162,46 @@ class TestCli(unittest.TestCase):
             self.assertEqual(len(set(largos)), 1,
                              "las dos pistas de '%s' no duran lo mismo: %s"
                              % (nombre, largos))
+        for nombre in ("castillo", "cripta"):
+            largos = frames(cast.sound.musica[nombre])
             self.assertGreaterEqual(
                 largos[0], 480,
                 "'%s' dura %d frames: se repite antes de ocho segundos"
                 % (nombre, largos[0]))
-        mas_larga_plat = max(max(frames(m)) for m in plat.sound.musica.values())
-        self.assertGreater(max(max(frames(m)) for m in cast.sound.musica.values()),
-                           mas_larga_plat * 3,
+        # contra las de nivel del otro genero, que son las cortas de siempre
+        de_nivel = [frames(plat.sound.musica[n.music])[0] for n in plat.levels]
+        self.assertGreater(frames(cast.sound.musica["castillo"])[0],
+                           max(de_nivel) * 3,
                            "la del castillo no es mucho mas larga que la de antes")
+
+    def test_los_dos_generos_traen_musica_de_titulo_y_de_jefe(self):
+        """Antes la pantalla de titulo estaba muda y el jefe sonaba igual que
+        el resto del nivel. Las dos canciones son del juego, no del nivel, y se
+        dicen por su nombre dentro de `sonido:`."""
+        from ngplat.project import load_project
+        for genero in ("plataformas", "castlevania"):
+            for estilo in ("bosque", "hierro"):
+                destino = os.path.join(self.tmp, "t-%s-%s" % (genero, estilo))
+                self.assertEqual(self._ejecutar("nuevo", destino, "--genero",
+                                                genero, "--estilo", estilo)[0], 0)
+                p = load_project(destino)
+                donde = "%s/%s" % (genero, estilo)
+                self.assertTrue(p.sound.titulo, "%s: sin musica de titulo" % donde)
+                self.assertTrue(p.sound.jefe, "%s: sin musica de jefe" % donde)
+                # y no son las de los niveles: si lo fueran no se notaria nada
+                de_niveles = {n.music for n in p.levels}
+                self.assertNotIn(p.sound.titulo, de_niveles, donde)
+                self.assertNotIn(p.sound.jefe, de_niveles, donde)
+                for cual in (p.sound.titulo, p.sound.jefe):
+                    pistas = p.sound.musica[cual].pistas
+                    largos = [sum(paso.duracion for paso in pista) for pista in pistas]
+                    self.assertEqual(len(set(largos)), 1,
+                                     "%s: las pistas de '%s' no duran lo mismo: %s"
+                                     % (donde, cual, largos))
+                    self.assertGreaterEqual(
+                        largos[0], 240,
+                        "%s: '%s' dura %d frames: se repite antes de cuatro "
+                        "segundos" % (donde, cual, largos[0]))
 
     def test_el_genero_de_latigo_trae_sus_propios_bichos(self):
         """Con los mismos bichos y el mismo dibujo, un juego de latigo parece el

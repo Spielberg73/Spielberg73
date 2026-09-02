@@ -78,6 +78,8 @@ class Build:
     attack: Optional[ActorBuild] = None       # el proyectil, si el juego lo lleva
     subs: List[ActorBuild] = field(default_factory=list)   # las armas secundarias
     music_order: List[str] = field(default_factory=list)   # nombres, en orden
+    music_title: int = 0        # la del titulo, indice + 1 (0 = ninguna)
+    music_boss: int = 0         # la del jefe, indice + 1 (0 = la del nivel)
     font: Dict[str, int] = field(default_factory=dict)
     hud_palette: int = 0
     sin_table: List[int] = field(default_factory=list)
@@ -260,6 +262,9 @@ def build_project(project: Project) -> Build:
 
     music_order = list(project.sound.musica)
     music_index = {name: i + 1 for i, name in enumerate(music_order)}
+    # las dos que no son de ningun nivel, con el mismo numero (indice + 1)
+    music_title = music_index.get(project.sound.titulo, 0)
+    music_boss = music_index.get(project.sound.jefe, 0)
 
     empty_index = tile_index.get(".", 0)
     levels: List[LevelBuild] = []
@@ -315,7 +320,8 @@ def build_project(project: Project) -> Build:
         project=project, rom=rom, tiles=tiles, tile_index=tile_index, tileset=tileset,
         player=player, enemies=enemies, items=items, layers=layers, levels=levels,
         platforms=platforms, breakables=breakables, attack=attack, subs=subs,
-        music_order=music_order, sin_table=_sin_table(),
+        music_order=music_order, music_title=music_title, music_boss=music_boss,
+        sin_table=_sin_table(),
     )
 
 

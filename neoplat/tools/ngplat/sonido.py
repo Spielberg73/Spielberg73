@@ -237,6 +237,10 @@ class Musica:
 class Sonido:
     efectos: Dict[str, Efecto] = field(default_factory=dict)
     musica: Dict[str, Musica] = field(default_factory=dict)
+    # Las dos canciones que no son de ningun nivel: la del titulo y la del
+    # jefe. Vacias = no suena nada (el titulo) o sigue la del nivel (el jefe).
+    titulo: str = ""
+    jefe: str = ""
 
     def evento_bits(self) -> Dict[str, int]:
         return {nombre: EVENTO_BIT[nombre] for nombre in self.efectos}

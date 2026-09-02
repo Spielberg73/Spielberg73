@@ -86,9 +86,10 @@ diluye). Al saltar tiene que aparecer ahí algo que antes no estaba.
 make test-emulador          # las seis
 ```
 
-En las seis: que la pantalla de título está **callada** (la música es solo de
-la partida), que al empezar el nivel suenan **las 16 notas** de la melodía del
-`game.yaml`, y que al saltar se oye el efecto por encima de la música.
+En las seis: que la pantalla de título suena **como diga el proyecto** —con
+`sonido: titulo:` tiene que sonar y sin ella tiene que estar callada—, que al
+empezar el nivel suenan **las 16 notas** de la melodía del `game.yaml`, y que
+al saltar se oye el efecto por encima de la música.
 
 Comprobado que las pruebas saben fallar: con una placa muda a propósito (el
 68000 no manda la orden al Z80) las tres comprobaciones fallan.
@@ -165,6 +166,22 @@ del Amiga baja a 0,4 (y en el del X68000, a nada). En
 la Neo Geo el banco del kit **descifra el ADPCM-A** para poder oírlo, así que
 ahí también se cierra el círculo entero, del WAV al altavoz. La prueba es
 `tests/test_sistemas.py`, `TestMuestras`.
+
+## Qué suena en cada momento
+
+Lo decide el motor, no cada máquina: `np_music_now()` (y su gemela
+`musicaAhora()` en el preview) miran el estado de la partida y devuelven qué
+canción toca.
+
+| momento | qué suena |
+|---|---|
+| pantalla de título | `sonido: titulo:`, si el juego la trae; si no, silencio |
+| jugando | la del nivel (`musica:` del nivel) |
+| con un jefe vivo en pantalla | `sonido: jefe:`, si la trae; si no, sigue la del nivel |
+| "game over" y fin de nivel | nada: ahí lo que suena es el efecto |
+
+Las seis máquinas y el preview llaman a esa función y se limitan a mandar el
+número al chip, así que una regla nueva se escribe una sola vez.
 
 ## Lo que aún no hace
 

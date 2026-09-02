@@ -218,6 +218,27 @@ def musica_al_empezar(proyecto):
     return None
 
 
+def comprobar_titulo(exigir, medido, titulo):
+    """La pantalla de titulo: muda o con su cancion, segun lo que diga el
+    proyecto.
+
+    Con `sonido: titulo:` la pantalla de titulo tiene musica propia y tiene que
+    sonar; sin ella se queda callada, que es como estaba el kit. Las cuatro
+    maquinas que escuchan el titulo hacen la misma comprobacion, asi que vive
+    aqui: `medido` es el nivel que se ha oido y `titulo` el nombre de la
+    cancion del titulo (vacio si el juego no lleva).
+    """
+    if titulo:
+        exigir(medido >= 1.0,
+               "la pantalla de titulo esta muda y el juego trae "
+               "'titulo: %s'" % titulo)
+        print("titulo: suena '%s' (nivel %.1f)" % (titulo, medido))
+    else:
+        exigir(medido < 1.0,
+               "la pantalla de titulo hace ruido y el juego no trae "
+               "'sonido: titulo:'")
+
+
 def buscar_proyecto(ruta):
     """Sube por las carpetas desde un binario hasta encontrar el game.yaml que
     lo genero. Sirve para que las pruebas sueltas sepan que musica esperar."""

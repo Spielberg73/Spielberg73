@@ -335,5 +335,85 @@ class TestDriver(unittest.TestCase):
         self._tick(cpu, chip, 3)           # si se colgara, _tick fallaria
 
 
+class TestQueCancionToca(unittest.TestCase):
+    """`np_music_now` decide que suena en cada momento, y las seis maquinas le
+    hacen caso. Se compila el motor de verdad con un proyecto que trae musica
+    de titulo y de jefe, y se mira lo que dice en cada estado."""
+
+    @classmethod
+    def setUpClass(cls):
+        import shutil, subprocess, tempfile
+        from ngplat.codegen import copy_engine, generate_gamedata
+        from ngplat.scaffold import crear_proyecto
+        if not shutil.which("gcc"):
+            raise unittest.SkipTest("no hay gcc para compilar el motor")
+        cls.tmp = tempfile.mkdtemp(prefix="neoplat-musica-")
+        proyecto = os.path.join(cls.tmp, "juego")
+        crear_proyecto(proyecto, "MUSICA", "TEST", genero="castlevania")
+        cls.proyecto = load_project(proyecto)
+        from comun import cargar_demo
+        build = cargar_demo(proyecto)
+        salida = os.path.join(cls.tmp, "build")
+        os.makedirs(os.path.join(salida, "src"))
+        for relativo, contenido in generate_gamedata(build).items():
+            with open(os.path.join(salida, relativo), "w", encoding="utf-8") as fh:
+                fh.write(contenido)
+        copy_engine(salida)
+        binario = os.path.join(cls.tmp, "np_musica")
+        hecho = subprocess.run(
+            ["gcc", "-std=c99", "-O2", "-Wall", "-Wextra", "-Werror",
+             "-I", os.path.join(salida, "src"), "-o", binario,
+             os.path.join(KIT, "engine", "host", "np_musica.c"),
+             os.path.join(salida, "src", "np_world.c"),
+             os.path.join(salida, "src", "gamedata.c")],
+            capture_output=True, text=True)
+        if hecho.returncode:
+            raise AssertionError("no compila:\n" + hecho.stderr)
+        salida_texto = subprocess.run([binario], capture_output=True, text=True,
+                                      check=True).stdout
+        # cada linea es "<momento> <numero de cancion>"
+        cls.crudo = dict((l[:l.rindex(" ")], int(l[l.rindex(" ") + 1:]))
+                         for l in salida_texto.strip().split("\n"))
+        cls.orden = list(cls.proyecto.sound.musica)
+
+    @classmethod
+    def tearDownClass(cls):
+        import shutil
+        shutil.rmtree(getattr(cls, "tmp", ""), ignore_errors=True)
+
+    def _cancion(self, clave):
+        """El nombre de la cancion que dice el motor (o None si silencio)."""
+        numero = self.crudo[clave]
+        return self.orden[numero - 1] if numero else None
+
+    def test_la_tabla_lleva_las_dos_canciones(self):
+        """Si el compilador no las emitiera, todo lo demas pasaria en vacio."""
+        self.assertEqual(self.orden[self.crudo["tabla titulo"] - 1],
+                         self.proyecto.sound.titulo)
+        self.assertEqual(self.orden[self.crudo["tabla jefe"] - 1],
+                         self.proyecto.sound.jefe)
+
+    def test_el_titulo_tiene_la_suya(self):
+        """Antes no sonaba nada hasta que empezabas a jugar."""
+        self.assertEqual(self._cancion("titulo"), self.proyecto.sound.titulo)
+
+    def test_jugando_suena_la_del_nivel(self):
+        self.assertEqual(self._cancion("nivel"), self.proyecto.levels[0].music)
+
+    def test_con_el_jefe_delante_manda_la_suya(self):
+        """Es el momento en el que la musica tiene mas que decir."""
+        self.assertEqual(self._cancion("jefe"), self.proyecto.sound.jefe)
+        self.assertNotEqual(self.proyecto.sound.jefe, self.proyecto.levels[0].music)
+
+    def test_muerto_el_jefe_vuelve_la_del_nivel(self):
+        self.assertEqual(self._cancion("sin jefe"), self.proyecto.levels[0].music)
+
+    def test_fuera_de_la_partida_no_suena_nada(self):
+        """El 'game over' y el fin de nivel se quedan en silencio, como estaban:
+        ahi lo que suena es el efecto."""
+        self.assertIsNone(self._cancion("game over"))
+        self.assertIsNone(self._cancion("fin de nivel"))
+
+
 if __name__ == "__main__":
     unittest.main()

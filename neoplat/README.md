@@ -223,6 +223,8 @@ sonido:
       pistas:
         - "do4 mi4 sol4 mi4 | fa4 la4 do5 la4"
         - "do3 -   do3 -    | fa3 -   fa3 -"
+  titulo: presentacion           # la de la pantalla de título
+  jefe: acoso                    # manda mientras el jefe esté vivo
 
 spawns: {s: seta, c: moneda}
 
@@ -329,9 +331,9 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.12.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
-| `neoplat-kit-1.12.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.12.zip` | el `ngplat.exe` y su LEEME |
+| `neoplat-docs-1.13.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
+| `neoplat-kit-1.13.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.13.zip` | el `ngplat.exe` y su LEEME |
 
 El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
 plantillas; no necesita Python ni nada instalado. Con **doble clic** —sin
@@ -592,9 +594,10 @@ Verificado aquí:
   pruebas capturan lo que sale del altavoz —del core de libretro en Mega Drive,
   Amiga, Jaguar, Atari ST y X68000, y del circuito entero 68000 → Z80 → YM2610
   en la Neo Geo— y reconocen las notas una a una. En las seis salen **16 de 16**
-  de la melodía, la pantalla de título está callada y al saltar se oye el efecto
-  por encima de la música. Comprobado que la prueba sabe fallar: con una placa muda
-  a propósito, fallan las tres comprobaciones. Cómo se hace, en
+  de la melodía, la pantalla de título del ejemplo está callada (no declara
+  `titulo:`) y al saltar se oye el efecto por encima de la música. Comprobado
+  que la prueba sabe fallar: con una placa muda a propósito, fallan las tres
+  comprobaciones. Cómo se hace, en
   [docs/sonido.md](docs/sonido.md).
 - Las seis tocan la misma nota: 440 Hz salen a 440 Hz en el SSG, en el PSG, en
   Paula, en los DAC de la Jaguar, en el YM2149 y en el YM2151 (con el redondeo

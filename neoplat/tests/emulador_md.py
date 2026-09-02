@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from libretro import (Emulador, buscar_core, colores, distintos,  # noqa: E402
                       franja, guardar_png)
 from camara import Vigia, comprobar_salto  # noqa: E402
-from sonido import (banda_del_efecto, comprobar_melodia,  # noqa: E402
+from sonido import (banda_del_efecto, comprobar_melodia, comprobar_titulo,  # noqa: E402
                     nivel, pico_por_frame)
 
 CORE = "genesis_plus_gx"
@@ -25,7 +25,7 @@ FPS = 60
 
 
 def comprobar(rom: str, capturas: str = "capturas", musica=None,
-              salto=None, pantallas: bool = False) -> int:
+              salto=None, pantallas: bool = False, titulo_musica: str = "") -> int:
     core = buscar_core(CORE, "NEOPLAT_CORE_MD")
     if not core:
         print("el core de Genesis Plus GX no esta instalado: se salta la prueba")
@@ -55,8 +55,7 @@ def comprobar(rom: str, capturas: str = "capturas", musica=None,
     print("titulo: %dx%d con %d colores" % (titulo[0], titulo[1], len(distintos_titulo)))
     # el marcador vive en las tres primeras filas (plano ventana)
     exigir(len(set(franja(titulo, 24))) > 2, "no se ve el marcador arriba")
-    exigir(nivel(emu.escuchar(30)) < 1.0,
-           "la pantalla de titulo hace ruido: la musica es solo de la partida")
+    comprobar_titulo(exigir, nivel(emu.escuchar(30)), titulo_musica)
 
     # --- 2) empieza la partida ------------------------------------------
     emu.pulsar("START")
@@ -153,4 +152,5 @@ if __name__ == "__main__":
     sys.exit(comprobar(rom, sys.argv[2] if len(sys.argv) > 2 else "capturas",
                        musica_al_empezar(p) if p else None,
                        p.sound.efectos.get("salto") if p else None,
-                       pantallas=bool(p and p.camera == "pantallas")))
+                       pantallas=bool(p and p.camera == "pantallas"),
+                       titulo_musica=p.sound.titulo if p else ""))

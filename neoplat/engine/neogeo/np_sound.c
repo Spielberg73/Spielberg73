@@ -37,7 +37,7 @@ void np_sound_command(uint8_t payload)
 void np_sound_update(const NpWorld *w)
 {
 #if NP_SOUND_ENABLED
-    uint8_t music = (w->state == NP_STATE_PLAY) ? w->level->music : 0;
+    uint8_t music = np_music_now(w);   /* la regla es del motor */
     uint8_t i;
 
     if (music != np_music_playing) {

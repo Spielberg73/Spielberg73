@@ -175,8 +175,13 @@ function datos(filas, opciones) {
     levels: [{
       name: "TEST", width: ancho, height: alto, cells: celdas,
       spawns: spawns, start: start, background: "#000000",
-      keys_needed: opciones.llaves || 0
+      keys_needed: opciones.llaves || 0,
+      music: opciones.musicaNivel || 0
     }],
+    /* solo los numeros de cancion: para saber cual toca no hace falta ninguna
+       nota, y asi la prueba no depende de como suene */
+    sonido: { titulo: opciones.musicaTitulo || 0, jefe: opciones.musicaJefe || 0,
+              musica: [], efectos: {}, eventos: {} },
     sin: sin, sheets: { x: { url: "", frame_w: 16, frame_h: 16, per_row: 1 } },
     font: {}
   };
@@ -615,6 +620,46 @@ prueba("con 'borde: no' el perseguidor si se tira", function () {
   var jefe = w.entities[0], caido = false;
   for (var i = 0; i < 600 && !caido; i++) { w.step(0); caido = !jefe.active; }
   assert.ok(caido, "'borde: no' ya no deja que el enemigo se tire");
+});
+
+/* Que cancion toca en cada momento lo decide el motor (musicaAhora, y
+   np_music_now en C), no cada maquina: las seis tenian la misma linea copiada
+   y una cancion nueva habia que anadirla seis veces. */
+prueba("en el titulo suena la del titulo y jugando la del nivel", function () {
+  var datos_ = datos(suelo([[13, 3, "P"]]), { musicaNivel: 2, musicaTitulo: 5 });
+  var w = NP.create(datos_);
+  assert.strictEqual(w.musicaAhora(), 5, "en el titulo no suena la del titulo");
+  w.step(NP.IN.START);
+  assert.strictEqual(w.musicaAhora(), 2, "jugando no suena la del nivel");
+});
+
+prueba("sin musica de titulo, el titulo es mudo", function () {
+  var w = NP.create(datos(suelo([[13, 3, "P"]]), { musicaNivel: 2 }));
+  assert.strictEqual(w.musicaAhora(), 0);
+});
+
+prueba("con el jefe en pantalla manda la del jefe", function () {
+  var filas = suelo([[13, 3, "P"], [13, 8, "J"]]);
+  var w = mundo(filas, { musicaNivel: 2, musicaJefe: 7, bossHealth: 1 });
+  correr(w, 2);
+  assert.strictEqual(w.musicaAhora(), 7, "con jefe no suena la suya");
+  /* al matarlo vuelve la del nivel; el nivel se acaba, asi que se mira antes */
+  w.bossMax = 0;
+  assert.strictEqual(w.musicaAhora(), 2, "muerto el jefe no vuelve la del nivel");
+});
+
+prueba("sin musica de jefe sigue la del nivel", function () {
+  var filas = suelo([[13, 3, "P"], [13, 8, "J"]]);
+  var w = mundo(filas, { musicaNivel: 2, bossHealth: 1 });
+  correr(w, 2);
+  assert.ok(w.bossMax > 0, "el jefe no esta en pantalla");
+  assert.strictEqual(w.musicaAhora(), 2);
+});
+
+prueba("fuera de la partida no suena nada", function () {
+  var w = mundo(suelo([[13, 3, "P"]]), { musicaNivel: 2, musicaTitulo: 5 });
+  w.state = NP.STATE.GAME_OVER;
+  assert.strictEqual(w.musicaAhora(), 0, "en el game over sigue sonando algo");
 });
 
 prueba("el enemigo volador oscila alrededor de su altura", function () {

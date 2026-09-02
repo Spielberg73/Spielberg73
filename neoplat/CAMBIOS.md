@@ -2,8 +2,37 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.12.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.13.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.13
+
+**Música de título y música de jefe.** El kit tenía dos canciones por juego,
+una por nivel, y la pantalla de título estaba muda. Ahora hay dos canciones más
+que no son de ningún nivel y se dicen por su nombre:
+
+```yaml
+sonido:
+  titulo: presentacion   # suena mientras espera a que pulses Start
+  jefe: acoso            # manda sobre la del nivel mientras el jefe esté vivo
+```
+
+Los proyectos nuevos las traen puestas —y **compuestas**: dos por estilo de
+dibujo y dos para el género de látigo, seis canciones nuevas en total—, así que
+un juego recién creado suena en el título, cambia de música en cuanto aparece
+el jefe y vuelve a la del nivel al matarlo.
+
+**Quién decide qué suena ahora es el motor.** Las seis máquinas tenían la misma
+línea copiada (`si estoy jugando, la del nivel`), así que cualquier regla nueva
+había que escribirla seis veces y acordarse de las seis. Ahora existe
+`np_music_now()` —y su gemela `musicaAhora()` en el preview— y las seis se
+limitan a mandar el número al chip.
+
+Y las pruebas de emulador ya no exigen que el título esté callado: exigen que
+**suene lo que diga el proyecto**. Con `titulo:` tiene que oírse (y se oye:
+niveles de 1.000 a 6.000 contra un suelo de silencio de 1.0 en las cuatro
+máquinas que escuchan el título) y sin él tiene que estar mudo, que es lo que
+sigue pasando con los dos ejemplos del kit.
 
 ## 1.12
 

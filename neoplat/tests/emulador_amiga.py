@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from camara import Vigia, comprobar_salto  # noqa: E402
 from libretro import (Emulador, buscar_core, colores, distintos,  # noqa: E402
                       franja, guardar_png)
-from sonido import (banda_del_efecto, comprobar_melodia,  # noqa: E402
+from sonido import (banda_del_efecto, comprobar_melodia, comprobar_titulo,  # noqa: E402
                     nivel, pico_por_frame)
 
 CORE = "puae"
@@ -72,7 +72,7 @@ def _desplazamiento(antes, ahora, maximo=70):
 
 def comprobar(adf: str, capturas: str = "capturas", musica=None,
               salto=None, disparo=None, parallax: bool = False,
-              pantallas: bool = False) -> int:
+              pantallas: bool = False, titulo_musica: str = "") -> int:
     core = buscar_core(CORE, "NEOPLAT_CORE_AMIGA")
     if not core:
         print("el core de PUAE no esta instalado: se salta la prueba")
@@ -108,8 +108,7 @@ def comprobar(adf: str, capturas: str = "capturas", musica=None,
            "a los %d segundos solo hay %d colores: el disquete no ha arrancado"
            % (SEGUNDOS_DE_ARRANQUE, cuantos))
     exigir(len(set(franja(titulo, 24))) > 2, "no se ve el marcador arriba")
-    exigir(nivel(emu.escuchar(25)) < 1.0,
-           "la pantalla de titulo hace ruido: la musica es solo de la partida")
+    comprobar_titulo(exigir, nivel(emu.escuchar(25)), titulo_musica)
     print("titulo: %dx%d con %d colores" % (titulo[0], titulo[1], cuantos))
 
     # --- 2) empieza la partida ------------------------------------------
@@ -295,4 +294,5 @@ if __name__ == "__main__":
                        p.sound.efectos.get("disparo") if p else None,
                        parallax=bool(p and p.amiga_modo == "8colores" and p.layers),
                        pantallas="--pantallas" in opciones
-                                 or bool(p and p.camera == "pantallas")))
+                                 or bool(p and p.camera == "pantallas"),
+                       titulo_musica=p.sound.titulo if p else ""))

@@ -212,6 +212,10 @@ def build_data(build: Build) -> Dict[str, object]:
             }
             for nombre, tema in project.sound.musica.items()
         ],
+        # Las dos que no son de ningun nivel, en numero de musica (indice + 1,
+        # cero = ninguna), igual que np_music_title / np_music_boss en C.
+        "titulo": build.music_title,
+        "jefe": build.music_boss,
         # bit del evento -> nombre del efecto que suena
         "eventos": {str(bit): nombre
                     for nombre, bit in project.sound.evento_bits().items()},

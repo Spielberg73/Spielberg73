@@ -20,14 +20,14 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from camara import Vigia, comprobar_salto  # noqa: E402
 import maquina_neogeo as ng  # noqa: E402
 from imagen import colores, distintos, franja, guardar_png  # noqa: E402
-from sonido import (banda_del_efecto, comprobar_melodia,  # noqa: E402
+from sonido import (banda_del_efecto, comprobar_melodia, comprobar_titulo,  # noqa: E402
                     nivel, pico_por_frame)
 
 FPS = 60
 
 
 def comprobar(carpeta, capturas="capturas", musica=None, salto=None,
-              sonido=True, pantallas=False):
+              sonido=True, pantallas=False, titulo_musica=""):
     try:
         import machine68k  # noqa: F401
     except ImportError:
@@ -58,8 +58,7 @@ def comprobar(carpeta, capturas="capturas", musica=None, salto=None,
     print("titulo: %dx%d con %d colores" % (titulo[0], titulo[1], len(tonos)))
     exigir(len(set(franja(titulo, 24))) > 2, "no se ve el marcador arriba")
     if maquina.sonido:
-        exigir(nivel(maquina.escuchar(30)) < 1.0,
-               "la pantalla de titulo hace ruido: la musica es solo de la partida")
+        comprobar_titulo(exigir, nivel(maquina.escuchar(30)), titulo_musica)
 
     # --- 2) empieza la partida ------------------------------------------
     maquina.pulsar("START")
@@ -174,4 +173,5 @@ if __name__ == "__main__":
     sys.exit(comprobar(carpeta, sys.argv[2] if len(sys.argv) > 2 else "capturas",
                        musica_al_empezar(p) if p else None,
                        p.sound.efectos.get("salto") if p else None,
-                       pantallas=bool(p and p.camera == "pantallas")))
+                       pantallas=bool(p and p.camera == "pantallas"),
+                       titulo_musica=p.sound.titulo if p else ""))

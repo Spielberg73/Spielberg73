@@ -22,7 +22,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from camara import Vigia, comprobar_salto  # noqa: E402
-from sonido import (banda_del_efecto, comprobar_melodia,  # noqa: E402
+from sonido import (banda_del_efecto, comprobar_melodia, comprobar_titulo,  # noqa: E402
                     nivel, pico_por_frame)
 from libretro import (Emulador, buscar_core, colores, distintos,  # noqa: E402
                       franja, guardar_png)
@@ -36,7 +36,8 @@ FPS = 60
 
 
 def comprobar(rom: str, capturas: str = "capturas",
-              pantallas: bool = False, musica=None, salto=None) -> int:
+              pantallas: bool = False, musica=None, salto=None,
+              titulo_musica: str = "") -> int:
     core = buscar_core(CORE, "NEOPLAT_CORE_JAGUAR")
     if not core:
         print("el core de Virtual Jaguar no esta instalado: se salta la prueba")
@@ -64,8 +65,7 @@ def comprobar(rom: str, capturas: str = "capturas",
     print("titulo: %dx%d con %d colores" % (titulo[0], titulo[1], len(tonos)))
     exigir(len(set(franja(titulo, 32))) > 2, "no se ve el marcador arriba")
     if musica:
-        exigir(nivel(emu.escuchar(20)) < 1.0,
-               "la pantalla de titulo hace ruido: la musica es solo de la partida")
+        comprobar_titulo(exigir, nivel(emu.escuchar(20)), titulo_musica)
 
     # --- 2) empieza la partida ------------------------------------------
     emu.pulsar(EMPEZAR)
@@ -188,4 +188,5 @@ if __name__ == "__main__":
     sys.exit(comprobar(rom, sys.argv[2] if len(sys.argv) > 2 else "capturas",
                        pantallas=bool(p and p.camera == "pantallas"),
                        musica=musica_al_empezar(p) if p else None,
-                       salto=p.sound.efectos.get("salto") if p else None))
+                       salto=p.sound.efectos.get("salto") if p else None,
+                       titulo_musica=p.sound.titulo if p else ""))

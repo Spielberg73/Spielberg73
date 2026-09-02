@@ -831,6 +831,34 @@ niveles:
     musica: bosque
 ```
 
+### La del título y la del jefe
+
+Dos canciones no son de ningún nivel, y se dicen por su nombre dentro de
+`sonido:`:
+
+```yaml
+sonido:
+  musica:
+    bosque: {...}
+    presentacion: {...}
+    acoso: {...}
+  titulo: presentacion   # suena mientras espera a que pulses Start
+  jefe: acoso            # manda sobre la del nivel mientras el jefe esté vivo
+```
+
+- **`titulo`**: sin ponerla, la pantalla de título se queda muda, que es como
+  estaba el kit.
+- **`jefe`**: en cuanto aparece un enemigo con `jefe: si` la música cambia a
+  ésta, y al matarlo vuelve la del nivel. Sin ponerla, sigue sonando la del
+  nivel de siempre.
+- Fuera de la partida —el "game over" y el final de nivel— no suena ninguna: ahí
+  lo que suena es el efecto.
+- El nombre tiene que ser el de una música que exista; escribirlo mal es un
+  error del compilador y no un silencio misterioso.
+
+Quién decide cuál suena es el motor (`np_music_now`), así que las seis máquinas
+y el preview hacen exactamente lo mismo.
+
 Duraciones: `do4:2` dura el doble. Límites: 46 efectos, 14 músicas, 2 pistas
 por música (el tercer canal se reserva para los efectos) y notas entre `do1` y
 `do8` aproximadamente.

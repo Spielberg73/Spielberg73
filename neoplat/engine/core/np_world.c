@@ -1802,6 +1802,19 @@ uint8_t np_life_pips(void)
          ? NP_LIFE_BAR : np_player_def.health;
 }
 
+/* Que musica toca ahora. La regla es del motor y no de cada maquina: las seis
+   tenian la misma linea copiada, y cualquier cosa nueva -la del titulo, la del
+   jefe- habia que anadirla seis veces y acordarse de las seis. */
+uint8_t np_music_now(const NpWorld *w)
+{
+    if (w->state == NP_STATE_TITLE) return np_music_title;
+    if (w->state != NP_STATE_PLAY) return 0;
+    /* Con un jefe en pantalla manda la suya: es el momento en el que la musica
+       tiene mas que decir. `boss_max` solo vale mientras el jefe esta vivo. */
+    if (np_music_boss && w->boss_max) return np_music_boss;
+    return w->level->music;
+}
+
 void np_world_step(NpWorld *w, uint16_t input, uint16_t input2)
 {
     /* Start vale desde cualquiera de los dos mandos: en la maquina recreativa

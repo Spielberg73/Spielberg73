@@ -1242,6 +1242,17 @@
     for (i = 0; i < MAX_PLAYERS; i++) this.placePlayer(i);
   };
 
+  /* Que musica toca ahora, en numero de musica (indice + 1, cero = silencio).
+     Igual que np_music_now en np_world.c: la regla es del motor y no de quien
+     dibuja, asi suena lo mismo en el navegador y en las seis maquinas. */
+  World.prototype.musicaAhora = function () {
+    var s = this.data.sonido || {};
+    if (this.state === STATE.TITLE) return s.titulo || 0;
+    if (this.state !== STATE.PLAY) return 0;
+    if (s.jefe && this.bossMax) return s.jefe;
+    return this.level.music || 0;
+  };
+
   World.prototype.step = function (input, input2) {
     var i, quien;
     input2 = input2 | 0;

@@ -443,6 +443,45 @@ _MUSICA_BOSQUE = """  musica:
       pistas:
         - "la3 do4 mi4 do4 | sol3 si3 re4 si3 | fa3 la3 do4 la3 | mi3 - - -"
         - "la2 -   mi3 -   | sol2 -   re3 -   | fa2 -   do3 -   | mi2 - - -"
+    # La del titulo: suena mientras espera a que pulses Start.
+    presentacion:
+      velocidad: 9
+      pistas:
+        - |
+          do5 mi5 sol5 do6 si5 sol5 mi5 sol5
+          la5 do6 mi6 do6 sol5 mi5 do5 mi5
+          fa5 la5 do6 la5 mi5 sol5 si5 sol5
+          re5 fa5 la5 fa5 do5 - - -
+        - |
+          do3 - sol3 - mi3 - sol3 -
+          la3 - mi3 - do3 - sol3 -
+          fa3 - do4 - mi3 - si3 -
+          sol3 - re4 - do3 - - -
+    # La del jefe: manda sobre la del nivel mientras el jefe este vivo.
+    acoso:
+      velocidad: 6
+      pistas:
+        - |
+          la4 - la4 do5 si4 - si4 re5
+          la4 - la4 do5 mi5 re5 do5 si4
+          la4 - la4 do5 si4 - si4 re5
+          fa5 mi5 re5 do5 si4 la4 sol#4 la4
+          mi5 - mi5 fa5 mi5 - mi5 do5
+          re5 - re5 mi5 re5 - re5 si4
+          do5 si4 la4 si4 do5 re5 mi5 fa5
+          mi5:2 re5:2 do5:2 si4:2
+        - |
+          la2 la3 la2 la3 si2 si3 si2 si3
+          la2 la3 la2 la3 mi2 mi3 mi2 mi3
+          la2 la3 la2 la3 si2 si3 si2 si3
+          fa2 fa3 do3 do4 mi2 mi3 mi2 mi3
+          do3 do4 do3 do4 la2 la3 la2 la3
+          si2 si3 si2 si3 sol2 sol3 sol3 sol3
+          la2 la3 do3 do4 mi3 mi2 mi3 mi2
+          la2:2 mi3:2 la2:2 mi3:2
+  # Las dos canciones que no son de ningun nivel se dicen aqui por su nombre.
+  titulo: presentacion
+  jefe: acoso
 """
 
 _MUSICA_HIERRO = """  musica:
@@ -456,6 +495,43 @@ _MUSICA_HIERRO = """  musica:
       pistas:
         - "re4 fa4 la4 fa4 | do4 mi4 sol4 mi4 | si3 re4 fa4 re4 | la3 - - -"
         - "re2 -   la2 -   | do3 -   sol2 -   | si2 -   fa2 -   | la2 - - -"
+    portada:
+      velocidad: 10
+      pistas:
+        - |
+          la4 mi5 do5 mi5 si4 fa#5 re5 fa#5
+          do5 sol5 mi5 sol5 si4 - mi5 -
+          la4 mi5 do5 mi5 re5 la5 fa5 la5
+          mi5 do5 si4 sol4 la4 - - -
+        - |
+          la2 - mi3 - si2 - fa#3 -
+          do3 - sol3 - mi3 - mi2 -
+          la2 - mi3 - re3 - la3 -
+          do3 - mi3 - la2 - - -
+    asedio:
+      velocidad: 6
+      pistas:
+        - |
+          re4 - re4 fa4 mi4 - mi4 sol4
+          re4 - re4 fa4 la4 sol4 fa4 mi4
+          re4 - re4 fa4 mi4 - mi4 sol4
+          sib4 la4 sol4 fa4 mi4 re4 do#4 re4
+          la4 - la4 sib4 la4 - la4 fa4
+          sol4 - sol4 la4 sol4 - sol4 mi4
+          fa4 mi4 re4 mi4 fa4 sol4 la4 sib4
+          la4:2 sol4:2 fa4:2 mi4:2
+        - |
+          re2 re3 re2 re3 mi2 mi3 mi2 mi3
+          re2 re3 re2 re3 la2 la3 la2 la3
+          re2 re3 re2 re3 mi2 mi3 mi2 mi3
+          sib2 sib3 fa2 fa3 la2 la3 la2 la3
+          fa2 fa3 fa2 fa3 re2 re3 re2 re3
+          mi2 mi3 mi2 mi3 do#3 do#3 do#3 do#3
+          re2 re3 fa2 fa3 la2 la3 la2 la3
+          re2:2 la2:2 re2:2 la2:2
+  # Las dos canciones que no son de ningun nivel se dicen aqui por su nombre.
+  titulo: portada
+  jefe: asedio
 """
 
 # La del genero de latigo. 'castillo' son 16 compases de ocho tiempos (128
@@ -523,6 +599,45 @@ _MUSICA_LATIGO = """  musica:
           mi2 - si2 - mi2 - si2 -
           fa2 - do3 - mi2 - si2 -
           la2 - mi3 - la2:2 mi3:2
+    # La del titulo: notas largas, sin prisa, esperando a que pulses Start.
+    presagio:
+      velocidad: 11
+      pistas:
+        - |
+          re5 - do#5 - re5 - fa5 -
+          mi5 - re5 - do#5 - la4 -
+          sib4 - do5 - re5 - mi5 -
+          fa5 - mi5:2 re5:4
+        - |
+          re2 - la2 - re2 - la2 -
+          la2 - mi3 - la2 - mi3 -
+          sib2 - fa3 - sib2 - fa3 -
+          la2 - la2:2 re2:4
+    # La del jefe: la misma casa, pero con prisa.
+    duelo:
+      velocidad: 5
+      pistas:
+        - |
+          re5 - re5 mi5 fa5 - fa5 sol5
+          la5 - la5 sol5 fa5 mi5 re5 do#5
+          re5 - re5 mi5 fa5 - fa5 sol5
+          la5 sib5 la5 sol5 fa5 mi5 re5 -
+          la5 - la5 sib5 la5 - la5 fa5
+          sol5 - sol5 la5 sol5 - sol5 mi5
+          fa5 sol5 la5 sib5 la5 sol5 fa5 mi5
+          re5:2 do#5:2 re5:4
+        - |
+          re2 re3 re2 re3 fa2 fa3 fa2 fa3
+          la2 la3 la2 la3 re2 re3 re2 re3
+          re2 re3 re2 re3 fa2 fa3 fa2 fa3
+          la2 la3 sib2 sib3 la2 la3 la2 la3
+          fa2 fa3 fa2 fa3 re2 re3 re2 re3
+          mi2 mi3 mi2 mi3 do#3 do#3 do#3 do#3
+          re2 re3 fa2 fa3 la2 la3 la2 la3
+          la2:2 mi3:2 re2:4
+  # Las dos canciones que no son de ningun nivel se dicen aqui por su nombre.
+  titulo: presagio
+  jefe: duelo
 """
 
 

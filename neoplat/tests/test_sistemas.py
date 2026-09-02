@@ -800,6 +800,14 @@ class TestSpritesNeoGeo(unittest.TestCase):
                            _columnas_a_la_vez(self._proyecto("lejos", lejos))[0])
 
 
+def _musica_del_titulo(prueba):
+    """Como se llama la cancion del titulo del proyecto de la prueba (vacio si
+    no lleva): con ella la pantalla de titulo tiene que sonar, y sin ella tiene
+    que estar callada. Lo usan las clases que arrancan emuladores."""
+    proyecto = getattr(prueba, "proyecto_cargado", None)
+    return proyecto.sound.titulo if proyecto else ""
+
+
 class TestCompilacionReal(unittest.TestCase):
     """Con un compilador de 68000 instalado, se construye de verdad."""
 
@@ -834,6 +842,7 @@ class TestCompilacionReal(unittest.TestCase):
             return (None, None, None)
         return (musica_al_empezar(proyecto), proyecto.sound.efectos.get("salto"),
                 proyecto.sound)
+
 
     def _construir(self, nombre):
         out = self._generar(nombre)
@@ -1066,7 +1075,8 @@ class TestCompilacionReal(unittest.TestCase):
         musica, salto, _ = self._banda_sonora()
         self.assertEqual(
             emulador_md.comprobar(os.path.join(out, "rom/juego.bin"), capturas,
-                                  musica, salto), 0,
+                                  musica, salto,
+                                  titulo_musica=_musica_del_titulo(self)), 0,
             "la ROM no arranca, no se juega o no suena en el emulador")
 
     def test_el_disquete_arranca_en_un_emulador(self):
@@ -1115,7 +1125,8 @@ class TestCompilacionReal(unittest.TestCase):
         capturas = os.path.join(self.tmp, "capturas-neogeo")
         musica, salto, sonido = self._banda_sonora()
         self.assertEqual(
-            emulador_neogeo.comprobar(out, capturas, musica, salto, sonido), 0,
+            emulador_neogeo.comprobar(out, capturas, musica, salto, sonido,
+                                      titulo_musica=_musica_del_titulo(self)), 0,
                          "la ROM de Neo Geo no dibuja, no se juega o no suena")
 
     def test_el_cartucho_de_jaguar_arranca_en_un_emulador(self):
@@ -1132,7 +1143,8 @@ class TestCompilacionReal(unittest.TestCase):
         musica, salto, _ = self._banda_sonora()
         self.assertEqual(
             emulador_jaguar.comprobar(os.path.join(out, "rom", rom[0]), capturas,
-                                      musica=musica, salto=salto), 0,
+                                      musica=musica, salto=salto,
+                                      titulo_musica=_musica_del_titulo(self)), 0,
             "el cartucho no arranca, no se juega o no suena en el emulador")
 
     def test_cartucho_de_jaguar(self):
@@ -1197,6 +1209,8 @@ class TestCamaraPorPantallas(unittest.TestCase):
         cls.tmp = tempfile.mkdtemp(prefix="neoplat-pantallas-")
         from comun import proyecto_por_pantallas
         cls.proyecto = proyecto_por_pantallas(os.path.join(cls.tmp, "juego"))
+        from ngplat.project import load_project
+        cls.proyecto_cargado = load_project(cls.proyecto)
 
     @classmethod
     def tearDownClass(cls):
@@ -1226,7 +1240,8 @@ class TestCamaraPorPantallas(unittest.TestCase):
         out = self._construir("megadrive")
         self.assertEqual(
             emulador_md.comprobar(os.path.join(out, "rom/juego.bin"),
-                                  self._capturas("md"), pantallas=True), 0,
+                                  self._capturas("md"), pantallas=True,
+                                  titulo_musica=_musica_del_titulo(self)), 0,
             "la Mega Drive no salta de pantalla como debe")
 
     def test_el_amiga_salta_de_pantalla(self):
@@ -1247,7 +1262,8 @@ class TestCamaraPorPantallas(unittest.TestCase):
         out = self._construir("jaguar")
         self.assertEqual(
             emulador_jaguar.comprobar(os.path.join(out, "rom/Pantallas.j64"),
-                                      self._capturas("jaguar"), pantallas=True), 0,
+                                      self._capturas("jaguar"), pantallas=True,
+                                      titulo_musica=_musica_del_titulo(self)), 0,
             "la Jaguar no salta de pantalla como debe")
 
     def test_el_x68000_salta_de_pantalla(self):
