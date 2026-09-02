@@ -134,6 +134,41 @@ Las seis se comprueban en emulador (`tests/test_sistemas.py`,
 otro y con los dos, y las tres tienen que acabar distintas. Si el segundo mando
 no llegara, o si los dos leyeran del mismo sitio, saldrían iguales.
 
+### La vista: de lado o desde arriba
+
+```yaml
+juego:
+  vista: cenital       # lateral (por defecto) o cenital
+```
+
+**`lateral`** es lo de siempre: hay gravedad, se salta, se mira a un lado o a
+otro y el suelo es el suelo.
+
+**`cenital`** es la vista desde arriba de los juegos de comando (Ikari
+Warriors, Guerrilla War, Commando). Cambia el juego entero:
+
+| | lateral | cenital |
+|---|---|---|
+| gravedad | sí, se cae y se salta | no: lo que no se mueve, se queda |
+| movimiento | izquierda y derecha | las **ocho** direcciones (las diagonales van a 0,707 para que no sean más rápidas) |
+| a dónde disparas | al lado que miras | a **donde miras**, en las ocho direcciones |
+| el botón de saltar | salta | tira el arma secundaria (la granada) |
+| el mapa | por arriba hay cielo y por abajo un abismo | es una **caja cerrada**: sus cuatro lados son pared |
+| escaleras, agacharse, pisar enemigos | sí | no tienen sentido y se apagan |
+
+El héroe se dibuja mirando a tres sitios y el motor elige solo: `arriba` (de
+espaldas) cuando sube, `abajo` (de frente) cuando baja y `correr` para los
+lados, que se espeja como siempre. Sin esos dibujos se usa `correr` para todo.
+
+```yaml
+jugador:
+  animaciones:
+    quieto: {frames: [0]}
+    abajo:  {frames: [0, 1], velocidad: 8}   # de frente
+    arriba: {frames: [2, 3], velocidad: 8}   # de espaldas
+    correr: {frames: [4, 5], velocidad: 8}   # de lado
+```
+
 ## `jugador`
 
 ```yaml
@@ -618,6 +653,34 @@ en el borde y te espera ahí (darse la vuelta sería dejar de perseguirte). Con
 `girar_en_borde: no` los dos se tiran por el agujero y se pierden, que a veces
 es justo lo que quieres —bichos que salen y caen— pero **nunca** en un jefe: si
 el jefe se cae, el nivel no se puede terminar.
+
+### `dispara`: enemigos que te tirotean
+
+Sin esto un enemigo solo hace daño al tocarte. Con esto te dispara desde lejos,
+que es lo que convierte una pantalla en un juego de comando:
+
+```yaml
+enemigos:
+  soldado:
+    sprite: graficos/soldado.png
+    comportamiento: patrulla
+    dispara:
+      sprite: graficos/tiro.png
+      caja: [4, 4]
+      desplazamiento: [6, 6]
+      velocidad: 2.0       # píxeles por frame
+      alcance: 200         # px que recorre antes de apagarse
+      espera: 90           # frames entre un tiro y el siguiente
+      dano: 1
+```
+
+- Dispara cuando el jugador está **dentro de su alcance** y respeta la
+  `espera`, así que la cadencia es lo que decide si un sitio es pasable.
+- En vista **lateral** tira de frente, hacia donde estás. En **cenital** te
+  apunta a ti, redondeando a la más cercana de las ocho direcciones: un soldado
+  no dispara al aire porque te hayas puesto encima.
+- El tiro se para en las paredes y no toca a los otros enemigos: en los
+  recreativos de comando los tiros de los soldados se cruzan entre ellos.
 
 **Jefes.** Un enemigo con `jefe: si` es el jefe del nivel: sube su `vida` para
 que aguante varios pisotones, el marcador enseña una barra con lo que le queda

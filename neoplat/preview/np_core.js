@@ -28,9 +28,12 @@
   var TILE_CHECK = 8;
   var AI_PATROL = 0, AI_FLYER = 1, AI_CHASER = 2, AI_JUMPER = 3;
   var ANIM_IDLE = 0, ANIM_RUN = 1, ANIM_JUMP = 2, ANIM_FALL = 3, ANIM_HURT = 4,
-      ANIM_ATTACK = 5, ANIM_STAIR = 6, ANIM_CROUCH = 7;
+      ANIM_ATTACK = 5, ANIM_STAIR = 6, ANIM_CROUCH = 7,
+      /* solo en vista cenital: de espaldas y de frente */
+      ANIM_UP = 8, ANIM_DOWN = 9;
   var KIND_ENEMY = 0, KIND_ITEM = 1, KIND_SHOT = 2, KIND_PLATFORM = 3;
   var KIND_BREAKABLE = 4, KIND_SUBSHOT = 5, KIND_MELEE = 6;
+  var KIND_ENEMY_SHOT = 7;      /* lo que tira un enemigo con `dispara:` */
   /* el arma secundaria: 0 ninguna, 1 recta, 2 en arco */
   var SUB_NONE = 0, SUB_LINE = 1, SUB_ARC = 2;
   /* por donde va y viene una plataforma movil */
@@ -115,10 +118,37 @@
     p.y = I2F(y);
   };
 
+  /* --- la vista cenital ---------------------------------------------
+   *
+   * Con `vista: cenital` no hay gravedad ni suelo: se anda en ocho
+   * direcciones y se dispara hacia donde se mira. Traduccion literal del
+   * bloque del mismo nombre de engine/core/np_world.c. */
+  var AIM_X = [1, 1, 0, -1, -1, -1, 0, 1];
+  var AIM_Y = [0, 1, 1, 1, 0, -1, -1, -1];
+  var DIAGONAL = 181;             /* 0,707 en 8 bits */
+
+  function aimDe(dx, dy) {
+    if (dx > 0) return dy > 0 ? 1 : (dy < 0 ? 7 : 0);
+    if (dx < 0) return dy > 0 ? 3 : (dy < 0 ? 5 : 4);
+    return dy > 0 ? 2 : 6;
+  }
+
+  function pasoCenital(velocidad, eje, diagonal) {
+    var v = diagonal ? (velocidad * DIAGONAL) >> 8 : velocidad;
+    return eje * v;
+  }
+
+  World.prototype.cenital = function () {
+    return !!(this.data.view === "cenital");
+  };
+
   World.prototype.tileKindAt = function (tx, ty) {
     var lv = this.level;
     if (tx < 0 || tx >= lv.width) return TILE_SOLID;
-    if (ty < 0 || ty >= lv.height) return TILE_EMPTY;
+    /* De lado, arriba hay cielo y abajo un abismo. Desde arriba el mapa es
+       una caja cerrada y sus cuatro lados son pared. */
+    if (ty < 0 || ty >= lv.height)
+      return this.cenital() ? TILE_SOLID : TILE_EMPTY;
     return this.data.tiles.kind[lv.cells[ty * lv.width + tx]];
   };
 
@@ -215,6 +245,7 @@
     if (e.kind === KIND_BREAKABLE) return this.data.breakables[e.def];
     if (e.kind === KIND_SUBSHOT) return this.data.player.subs[e.def];
     if (e.kind === KIND_MELEE) return this.data.player.attack;
+    if (e.kind === KIND_ENEMY_SHOT) return this.data.enemy_shots[e.def];
     return this.data.items[e.def];
   };
 
@@ -278,7 +309,7 @@
   World.prototype.resetPlayer = function (quien) {
     var d = this.data.player, p = this.players[quien];
     this.placePlayer(quien);
-    p.vx = 0; p.vy = 0; p.onGround = 0; p.facing = 1;
+    p.vx = 0; p.vy = 0; p.onGround = 0; p.facing = 1; p.aim = 0;
     p.health = d.health; p.invuln = 0; p.coyote = 0; p.buffer = 0;
     p.dying = 0; p.attackTimer = 0; p.attackCd = 0; p.riding = 0; p.stun = 0;
     p.power = 0;                /* el arma vuelve a la de serie */
@@ -336,8 +367,14 @@
     p.health -= damage;
     this.sfx |= SFX.HURT;
     p.invuln = d.invuln;
-    p.vy = -idiv(d.bounce, 2);
-    p.vx = p.facing ? -d.knockback : d.knockback;
+    if (this.cenital()) {
+      /* desde arriba el empujon va al reves de donde miras */
+      p.vx = -AIM_X[p.aim] * d.knockback;
+      p.vy = -AIM_Y[p.aim] * d.knockback;
+    } else {
+      p.vy = -idiv(d.bounce, 2);
+      p.vx = p.facing ? -d.knockback : d.knockback;
+    }
     /* El aturdimiento: mientras dura no se frena ni se cambia de sentido, asi
        que el empujon te lleva donde te lleve. Igual que np_player_hurt. */
     p.stun = d.stun;
@@ -501,11 +538,21 @@
     e.kind = KIND_SHOT;
     e.def = 0;
     e.facing = p.facing;
-    e.x = p.x + I2F(p.facing ? pa.box_w : -at.actor.box_w);
-    e.y = this.playerTop(quien)
-        + I2F(idiv(this.playerHeight(quien) - at.actor.box_h, 2));
-    e.vx = p.facing ? at.speed : -at.speed;
-    e.vy = 0;
+    if (this.cenital()) {
+      var ax = AIM_X[p.aim], ay = AIM_Y[p.aim], diag = (ax && ay);
+      e.x = p.x + I2F(idiv(pa.box_w - at.actor.box_w, 2)
+                      + ax * (idiv(pa.box_w, 2) + 1));
+      e.y = p.y + I2F(idiv(pa.box_h - at.actor.box_h, 2)
+                      + ay * (idiv(pa.box_h, 2) + 1));
+      e.vx = pasoCenital(at.speed, ax, diag);
+      e.vy = pasoCenital(at.speed, ay, diag);
+    } else {
+      e.x = p.x + I2F(p.facing ? pa.box_w : -at.actor.box_w);
+      e.y = this.playerTop(quien)
+          + I2F(idiv(this.playerHeight(quien) - at.actor.box_h, 2));
+      e.vx = p.facing ? at.speed : -at.speed;
+      e.vy = 0;
+    }
     e.homeY = e.y;
     e.health = 1;
     e.hurt = 0;
@@ -523,6 +570,11 @@
     e.vida--;
     e.x = this.moveX(e.x, e.y, a.box_w, a.box_h, e.vx, moveOut);
     if (moveOut.hit) { e.active = 0; return; }
+    if (this.cenital() && e.vy) {
+      /* desde arriba el disparo tambien vuela en vertical */
+      e.y = this.moveY(e.x, e.y, a.box_w, a.box_h, e.vy, 1, moveOut);
+      if (moveOut.hitDown || moveOut.hitUp) { e.active = 0; return; }
+    }
     for (i = 0; i < this.entityCount; i++) {
       var otra = this.entities[i];
       if (!otra.active) continue;
@@ -597,11 +649,21 @@
     e.kind = KIND_SUBSHOT;
     e.def = this.sub;             /* se queda con el arma con la que salio */
     e.facing = p.facing;
-    e.x = p.x + I2F(p.facing ? pa.box_w : -sb.actor.box_w);
-    e.y = this.playerTop(quien)
-        + I2F(idiv(this.playerHeight(quien) - sb.actor.box_h, 2));
-    e.vx = p.facing ? sb.speed : -sb.speed;
-    e.vy = (sb.kind === SUB_ARC) ? -sb.jump : 0;
+    if (this.cenital()) {
+      var gx = AIM_X[p.aim], gy = AIM_Y[p.aim], gdiag = (gx && gy);
+      e.x = p.x + I2F(idiv(pa.box_w - sb.actor.box_w, 2)
+                      + gx * (idiv(pa.box_w, 2) + 1));
+      e.y = p.y + I2F(idiv(pa.box_h - sb.actor.box_h, 2)
+                      + gy * (idiv(pa.box_h, 2) + 1));
+      e.vx = pasoCenital(sb.speed, gx, gdiag);
+      e.vy = pasoCenital(sb.speed, gy, gdiag);
+    } else {
+      e.x = p.x + I2F(p.facing ? pa.box_w : -sb.actor.box_w);
+      e.y = this.playerTop(quien)
+          + I2F(idiv(this.playerHeight(quien) - sb.actor.box_h, 2));
+      e.vx = p.facing ? sb.speed : -sb.speed;
+      e.vy = (sb.kind === SUB_ARC) ? -sb.jump : 0;
+    }
     e.homeX = e.x; e.homeY = e.y;
     e.health = 1; e.hurt = 0; e.timer = 0;
     e.anim = ANIM_IDLE; e.animFrame = 0; e.animTimer = 0;
@@ -612,7 +674,8 @@
     var sb = this.data.player.subs[e.def], a = sb.actor, i;
     if (!e.vida) { e.active = 0; return; }
     e.vida--;
-    if (sb.kind === SUB_ARC) {
+    /* el arco es de la vista lateral: desde arriba la granada vuela recta */
+    if (sb.kind === SUB_ARC && !this.cenital()) {
       e.vy += sb.gravity;
       if (e.vy > ENTITY_FALL) e.vy = ENTITY_FALL;
     }
@@ -793,6 +856,63 @@
     this.meleeUpdate(quien);
   };
 
+  /* El jugador mirando desde arriba: ocho direcciones, sin gravedad y sin
+     suelo. Traduccion literal de np_player_update_cenital. */
+  World.prototype.playerUpdateCenital = function (quien, input) {
+    var d = this.data.player, a = d.actor, p = this.players[quien];
+    var dx = 0, dy = 0, pose;
+
+    if (p.stun) { p.stun--; input = 0; }
+    else {
+      if (input & IN.RIGHT) dx += 1;
+      if (input & IN.LEFT) dx -= 1;
+      if (input & IN.DOWN) dy += 1;
+      if (input & IN.UP) dy -= 1;
+    }
+
+    if (dx || dy) {
+      p.aim = aimDe(dx, dy);
+      if (dx) p.facing = dx > 0 ? 1 : 0;
+      p.vx = pasoCenital(d.speed, dx, dx && dy);
+      p.vy = pasoCenital(d.speed, dy, dx && dy);
+    } else if (p.stun) {
+      p.vx = approach(p.vx, 0, d.friction);
+      p.vy = approach(p.vy, 0, d.friction);
+    } else {
+      p.vx = 0;
+      p.vy = 0;
+    }
+
+    p.x = this.moveX(p.x, p.y, a.box_w, a.box_h, p.vx, moveOut);
+    if (moveOut.hit) p.vx = 0;
+    p.y = this.moveY(p.x, p.y, a.box_w, a.box_h, p.vy, 1, moveOut);
+    if (moveOut.hitDown || moveOut.hitUp) p.vy = 0;
+    p.onGround = 1;
+    p.jumpsLeft = 0;
+    p.stairs = 0;
+    p.crouch = 0;
+
+    /* saltar no tiene sentido desde arriba: ese boton tira la granada */
+    if (p.attackCd) p.attackCd--;
+    if ((input & IN.JUMP) && !(this.prevInput[quien] & IN.JUMP) &&
+        this.data.player.subs.length &&
+        this.hearts >= this.data.player.subs[this.sub].cost)
+      this.playerSub(quien);
+    else if ((input & IN.ACTION) && !(this.prevInput[quien] & IN.ACTION))
+      this.playerAttack(quien);
+
+    if (p.invuln) p.invuln--;
+    if (p.attackTimer) p.attackTimer--;
+
+    if (p.attackTimer) pose = ANIM_ATTACK;
+    else if (!dx && !dy) pose = ANIM_IDLE;
+    else if (dy < 0 && !dx) pose = ANIM_UP;
+    else if (dy > 0 && !dx) pose = ANIM_DOWN;
+    else pose = ANIM_RUN;
+    animSet(p, pose);
+    animTick(a, p);
+  };
+
   World.prototype.playerUpdate = function (quien, input) {
     var d = this.data.player, a = d.actor, p = this.players[quien];
     var dir = 0;
@@ -913,6 +1033,78 @@
     return tipo === TILE_SOLID || tipo === TILE_PLATFORM;
   };
 
+  /* --------------------------------------- lo que tiran los enemigos
+   *
+   * Traduccion literal de np_enemy_shoot / np_enemy_shot_update. La cuenta
+   * atras del enemigo va en `vida`, que en un enemigo no se usa para nada
+   * mas. */
+  World.prototype.enemyShoot = function (e, d) {
+    var sd = this.data.enemy_shots[d.shot - 1];
+    var ea = d.actor, pa = this.data.player.actor;
+    var p = this.nearestPlayer(e.x);
+    var dx = (p.x + I2F(idiv(pa.box_w, 2))) - (e.x + I2F(idiv(ea.box_w, 2)));
+    var dy = (p.y + I2F(idiv(pa.box_h, 2))) - (e.y + I2F(idiv(ea.box_h, 2)));
+    var ax, ay, b, hueco;
+    if (abs(dx) > I2F(sd.range) || abs(dy) > I2F(sd.range)) return;
+    hueco = this.huecoLibre();
+    if (hueco < 0) return;
+    e.vida = sd.cooldown;
+
+    if (this.cenital()) {
+      var ex = abs(dx), ey = abs(dy);
+      ax = (ex * 2 > ey) ? ((dx > 0) - (dx < 0)) : 0;
+      ay = (ey * 2 > ex) ? ((dy > 0) - (dy < 0)) : 0;
+      if (!ax && !ay) ax = e.facing ? 1 : -1;
+    } else {
+      ax = dx > 0 ? 1 : -1;
+      ay = 0;
+      e.facing = ax > 0 ? 1 : 0;
+    }
+
+    b = this.entities[hueco];
+    b.active = 1;
+    b.kind = KIND_ENEMY_SHOT;
+    b.def = d.shot - 1;
+    b.facing = ax >= 0 ? 1 : 0;
+    b.x = e.x + I2F(idiv(ea.box_w - sd.actor.box_w, 2)
+                    + ax * (idiv(ea.box_w, 2) + 1));
+    b.y = e.y + I2F(idiv(ea.box_h - sd.actor.box_h, 2)
+                    + ay * (idiv(ea.box_h, 2) + 1));
+    b.vx = pasoCenital(sd.speed, ax, ax && ay);
+    b.vy = pasoCenital(sd.speed, ay, ax && ay);
+    b.homeX = b.x; b.homeY = b.y;
+    b.health = 1; b.hurt = 0; b.timer = 0;
+    b.anim = ANIM_IDLE; b.animFrame = 0; b.animTimer = 0;
+    b.vida = sd.speed ? idiv(I2F(sd.range), sd.speed) + 1 : 1;
+    this.sfx |= SFX.SHOOT;
+  };
+
+  World.prototype.enemyShotUpdate = function (e) {
+    var sd = this.data.enemy_shots[e.def], a = sd.actor;
+    var pa = this.data.player.actor, quien;
+    if (!e.vida) { e.active = 0; return; }
+    e.vida--;
+    if (e.vx) {
+      e.x = this.moveX(e.x, e.y, a.box_w, a.box_h, e.vx, moveOut);
+      if (moveOut.hit) { e.active = 0; return; }
+    }
+    if (e.vy) {
+      e.y = this.moveY(e.x, e.y, a.box_w, a.box_h, e.vy, 1, moveOut);
+      if (moveOut.hitDown || moveOut.hitUp) { e.active = 0; return; }
+    }
+    for (quien = 0; quien < MAX_PLAYERS; quien++) {
+      var p = this.players[quien];
+      if (!p.playing || p.dying) continue;
+      if (!overlap(e.x, e.y, a.box_w, a.box_h,
+                   p.x, this.playerTop(quien),
+                   pa.box_w, this.playerHeight(quien))) continue;
+      this.playerHurt(quien, sd.damage);
+      e.active = 0;
+      return;
+    }
+    animTick(a, e);
+  };
+
   World.prototype.enemyUpdate = function (e) {
     var d = this.data.enemies[e.def], a = d.actor, p = this.nearestPlayer(e.x);
     switch (d.behavior) {
@@ -929,6 +1121,20 @@
       }
       case AI_CHASER: {
         var dx = p.x - e.x;
+        if (this.cenital()) {
+          /* desde arriba se persigue en los dos ejes: igual que en C */
+          var dyc = p.y - e.y;
+          if (abs(dx) <= d.range && abs(dyc) <= d.range) {
+            var ex = (dx > 0) - (dx < 0), ey = (dyc > 0) - (dyc < 0);
+            e.vx = pasoCenital(d.speed, ex, ex && ey);
+            e.vy = pasoCenital(d.speed, ey, ex && ey);
+            if (ex) e.facing = ex > 0 ? 1 : 0;
+          } else {
+            e.vx = approach(e.vx, 0, d.speed);
+            e.vy = approach(e.vy, 0, d.speed);
+          }
+          break;
+        }
         if (abs(dx) <= d.range) { e.vx = dx > 0 ? d.speed : -d.speed; e.facing = dx > 0 ? 1 : 0; }
         else e.vx = approach(e.vx, 0, d.speed);
         /* con un agujero delante se planta en el borde en vez de tirarse por
@@ -947,14 +1153,21 @@
         break;
     }
 
-    if (d.behavior !== AI_FLYER) {
+    /* la gravedad es de la vista lateral: desde arriba nadie cae */
+    if (d.behavior !== AI_FLYER && !this.cenital()) {
       e.vy += d.gravity;
       if (e.vy > ENTITY_FALL) e.vy = ENTITY_FALL;
     }
 
     e.x = this.moveX(e.x, e.y, a.box_w, a.box_h, e.vx, moveOut);
     if (moveOut.hit) { e.facing = e.facing ? 0 : 1; e.vx = 0; }
-    if (d.behavior !== AI_FLYER) {
+    if (this.cenital()) {
+      /* desde arriba las paredes frenan tambien por arriba y por abajo */
+      if (e.vy) {
+        e.y = this.moveY(e.x, e.y, a.box_w, a.box_h, e.vy, 1, moveOut);
+        if (moveOut.hitDown || moveOut.hitUp) e.vy = 0;
+      }
+    } else if (d.behavior !== AI_FLYER) {
       e.y = this.moveY(e.x, e.y, a.box_w, a.box_h, e.vy, 0, moveOut);
       if (moveOut.hitDown && e.vy > 0) e.vy = 0;
       if (moveOut.hitUp && e.vy < 0) e.vy = 0;
@@ -964,10 +1177,18 @@
 
     /* `facing` manda sobre `vx`: recalcularlo aqui deshacia el giro en los
      * bordes y en las paredes (ver np_world.c). */
-    animSet(e, e.vx ? ANIM_RUN : ANIM_IDLE);
+    animSet(e, (e.vx || (this.cenital() && e.vy)) ? ANIM_RUN : ANIM_IDLE);
     animTick(a, e);
 
-    if (F2I(e.y) > (this.level.height + 2) * TILE) e.active = 0;
+    /* y si lleva `dispara:`, te tirotea */
+    if (d.shot) {
+      if (e.vida) e.vida--;
+      else this.enemyShoot(e, d);
+    }
+
+    /* caerse del mapa mata al enemigo (en cenital no hay de donde caerse) */
+    if (!this.cenital() && F2I(e.y) > (this.level.height + 2) * TILE)
+      e.active = 0;
   };
 
   World.prototype.itemUpdate = function (e) {
@@ -1159,6 +1380,7 @@
       var jugador = this.players[quien];
       if (!jugador.playing) continue;
       if (jugador.dying) this.playerFalling(quien);
+      else if (this.cenital()) this.playerUpdateCenital(quien, mandos[quien]);
       else this.playerUpdate(quien, mandos[quien]);
     }
 
@@ -1180,6 +1402,7 @@
       if (e.hurt) e.hurt--;
       if (e.kind === KIND_SHOT) this.shotUpdate(e);
       else if (e.kind === KIND_SUBSHOT) this.subshotUpdate(e);
+      else if (e.kind === KIND_ENEMY_SHOT) this.enemyShotUpdate(e);
       else if (e.kind === KIND_ENEMY) this.enemyUpdate(e);
       else if (e.kind === KIND_BREAKABLE) this.breakableUpdate(e);
       else this.itemUpdate(e);

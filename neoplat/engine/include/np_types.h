@@ -67,6 +67,7 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_KIND_BREAKABLE 4      /* candelabro: se rompe y suelta algo */
 #define NP_KIND_SUBSHOT 5        /* lo que tira el arma secundaria */
 #define NP_KIND_MELEE 6          /* el latigo: solo se ve, no toca a nadie */
+#define NP_KIND_ENEMY_SHOT 7     /* lo que tira un enemigo con `dispara:` */
 
 /* El arma secundaria: se lanza con arriba + accion y gasta municion. */
 #define NP_SUB_NONE  0
@@ -102,7 +103,12 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_ANIM_ATTACK 5
 #define NP_ANIM_STAIR 6          /* subiendo una escalera */
 #define NP_ANIM_CROUCH 7         /* agachado */
-#define NP_ANIM_SLOTS 8
+/* Las dos ultimas son de la vista cenital: ahi el heroe se ve de espaldas
+   cuando anda hacia arriba y de frente cuando anda hacia abajo. En vista
+   lateral no se usan nunca. */
+#define NP_ANIM_UP   8           /* andando hacia arriba (de espaldas) */
+#define NP_ANIM_DOWN 9           /* andando hacia abajo (de frente) */
+#define NP_ANIM_SLOTS 10
 
 /* Eventos de sonido que produce la simulacion (un bit cada uno). Coinciden con
  * EVENTO_BIT de tools/ngplat/sonido.py. La simulacion solo los marca; quien los

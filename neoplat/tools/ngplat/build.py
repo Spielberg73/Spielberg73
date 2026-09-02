@@ -20,7 +20,10 @@ from .project import (
     Actor, Animation, BEHAVIOR_ID, ITEM_EFFECT_ID, Layer, Project, TILE_KIND_ID, TileDef,
 )
 
-ANIM_SLOTS = ["idle", "run", "jump", "fall", "hurt", "attack", "stair", "crouch"]
+# Las dos ultimas solo se usan en vista cenital (el heroe de espaldas y de
+# frente); en lateral se quedan en su sustituto y no estorban.
+ANIM_SLOTS = ["idle", "run", "jump", "fall", "hurt", "attack", "stair", "crouch",
+              "up", "down"]
 SIN_STEPS = 64
 
 
@@ -30,6 +33,7 @@ class ActorBuild:
     actor: Actor
     sheet: gfx.Sheet
     anims: List[Animation]          # una por ranura, en el orden de ANIM_SLOTS
+    shot_index: int = 0             # enemigos: su disparo + 1 (0 = no dispara)
 
 
 @dataclass
@@ -77,6 +81,9 @@ class Build:
     breakables: List[ActorBuild] = field(default_factory=list)
     attack: Optional[ActorBuild] = None       # el proyectil, si el juego lo lleva
     subs: List[ActorBuild] = field(default_factory=list)   # las armas secundarias
+    # Los disparos de los enemigos que llevan `dispara:`. Van en su propia
+    # lista porque cada uno tiene su dibujo, y el enemigo guarda su numero.
+    enemy_shots: List[ActorBuild] = field(default_factory=list)
     music_order: List[str] = field(default_factory=list)   # nombres, en orden
     music_title: int = 0        # la del titulo, indice + 1 (0 = ninguna)
     music_boss: int = 0         # la del jefe, indice + 1 (0 = la del nivel)
@@ -102,6 +109,7 @@ class Build:
         if self.attack is not None:
             todos.append(self.attack)
         todos.extend(self.subs)
+        todos.extend(self.enemy_shots)
         return todos
 
     def stats(self) -> Dict[str, int]:
@@ -126,7 +134,8 @@ def _resolve_anims(actor: Actor, where: str, frames_available: int) -> List[Anim
     given = dict(actor.animations)
     if "idle" not in given:
         given["idle"] = Animation("idle", [0], 8, True)
-    fallback = {"run": "idle", "jump": "idle", "fall": "jump", "hurt": "idle"}
+    fallback = {"run": "idle", "jump": "idle", "fall": "jump", "hurt": "idle",
+                "up": "run", "down": "run"}
     out: List[Animation] = []
     for slot in ANIM_SLOTS:
         anim = given.get(slot)
@@ -238,6 +247,15 @@ def build_project(project: Project) -> Build:
         _load_actor(enemy, "enemigos.%s" % name, project.root)
         for name, enemy in project.enemies.items()
     ]
+    # Los disparos de los enemigos que llevan `dispara:`. Cada uno es un actor
+    # mas -tiene su dibujo y su caja- y el enemigo se queda con su numero.
+    enemy_shots: List[ActorBuild] = []
+    for construido in enemies:
+        disparo = getattr(construido.actor, "shot", None)
+        if disparo is None:
+            continue
+        enemy_shots.append(_load_actor(disparo, disparo.name, project.root))
+        construido.shot_index = len(enemy_shots)
     items = [
         _load_actor(item, "objetos.%s" % name, project.root)
         for name, item in project.items.items()
@@ -320,6 +338,7 @@ def build_project(project: Project) -> Build:
         project=project, rom=rom, tiles=tiles, tile_index=tile_index, tileset=tileset,
         player=player, enemies=enemies, items=items, layers=layers, levels=levels,
         platforms=platforms, breakables=breakables, attack=attack, subs=subs,
+        enemy_shots=enemy_shots,
         music_order=music_order, music_title=music_title, music_boss=music_boss,
         sin_table=_sin_table(),
     )
@@ -361,6 +380,17 @@ def enemy_values(build: ActorBuild) -> Dict[str, object]:
         "behavior": BEHAVIOR_ID[e.behavior], "health": e.health, "damage": e.damage,
         "stompable": 1 if e.stompable else 0, "edge_turn": 1 if e.edge_turn else 0,
         "boss": 1 if e.boss else 0,
+        # el numero de su disparo **mas uno**; cero = este no dispara
+        "shot": getattr(build, "shot_index", 0),
+    }
+
+
+def enemy_shot_values(build: ActorBuild) -> Dict[str, object]:
+    """Los campos de NpEnemyShotDef: lo que tira un enemigo con `dispara:`."""
+    s = build.actor          # type: ignore[assignment]
+    return {
+        "speed": to_fixed(s.speed), "range": int(s.range),
+        "cooldown": s.cooldown, "damage": s.damage,
     }
 
 

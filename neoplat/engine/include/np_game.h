@@ -112,12 +112,26 @@ typedef struct {
     NpAttackDef attack;
 } NpPlayerDef;
 
+/* Lo que tira un enemigo con `dispara:`. Es un actor mas -su dibujo y su
+ * caja- con lo justo para volar: a que velocidad, cuanto llega, cada cuanto
+ * sale y cuanto duele. Sin esto un enemigo solo hace dano al tocarte; con
+ * esto te tirotea desde lejos, que es lo que separa un plataformas de un juego
+ * de comando. */
+typedef struct {
+    NpActorDef actor;
+    np_fix speed;
+    uint16_t range;          /* px que recorre antes de apagarse */
+    uint16_t cooldown;       /* frames entre un tiro y el siguiente */
+    uint8_t damage;
+} NpEnemyShotDef;
+
 typedef struct {
     NpActorDef actor;
     np_fix speed, gravity, jump, range, amplitude;
     uint16_t period, interval, score;
     uint8_t behavior, health, damage, stompable, edge_turn;
     uint8_t boss;            /* 1 = matarlo termina el nivel */
+    uint8_t shot;            /* su disparo + 1 en np_enemy_shots; 0 = no tira */
 } NpEnemyDef;
 
 typedef struct {
@@ -182,6 +196,7 @@ typedef struct {
 /* Tablas que genera el compilador (definidas en gamedata.c). */
 extern const NpPlayerDef np_player_def;
 extern const NpEnemyDef np_enemies[];
+extern const NpEnemyShotDef np_enemy_shots[];   /* lo que tiran ellos */
 extern const NpItemDef np_items[];
 extern const NpSubDef np_subs[];         /* las armas secundarias del juego */
 extern const NpPlatformDef np_platforms[];
@@ -203,6 +218,7 @@ extern const uint8_t np_music_title;
 extern const uint8_t np_music_boss;
 extern const uint16_t np_layer_count;
 extern const uint16_t np_enemy_count;
+extern const uint8_t np_enemy_shot_count;
 extern const uint16_t np_item_count;
 extern const uint8_t np_sub_count;       /* 0 = el juego no lleva secundaria */
 /* Como se llama cada arma secundaria en el marcador: cinco letras, que es lo
@@ -217,6 +233,12 @@ extern const uint8_t np_tileset_palette;
 extern const uint8_t np_start_lives;
 extern const uint8_t np_player_count;     /* 1 o 2 jugadores a la vez */
 extern const uint16_t np_time_limit;      /* en segundos, 0 = sin limite */
+/* Desde donde se mira el juego. Con 0 (vista lateral) manda la gravedad: se
+   anda a un lado y a otro y se salta. Con 1 (vista cenital) no hay gravedad ni
+   suelo: se anda en ocho direcciones, se dispara hacia donde se mira y el
+   escenario se recorre en las dos direcciones, que es como se juega a un
+   Ikari. Lo lee el motor en np_world.c. */
+extern const uint8_t np_vista_cenital;
 extern const uint8_t np_camara_pantallas; /* 1 = pantalla a pantalla, 0 = scroll */
 extern const char np_game_title[];
 extern const char np_game_author[];

@@ -38,8 +38,12 @@ static np_fix np_approach(np_fix value, np_fix target, np_fix delta)
 uint8_t np_tile_kind_at(const NpLevel *level, int32_t tx, int32_t ty)
 {
     if (tx < 0 || tx >= (int32_t)level->width) return NP_TILE_SOLID;  /* paredes */
-    if (ty < 0) return NP_TILE_EMPTY;                                 /* cielo */
-    if (ty >= (int32_t)level->height) return NP_TILE_EMPTY;           /* abismo */
+    /* De lado, por arriba hay cielo y por abajo un abismo donde caerse. Desde
+       arriba no: ahi el mapa es una caja cerrada y sus cuatro lados son
+       pared, que si no se saldria uno del escenario andando. */
+    if (ty < 0) return np_vista_cenital ? NP_TILE_SOLID : NP_TILE_EMPTY;
+    if (ty >= (int32_t)level->height)
+        return np_vista_cenital ? NP_TILE_SOLID : NP_TILE_EMPTY;
     return np_tile_kind[level->cells[ty * level->width + tx]];
 }
 
@@ -216,6 +220,7 @@ const NpActorDef *np_entity_def(const NpEntity *e)
     if (e->kind == NP_KIND_BREAKABLE) return &np_breakables[e->def].actor;
     if (e->kind == NP_KIND_SUBSHOT) return &np_subs[e->def].actor;
     if (e->kind == NP_KIND_MELEE) return &np_player_def.attack.actor;
+    if (e->kind == NP_KIND_ENEMY_SHOT) return &np_enemy_shots[e->def].actor;
     return &np_items[e->def].actor;
 }
 
@@ -460,6 +465,39 @@ static void np_player_die(NpWorld *w, uint8_t quien)
     }
 }
 
+/* ------------------------------------------------------ la vista cenital */
+/*
+ * Con `vista: cenital` el juego se mira desde arriba, como los de comando: no
+ * hay gravedad ni suelo, se anda en ocho direcciones y se dispara hacia donde
+ * se mira. Es un **segundo modo de movimiento**, como las escaleras, pero para
+ * todo el juego: por eso el jugador tiene aqui su propia actualizacion en vez
+ * de llenar la de siempre de condiciones, y la de vista lateral se queda
+ * exactamente como estaba.
+ *
+ * La mirada son ocho direcciones, empezando por la derecha y girando en el
+ * sentido del reloj (la y crece hacia abajo, como en la pantalla).
+ */
+static const int8_t np_aim_x[8] = { 1, 1, 0, -1, -1, -1,  0,  1 };
+static const int8_t np_aim_y[8] = { 0, 1, 1,  1,  0, -1, -1, -1 };
+
+/* En diagonal se anda a 0,707 de la velocidad (181/256): sin esto las
+   diagonales serian un 41% mas rapidas y todo el mundo iria en diagonal. */
+#define NP_DIAGONAL 181
+
+static uint8_t np_aim_de(int dx, int dy)
+{
+    if (dx > 0) return (uint8_t)(dy > 0 ? 1 : (dy < 0 ? 7 : 0));
+    if (dx < 0) return (uint8_t)(dy > 0 ? 3 : (dy < 0 ? 5 : 4));
+    return (uint8_t)(dy > 0 ? 2 : 6);
+}
+
+/* La velocidad de un eje, ya corregida si se va en diagonal. */
+static np_fix np_paso_cenital(np_fix velocidad, int eje, int diagonal)
+{
+    np_fix v = diagonal ? (np_fix)((velocidad * NP_DIAGONAL) >> 8) : velocidad;
+    return (np_fix)(eje * v);
+}
+
 static void np_player_hurt(NpWorld *w, uint8_t quien, uint8_t damage)
 {
     NpPlayer *p = &w->players[quien];
@@ -473,8 +511,15 @@ static void np_player_hurt(NpWorld *w, uint8_t quien, uint8_t damage)
     p->health = (uint8_t)(p->health - damage);
     w->sfx |= NP_SFX_HURT;
     p->invuln = np_player_def.invuln;
-    p->vy = -np_player_def.bounce / 2;
-    p->vx = p->facing ? -np_player_def.knockback : np_player_def.knockback;
+    if (np_vista_cenital) {
+        /* mirando desde arriba no hay "hacia arriba": el empujon va al reves
+           de donde miras, que es de donde viene el golpe */
+        p->vx = (np_fix)(-np_aim_x[p->aim] * np_player_def.knockback);
+        p->vy = (np_fix)(-np_aim_y[p->aim] * np_player_def.knockback);
+    } else {
+        p->vy = -np_player_def.bounce / 2;
+        p->vx = p->facing ? -np_player_def.knockback : np_player_def.knockback;
+    }
     /* El aturdimiento es lo que hace que el golpe duela de verdad: mientras
        dura no se frena ni se cambia de sentido, asi que el empujon te lleva
        donde te lleve. Con `aturdido: 0` se recupera el control al momento. */
@@ -623,11 +668,25 @@ static void np_player_attack(NpWorld *w, uint8_t quien)
         e->kind = NP_KIND_SHOT;
         e->def = 0;
         e->facing = p->facing;
-        /* sale a la altura del centro del jugador y por el lado que mira */
-        e->x = p->x + NP_I2F(p->facing ? pa->box_w : -at->actor.box_w);
-        e->y = np_player_top(p) + NP_I2F((np_player_height(p) - at->actor.box_h) / 2);
-        e->vx = p->facing ? at->speed : -at->speed;
-        e->vy = 0;
+        if (np_vista_cenital) {
+            /* mirando desde arriba el disparo sale por donde miras, en las
+               ocho direcciones, y desde el centro del jugador */
+            int ax = np_aim_x[p->aim], ay = np_aim_y[p->aim];
+            int diagonal = (ax && ay);
+            e->x = p->x + NP_I2F((pa->box_w - at->actor.box_w) / 2
+                                 + ax * (pa->box_w / 2 + 1));
+            e->y = p->y + NP_I2F((pa->box_h - at->actor.box_h) / 2
+                                 + ay * (pa->box_h / 2 + 1));
+            e->vx = np_paso_cenital(at->speed, ax, diagonal);
+            e->vy = np_paso_cenital(at->speed, ay, diagonal);
+        } else {
+            /* sale a la altura del centro del jugador y por el lado que mira */
+            e->x = p->x + NP_I2F(p->facing ? pa->box_w : -at->actor.box_w);
+            e->y = np_player_top(p)
+                 + NP_I2F((np_player_height(p) - at->actor.box_h) / 2);
+            e->vx = p->facing ? at->speed : -at->speed;
+            e->vy = 0;
+        }
         e->home_y = e->y;
         e->health = 1;
         e->hurt = 0;
@@ -682,10 +741,25 @@ static void np_player_sub(NpWorld *w, uint8_t quien)
         e->kind = NP_KIND_SUBSHOT;
         e->def = w->sub;          /* se queda con el arma con la que salio */
         e->facing = p->facing;
-        e->x = p->x + NP_I2F(p->facing ? pa->box_w : -sb->actor.box_w);
-        e->y = np_player_top(p) + NP_I2F((np_player_height(p) - sb->actor.box_h) / 2);
-        e->vx = p->facing ? sb->speed : -sb->speed;
-        e->vy = (sb->kind == NP_SUB_ARC) ? -sb->jump : 0;
+        if (np_vista_cenital) {
+            /* la granada sale por donde miras y vuela recta hasta agotar su
+               alcance: desde arriba no hay arco que valga, porque no hay
+               "arriba" al que tirar */
+            int ax = np_aim_x[p->aim], ay = np_aim_y[p->aim];
+            int diagonal = (ax && ay);
+            e->x = p->x + NP_I2F((pa->box_w - sb->actor.box_w) / 2
+                                 + ax * (pa->box_w / 2 + 1));
+            e->y = p->y + NP_I2F((pa->box_h - sb->actor.box_h) / 2
+                                 + ay * (pa->box_h / 2 + 1));
+            e->vx = np_paso_cenital(sb->speed, ax, diagonal);
+            e->vy = np_paso_cenital(sb->speed, ay, diagonal);
+        } else {
+            e->x = p->x + NP_I2F(p->facing ? pa->box_w : -sb->actor.box_w);
+            e->y = np_player_top(p)
+                 + NP_I2F((np_player_height(p) - sb->actor.box_h) / 2);
+            e->vx = p->facing ? sb->speed : -sb->speed;
+            e->vy = (sb->kind == NP_SUB_ARC) ? -sb->jump : 0;
+        }
         e->home_x = e->x;
         e->home_y = e->y;
         e->health = 1;
@@ -710,7 +784,9 @@ static void np_subshot_update(NpWorld *w, NpEntity *e)
 
     if (!e->vida) { e->active = 0; return; }
     e->vida--;
-    if (sb->kind == NP_SUB_ARC) {
+    /* El arco es cosa de la vista lateral: es tirar por encima de una pared.
+       Mirando desde arriba no hay "por encima", asi que vuela recto. */
+    if (sb->kind == NP_SUB_ARC && !np_vista_cenital) {
         e->vy += sb->gravity;
         if (e->vy > NP_ENTITY_FALL) e->vy = NP_ENTITY_FALL;
     }
@@ -759,6 +835,14 @@ static void np_shot_update(NpWorld *w, NpEntity *e)
     e->vida--;
     e->x = np_move_x(w->level, e->x, e->y, a->box_w, a->box_h, e->vx, &hit_x);
     if (hit_x) { e->active = 0; return; }
+    if (np_vista_cenital && e->vy) {
+        /* mirando desde arriba el disparo tambien vuela en vertical, y una
+           pared lo para igual que en horizontal */
+        int arriba = 0, abajo = 0;
+        e->y = np_move_y(w->level, e->x, e->y, a->box_w, a->box_h, e->vy, 1,
+                         &abajo, &arriba);
+        if (abajo || arriba) { e->active = 0; return; }
+    }
 
     for (i = 0; i < w->entity_count; i++) {
         NpEntity *otra = &w->entities[i];
@@ -1074,6 +1158,81 @@ static int np_stair_update(NpWorld *w, uint8_t quien, uint16_t input)
 
 /* ------------------------------------------------------------- el jugador */
 
+/* El jugador mirando desde arriba: ocho direcciones, sin gravedad y sin
+ * suelo. Ver el bloque de "la vista cenital" mas arriba. */
+static void np_player_update_cenital(NpWorld *w, uint8_t quien, uint16_t input)
+{
+    const NpPlayerDef *d = &np_player_def;
+    const NpActorDef *a = &d->actor;
+    NpPlayer *p = &w->players[quien];
+    int dx = 0, dy = 0;
+    int hit_x = 0, hit_down = 0, hit_up = 0;
+    uint8_t pose;
+
+    /* Aturdido: ni se anda ni se dispara, y el empujon del golpe se respeta
+       hasta que se acaba, igual que en vista lateral. */
+    if (p->stun) {
+        p->stun--;
+        input = 0;
+    } else {
+        if (input & NP_IN_RIGHT) dx += 1;
+        if (input & NP_IN_LEFT) dx -= 1;
+        if (input & NP_IN_DOWN) dy += 1;
+        if (input & NP_IN_UP) dy -= 1;
+    }
+
+    if (dx || dy) {
+        p->aim = np_aim_de(dx, dy);
+        if (dx) p->facing = (uint8_t)(dx > 0);      /* el espejo del dibujo */
+        p->vx = np_paso_cenital(d->speed, dx, dx && dy);
+        p->vy = np_paso_cenital(d->speed, dy, dx && dy);
+    } else if (p->stun) {
+        p->vx = np_approach(p->vx, 0, d->friction); /* el empujon se apaga */
+        p->vy = np_approach(p->vy, 0, d->friction);
+    } else {
+        p->vx = 0;
+        p->vy = 0;
+    }
+
+    /* Aqui no hay suelo: se choca con las paredes en los dos ejes. */
+    p->x = np_move_x(w->level, p->x, p->y, a->box_w, a->box_h, p->vx, &hit_x);
+    if (hit_x) p->vx = 0;
+    p->y = np_move_y(w->level, p->x, p->y, a->box_w, a->box_h, p->vy, 1,
+                     &hit_down, &hit_up);
+    if (hit_down || hit_up) p->vy = 0;
+    /* Pisar no significa nada mirando desde arriba, pero lo miran cosas que
+       valen para los dos modos (la pose, el marcador): siempre en el suelo. */
+    p->on_ground = 1;
+    p->jumps_left = 0;
+    p->stairs = 0;
+    p->crouch = 0;
+
+    /* El boton de saltar no tiene nada que saltar, asi que es el de la
+       granada: es el reparto de los recreativos de comando -uno dispara y el
+       otro tira-. El de accion sigue siendo el de disparar. */
+    if (p->attack_cd) p->attack_cd--;
+    if ((input & NP_IN_JUMP) && !(w->prev_input[quien] & NP_IN_JUMP)
+        && np_sub_count && w->hearts >= np_subs[w->sub].cost)
+        np_player_sub(w, quien);
+    else if ((input & NP_IN_ACTION) && !(w->prev_input[quien] & NP_IN_ACTION))
+        np_player_attack(w, quien);
+
+    if (p->invuln) p->invuln--;
+    if (p->attack_timer) p->attack_timer--;
+
+    /* La pose: de espaldas subiendo, de frente bajando y de lado el resto.
+       Quien no traiga esos dibujos se queda en 'correr' (lo dice
+       _resolve_anims), asi que un juego cenital sin arte propio se vera raro
+       pero se juega igual. */
+    if (p->attack_timer) pose = NP_ANIM_ATTACK;
+    else if (!dx && !dy) pose = NP_ANIM_IDLE;
+    else if (dy < 0 && !dx) pose = NP_ANIM_UP;
+    else if (dy > 0 && !dx) pose = NP_ANIM_DOWN;
+    else pose = NP_ANIM_RUN;
+    np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer, pose);
+    np_anim_tick(a, p->anim, &p->anim_frame, &p->anim_timer);
+}
+
 static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
 {
     const NpPlayerDef *d = &np_player_def;
@@ -1247,6 +1406,110 @@ static uint8_t np_suelo_delante(const NpWorld *w, const NpEntity *e,
     return (uint8_t)(tipo == NP_TILE_SOLID || tipo == NP_TILE_PLATFORM);
 }
 
+/* --------------------------------------------- lo que tiran los enemigos */
+/*
+ * Con `dispara:` un enemigo deja de ser un obstaculo que hay que esquivar y
+ * pasa a ser una amenaza a distancia: es lo que separa un plataformas de un
+ * juego de comando. El disparo es una entidad mas de la lista (NP_KIND_ENEMY_
+ * SHOT), como los del jugador, asi que las seis maquinas lo dibujan sin
+ * enterarse y entra en el hash de la paridad.
+ *
+ * El enemigo lleva su cuenta atras en `vida`, que en un enemigo no se usa para
+ * nada mas (es el contador de vuelo de los proyectiles).
+ */
+static void np_enemy_shoot(NpWorld *w, NpEntity *e, const NpEnemyDef *d)
+{
+    const NpEnemyShotDef *sd = &np_enemy_shots[d->shot - 1];
+    const NpActorDef *ea = &d->actor;
+    const NpPlayer *p = np_nearest_player(w, e->x);
+    np_fix dx = (p->x + NP_I2F(np_player_def.actor.box_w / 2))
+              - (e->x + NP_I2F(ea->box_w / 2));
+    np_fix dy = (p->y + NP_I2F(np_player_def.actor.box_h / 2))
+              - (e->y + NP_I2F(ea->box_h / 2));
+    int hueco;
+    NpEntity *b;
+    int ax, ay;
+
+    if (NP_ABS(dx) > NP_I2F(sd->range) || NP_ABS(dy) > NP_I2F(sd->range)) return;
+    hueco = np_hueco_libre(w);
+    if (hueco < 0) return;               /* no cabe: este tiro se pierde */
+    e->vida = sd->cooldown;
+
+    if (np_vista_cenital) {
+        /* Desde arriba se apunta en las ocho direcciones, redondeando a la
+           mas cercana: un soldado te tira **a ti**, no hacia un lado. */
+        np_fix ex = NP_ABS(dx), ey = NP_ABS(dy);
+        ax = (ex * 2 > ey) ? NP_SIGN(dx) : 0;
+        ay = (ey * 2 > ex) ? NP_SIGN(dy) : 0;
+        if (!ax && !ay) ax = e->facing ? 1 : -1;
+    } else {
+        /* De lado se tira de frente, que es lo unico que tiene sentido con
+           gravedad: hacia donde esta el jugador. */
+        ax = dx > 0 ? 1 : -1;
+        ay = 0;
+        e->facing = (uint8_t)(ax > 0);
+    }
+
+    b = &w->entities[hueco];
+    b->active = 1;
+    b->kind = NP_KIND_ENEMY_SHOT;
+    b->def = (uint8_t)(d->shot - 1);
+    b->facing = (uint8_t)(ax >= 0);
+    b->x = e->x + NP_I2F((ea->box_w - sd->actor.box_w) / 2
+                         + ax * (ea->box_w / 2 + 1));
+    b->y = e->y + NP_I2F((ea->box_h - sd->actor.box_h) / 2
+                         + ay * (ea->box_h / 2 + 1));
+    b->vx = np_paso_cenital(sd->speed, ax, ax && ay);
+    b->vy = np_paso_cenital(sd->speed, ay, ax && ay);
+    b->home_x = b->x;
+    b->home_y = b->y;
+    b->health = 1;
+    b->hurt = 0;
+    b->timer = 0;
+    b->anim = NP_ANIM_IDLE;
+    b->anim_frame = 0;
+    b->anim_timer = 0;
+    b->vida = sd->speed ? (uint16_t)((NP_I2F(sd->range) / sd->speed) + 1) : 1;
+    w->sfx |= NP_SFX_SHOOT;
+}
+
+/* El disparo de un enemigo: vuela, choca con las paredes y hace dano al
+   jugador. No le hace nada a los otros enemigos: en los recreativos de comando
+   los tiros de los soldados se cruzan entre ellos sin tocarse. */
+static void np_enemy_shot_update(NpWorld *w, NpEntity *e)
+{
+    const NpEnemyShotDef *sd = &np_enemy_shots[e->def];
+    const NpActorDef *a = &sd->actor;
+    const NpActorDef *pa = &np_player_def.actor;
+    uint8_t quien;
+    int hit_x = 0, hit_down = 0, hit_up = 0;
+
+    if (!e->vida) { e->active = 0; return; }
+    e->vida--;
+    if (e->vx) {
+        e->x = np_move_x(w->level, e->x, e->y, a->box_w, a->box_h, e->vx, &hit_x);
+        if (hit_x) { e->active = 0; return; }
+    }
+    if (e->vy) {
+        e->y = np_move_y(w->level, e->x, e->y, a->box_w, a->box_h, e->vy, 1,
+                         &hit_down, &hit_up);
+        if (hit_down || hit_up) { e->active = 0; return; }
+    }
+
+    for (quien = 0; quien < NP_MAX_PLAYERS; quien++) {
+        NpPlayer *p = &w->players[quien];
+        if (!p->playing || p->dying) continue;
+        if (!np_boxes_overlap(e->x, e->y, a->box_w, a->box_h,
+                              p->x, np_player_top(p),
+                              pa->box_w, np_player_height(p)))
+            continue;
+        np_player_hurt(w, quien, sd->damage);
+        e->active = 0;
+        return;
+    }
+    np_anim_tick(a, e->anim, &e->anim_frame, &e->anim_timer);
+}
+
 static void np_enemy_update(NpWorld *w, NpEntity *e)
 {
     const NpEnemyDef *d = &np_enemies[e->def];
@@ -1268,6 +1531,22 @@ static void np_enemy_update(NpWorld *w, NpEntity *e)
     }
     case NP_AI_CHASER: {
         np_fix dx = p->x - e->x;
+        if (np_vista_cenital) {
+            /* Desde arriba se persigue en los dos ejes: es el soldado que se
+               te viene encima. `rango` sigue midiendo en horizontal, que es
+               como se escribe en el game.yaml. */
+            np_fix dy = p->y - e->y;
+            if (NP_ABS(dx) <= d->range && NP_ABS(dy) <= d->range) {
+                int ex = NP_SIGN(dx), ey = NP_SIGN(dy);
+                e->vx = np_paso_cenital(d->speed, ex, ex && ey);
+                e->vy = np_paso_cenital(d->speed, ey, ex && ey);
+                if (ex) e->facing = (uint8_t)(ex > 0);
+            } else {
+                e->vx = np_approach(e->vx, 0, d->speed);
+                e->vy = np_approach(e->vy, 0, d->speed);
+            }
+            break;
+        }
         if (NP_ABS(dx) <= d->range) {
             e->vx = dx > 0 ? d->speed : -d->speed;
             e->facing = (uint8_t)(dx > 0);
@@ -1299,7 +1578,9 @@ static void np_enemy_update(NpWorld *w, NpEntity *e)
         break;
     }
 
-    if (d->behavior != NP_AI_FLYER) {
+    /* La gravedad es de la vista lateral. Desde arriba nadie cae: lo que se
+       mueve en vertical lo decide el comportamiento. */
+    if (d->behavior != NP_AI_FLYER && !np_vista_cenital) {
         e->vy += d->gravity;
         if (e->vy > NP_ENTITY_FALL) e->vy = NP_ENTITY_FALL;
     }
@@ -1309,7 +1590,14 @@ static void np_enemy_update(NpWorld *w, NpEntity *e)
         e->facing = (uint8_t)!e->facing;
         e->vx = 0;
     }
-    if (d->behavior != NP_AI_FLYER) {
+    if (np_vista_cenital) {
+        /* desde arriba las paredes frenan tambien por arriba y por abajo */
+        if (e->vy) {
+            e->y = np_move_y(w->level, e->x, e->y, a->box_w, a->box_h, e->vy, 1,
+                             &hit_down, &hit_up);
+            if (hit_down || hit_up) e->vy = 0;
+        }
+    } else if (d->behavior != NP_AI_FLYER) {
         e->y = np_move_y(w->level, e->x, e->y, a->box_w, a->box_h, e->vy, 0,
                          &hit_down, &hit_up);
         if (hit_down && e->vy > 0) e->vy = 0;
@@ -1324,11 +1612,21 @@ static void np_enemy_update(NpWorld *w, NpEntity *e)
      * proximo frame). No se recalcula aqui a partir de vx, porque eso
      * deshacia el giro en los bordes y en las paredes. */
     np_anim_set(&e->anim, &e->anim_frame, &e->anim_timer,
-                e->vx ? NP_ANIM_RUN : NP_ANIM_IDLE);
+                (e->vx || (np_vista_cenital && e->vy)) ? NP_ANIM_RUN
+                                                       : NP_ANIM_IDLE);
     np_anim_tick(a, e->anim, &e->anim_frame, &e->anim_timer);
 
-    /* caerse del mapa mata al enemigo */
-    if (NP_F2I(e->y) > (int32_t)(w->level->height + 2) * NP_TILE) e->active = 0;
+    /* Y si lleva `dispara:`, te tirotea. La cuenta atras va en `vida`, que en
+       un enemigo no se usa para nada mas. */
+    if (d->shot) {
+        if (e->vida) e->vida--;
+        else np_enemy_shoot(w, e, d);
+    }
+
+    /* caerse del mapa mata al enemigo (en cenital no hay de donde caerse) */
+    if (!np_vista_cenital
+        && NP_F2I(e->y) > (int32_t)(w->level->height + 2) * NP_TILE)
+        e->active = 0;
 }
 
 static void np_item_update(NpWorld *w, NpEntity *e)
@@ -1609,6 +1907,8 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
         NpPlayer *p = &w->players[quien];
         if (!p->playing) continue;
         if (p->dying) np_player_falling(w, quien);
+        else if (np_vista_cenital)
+            np_player_update_cenital(w, quien, mandos[quien]);
         else np_player_update(w, quien, mandos[quien]);
     }
 
@@ -1633,6 +1933,7 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
         if (e->hurt) e->hurt--;
         if (e->kind == NP_KIND_SHOT) np_shot_update(w, e);
         else if (e->kind == NP_KIND_SUBSHOT) np_subshot_update(w, e);
+        else if (e->kind == NP_KIND_ENEMY_SHOT) np_enemy_shot_update(w, e);
         else if (e->kind == NP_KIND_ENEMY) np_enemy_update(w, e);
         else if (e->kind == NP_KIND_BREAKABLE) np_breakable_update(w, e);
         else np_item_update(w, e);

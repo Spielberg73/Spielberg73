@@ -16,7 +16,7 @@ from .sonido import EVENTOS
 from .build import (
     ANIM_SLOTS, Build, actor_def_values, attack_values, breakable_values,
     enemy_values, item_values, layer_values, platform_values, player_values,
-    sub_values, tile_tables,
+    enemy_shot_values, sub_values, tile_tables,
 )
 from .fixed import FIXED_ONE
 from .paths import ENGINE_DIR, TEMPLATES_DIR
@@ -111,6 +111,9 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("const uint8_t np_start_lives = %d;" % project.lives)
     src.append("const uint8_t np_player_count = %d;" % project.players)
     src.append("const uint16_t np_time_limit = %d;" % project.time_limit)
+    src.append("/* Desde donde se mira: 0 = de lado (con gravedad), 1 = desde arriba. */")
+    src.append("const uint8_t np_vista_cenital = %d;"
+               % (1 if project.view == "cenital" else 0))
     src.append("const uint8_t np_camara_pantallas = %d;"
                % (1 if project.camera == "pantallas" else 0))
     src.append("const uint16_t np_tileset_first_tile = %d;" % build.tileset.first_tile)
@@ -231,7 +234,7 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
         src.append(_anim_arrays("np_enemy%d" % i, enemy))
     src.append("const NpEnemyDef np_enemies[] = {")
     if not build.enemies:
-        src.append("    { %s, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1 }" % _actor_vacio())
+        src.append("    { %s, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 0 }" % _actor_vacio())
     for i, enemy in enumerate(build.enemies):
         ev = enemy_values(enemy)
         src.append("    {")
@@ -242,10 +245,28 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
         src.append("        %d, %d, %d, %d, %d," % (ev["behavior"], ev["health"],
                                                     ev["damage"], ev["stompable"],
                                                     ev["edge_turn"]))
-        src.append("        %d" % ev["boss"])
+        src.append("        %d, %d" % (ev["boss"], ev["shot"]))
         src.append("    }," if i + 1 < len(build.enemies) else "    }")
     src.append("};")
     src.append("const uint16_t np_enemy_count = %d;" % len(build.enemies))
+    src.append("")
+
+    # --- lo que tiran los enemigos que llevan `dispara:`
+    src.append("/* Los disparos de los enemigos, en el orden de 'dispara:'. */")
+    for i, disparo in enumerate(build.enemy_shots):
+        src.append(_anim_arrays("np_eshot%d" % i, disparo))
+    src.append("const NpEnemyShotDef np_enemy_shots[] = {")
+    if not build.enemy_shots:
+        src.append("    { %s, 0, 0, 0, 0 }" % _actor_vacio())
+    for i, disparo in enumerate(build.enemy_shots):
+        sv = enemy_shot_values(disparo)
+        src.append("    {")
+        src.append(_actor_def("np_eshot%d" % i, actor_def_values(disparo)) + ",")
+        src.append("        %d, %d, %d, %d"
+                   % (sv["speed"], sv["range"], sv["cooldown"], sv["damage"]))
+        src.append("    }," if i + 1 < len(build.enemy_shots) else "    }")
+    src.append("};")
+    src.append("const uint8_t np_enemy_shot_count = %d;" % len(build.enemy_shots))
     src.append("")
 
     # --- objetos

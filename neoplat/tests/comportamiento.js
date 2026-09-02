@@ -31,8 +31,10 @@ function actor(boxW, boxH) {
     first_tile: 0, palette: 0, cols: 1, rows: 1,
     box_x: 0, box_y: 0, box_w: boxW, box_h: boxH,
     frames: 1, frame_w: 16, frame_h: 16, sheet: "x",
+    /* diez ranuras: las ocho de siempre mas las dos de la vista cenital
+       (de espaldas y de frente) */
     anims: [anim([0]), anim([0]), anim([0]), anim([0]), anim([0]), anim([0]),
-            anim([0]), anim([0])]
+            anim([0]), anim([0]), anim([0]), anim([0])]
   };
 }
 
@@ -68,6 +70,9 @@ function datos(filas, opciones) {
     title: "TEST", author: "", lives: opciones.lives || 3, time_limit: opciones.time || 0,
     players: opciones.jugadores || 1,
     hud: true, camara_pantallas: opciones.pantallas ? 1 : 0,
+    /* desde donde se mira: con "cenital" no hay gravedad y se anda en
+       ocho direcciones */
+    view: opciones.cenital ? "cenital" : "lateral",
     player: {
       actor: jugador,
       speed: fx(opciones.speed || 1.6), accel: fx(0.3), friction: fx(0.35),
@@ -128,7 +133,9 @@ function datos(filas, opciones) {
     enemies: [
       { actor: enemigo, speed: fx(0.5), gravity: fx(0.28), jump: fx(3.5), range: fx(96),
         amplitude: fx(24), period: 120, interval: 90, score: 100, behavior: 0,
-        health: 1, damage: 1, stompable: 1, edge_turn: 1, name: "patrulla" },
+        health: 1, damage: 1, stompable: 1, edge_turn: 1, name: "patrulla",
+        /* con `dispara:` este mismo enemigo te tirotea */
+        shot: opciones.dispara ? 1 : 0 },
       { actor: enemigo, speed: fx(0.5), gravity: 0, jump: 0, range: fx(96),
         amplitude: fx(24), period: 64, interval: 90, score: 200, behavior: 1,
         health: 1, damage: 1, stompable: 1, edge_turn: 0, name: "volador" },
@@ -141,6 +148,14 @@ function datos(filas, opciones) {
         health: opciones.bossHealth || 3, damage: 1, stompable: 1,
         edge_turn: opciones.jefeBorde === undefined ? 1 : opciones.jefeBorde,
         boss: 1, name: "jefe" }
+    ],
+    /* lo que tiran los enemigos con `dispara:`; el enemigo guarda su numero */
+    enemy_shots: [
+      { actor: actor(6, 6), speed: fx(opciones.tiroVelocidad || 2),
+        range: opciones.tiroAlcance || 200,
+        cooldown: opciones.tiroEspera || 30,
+        damage: opciones.tiroDano === undefined ? 1 : opciones.tiroDano,
+        name: "tiro" }
     ],
     items: [
       { actor: objeto, score: 10, effect: 0, amount: 1, name: "moneda" },
@@ -660,6 +675,167 @@ prueba("fuera de la partida no suena nada", function () {
   var w = mundo(suelo([[13, 3, "P"]]), { musicaNivel: 2, musicaTitulo: 5 });
   w.state = NP.STATE.GAME_OVER;
   assert.strictEqual(w.musicaAhora(), 0, "en el game over sigue sonando algo");
+});
+
+/* ------------------------------------------ enemigos que te disparan */
+/*
+ * Con `dispara:` un enemigo deja de ser un obstaculo que esquivar y pasa a ser
+ * una amenaza a distancia. Es lo que separa un plataformas de un juego de
+ * comando, asi que se comprueba que sale el tiro, que vuela hacia el jugador,
+ * que hace dano y que respeta su cadencia y su alcance.
+ */
+
+function primerTiro(w) {
+  for (var i = 0; i < w.entityCount; i++)
+    if (w.entities[i].active && w.entities[i].kind === 7) return w.entities[i];
+  return null;
+}
+
+prueba("un enemigo con 'dispara:' saca un tiro", function () {
+  var w = mundo(suelo([[13, 3, "P"], [13, 10, "e"]]), { dispara: true });
+  assert.ok(!primerTiro(w), "ya habia un tiro antes de tiempo");
+  correr(w, 40);
+  var tiro = primerTiro(w);
+  assert.ok(tiro, "el enemigo no ha disparado");
+  assert.ok(tiro.vx < 0, "el tiro no va hacia el jugador: vx=" + tiro.vx);
+});
+
+prueba("sin 'dispara:' el enemigo no tira nada", function () {
+  var w = mundo(suelo([[13, 3, "P"], [13, 10, "e"]]));
+  correr(w, 200);
+  assert.ok(!primerTiro(w), "ha salido un tiro de un enemigo que no dispara");
+});
+
+prueba("el tiro del enemigo hace dano al jugador", function () {
+  var w = mundo(suelo([[13, 3, "P"], [13, 10, "e"]]),
+                { dispara: true, vida: 3, tiroVelocidad: 3 });
+  var salud = w.players[0].health;
+  for (var i = 0; i < 300 && w.players[0].health === salud; i++) w.step(0);
+  assert.ok(w.players[0].health < salud,
+            "el tiro no ha hecho dano en 300 frames");
+});
+
+prueba("el tiro se para en las paredes", function () {
+  var filas = suelo([[13, 3, "P"], [13, 10, "e"]]);
+  filas[13] = filas[13].substring(0, 7) + "#" + filas[13].substring(8);
+  var w = mundo(filas, { dispara: true, vida: 3 });
+  var salud = w.players[0].health;
+  correr(w, 300);
+  assert.strictEqual(w.players[0].health, salud,
+                     "el tiro ha atravesado la pared");
+});
+
+prueba("el enemigo respeta su cadencia", function () {
+  var w = mundo(suelo([[13, 3, "P"], [13, 10, "e"]]),
+                { dispara: true, tiroEspera: 120, tiroVelocidad: 1 });
+  correr(w, 60);
+  var cuantos = 0;
+  for (var i = 0; i < w.entityCount; i++)
+    if (w.entities[i].active && w.entities[i].kind === 7) cuantos++;
+  assert.strictEqual(cuantos, 1,
+                     "con espera de 120 frames ha sacado " + cuantos + " tiros");
+});
+
+prueba("desde lejos no dispara", function () {
+  var w = mundo(suelo([[13, 1, "P"], [13, 22, "e"]]),
+                { dispara: true, tiroAlcance: 40 });
+  correr(w, 200);
+  assert.ok(!primerTiro(w), "ha disparado desde fuera de su alcance");
+});
+
+prueba("mirando desde arriba el enemigo te apunta a ti", function () {
+  /* Un soldado de un juego de comando te tira **a ti**: si solo tirase de
+     lado, bastaria con ponerse encima o debajo y ya no dan. */
+  var w = mundo(suelo([[4, 10, "P"], [12, 10, "e"]]),
+                { dispara: true, cenital: true, tiroAlcance: 300 });
+  correr(w, 40);
+  var tiro = primerTiro(w);
+  assert.ok(tiro, "no ha disparado");
+  assert.ok(tiro.vy < 0, "el tiro no sube hacia el jugador: vy=" + tiro.vy);
+});
+
+/* ------------------------------------------------------- vista cenital */
+/*
+ * Con `vista: cenital` el juego se mira desde arriba: no hay gravedad ni
+ * suelo, se anda en ocho direcciones y se dispara hacia donde se mira. Es lo
+ * que hace falta para un juego de comando (Ikari Warriors, Guerrilla War).
+ */
+
+prueba("desde arriba no hay gravedad: quieto se queda quieto", function () {
+  var w = mundo(suelo([[6, 5, "P"]]), { cenital: true });
+  var y = w.players[0].y;
+  correr(w, 60);
+  assert.strictEqual(w.players[0].y, y, "el jugador se ha caido");
+  assert.strictEqual(w.players[0].vy, 0);
+});
+
+prueba("desde arriba se anda en las cuatro direcciones", function () {
+  var casos = [[NP.IN.RIGHT, 1, 0], [NP.IN.LEFT, -1, 0],
+               [NP.IN.DOWN, 0, 1], [NP.IN.UP, 0, -1]];
+  casos.forEach(function (caso) {
+    var w = mundo(suelo([[6, 8, "P"]]), { cenital: true });
+    var x0 = NP.F2I(w.players[0].x), y0 = NP.F2I(w.players[0].y);
+    correr(w, 30, caso[0]);
+    var dx = NP.F2I(w.players[0].x) - x0, dy = NP.F2I(w.players[0].y) - y0;
+    assert.strictEqual(Math.sign(dx), caso[1], "en x: " + dx);
+    assert.strictEqual(Math.sign(dy), caso[2], "en y: " + dy);
+  });
+});
+
+prueba("en diagonal no se va mas rapido que en recto", function () {
+  /* Sin corregir la diagonal se iria un 41% mas rapido en diagonal que en
+     recto, y entonces todo el mundo juega en diagonal. */
+  var recto = mundo(suelo([[6, 8, "P"]]), { cenital: true });
+  var x0 = NP.F2I(recto.players[0].x), y0 = NP.F2I(recto.players[0].y);
+  correr(recto, 30, NP.IN.RIGHT);
+  var solo = NP.F2I(recto.players[0].x) - x0;
+
+  var diagonal = mundo(suelo([[6, 8, "P"]]), { cenital: true });
+  correr(diagonal, 30, NP.IN.RIGHT | NP.IN.UP);
+  var dx = NP.F2I(diagonal.players[0].x) - x0;
+  var dy = NP.F2I(diagonal.players[0].y) - y0;
+  var recorrido = Math.sqrt(dx * dx + dy * dy);
+  assert.ok(dx < solo, "en diagonal avanza en x lo mismo que en recto");
+  assert.ok(Math.abs(recorrido - solo) <= solo * 0.12,
+            "en diagonal recorre " + recorrido.toFixed(1) + " y en recto " + solo);
+});
+
+prueba("desde arriba las paredes frenan tambien por arriba y por abajo",
+       function () {
+  var filas = suelo([[6, 8, "P"]]);
+  filas[4] = "#".repeat(24);          // una pared entera por encima
+  var w = mundo(filas, { cenital: true });
+  correr(w, 60, NP.IN.UP);
+  var arriba = NP.F2I(w.players[0].y);
+  assert.ok(arriba >= 5 * 16,
+            "se ha metido en la pared de arriba: y=" + arriba);
+  correr(w, 120, NP.IN.DOWN);         // y por abajo, el borde del mapa
+  var abajo = NP.F2I(w.players[0].y) + 14;
+  assert.ok(abajo <= 15 * 16,
+            "se ha salido del mapa por abajo: y=" + abajo);
+});
+
+prueba("desde arriba no se sale del mapa por abajo", function () {
+  var w = mundo(suelo([[13, 8, "P"]]), { cenital: true });
+  correr(w, 200, NP.IN.DOWN);
+  assert.strictEqual(w.state, NP.STATE.PLAY,
+                     "el jugador se ha caido del mapa y se ha muerto");
+});
+
+prueba("el disparo sale hacia donde se mira", function () {
+  var casos = [[NP.IN.UP, 0, -1], [NP.IN.DOWN, 0, 1],
+               [NP.IN.LEFT, -1, 0], [NP.IN.RIGHT, 1, 0]];
+  casos.forEach(function (caso) {
+    var w = mundo(suelo([[6, 8, "P"]]), { cenital: true, ataque: "disparo" });
+    correr(w, 4, caso[0]);
+    w.step(caso[0] | NP.IN.ACTION);
+    var bala = null, i;
+    for (i = 0; i < w.entityCount; i++)
+      if (w.entities[i].active && w.entities[i].kind === 2) bala = w.entities[i];
+    assert.ok(bala, "no ha salido ningun disparo");
+    assert.strictEqual(Math.sign(bala.vx), caso[1], "vx: " + bala.vx);
+    assert.strictEqual(Math.sign(bala.vy), caso[2], "vy: " + bala.vy);
+  });
 });
 
 prueba("el enemigo volador oscila alrededor de su altura", function () {

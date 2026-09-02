@@ -86,15 +86,21 @@ class TestParidad(unittest.TestCase):
         # parcheando el yaml a mano; asi se comprueba lo que de verdad recibe
         # quien crea un proyecto.
         cls.variantes["castillo"] = cls._preparar("scroll", genero="castlevania")
+        # La vista cenital: otro modo de movimiento entero (sin gravedad, ocho
+        # direcciones, disparo hacia donde miras). Es el que mas se parece a
+        # tener otro motor, asi que es el que mas falta hace comparar.
+        cls.variantes["cenital"] = cls._preparar("scroll", cenital=True)
 
     @classmethod
     def _preparar(cls, camara, jefe=False, dos=False, golpe=False, llave=False,
-                  tablon=False, genero="plataformas", sin_dibujo=False):
+                  tablon=False, genero="plataformas", sin_dibujo=False,
+                  cenital=False):
         proyecto_dir = os.path.join(
             cls.tmp, "juego-" + camara + ("-jefe" if jefe else "")
             + ("-dos" if dos else "") + ("-golpe" if golpe else "")
             + ("-pelado" if sin_dibujo else "")
             + ("-llave" if llave else "") + ("-tablon" if tablon else "")
+            + ("-cenital" if cenital else "")
             + ("-" + genero if genero != "plataformas" else ""))
         crear_proyecto(proyecto_dir, "PARIDAD", "TEST", genero=genero)
         yaml = os.path.join(proyecto_dir, "game.yaml")
@@ -106,6 +112,10 @@ class TestParidad(unittest.TestCase):
         texto = texto.replace("  camara: scroll", "  camara: " + camara, 1)
         if dos:
             texto = texto.replace("  vidas:", "  jugadores: 2\n  vidas:", 1)
+        if cenital:
+            # el mismo juego mirado desde arriba: sin gravedad, en ocho
+            # direcciones y disparando hacia donde se mira
+            texto = texto.replace("  vidas:", "  vista: cenital\n  vidas:", 1)
         if golpe:
             # el mismo proyecto, pero con el ataque cuerpo a cuerpo: no salen
             # proyectiles y el dano lo hace una caja delante del jugador
@@ -265,6 +275,29 @@ class TestParidad(unittest.TestCase):
         distintos = sum(1 for a, b in zip(columnas, sin) if a[2] != b[2])
         self.assertGreater(distintos, 20,
                            "la plataforma no cambia por donde pasa el jugador")
+
+    def test_misma_traza_mirando_desde_arriba(self):
+        """La vista cenital es otro modo de movimiento entero -sin gravedad,
+        en ocho direcciones y disparando hacia donde miras-, asi que es donde
+        mas facil es que el motor en C y el del navegador se separen."""
+        for semilla in (1, 7, 99):
+            self._comparar("cenital", semilla)
+
+    def test_desde_arriba_se_anda_en_vertical_de_verdad(self):
+        """Si la vista cenital no llegara al motor, la traza seria la de un
+        plataformas cualquiera y la paridad pasaria sin comprobar nada: aqui se
+        mira que el jugador se mueve en vertical **sin estar cayendo**."""
+        traza, _ = self._trazas(7, "cenital")
+        alturas = {linea.split()[2] for linea in traza}
+        self.assertGreater(len(alturas), 20,
+                           "el jugador casi no cambia de altura")
+        # y no es que se este cayendo: en cenital no hay gravedad, asi que
+        # tiene que haber frames subiendo y frames bajando
+        ys = [int(linea.split()[2]) for linea in traza]
+        subiendo = sum(1 for i in range(1, len(ys)) if ys[i] < ys[i - 1])
+        bajando = sum(1 for i in range(1, len(ys)) if ys[i] > ys[i - 1])
+        self.assertGreater(subiendo, 20, "nunca sube: parece que hay gravedad")
+        self.assertGreater(bajando, 20, "nunca baja")
 
     def test_misma_traza_con_el_genero_de_latigo(self):
         """El ataque con preparacion y clavado, y el empujon con aturdimiento:

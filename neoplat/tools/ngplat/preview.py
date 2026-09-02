@@ -16,7 +16,8 @@ from typing import Dict, List
 from . import gfx, sistemas
 from .claves import tabla_para_el_editor
 from .build import (Build, actor_def_values, attack_values, breakable_values,
-                    enemy_values, item_values, platform_values, player_values,
+                    enemy_shot_values, enemy_values, item_values,
+                    platform_values, player_values,
                     sub_values, tile_tables)
 from .paths import PREVIEW_DIR, TEMPLATES_DIR
 from .png import Image, encode_png, read_png
@@ -114,6 +115,14 @@ def build_data(build: Build) -> Dict[str, object]:
         entry["actor"] = actor_json(enemy, "enemy%d" % i)
         entry["name"] = enemy.name
         enemies.append(entry)
+
+    # lo que tiran los enemigos que llevan `dispara:`
+    enemy_shots: List[Dict[str, object]] = []
+    for i, disparo in enumerate(build.enemy_shots):
+        entry = dict(enemy_shot_values(disparo))
+        entry["actor"] = actor_json(disparo, "eshot%d" % i)
+        entry["name"] = disparo.name
+        enemy_shots.append(entry)
 
     items: List[Dict[str, object]] = []
     # el objeto que cambia de arma guarda su numero, no su nombre
@@ -238,6 +247,7 @@ def build_data(build: Build) -> Dict[str, object]:
         "hud": project.hud,
         "player": player,
         "enemies": enemies,
+        "enemy_shots": enemy_shots,
         "items": items,
         "platforms": platforms,
         "breakables": breakables,
@@ -262,6 +272,8 @@ def build_data(build: Build) -> Dict[str, object]:
             "rompibles": [b.name for b in build.breakables],
         },
         "camara_pantallas": 1 if project.camera == "pantallas" else 0,
+        # desde donde se mira: "lateral" (con gravedad) o "cenital"
+        "view": project.view,
         "amiga_modo": project.amiga_modo,
         "sistema": sistema.nombre,
         # lo que aguanta la maquina, para que el editor de dibujos pueda avisar

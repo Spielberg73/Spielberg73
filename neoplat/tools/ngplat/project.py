@@ -288,6 +288,18 @@ class Attack(Actor):
 
 
 @dataclass
+class EnemyShot(Actor):
+    """Lo que tira un enemigo con `dispara:`.
+
+    Es un actor mas -tiene su dibujo y su caja- con lo justo para volar: a que
+    velocidad, cuanto llega, cada cuanto sale y cuanto duele."""
+    speed: float = 2.0
+    range: float = 200.0
+    cooldown: int = 90
+    damage: int = 1
+
+
+@dataclass
 class Enemy(Actor):
     behavior: str = "patrol"
     speed: float = 0.5
@@ -303,6 +315,7 @@ class Enemy(Actor):
     period: int = 120
     jump: float = 3.5
     interval: int = 90
+    shot: Optional["EnemyShot"] = None   # con `dispara:`, lo que te tira
 
 
 @dataclass
@@ -391,6 +404,7 @@ class Project:
     time_limit: int
     hud: bool
     camera: str            # "scroll" o "pantallas"
+    view: str              # "lateral" (con gravedad) o "cenital" (desde arriba)
     amiga_modo: str        # "32colores" o "8colores"
     player: Player
     tileset: Tileset
@@ -422,6 +436,9 @@ ANIM_ALIASES = {
     "agachado": "crouch", "agacharse": "crouch", "crouch": "crouch",
     "agachar": "crouch",
     "girar": "turn", "turn": "turn",
+    # solo en vista cenital: el heroe visto de espaldas y de frente
+    "arriba": "up", "espaldas": "up", "up": "up", "subiendo": "up",
+    "abajo": "down", "frente": "down", "down": "down", "bajando": "down",
 }
 
 STANDARD_ANIMS = ["idle", "run", "jump", "fall", "hurt"]
@@ -499,6 +516,36 @@ CAMARAS = {
     "pantallas": "pantallas", "pantalla": "pantallas", "screens": "pantallas",
     "flip": "pantallas", "pantalla_a_pantalla": "pantallas",
 }
+
+
+VISTAS = {
+    "lateral": "lateral", "side": "lateral", "plataformas": "lateral",
+    "perfil": "lateral", "de_lado": "lateral",
+    "cenital": "cenital", "aerea": "cenital", "aérea": "cenital",
+    "top": "cenital", "top_down": "cenital", "desde_arriba": "cenital",
+    "pajaro": "cenital", "vista_de_pajaro": "cenital",
+}
+
+
+def _leer_vista(game: Node) -> str:
+    """Desde donde se ve el juego, que es lo que decide como se mueve todo.
+
+    'lateral' es lo de siempre: hay gravedad, se salta y se mira a un lado o a
+    otro. 'cenital' es la vista desde arriba de los juegos de comando: no hay
+    gravedad ni suelo, andas en ocho direcciones y disparas hacia donde miras.
+    No es un genero mas -eso es lo que se puede hacer-, es **desde donde se
+    mira**, y por eso va en `juego:` al lado de la camara.
+    """
+    texto = (game.str_(["vista", "view", "perspectiva"], "lateral") or "lateral")
+    clave = str(texto).strip().lower().replace(" ", "_").replace("-", "_")
+    if clave not in VISTAS:
+        raise ProjectError(
+            "no entiendo la vista '%s'" % texto,
+            hint="pon 'lateral' (de lado, con gravedad) o 'cenital' "
+                 "(desde arriba, en ocho direcciones)",
+            where="juego",
+        )
+    return VISTAS[clave]
 
 
 def _leer_camara(game: Node) -> str:
@@ -858,7 +905,40 @@ def _read_enemy(name: str, data: Any, root: str) -> Enemy:
         period=node.int_(["period", "periodo", "período"], 120, 8, 1200),
         jump=node.num(["jump", "salto"], 3.5, 0.0, 12.0),
         interval=node.int_(["interval", "intervalo"], 90, 8, 1200),
+        shot=_read_enemy_shot(node.child("shot", "dispara", "disparo"), root, where),
     )
+
+
+def _read_enemy_shot(node: Node, root: str, donde: str) -> Optional[EnemyShot]:
+    """`dispara:` en un enemigo: lo que te tira y cada cuanto.
+
+    Sin este bloque un enemigo solo hace dano al tocarte, que es lo de toda la
+    vida en un plataformas. Con el, te tirotea desde lejos, que es lo que
+    convierte una pantalla en un juego de comando."""
+    if not node.data:
+        return None
+    where = donde + ".dispara"
+    sprite = node.str_(["sprite", "imagen", "image"], required=True)
+    _require_file(root, sprite, where)
+    fw, fh, bw, bh, bx, by = _actor_geometry(node, where, (16, 16))
+    anims = _read_animations(node.child("animations", "animaciones", "anims"), where)
+    disparo = EnemyShot(
+        name=where, sprite=sprite, frame_w=fw, frame_h=fh,
+        box_w=bw, box_h=bh, box_x=bx, box_y=by, animations=anims,
+        speed=node.num(["speed", "velocidad"], 2.0, 0.1, 8.0),
+        range=node.num(["range", "alcance"], 200.0, 8.0, 1024.0),
+        cooldown=node.int_(["cooldown", "espera", "cadencia"], 90, 4, 1200),
+        damage=node.int_(["damage", "dano", "daño"], 1, 0, 9),
+    )
+    _warn_unknown(node, where, [
+        "sprite", "imagen", "image", "frame", "fotograma", "tamano_frame",
+        "hitbox", "caja", "colision", "colisión", "tamano", "tamaño", "size",
+        "hitbox_offset", "offset_caja", "desplazamiento",
+        "animations", "animaciones", "anims",
+        "speed", "velocidad", "range", "alcance",
+        "cooldown", "espera", "cadencia", "damage", "dano", "daño",
+    ])
+    return disparo
 
 
 def _read_item(name: str, data: Any, root: str) -> Item:
@@ -1372,6 +1452,7 @@ def load_project(path: str) -> Project:
     time_limit = game.int_(["time", "tiempo", "tiempo_limite"], 0, 0, 999)
     hud = game.bool_(["hud", "marcador"], True)
     camera = _leer_camara(game)
+    view = _leer_vista(game)
     amiga_modo = _leer_modo_amiga(game)
     sistema = (game.str_(["system", "sistema", "maquina", "máquina"], "neogeo") or "neogeo")
     bg = game.raw("background", "fondo", "color_fondo")
@@ -1482,7 +1563,8 @@ def load_project(path: str) -> Project:
 
     return Project(
         root=root, title=title.upper()[:24], author=author[:24], system=sistema,
-        lives=lives, players=players, camera=camera, amiga_modo=amiga_modo,
+        lives=lives, players=players, camera=camera, view=view,
+        amiga_modo=amiga_modo,
         time_limit=time_limit, hud=hud, player=player, tileset=tileset, tiles=tiles,
         enemies=enemies, items=items, platforms=platforms,
         breakables=breakables, layers=layers, sound=sound, levels=levels,

@@ -23,6 +23,11 @@ typedef struct {
     uint16_t dying;          /* frames de caida al morir; 0 = no se esta muriendo */
     uint8_t anim, anim_frame;
     uint8_t on_ground, facing, jumps_left, health;
+    /* Solo en vista cenital: hacia donde mira, de 0 a 7 empezando por la
+       derecha y girando en el sentido del reloj. Es lo que decide por
+       donde sale el disparo, y `facing` sigue siendo el espejo del
+       dibujo. */
+    uint8_t aim;
     uint8_t coyote, buffer;
     uint16_t attack_timer;   /* frames que le quedan al golpe (cuerpo a cuerpo) */
     uint16_t attack_cd;      /* frames hasta poder atacar otra vez */

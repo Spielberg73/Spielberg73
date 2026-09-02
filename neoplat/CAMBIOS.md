@@ -2,8 +2,58 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.15.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.16.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.16
+
+**La vista cenital**: el motor ya sabe mirar el juego desde arriba. Es el
+primer paso para hacer juegos al estilo Ikari Warriors o Guerrilla War, que
+no son un plataformas con otros dibujos sino otra forma de moverse.
+
+```yaml
+juego:
+  vista: cenital       # lateral (por defecto) o cenital
+```
+
+Con `cenital` no hay gravedad ni suelo: se anda en las **ocho direcciones** (y
+las diagonales van a 0,707 para que no sean un 41% más rápidas), se dispara
+**hacia donde se mira**, el botón de saltar pasa a ser el de la granada —no hay
+nada que saltar— y el mapa es una caja cerrada por sus cuatro lados. Las
+escaleras, agacharse y pisar enemigos se apagan solos: ahí no significan nada.
+
+El héroe se dibuja mirando a tres sitios y el motor elige: de espaldas cuando
+sube (`arriba`), de frente cuando baja (`abajo`) y de lado el resto. Son dos
+ranuras de animación nuevas; quien no las traiga se queda con `correr`.
+
+**Y los enemigos disparan.** Con `dispara:` un enemigo deja de ser un obstáculo
+que esquivar y pasa a ser una amenaza a distancia:
+
+```yaml
+enemigos:
+  soldado:
+    dispara:
+      sprite: graficos/tiro.png
+      velocidad: 2.0
+      alcance: 200
+      espera: 90       # frames entre tiro y tiro
+      dano: 1
+```
+
+En vista lateral tira de frente; en cenital te **apunta a ti**, redondeando a
+la más cercana de las ocho direcciones. Vale para los dos modos: un plataformas
+también gana con enemigos que disparan.
+
+Lo que se comprueba: la vista cenital tiene su propia variante en las pruebas
+de paridad C/JS —es el sitio donde más fácil sería que el motor del navegador y
+el de las máquinas se separaran— y catorce pruebas nuevas de jugabilidad (que
+no hay gravedad, que las diagonales no corren más, que las paredes frenan
+arriba y abajo, que no se sale uno del mapa, que el disparo sale hacia donde
+miras, que el enemigo respeta su cadencia y su alcance, que su tiro se para en
+las paredes y que desde arriba te apunta a ti).
+
+Esto es el motor. El género `comando` —con su héroe de tres vistas, sus
+soldados, su granada y su nivel— viene detrás.
 
 ## 1.15
 
