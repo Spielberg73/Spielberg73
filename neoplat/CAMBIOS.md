@@ -2,8 +2,36 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.14.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.15.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.15
+
+**El X68000 toca las muestras a 15,6 kHz, no a 10,4.** El kit venía usando el
+modo `$0303` del ADPCM porque una medida antigua decía que la quinta velocidad
+—los 15,6 kHz del MSM6258— "no sonaba". La medida estaba mal, y la culpa era
+del tono con el que se hizo: **3000 Hz no caben a 3,9 kHz de muestreo** (ahí el
+máximo son 1950), así que en los modos lentos lo que se oía era un pliegue y el
+quinto se juzgó con la vara equivocada.
+
+Repetida con un tono de 1000 Hz, que cabe en las cinco, la escalera sale
+entera y el quinto modo suena como los demás:
+
+| modo | velocidad |
+|---|---|
+| `$0003` | 3,9 kHz |
+| `$0103` | 5,2 kHz |
+| `$0203` | 7,8 kHz |
+| `$0303` | 10,4 kHz |
+| `$0403` | **15,6 kHz** |
+
+Ahora el kit usa `$0403`, que es lo mejor que da esta máquina. Se nota en la
+prueba de siempre: con el mismo efecto (un tono puro a 3000 Hz), al saltar la
+banda de 3000 Hz sube **1556 veces** sobre el fondo, contra las 892 de cuando
+iba a 10,4.
+
+Con esto, la lista de "lo que le falta al X68000" se queda sin sus dos
+entradas: el parallax entró en 1.14 y la velocidad del ADPCM, aquí.
 
 ## 1.14
 

@@ -152,8 +152,10 @@ en [neogeo.md](neogeo.md).
 **X68000.** Un **MSM6258**, que lee el mismo ADPCM de la familia OKI que el
 YM2610 —así que el códec del kit vale tal cual— y lo saca por DMA: al 68000 le
 basta con decirle a la ROM dónde están los datos. La velocidad está medida en
-el emulador, tocando un tono conocido con cada modo: 10,4 kHz es el más rápido
-que funciona por esa vía ([x68000.md](x68000.md)).
+el emulador, tocando un tono conocido con cada modo: **15,6 kHz**, la más
+rápida de las cinco, y es la que usa el kit. (Durante un tiempo se creyó que
+esa quinta velocidad no funcionaba: el tono con el que se midió era demasiado
+agudo para las lentas y se plegaba, ver [x68000.md](x68000.md).)
 
 **Cómo se comprueba.** Igual que la música: escuchando. El proyecto de prueba
 (`tests/comun.py`, `proyecto_con_muestra`) pone como efecto de salto un tono

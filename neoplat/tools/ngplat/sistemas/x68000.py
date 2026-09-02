@@ -52,13 +52,19 @@ from .base import Limites, Salida, Sistema, registrar
 
 # El ADPCM (un MSM6258) y la velocidad a la que se le dan las muestras.
 #
-# Los dos numeros estan medidos en el emulador: se cifro un tono de 3000 Hz a
-# una velocidad conocida y se toco con cada modo de _ADPCMOUT, mirando a que
-# frecuencia salia. Sale la escalera de siempre -3,9 / 5,2 / 7,8 / 10,4 kHz-
-# repartida en los modos $0003, $0103, $0203 y $0303; el quinto, que en teoria
-# son 15,6 kHz, no sono. Se coge el mas rapido que funciona.
-ADPCM_MODO = 0x0303                  # 10,4 kHz por los dos altavoces
-ADPCM_RITMO = 10417                  # muestras por segundo
+# Los dos numeros estan medidos en el emulador, y a la segunda: la primera vez
+# se uso un tono de 3000 Hz, que a las velocidades bajas se **pliega** (a 3,9
+# kHz de muestreo no cabe un tono de 3000), y de ahi salio que el quinto modo
+# "no sonaba". Repetida la medida con un tono de 1000 Hz, que cabe en todas,
+# los cinco modos suenan y la escalera sale entera:
+#
+#   $0003   3,9 kHz      $0303  10,4 kHz
+#   $0103   5,2 kHz      $0403  15,6 kHz
+#   $0203   7,8 kHz
+#
+# Se coge el mas rapido, que es el mejor que da esta maquina.
+ADPCM_MODO = 0x0403                  # 15,6 kHz por los dos altavoces
+ADPCM_RITMO = 15625                  # muestras por segundo
 ADPCM_MAXIMO = 32 * 1024             # bytes de ADPCM por efecto (el doble en
                                      # muestras: cada byte lleva dos)
 
