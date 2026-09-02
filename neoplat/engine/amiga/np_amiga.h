@@ -63,6 +63,9 @@
 #define INTREQ    REG16(0x09C)
 #define BPLCON0   REG16(0x100)
 #define BPLCON1   REG16(0x102)
+#define BPLCON3   REG16(0x106)                   /* AGA: banco de color y LOCT */
+#define BPLCON4   REG16(0x10C)                   /* AGA: desplazamiento de color */
+#define FMODE     REG16(0x1FC)                   /* AGA: ancho de lectura */
 #define BPL1MOD   REG16(0x108)
 #define BPL2MOD   REG16(0x10A)
 #define BPLPT(n)  REG32(0x0E0 + (n) * 4)
@@ -96,10 +99,26 @@
 #ifndef NP_PLANOS
 #define NP_PLANOS 5
 #endif
-#if NP_PLANOS == 3
-#define NP_DOBLE_PLANO 1
+/* NP_AGA lo pone gamedata.h cuando se compila para el A1200. Con el, los
+   bitplanes son ocho (256 colores), la paleta tiene ocho bits por canal y hay
+   que leer de 32 en 32 bits: en baja resolucion, ocho bitplanes no caben en la
+   DMA de siempre. Ver el bloque de AGA en np_video.c. */
+#ifndef NP_AGA
+#define NP_AGA 0
+#endif
+/* Doble plano: la mitad de los bitplanes por cada plano. En OCS son 3+3 (de
+   seis) y en AGA 4+4 (de ocho). */
+#if NP_AGA
+#define NP_DOBLE_PLANO (NP_PLANOS == 4)
 #else
-#define NP_DOBLE_PLANO 0
+#define NP_DOBLE_PLANO (NP_PLANOS == 3)
+#endif
+/* Cuantos registros de color hay que llenar: los que tiene el chipset, no los
+   que use el juego. En doble plano se reparten entre los dos planos. */
+#if NP_AGA
+#define NP_COLORES 256
+#else
+#define NP_COLORES 32
 #endif
 /* La forma del mapa de bits la elige gamedata.h, porque no es la misma para un
    juego que se cruza de izquierda a derecha que para uno que se sube. Son los
@@ -128,10 +147,12 @@
 #define NP_HUD_ALTO 24                          /* tres filas de 8 pixeles */
 #define NP_HUD_BYTES_FILA 40                    /* 320 px de ancho         */
 #define NP_HUD_PASO (NP_HUD_BYTES_FILA * NP_PLANOS)
+/* El marcador se queda el ultimo color: el de arriba del plano de delante en
+   doble plano, y el ultimo de la paleta en un plano solo. */
 #if NP_DOBLE_PLANO
-#define NP_HUD_COLOR 7                          /* el ultimo del plano de delante */
+#define NP_HUD_COLOR ((1 << NP_PLANOS) - 1)     /* 7 en OCS, 15 en AGA */
 #else
-#define NP_HUD_COLOR 31                         /* el ultimo color de la paleta */
+#define NP_HUD_COLOR (NP_COLORES - 1)           /* 31 en OCS, 255 en AGA */
 #endif
 
 void np_amiga_init(void);
@@ -156,7 +177,11 @@ extern uint8_t np_fondo_bitmap[];                /* el plano de atras (parallax)
 #endif
 extern const uint8_t np_tile_data[];             /* dibujos entrelazados */
 extern const uint8_t np_tile_mask[];             /* sus mascaras */
-extern const uint16_t np_colores[32];
+#if NP_AGA
+extern const uint32_t np_colores[NP_COLORES];    /* 0x00RRGGBB, sin redondear */
+#else
+extern const uint16_t np_colores[32];            /* 4 bits por canal */
+#endif
 extern const uint8_t np_font_data[];             /* fuente de 8x8, un bit por pixel */
 
 #endif /* NP_AMIGA_H */

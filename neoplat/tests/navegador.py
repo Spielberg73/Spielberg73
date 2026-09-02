@@ -693,8 +693,15 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
         print("rom:", json.dumps(panel))
         exigir(panel["solo"] == ["panel-rom"],
                "la pestana ROM deja otros paneles a la vista: %s" % panel["solo"])
-        exigir(len(panel["maquinas"]) == 6,
-               "faltan maquinas donde elegir: %s" % panel["maquinas"])
+        # las que diga el kit, ni una menos: si se anade una maquina y el
+        # editor no la ofrece, desde el navegador no se puede compilar para ella
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "tools"))
+        from ngplat import sistemas as _sistemas
+        esperadas = sorted(m.nombre for m in _sistemas.disponibles())
+        exigir(sorted(panel["maquinas"]) == esperadas,
+               "el editor ofrece %s y el kit tiene %s"
+               % (sorted(panel["maquinas"]), esperadas))
         # el boton dice lo que va a salir: no todas las maquinas hacen una ROM
         etiquetas = {}
         for maquina in panel["maquinas"]:

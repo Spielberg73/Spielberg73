@@ -7,6 +7,7 @@ from .base import Sistema, Salida, Limites, obtener, disponibles, registrar  # n
 from . import neogeo    # noqa: F401  (se registra al importarse)
 from . import megadrive  # noqa: F401
 from . import amiga      # noqa: F401
+from . import amiga1200  # noqa: F401  (hereda de amiga: va detras)
 from . import jaguar     # noqa: F401
 from . import atarist    # noqa: F401
 from . import x68000     # noqa: F401

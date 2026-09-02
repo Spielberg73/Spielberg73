@@ -576,10 +576,15 @@ def _leer_camara(game: Node) -> str:
     return CAMARAS[clave]
 
 
+# Lo que se elige de verdad es **un plano o dos**, no un numero de colores: los
+# nombres vienen del OCS, donde salen 32 y 8. En el A1200, con AGA, los mismos
+# dos modos dan 256 y 16, y por eso '256colores' y '16colores' valen igual.
 MODOS_AMIGA = {
     "32colores": "32colores", "32": "32colores", "32_colores": "32colores",
+    "256colores": "32colores", "256": "32colores", "256_colores": "32colores",
     "normal": "32colores", "un_plano": "32colores",
     "8colores": "8colores", "8": "8colores", "8_colores": "8colores",
+    "16colores": "8colores", "16": "8colores", "16_colores": "8colores",
     "parallax": "8colores", "doble_plano": "8colores", "dual": "8colores",
 }
 
@@ -599,7 +604,8 @@ def _leer_modo_amiga(game: Node) -> str:
         raise ProjectError(
             "no entiendo el modo de Amiga '%s'" % texto,
             hint="pon '32colores' (mas colores, sin parallax) o '8colores' "
-                 "(parallax de verdad, 7 colores por plano)",
+                 "(parallax de verdad, 7 colores por plano). En el A1200 los "
+                 "mismos dos modos se llaman tambien '256colores' y '16colores'",
             where="juego",
         )
     return MODOS_AMIGA[clave]

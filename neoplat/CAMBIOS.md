@@ -2,8 +2,63 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.19.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.20.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.20
+
+**Séptima máquina: el Amiga 1200, con AGA.**
+
+```bash
+ngplat compilar --sistema amiga1200
+```
+
+Es el mismo Amiga y comparte el motor entero —bitplanes, blitter, copper y
+Paula—, pero con el chipset AGA sacando pecho. Es un destino aparte y no una
+opción del otro porque su disquete **pide una máquina AGA**: en un A500 los ocho
+bitplanes no existen y no se vería nada.
+
+| | Amiga (OCS/ECS) | Amiga 1200 (AGA) |
+|---|---|---|
+| Bitplanes | 5, o 3+3 en doble plano | **8**, o 4+4 |
+| Colores a la vez | 32, o 7+7 | **256**, o 16+16 |
+| Por canal | 4 bits (4096 en total) | **8 bits** (16,7 millones) |
+| CPU | 68000 a 7 MHz | 68EC020 a 14 MHz (`-m68020`) |
+| RAM chip | 512 KB | 2 MB de serie |
+
+Lo que más se nota no son los 256 colores sino que **no se redondea ninguno**:
+el OCS guarda cuatro bits por canal, así que todo lo que dibujas se acerca al
+color más parecido de 4096; el AGA guarda los ocho que trae el PNG. Un juego con
+más de 31 colores distintos, que en un A500 no compila, en el A1200 entra tal
+cual y sin aproximar nada.
+
+Tres cosas hubo que decirle al chipset:
+
+- **Ocho bitplanes no caben en la DMA de siempre.** En baja resolución, leyendo
+  de 16 bits, entran seis contados. El AGA lee de **32** (`FMODE`), cada lectura
+  trae el doble de píxeles y los ocho entran; a cambio la DMA arranca ocho
+  *color clocks* antes y hace diez lecturas en vez de veinte.
+- **Los 256 colores no caben en los registros**, que siguen siendo 32: se eligen
+  por bancos con `BPLCON3`, y como el registro es de 12 bits y el color de 24,
+  cada color se escribe dos veces (los cuatro bits altos de cada canal y luego
+  los bajos, con `LOCT`). Son 528 instrucciones de copper que caben de sobra
+  antes de que empiece la imagen.
+- **El scroll.** Leyendo de 32 en 32 bits el puntero de bitplane no mira sus
+  bits de abajo, así que salta de 32 en 32 píxeles y lo que sobra —hasta 31— lo
+  pone el scroll fino extendido de `BPLCON1`. Medido: andando a 1,4 píxeles por
+  frame se mueve **1, 2, 1, 1, 2…**, exactamente igual que en un A500.
+
+**Y comprobado en un A1200 emulado, no de vista:**
+
+- el marcador se dibuja con el color **255**, y en la paleta el blanco está sólo
+  en ese índice: si hubiera cinco bitplanes, saldría de otro color;
+- dos casillas de `#101010` y `#1F1F1F` —que el OCS redondea a `#111111` y
+  `#222222`— salen en el A1200 como `#1F1F1F`: los bits de abajo llegan;
+- el disquete arranca, se juega, suena las 16 notas de su melodía, y en doble
+  plano el fondo se mueve a un tercio de lo que se mueve el suelo.
+
+En el `game.yaml`, `amiga: 256colores` y `amiga: 16colores` son los mismos dos
+modos de siempre con otro nombre (`32colores` y `8colores` siguen valiendo).
 
 ## 1.19
 

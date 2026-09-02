@@ -29,6 +29,20 @@ def franja(frame, alto):
     return frame[2][:frame[0] * alto]
 
 
+def filas_escritas(frame, alto):
+    """Cuantas de las primeras `alto` filas llevan algo dibujado.
+
+    Una fila con un solo color esta vacia; una con dos o mas tiene letras. Es
+    lo que dice si el marcador se esta pintando, y no depende de donde caiga
+    exactamente la imagen dentro del frame: los emuladores no alinean igual
+    todas las maquinas -PUAE baja unas veinte lineas la imagen de un A1200
+    respecto a la de un A500- y mirar una franja fija se equivocaba de sitio.
+    """
+    ancho = frame[0]
+    return sum(1 for y in range(min(alto, frame[1]))
+               if len(set(frame[2][y * ancho:(y + 1) * ancho])) > 1)
+
+
 def guardar_png(frame, ruta):
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
         os.path.abspath(__file__))), "tools"))

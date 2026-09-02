@@ -31,8 +31,8 @@ test-navegador: ejemplo
 #   Atari ST:    hatari_libretro.so, del mismo buildbot, mas una imagen de TOS
 #                (EmuTOS vale) en /usr/local/share/neoplat/tos.img
 # La Neo Geo va con el banco de pruebas del propio kit (pip3 install amitools).
-test-emulador: test-emulador-md test-emulador-amiga test-emulador-neogeo \
-               test-emulador-jaguar test-emulador-st
+test-emulador: test-emulador-md test-emulador-amiga test-emulador-a1200 \
+               test-emulador-neogeo test-emulador-jaguar test-emulador-st
 
 test-emulador-md:
 	./ngplat compilar $(EJEMPLO) --sistema megadrive --make
@@ -43,6 +43,13 @@ test-emulador-amiga:
 	./ngplat compilar $(EJEMPLO) --sistema amiga --make
 	$(PYTHON) tests/emulador_amiga.py \
 		$(EJEMPLO)/build/amiga/disco/BosqueMagico.adf capturas
+
+# El mismo disquete, con AGA: ocho bitplanes y 256 colores. Se emula un A1200
+# porque en un A500 los ocho bitplanes no existen y no se veria nada.
+test-emulador-a1200:
+	./ngplat compilar $(EJEMPLO) --sistema amiga1200 --make
+	$(PYTHON) tests/emulador_amiga.py \
+		$(EJEMPLO)/build/amiga1200/disco/BosqueMagico.adf capturas --modelo=A1200
 
 # La Neo Geo no necesita core de libretro: el banco de pruebas del kit trae el
 # 68000 (machine68k, de amitools) y el chip de video escrito en Python.
@@ -73,12 +80,13 @@ ejemplo:
 	./ngplat probar $(EJEMPLO) --no-abrir
 	./ngplat compilar $(EJEMPLO)
 
-# Compila el ejemplo para las seis maquinas (necesita un compilador de 68000
+# Compila el ejemplo para las siete maquinas (necesita un compilador de 68000
 # para construir de verdad el cartucho, los disquetes y la ROM).
 ejemplo-todos:
 	./ngplat compilar $(EJEMPLO) --sistema neogeo
 	./ngplat compilar $(EJEMPLO) --sistema megadrive --make
 	./ngplat compilar $(EJEMPLO) --sistema amiga --make
+	./ngplat compilar $(EJEMPLO) --sistema amiga1200 --make
 	./ngplat compilar $(EJEMPLO) --sistema jaguar --make
 	./ngplat compilar $(EJEMPLO) --sistema atarist --make
 	./ngplat compilar $(EJEMPLO) --sistema x68000 --make
@@ -98,6 +106,7 @@ limpiar:
 	find . -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
 
 .PHONY: test test-rapido test-navegador test-emulador test-emulador-md \
-	test-emulador-amiga test-emulador-neogeo test-emulador-jaguar \
+	test-emulador-amiga test-emulador-a1200 test-emulador-neogeo \
+	test-emulador-jaguar \
 	test-emulador-st test-emulador-x68000 ejemplo ejemplo-todos paquetes \
 	paquetes-exe limpiar

@@ -63,6 +63,17 @@ class Amiga(Sistema):
     pantalla = (320, 224)
     limites = Limites(colores_por_paleta=16, paletas=1, sprites=0,
                       tiles=MAX_TILES, colores_en_pantalla=gfx_amiga.COLORES)
+
+    # Lo que cambia entre el OCS y el AGA del A1200 son numeros, no codigo: el
+    # A1200 hereda de esta clase y solo pisa esto (ver amiga1200.py).
+    aga = False
+    planos_llenos = gfx_amiga.PLANOS       # bitplanes en el modo de un plano
+    planos_doble = 3                       # y en doble plano, por cada uno
+    colores_totales = gfx_amiga.COLORES    # 1 << planos_llenos
+    hud_lleno = COLOR_HUD                  # el color reservado al marcador
+    hud_doble = COLOR_HUD_DOBLE
+    por_plano = COLORES_POR_PLANO          # colores de cada plano en doble
+    cpu_gcc = "-m68000"
     archivos_motor = [
         ("include/np_types.h", "src/np_types.h"),
         ("include/np_game.h", "src/np_game.h"),
@@ -101,8 +112,8 @@ class Amiga(Sistema):
     def preparar(self, build: Build) -> None:
         build.sistema = self
         doble = build.project.amiga_modo == "8colores"
-        planos = 3 if doble else gfx_amiga.PLANOS
-        color_hud = COLOR_HUD_DOBLE if doble else COLOR_HUD
+        planos = self.planos_doble if doble else self.planos_llenos
+        color_hud = self.hud_doble if doble else self.hud_lleno
         banco = gfx_amiga.BancoAmiga(planos=planos)
 
         # 1) las paletas. Con 32 colores caben todas juntas; en doble plano el
@@ -141,10 +152,10 @@ class Amiga(Sistema):
             pesos_fondo = _pesos([(c.palette, [c.dibujos[i] for i in c.tiles])
                                   for c in build.layers])
             fondo = gfx_amiga.fusionar_paletas(
-                [c.palette for c in build.layers], tope=COLORES_POR_PLANO,
+                [c.palette for c in build.layers], tope=self.por_plano,
                 pesos=pesos_fondo, aproximar=True)
             perdidos_fondo = fondo.perdidos
-            colores_fondo = fondo.palabras()[:COLORES_POR_PLANO]
+            colores_fondo = fondo.palabras_de(self.color, self.por_plano)
             for capa in build.layers:
                 mapa = fondo.asignacion[capa.palette.name]
                 nuevos = [banco.anadir(remapear(d, capa.palette.name, mapa))
@@ -172,13 +183,13 @@ class Amiga(Sistema):
             glifos.append(_glifo_1bpp(gfx.font_glyph_pixels(char)))
             fuente[char] = i + 1
 
-        colores = unica.palabras()
-        colores[color_hud] = gfx_amiga.amiga_color((255, 255, 255))
+        colores = unica.palabras_de(self.color, self.colores_totales)
+        colores[color_hud] = self.color((255, 255, 255))
         if doble:
-            # los ocho de arriba son el plano de atras
-            for i in range(COLORES_POR_PLANO):
-                colores[COLORES_POR_PLANO + i] = (colores_fondo[i]
-                                                  if i < len(colores_fondo) else 0)
+            # la mitad de arriba de la paleta es el plano de atras
+            for i in range(self.por_plano):
+                colores[self.por_plano + i] = (colores_fondo[i]
+                                               if i < len(colores_fondo) else 0)
 
         # el color de fondo de cada nivel, en el formato de esta maquina
         for nivel in build.levels:
@@ -186,7 +197,11 @@ class Amiga(Sistema):
 
         build.font = fuente
         build.hud_palette = 0
-        build.paletas = [colores[0:16], colores[16:32]]
+        # np_palettes no lo usa esta maquina -sus colores van en graficos.c- pero
+        # gamedata.c lo emite igual y es de 16 bits, asi que aqui va la paleta
+        # redondeada al formato del OCS. En AGA el bueno es el de graficos.c.
+        ocs = unica.palabras_de(gfx_amiga.amiga_color, self.colores_totales)
+        build.paletas = [ocs[i:i + 16] for i in range(0, self.colores_totales, 16)]
         build.tile_gfx = [build.tileset.first_tile + t.index for t in build.tiles]
         # La forma del mapa de bits: la decide el nivel mas alto del juego. Un
         # juego de los de siempre no se entera; uno que se sube se lleva el
@@ -211,6 +226,7 @@ class Amiga(Sistema):
                 "#define NP_TILE_COUNT %d" % banco.cuantos,
                 "#define NP_FONT_COUNT %d" % len(glifos),
                 "#define NP_PLANOS %d" % planos,
+                "#define NP_AGA %d" % (1 if self.aga else 0),
                 "#define NP_MAPA_ANCHO %d" % ventana[0],
                 "#define NP_MAPA_ALTO %d" % ventana[1],
             ],
@@ -251,10 +267,11 @@ class Amiga(Sistema):
         for nivel in build.levels:
             if nivel.layers and not build.info.get("doble"):
                 avisos.append(
-                    "con 'amiga: 32colores' no se dibujan las capas de parallax: el "
-                    "fondo de '%s' se vera del color de fondo. Con 'amiga: 8colores' "
-                    "si se dibujan, a cambio de bajar a 7 colores por plano"
-                    % nivel.name)
+                    "con 'amiga: %dcolores' no se dibujan las capas de parallax: el "
+                    "fondo de '%s' se vera del color de fondo. Con 'amiga: %dcolores' "
+                    "si se dibujan, a cambio de bajar a %d colores por plano"
+                    % (self.colores_totales, nivel.name, self.por_plano,
+                       self.por_plano - 1))
                 break
             if len(nivel.layers) > 1 and build.info.get("doble"):
                 avisos.append(
@@ -283,24 +300,31 @@ class Amiga(Sistema):
         salida.archivos["src/sonido.c"] = _sonido_c(build)
         nombre = _nombre_ejecutable(build)
         salida.archivos["Makefile"] = _makefile(build, nombre,
-                                                _etiqueta_disco(build.project.title))
+                                                _etiqueta_disco(build.project.title),
+                                                self.cpu_gcc)
         salida.archivos["hacer_ejecutable.py"] = fuente_del_kit("hunk.py")
         salida.archivos["hacer_adf.py"] = fuente_del_kit("adf.py")
         salida.resumen.append(
             "graficos: %d dibujos de 16x16 (%d KB de dibujos y %d KB de mascaras)"
             % (banco.cuantos, len(banco.tiles) // 1024, len(banco.mascaras) // 1024))
-        salida.resumen.append(
-            ("colores:  %d por plano de los 8 del doble plano (el 7 es el del marcador)"
-             if build.info["doble"] else
-             "colores:  %d de los 32 del Amiga (el 31 es el del marcador)")
-            % build.info["stats"]["colores"])
+        if build.info["doble"]:
+            plantilla = ("colores:  %%d por plano de los %d del doble plano "
+                         "(el %d es el del marcador)"
+                         % (self.por_plano, self.hud_doble))
+        else:
+            plantilla = ("colores:  %%d de los %d de esta maquina "
+                         "(el %d es el del marcador)"
+                         % (self.colores_totales, self.hud_lleno))
+        salida.resumen.append(plantilla % build.info["stats"]["colores"])
         if build.pcm_bytes:
             salida.resumen.append(
                 "muestras: %d efectos digitales a %d Hz (%d KB en RAM chip)"
                 % (sum(1 for e in build.project.sound.efectos.values() if e.digital),
                    PCM_RITMO, (build.pcm_bytes + 1023) // 1024))
         salida.resumen.append(
-            "disquete: disco/%s.adf (880 KB, arranca solo en cualquier Amiga)" % nombre)
+            "disquete: disco/%s.adf (880 KB, arranca solo en %s)"
+            % (nombre, "un Amiga con AGA: A1200, A4000 o CD32" if self.aga
+               else "cualquier Amiga"))
         return salida
 
 
@@ -368,7 +392,8 @@ def _graficos_c(build: Build, banco: gfx_amiga.BancoAmiga) -> str:
         "    __attribute__((aligned(4)));",
         "#endif",
         "",
-        "/* Cada dibujo son 16 filas x 5 bitplanes x 2 bytes = 160 bytes.",
+        "/* Cada dibujo son 16 filas x %d bitplanes x 2 bytes = %d bytes."
+        % (banco.planos, banco.bytes_por_tile),
         " * Las dos palabras de mas del final son para el blitter: al desplazar un",
         " * dibujo lee una palabra por detras de la ultima fila.",
         " * Y el `aligned(4)`: el blitter no sabe leer de una direccion impar, y",
@@ -379,17 +404,13 @@ def _graficos_c(build: Build, banco: gfx_amiga.BancoAmiga) -> str:
         "};",
         "",
         "/* Y su mascara: un bit por pixel, 1 donde el dibujo tapa el fondo,",
-        " * repetida para los cinco bitplanes. */",
+        " * repetida para cada bitplane. */",
         "const uint8_t np_tile_mask[NP_TILE_COUNT * %d + 4] __attribute__((aligned(4))) = {"
         % banco.bytes_por_tile,
         _c_bytes(bytes(banco.mascaras)),
         "};",
         "",
-        "/* Los 32 colores de la pantalla, en formato del Amiga (4 bits por canal). */",
-        "const uint16_t np_colores[32] = {",
-        "    " + ", ".join("0x%04x" % c for c in colores[:16]) + ",",
-        "    " + ", ".join("0x%04x" % c for c in colores[16:32]) + ",",
-        "};",
+    ] + _colores_c(build, colores) + [
         "",
         "/* Fuente del marcador: ocho bytes por caracter. */",
         "const uint8_t np_font_data[NP_FONT_COUNT * 8] = {",
@@ -398,6 +419,32 @@ def _graficos_c(build: Build, banco: gfx_amiga.BancoAmiga) -> str:
         "",
     ]
     return "\n".join(partes)
+
+
+def _colores_c(build: Build, colores: List[int]) -> List[str]:
+    """La paleta, en el formato que lee el copper de cada chipset.
+
+    El OCS guarda cada color en una palabra de 4+4+4 bits. El AGA los guarda de
+    24 bits y los escribe en dos veces (los cuatro bits altos de cada canal y
+    luego los bajos), asi que aqui van tal cual y es np_video.c quien los parte.
+    """
+    if not build.sistema.aga:
+        return [
+            "/* Los 32 colores de la pantalla, en formato del Amiga (4 bits por canal). */",
+            "const uint16_t np_colores[32] = {",
+            "    " + ", ".join("0x%04x" % c for c in colores[:16]) + ",",
+            "    " + ", ".join("0x%04x" % c for c in colores[16:32]) + ",",
+            "};",
+        ]
+    lineas = [
+        "/* Los 256 colores del AGA, de 24 bits: 0x00RRGGBB. Aqui no hay",
+        " * redondeo ninguno, el color que dibujaste es el que sale. */",
+        "const uint32_t np_colores[NP_COLORES] = {",
+    ]
+    for i in range(0, len(colores), 8):
+        lineas.append("    " + ", ".join("0x%06x" % c for c in colores[i:i + 8]) + ",")
+    lineas.append("};")
+    return lineas
 
 
 def _secuencia_c(nombre: str, pasos) -> List[str]:
@@ -470,7 +517,7 @@ def _sonido_c(build: Build) -> str:
     return "\n".join(partes)
 
 
-def _makefile(build: Build, nombre: str, etiqueta: str) -> str:
+def _makefile(build: Build, nombre: str, etiqueta: str, cpu: str = "-m68000") -> str:
     return """# Makefile generado por ngplat para "%s" (Amiga).
 # Se reescribe en cada `ngplat compilar`: pon tus cambios en game.yaml.
 #
@@ -495,7 +542,7 @@ PYTHON ?= python3
 # -fno-store-merging: sin el, gcc junta dos escrituras de un byte seguidas en
 # una sola de dos bytes, y si cae en una direccion impar el 68000 se para con
 # un "address error". Las pruebas del kit comprueban que no quede ninguna.
-CFLAGS  := -m68000 -Os -fomit-frame-pointer -fno-builtin -ffreestanding \\
+CFLAGS  := %s -Os -fomit-frame-pointer -fno-builtin -ffreestanding \\
            -fno-store-merging -std=c99 -Wall -Wextra -Isrc
 # -nodefaultlibs: la libgcc de un compilador de 68k para Linux esta hecha para
 # 68020 y lleva instrucciones que el 68000 no tiene; las rutinas de multiplicar
@@ -537,7 +584,7 @@ clean:
 	rm -f $(OBJ) juego.elf $(JUEGO) $(ADF)
 
 .PHONY: all run clean
-""" % (build.project.title, nombre, nombre, etiqueta, nombre)
+""" % (build.project.title, cpu, nombre, nombre, etiqueta, nombre)
 
 
 def _etiqueta_disco(titulo: str) -> str:

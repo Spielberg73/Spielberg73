@@ -50,6 +50,42 @@ def amiga_color_a_rgb(valor: int) -> RGB:
     return (r * 255 // 15, g * 255 // 15, b * 255 // 15)
 
 
+# --- AGA: el chipset del A1200 -----------------------------------------
+#
+# El OCS guarda cada color en una palabra de 4+4+4 bits: 4096 colores en total
+# y 32 en pantalla. El AGA sube las dos cosas: **ocho bitplanes** (256 colores a
+# la vez) y **8 bits por canal**, o sea los 16,7 millones de siempre. Ahi ya no
+# hay redondeo: el color que dibujas es el color que sale.
+#
+# El registro sigue siendo de 12 bits, asi que cada color se escribe **dos
+# veces**: primero los cuatro bits altos de cada canal y luego, con el bit LOCT
+# de BPLCON3 puesto, los cuatro bajos.
+
+PLANOS_AGA = 8
+COLORES_AGA = 1 << PLANOS_AGA          # 256
+
+
+def aga_color(rgb: RGB) -> int:
+    """24 bits -> el mismo color, tal cual (0x00RRGGBB). Sin perder nada."""
+    return ((rgb[0] & 0xFF) << 16) | ((rgb[1] & 0xFF) << 8) | (rgb[2] & 0xFF)
+
+
+def aga_color_a_rgb(valor: int) -> RGB:
+    return ((valor >> 16) & 0xFF, (valor >> 8) & 0xFF, valor & 0xFF)
+
+
+def aga_palabras(valor: int) -> Tuple[int, int]:
+    """Las dos palabras que hay que escribir en el registro de color.
+
+    Devuelve (altos, bajos): los cuatro bits de arriba de cada canal y los
+    cuatro de abajo. Los de abajo van con LOCT puesto en BPLCON3.
+    """
+    r, g, b = aga_color_a_rgb(valor)
+    altos = ((r >> 4) << 8) | ((g >> 4) << 4) | (b >> 4)
+    bajos = ((r & 0xF) << 8) | ((g & 0xF) << 4) | (b & 0xF)
+    return altos, bajos
+
+
 def codificar_tile(pixeles: Sequence[int], planos: int = PLANOS) -> bytes:
     """16x16 indices de paleta -> tile entrelazado (una palabra por plano y fila)."""
     if len(pixeles) != TILE_PX * TILE_PX:

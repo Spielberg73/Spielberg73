@@ -242,9 +242,10 @@ El juego que has escrito vale igual para una Mega Drive, para un Amiga o para
 un Atari ST: solo cambia cómo se dibuja y cómo suena, no lo que pasa.
 
 ```bash
-../ngplat sistemas                       # las seis máquinas y sus límites
+../ngplat sistemas                       # las siete máquinas y sus límites
 ../ngplat compilar --sistema megadrive   # -> build/megadrive/rom/juego.bin
 ../ngplat compilar --sistema amiga       # -> build/amiga/disco/MiJuego.adf
+../ngplat compilar --sistema amiga1200   # -> lo mismo, con AGA: 256 colores
 ../ngplat compilar --sistema jaguar      # -> build/jaguar/rom/MiJuego.j64
 ../ngplat compilar --sistema atarist     # -> build/atarist/disco/mijuego.st
 ```
@@ -277,6 +278,10 @@ el Amiga 32 colores y niveles de hasta 16 casillas de alto (o 32, si el nivel no
 pasa de 22 de ancho), y el Atari ST 15 colores, sin parallax y con una pantalla
 de 200 líneas en vez de 224. Si algo no cabe, el mensaje te dice qué es y qué
 quitar.
+
+Y si tu juego se queda corto de colores, prueba `--sistema amiga1200`: es el
+mismo Amiga con el chipset AGA, y ahí son **256 a la vez** y sin redondear
+ninguno. El disquete que saca pide un A1200, un A4000 o un CD32.
 
 También puedes dejarlo escrito en el `game.yaml` y olvidarte:
 

@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from camara import (Vigia, comprobar_salto,  # noqa: E402
                     desplazamiento, perfiles)
 from libretro import (Emulador, buscar_core, colores, distintos,  # noqa: E402
-                      franja, guardar_png)
+                      filas_escritas, franja, guardar_png)
 from sonido import (banda_del_efecto, comprobar_melodia, comprobar_titulo,  # noqa: E402
                     nivel, pico_por_frame)
 
@@ -40,7 +40,11 @@ FRAMES_ANTES_DE_MEDIR = 110  # lo que tarda la camara en despegarse del borde
 
 def comprobar(adf: str, capturas: str = "capturas", musica=None,
               salto=None, disparo=None, parallax: bool = False,
-              pantallas: bool = False, titulo_musica: str = "") -> int:
+              pantallas: bool = False, titulo_musica: str = "",
+              modelo: str = "A500") -> int:
+    """`modelo` es la maquina que se emula: 'A500' (OCS, lo de siempre) o
+    'A1200' (AGA). El disquete del A1200 lleva ocho bitplanes y en un A500 no
+    se veria nada, asi que cada uno se prueba en el suyo."""
     core = buscar_core(CORE, "NEOPLAT_CORE_AMIGA")
     if not core:
         print("el core de PUAE no esta instalado: se salta la prueba")
@@ -58,8 +62,11 @@ def comprobar(adf: str, capturas: str = "capturas", musica=None,
     sistema = tempfile.mkdtemp(prefix="neoplat-amiga-")
     emu = Emulador(core, sistema=sistema, opciones={
         "puae_kickstart": "aros",       # la ROM libre que trae el propio core
-        "puae_model": "A500",           # OCS, 68000, 512 KB de RAM chip
+        "puae_model": modelo,           # A500: OCS, 68000, 512 KB de RAM chip
         "puae_video_standard": "PAL",
+        # el A1200 lleva 2 MB de RAM chip de serie, y los ocho bitplanes los
+        # necesitan: el mapa de bits solo son ya 176 KB
+        "puae_chipmem_size": "2" if modelo != "A500" else "1",
     })
     emu.cargar(adf)
 
@@ -75,7 +82,10 @@ def comprobar(adf: str, capturas: str = "capturas", musica=None,
     exigir(cuantos > 6,
            "a los %d segundos solo hay %d colores: el disquete no ha arrancado"
            % (SEGUNDOS_DE_ARRANQUE, cuantos))
-    exigir(len(set(franja(titulo, 24))) > 2, "no se ve el marcador arriba")
+    escritas = filas_escritas(titulo, 48)
+    exigir(escritas >= 6,
+           "no se ve el marcador arriba: solo %d filas de las 48 de arriba "
+           "llevan algo dibujado" % escritas)
     comprobar_titulo(exigir, nivel(emu.escuchar(25)), titulo_musica)
     print("titulo: %dx%d con %d colores" % (titulo[0], titulo[1], cuantos))
 
@@ -251,9 +261,12 @@ if __name__ == "__main__":
     # el game.yaml no siempre esta encima del disquete (las pruebas del kit lo
     # dejan en otra carpeta), asi que se puede decir donde esta
     proyecto = ""
+    modelo = "A500"
     for opcion in opciones:
         if opcion.startswith("--proyecto="):
             proyecto = opcion.split("=", 1)[1]
+        elif opcion.startswith("--modelo="):
+            modelo = opcion.split("=", 1)[1]
     proyecto = proyecto or buscar_proyecto(disco)
     p = load_project(proyecto) if proyecto else None
     sys.exit(comprobar(disco, argumentos[1] if len(argumentos) > 1 else "capturas",
@@ -263,4 +276,5 @@ if __name__ == "__main__":
                        parallax=bool(p and p.amiga_modo == "8colores" and p.layers),
                        pantallas="--pantallas" in opciones
                                  or bool(p and p.camera == "pantallas"),
-                       titulo_musica=p.sound.titulo if p else ""))
+                       titulo_musica=p.sound.titulo if p else "",
+                       modelo=modelo))

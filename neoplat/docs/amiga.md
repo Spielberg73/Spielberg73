@@ -120,7 +120,9 @@ planos de una sola pasada, en vez de cinco.
 El color del Amiga es una palabra `0000 RRRR GGGG BBBB`: **cuatro bits por
 canal**. Está en `gfx_amiga.amiga_color()`.
 
-Cuántos colores hay depende del modo (`amiga:` en el `game.yaml`):
+Cuántos colores hay depende del modo (`amiga:` en el `game.yaml`). En el A1200
+son los mismos dos modos con el doble de bitplanes cada uno, y se llaman
+también `256colores` y `16colores`:
 
 | | `32colores` | `8colores` |
 |---|---|---|
@@ -139,6 +141,82 @@ cuántos píxeles usa cada color, se parte la nube de colores en siete cajas
 colores) y cada caja se queda con su color medio; después cada color original
 se cambia por el más parecido de los siete. Es determinista, y `ngplat
 compilar` avisa de cuántos colores ha tenido que aproximar.
+
+## El Amiga 1200 y el AGA
+
+El A1200 es la misma máquina con el chipset **AGA** (o AA), y en NeoPlat es un
+destino aparte —`ngplat compilar --sistema amiga1200`— porque su disquete pide
+una máquina AGA: en un A500 los ocho bitplanes no existen y no se vería nada.
+El motor es el mismo (`engine/amiga/`, con `NP_AGA` puesto desde `gamedata.h`);
+lo que cambia son números:
+
+| | Amiga (OCS/ECS) | Amiga 1200 (AGA) |
+|---|---|---|
+| CPU | 68000 a 7 MHz, `-m68000` | 68EC020 a 14 MHz, `-m68020` |
+| Bitplanes | 5, o 3+3 en doble plano | **8**, o 4+4 |
+| Colores a la vez | 32, o 7+7 | **256**, o 16+16 |
+| Por canal | 4 bits (4096 en total) | **8 bits** (16,7 millones) |
+| RAM chip | 512 KB | 2 MB de serie |
+| Dibujo de 16×16 | 160 bytes + 160 de máscara | 256 + 256 |
+
+Tres cosas hay que decirle al chipset, y las tres están en `np_montar_copper()`:
+
+**1. Ocho bitplanes no caben en la DMA de siempre.** En baja resolución, con
+lecturas de 16 bits, entran seis contados. El AGA puede leer de **32 bits** de
+golpe (registro `FMODE`, bit 0): cada lectura trae el doble de píxeles, sobran
+ranuras y los ocho entran. A cambio la DMA empieza ocho *color clocks* antes
+(`DDFSTRT` = $30 en vez de $38) y hace diez lecturas de 32 píxeles en vez de
+veinte de 16 (`DDFSTOP` = $C0). Los 40 bytes por fila y plano son los mismos,
+así que los módulos no cambian.
+
+**2. El número de bitplanes ya no cabe en tres bits.** `BPLCON0` tiene BPU2-0
+en los bits 14-12 y el AGA añade **BPU3 en el bit 4**: ocho planos son `1000`
+en binario, o sea bit 4 puesto y los otros tres a cero. Y hace falta
+**`ECSENA`** (bit 0 de `BPLCON0`): sin él, `BPLCON3` y `BPLCON4` no hacen nada
+y la paleta se queda en los 32 colores de siempre.
+
+**3. Los 256 colores no caben en los registros.** Siguen siendo 32, y se
+eligen de ocho en ocho **bancos** con los bits 15-13 de `BPLCON3`. Y como el
+registro de color es de 12 bits pero el color es de 24, **cada color se escribe
+dos veces**: primero los cuatro bits altos de cada canal y luego, con el bit
+`LOCT` (bit 9 de `BPLCON3`) puesto, los cuatro bajos. Son 16 pasadas —ocho
+bancos por dos mitades— de un `BPLCON3` y 32 colores: 528 instrucciones de
+copper, unas nueve líneas de barrido, y sobran de largo antes de que empiece la
+imagen.
+
+En doble plano, el plano de atrás usa los colores **16 a 31**, y eso se dice con
+`PF2OF` (bits 12-10 de `BPLCON3`, valor `100`).
+
+### El scroll, que es lo que se rompe
+
+Leyendo de 32 en 32 bits, la DMA **no mira los bits de abajo del puntero** de
+bitplane: moverlo de dos en dos bytes no haría nada la mitad de las veces y el
+scroll se vería a tirones. Así que el puntero salta de **32 en 32 píxeles**
+(cuatro bytes) y lo que sobra —hasta 31— lo pone el scroll fino de `BPLCON1`.
+
+En OCS ese registro son cuatro bits por plano (0 a 15 píxeles). El AGA los
+extiende: los bits 9-8 (plano de delante) y 11-10 (el de atrás) son la parte
+que no cabía, así que se llega a 63. Está en `np_scroll_fino()`.
+
+Medido en un A1200 emulado: andando a 1,4 píxeles por frame, el escenario se
+mueve **1, 2, 1, 1, 2…** exactamente igual que en un A500. Si el scroll fino no
+funcionara se vería `0, 0, …, 0, 32`.
+
+### Cómo se comprobó que el AGA está de verdad encendido
+
+Dos medidas, porque «se ve bonito» no demuestra nada:
+
+- **Ocho bitplanes**: el marcador se dibuja con el color **255**, y en la
+  paleta generada el blanco está *sólo* en ese índice. Si la pantalla tuviera
+  cinco bitplanes, el 255 no existiría y el marcador saldría de otro color.
+  Sale blanco.
+- **Ocho bits por canal**: se compilan dos casillas de `#101010` y `#1F1F1F`,
+  que en OCS se redondean a `#111111` y `#222222`. En el A1200 emulado la
+  segunda sale **`#1F1F1F`**, no `#222222`: los cuatro bits de abajo (los que
+  escribe `LOCT`) están llegando a la pantalla.
+
+Las dos están en `tests/test_sistemas.py`, junto con la que arranca el disquete
+en un A1200 emulado y la que mide el parallax de doble plano.
 
 ## Que quepa en un frame
 

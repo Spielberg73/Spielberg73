@@ -33,7 +33,8 @@ def _banderas_del_makefile(ruta):
     return [b for b in ("-fno-store-merging",) if b in texto]
 
 
-def _comprobar_amiga(prueba, disco, capturas, proyecto="", pantallas=False):
+def _comprobar_amiga(prueba, disco, capturas, proyecto="", pantallas=False,
+                     modelo="A500"):
     """Arranca el disquete del Amiga en PUAE, en un proceso aparte.
 
     Aparte por lo mismo que el ST: **el core no se deja arrancar dos veces en
@@ -54,6 +55,8 @@ def _comprobar_amiga(prueba, disco, capturas, proyecto="", pantallas=False):
         orden.append("--proyecto=" + proyecto)
     if pantallas:
         orden.append("--pantallas")
+    if modelo != "A500":
+        orden.append("--modelo=" + modelo)
     hecho = subprocess.run(orden, capture_output=True, text=True)
     print(hecho.stdout.strip())
     prueba.assertEqual(hecho.returncode, 0,
@@ -141,7 +144,8 @@ class TestColores(unittest.TestCase):
             self.assertLessEqual(valor, 0x0FFF)
 
     def test_cada_maquina_ve_su_propio_color(self):
-        for nombre in ("neogeo", "megadrive", "amiga", "jaguar", "atarist", "x68000"):
+        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "jaguar",
+                       "atarist", "x68000"):
             visible = sistemas.obtener(nombre).color_visible((200, 12, 90))
             self.assertEqual(len(visible), 3)
             for canal in visible:
@@ -279,7 +283,8 @@ class TestListado(unittest.TestCase):
     """Lo que cuenta `ngplat sistemas` tiene que seguir siendo verdad."""
 
     def test_cada_maquina_dice_como_suena_y_que_hace_con_el_parallax(self):
-        for nombre in ("neogeo", "megadrive", "amiga", "jaguar", "atarist", "x68000"):
+        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "jaguar",
+                       "atarist", "x68000"):
             sistema = sistemas.obtener(nombre)
             texto = " ".join(sistema.notas).lower()
             self.assertTrue(sistema.notas, "%s no cuenta nada de si" % nombre)
@@ -576,6 +581,99 @@ class TestProyectoGenerado(unittest.TestCase):
         self.assertTrue(any(any(c.tiles) for c in build.layers),
                         "el parallax no se ha metido en el banco")
 
+    def test_el_a1200_da_ocho_bitplanes_y_256_colores(self):
+        """El AGA del A1200: ocho bitplanes en vez de cinco, la paleta de 24
+        bits y el marcador en el color 255. Es lo que le da 256 colores a la
+        vez donde el OCS solo tiene 32."""
+        build = cargar_demo(self.proyecto, "amiga1200")
+        sistema = sistemas.obtener("amiga1200")
+        sistema.comprobar(build)
+        self.assertIn("#define NP_PLANOS 8", build.info["cabecera"])
+        self.assertIn("#define NP_AGA 1", build.info["cabecera"])
+        salida_dir = os.path.join(self.tmp, "build-a1200")
+        generar_para_sistema(build, salida_dir, sistema, "202")
+        with open(os.path.join(salida_dir, "src/graficos.c"), encoding="utf-8") as fh:
+            texto = fh.read()
+        self.assertIn("const uint32_t np_colores[NP_COLORES]", texto,
+                      "los colores del AGA son de 24 bits, no de 12")
+        # los dibujos ocupan ocho bitplanes: 16 filas x 8 planos x 2 bytes
+        banco = build.info["banco"]
+        self.assertEqual(len(banco.tiles), banco.cuantos * 256)
+        # y se compila para el 68020, que es lo que lleva la maquina
+        with open(os.path.join(salida_dir, "Makefile"), encoding="utf-8") as fh:
+            self.assertIn("-m68020", fh.read())
+
+    def test_el_a1200_no_redondea_los_colores(self):
+        """La diferencia que se ve: el OCS guarda cuatro bits por canal y
+        redondea todo lo que dibujes; el AGA guarda los ocho que trae el PNG."""
+        ocs = sistemas.obtener("amiga")
+        aga = sistemas.obtener("amiga1200")
+        for color in ((0x1F, 0x1F, 0x1F), (0xC7, 0x7F, 0x1D), (0x12, 0x34, 0x56)):
+            self.assertEqual(aga.color_visible(color), color,
+                             "el AGA no tendria que tocar %r" % (color,))
+            self.assertNotEqual(ocs.color_visible(color), color,
+                                "en OCS %r si se redondea" % (color,))
+
+    def test_el_a1200_admite_colores_que_el_ocs_rechaza(self):
+        """Y la consecuencia: un juego de mas de 31 colores no compila para un
+        A500 y si para un A1200. Es la razon de ser de esta maquina."""
+        from ngplat.png import read_png, write_png, Image
+        from ngplat.scaffold import crear_proyecto
+        otro = os.path.join(self.tmp, "muchos-colores")
+        if not os.path.isdir(otro):
+            crear_proyecto(otro, "COLORES", "TEST")
+            # a cada color de cada dibujo se le da uno nuevo, unico en todo el
+            # proyecto: asi se pasa de los 31 que caben en el OCS
+            usados = 0
+            for nombre in sorted(os.listdir(os.path.join(otro, "graficos"))):
+                if not nombre.endswith(".png"):
+                    continue
+                ruta = os.path.join(otro, "graficos", nombre)
+                img = read_png(ruta)
+                mapa, pix = {}, []
+                for p in img.pixels:
+                    if p[3] == 0:
+                        pix.append(p)
+                        continue
+                    if p not in mapa:
+                        mapa[p] = (17 + (usados * 7) % 200, 23 + (usados * 13) % 200,
+                                   31 + (usados * 29) % 200, 255)
+                        usados += 1
+                    pix.append(mapa[p])
+                write_png(ruta, Image(img.width, img.height, pix))
+        with self.assertRaises(ProjectError) as caja:
+            cargar_demo(otro, "amiga")
+        self.assertIn("colores distintos", str(caja.exception))
+        build = cargar_demo(otro, "amiga1200")
+        sistemas.obtener("amiga1200").comprobar(build)
+        self.assertGreater(build.info["stats"]["colores"], 31)
+        self.assertEqual(build.info["stats"]["aproximados"], 0,
+                         "en el A1200 no hace falta aproximar ningun color")
+
+    def test_el_a1200_en_doble_plano_da_16_colores_por_plano(self):
+        """El parallax del A1200: los ocho bitplanes partidos en 4+4, o sea 16
+        colores por plano en vez de los 7+7 del OCS. El plano de atras empieza
+        en el color 16, que es lo que dice PF2OF en BPLCON3."""
+        otro = os.path.join(self.tmp, "juego8")     # el mismo de la prueba de OCS
+        if not os.path.isdir(otro):
+            shutil.copytree(self.proyecto, otro)
+            yaml = os.path.join(otro, "game.yaml")
+            with open(yaml, encoding="utf-8") as fh:
+                texto = fh.read()
+            with open(yaml, "w", encoding="utf-8") as fh:
+                fh.write(texto.replace("  amiga: 32colores", "  amiga: 8colores", 1))
+        build = cargar_demo(otro, "amiga1200")
+        sistema = sistemas.obtener("amiga1200")
+        sistema.comprobar(build)
+        self.assertIn("#define NP_PLANOS 4", build.info["cabecera"])
+        banco = build.info["banco"]
+        self.assertEqual(len(banco.tiles), banco.cuantos * 128,
+                         "cuatro bitplanes por dibujo")
+        salida_dir = os.path.join(self.tmp, "build-a1200-doble")
+        generar_para_sistema(build, salida_dir, sistema, "202")
+        with open(os.path.join(salida_dir, "src/graficos.c"), encoding="utf-8") as fh:
+            self.assertIn("np_fondo_bitmap", fh.read())
+
     def test_el_estilo_hierro_no_pierde_ningun_color(self):
         """Compilar el estilo 'hierro' para Amiga no aproxima nada: para eso
         esta dibujado con la paleta corta."""
@@ -646,7 +744,8 @@ class TestProyectoGenerado(unittest.TestCase):
         """El ST ensena 200 lineas y las demas 224. Lo que **no** puede cambiar
         es el mundo: si el motor viera otra pantalla, el juego seria otro."""
         self.assertEqual(sistemas.obtener("atarist").pantalla, (320, 200))
-        for nombre in ("neogeo", "megadrive", "amiga", "jaguar", "x68000"):
+        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "jaguar",
+                       "x68000"):
             self.assertEqual(sistemas.obtener(nombre).pantalla, (320, 224), nombre)
         cabecera = os.path.join(KIT, "engine", "include", "np_types.h")
         with open(cabecera, encoding="utf-8") as fh:
@@ -657,7 +756,8 @@ class TestProyectoGenerado(unittest.TestCase):
     def test_los_sistemas_describen_el_mismo_juego(self):
         """Cambiar de maquina no cambia el juego: niveles, enemigos y mapas."""
         referencia = None
-        for nombre in ("neogeo", "megadrive", "amiga", "jaguar", "atarist", "x68000"):
+        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "jaguar",
+                       "atarist", "x68000"):
             build = cargar_demo(self.proyecto, nombre)
             resumen = [(n.name, n.width, n.height, n.cells, n.spawns)
                        for n in build.levels]
@@ -846,11 +946,11 @@ class TestNivelesAltos(unittest.TestCase):
                 fh.write(texto)
         return cargar_demo(raiz, sistema)
 
-    def test_un_nivel_alto_vale_en_las_seis_maquinas(self):
+    def test_un_nivel_alto_vale_en_todas_las_maquinas(self):
         """Lo que no se podia hacer y ahora se puede: el mismo nivel de 20x32
-        pasa la revision de las seis, sin avisos raros."""
-        for nombre in ("neogeo", "megadrive", "amiga", "jaguar", "atarist",
-                       "x68000"):
+        pasa la revision de todas, sin avisos raros."""
+        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "jaguar",
+                       "atarist", "x68000"):
             with self.subTest(sistema=nombre):
                 build = self._proyecto("torre", 20, 32, nombre)
                 sistemas.obtener(nombre).comprobar(build)
@@ -864,8 +964,8 @@ class TestNivelesAltos(unittest.TestCase):
         raiz = os.path.join(self.tmp, "comando")
         if not os.path.isdir(raiz):
             crear_proyecto(raiz, "COMANDO", "TEST", genero="comando")
-        for nombre in ("neogeo", "megadrive", "amiga", "jaguar", "atarist",
-                       "x68000"):
+        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "jaguar",
+                       "atarist", "x68000"):
             with self.subTest(sistema=nombre):
                 build = cargar_demo(raiz, nombre)
                 sistema = sistemas.obtener(nombre)
@@ -1099,7 +1199,8 @@ class TestCompilacionReal(unittest.TestCase):
             self.skipTest("no hay %s" % objdump)
         patron = re.compile(
             r"\b(?!lea|pea)[a-z]+[wl]\s+\S*%(?:a\d|sp|fp)@\((\d+)\)")
-        for sistema in ("neogeo", "megadrive", "amiga", "jaguar", "atarist", "x68000"):
+        for sistema in ("neogeo", "megadrive", "amiga", "amiga1200", "jaguar",
+                        "atarist", "x68000"):
             build = cargar_demo(self.proyecto, sistema)
             out = os.path.join(self.tmp, "estatico-" + sistema)
             generar_para_sistema(build, out, sistemas.obtener(sistema), "202")
@@ -1195,6 +1296,42 @@ class TestCompilacionReal(unittest.TestCase):
         out = self._construir("amiga")
         _comprobar_amiga(self, os.path.join(out, "disco/Prueba.adf"),
                          os.path.join(self.tmp, "capturas-amiga"), self.proyecto)
+
+    def test_el_disquete_del_a1200_arranca_en_un_emulador(self):
+        """Y encender un A1200 de verdad, con AGA.
+
+        Es el mismo disquete de siempre pero con ocho bitplanes, la paleta de
+        24 bits y las lecturas de 32 bits del AGA: en un A500 no se veria nada,
+        asi que se emula un A1200 con sus 2 MB de RAM chip. Si alguno de esos
+        tres registros estuviera mal, la pantalla saldria negra o partida y
+        esto lo cuenta."""
+        out = self._construir("amiga1200")
+        _comprobar_amiga(self, os.path.join(out, "disco/Prueba.adf"),
+                         os.path.join(self.tmp, "capturas-a1200"), self.proyecto,
+                         modelo="A1200")
+
+    def test_el_parallax_del_a1200_va_mas_despacio_que_el_suelo(self):
+        """El doble plano del AGA: los ocho bitplanes partidos en 4+4, con el
+        plano de atras en los colores 16 a 31 (eso es PF2OF en BPLCON3).
+
+        La comprobacion es la de siempre: correr a la derecha y medir cuanto se
+        desplaza el cielo y cuanto el suelo. Si los dos fueran a la vez no
+        habria dos planos, y si el de atras se dibujara con los colores del de
+        delante se veria del color equivocado."""
+        from ngplat.scaffold import crear_proyecto
+        otro = os.path.join(self.tmp, "hierro-aga")
+        if not os.path.isdir(otro):
+            crear_proyecto(otro, "HIERRO", "TEST", estilo="hierro")
+        build = cargar_demo(otro, "amiga1200")
+        self.assertEqual(build.project.amiga_modo, "8colores",
+                         "el estilo hierro trae el doble plano puesto")
+        out = os.path.join(self.tmp, "amiga1200-doble")
+        generar_para_sistema(build, out, sistemas.obtener("amiga1200"), "202")
+        hecho = subprocess.run(["make", "-C", out], capture_output=True, text=True)
+        self.assertEqual(hecho.returncode, 0, hecho.stdout + hecho.stderr)
+        _comprobar_amiga(self, os.path.join(out, "disco/Hierro.adf"),
+                         os.path.join(self.tmp, "capturas-a1200-doble"), otro,
+                         modelo="A1200")
 
     def test_el_disquete_de_st_arranca_en_un_emulador(self):
         """Y encender el ST: el disquete entero, del FAT12 al ultimo bitplane,

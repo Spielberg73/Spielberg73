@@ -30,9 +30,26 @@ static const NpLevel *np_nivel_actual;
 /* Lista del copper. Tiene dos partes: la de arriba pinta el marcador desde
    np_hud_bitmap y, al llegar a la linea NP_HUD_ALTO, engancha los bitplanes al
    mapa de bits del juego. Asi el marcador no se mueve con el scroll. */
+#if NP_AGA
+/* Nueve pares: BPLCON0, BPLCON2, BPLCON3, BPLCON4, FMODE, DIWSTRT, DIWSTOP,
+   DDFSTRT y DDFSTOP. */
+#define NP_COP_CABECERA  18
+/* Los 256 colores del AGA no caben de golpe: los registros de color siguen
+   siendo 32, y se eligen de ocho en ocho bancos con BPLCON3. Ademas cada
+   color se escribe **dos veces**, porque el registro es de 12 bits y el color
+   de 24: primero los cuatro bits altos de cada canal y luego, con el bit LOCT
+   puesto, los cuatro bajos. Son 16 pasadas -ocho bancos por dos mitades- de un
+   BPLCON3 y 32 colores cada una. */
+#define NP_COP_PASADA    (33 * 2)                 /* palabras de una pasada */
+/* y un BPLCON3 mas al final, para dejarlo como lo quiere la pantalla */
+#define NP_COP_COLORES   (NP_COP_CABECERA + 16 * NP_COP_PASADA + 2)
+#define NP_COP_COLOR0    (NP_COP_CABECERA + 3)    /* el fondo, mitad alta   */
+#define NP_COP_COLOR0_BAJO (NP_COP_CABECERA + 8 * NP_COP_PASADA + 3)
+#else
 #define NP_COP_CABECERA  12                       /* 6 pares de registros   */
 #define NP_COP_COLORES   (NP_COP_CABECERA + 64)   /* 32 colores             */
 #define NP_COP_COLOR0    (NP_COP_CABECERA + 1)    /* el fondo, que cambia   */
+#endif
 #define NP_COP_HUD       NP_COP_COLORES           /* BPLCON1 y los modulos  */
 #define NP_COP_HUD_PTR   (NP_COP_HUD + 6)
 /* En doble plano la seccion de arriba lleva los punteros de los dos planos:
@@ -49,6 +66,72 @@ static const NpLevel *np_nivel_actual;
 #define NP_COP_LARGO     (NP_COP_FIN + 2)
 
 #define NP_LINEA_ARRIBA 0x2C                      /* primera linea visible  */
+
+/* Cuantos pixeles salta de una vez el puntero de bitplane. */
+#if NP_AGA
+#define NP_SALTO_SCROLL 32
+#else
+#define NP_SALTO_SCROLL 16
+#endif
+
+#if NP_AGA
+/* --- lo que hay que decirle al AGA -------------------------------------
+ *
+ * FMODE: cuantos bits lee de golpe la DMA de bitplanes. Con 16 (lo de
+ * siempre) en baja resolucion caben seis bitplanes contados; con 32 cada
+ * lectura trae el doble de pixeles, sobran ranuras y entran los ocho. Sin
+ * esto no hay 256 colores.
+ *
+ * Al leer de 32 en 32 la DMA empieza ocho clocks antes y hace la mitad de
+ * lecturas: diez de 32 pixeles en vez de veinte de 16. Los 40 bytes por fila
+ * y por plano son los mismos, asi que los modulos no cambian.
+ *
+ * BPLCON0 con ECSENA (bit 0) puesto: sin el, BPLCON3 y BPLCON4 no hacen nada
+ * y la paleta se queda en los 32 colores de siempre. BPU3 (bit 4) es el bit
+ * de arriba del numero de bitplanes: ocho planos son 1000 en binario.
+ */
+#define NP_FMODE_32     0x0001
+#define NP_DDFSTRT_AGA  0x0030
+#define NP_DDFSTOP_AGA  0x00C0
+#if NP_DOBLE_PLANO
+#define NP_BPLCON3_BASE 0x1000          /* PF2 empieza en el color 16 */
+#define NP_BPLCON0_AGA  0x0611          /* 8 planos, doble plano, ECSENA */
+#else
+#define NP_BPLCON3_BASE 0x0C00          /* el valor compatible de siempre */
+#define NP_BPLCON0_AGA  0x0211          /* 8 planos, un plano, ECSENA */
+#endif
+
+/* Las dos mitades de un color de 24 bits: el registro es de 12. */
+static uint16_t np_color_alto(uint32_t c)
+{
+    return (uint16_t)((((c >> 20) & 0xF) << 8) | (((c >> 12) & 0xF) << 4)
+                      | ((c >> 4) & 0xF));
+}
+
+static uint16_t np_color_bajo(uint32_t c)
+{
+    return (uint16_t)((((c >> 16) & 0xF) << 8) | (((c >> 8) & 0xF) << 4)
+                      | (c & 0xF));
+}
+#endif /* NP_AGA */
+
+/* El scroll fino, en el registro que lo lleva.
+ *
+ * En OCS son cuatro bits por plano: 0 a 15 pixeles, que es justo lo que sobra
+ * de mover el puntero de dos en dos bytes. En AGA se lee de 32 en 32 bits, o
+ * sea que el puntero salta de 32 en 32 pixeles y el resto -hasta 31- lo tiene
+ * que poner este registro: los bits de arriba de cada plano son la parte que
+ * no cabia en OCS.
+ */
+static uint16_t np_scroll_fino(uint16_t delante, uint16_t detras)
+{
+#if NP_AGA
+    return (uint16_t)((delante & 15) | ((detras & 15) << 4)
+                      | (((delante >> 4) & 3) << 8) | (((detras >> 4) & 3) << 10));
+#else
+    return (uint16_t)((delante & 15) | ((detras & 15) << 4));
+#endif
+}
 
 static uint16_t np_copper[NP_COP_LARGO];
 
@@ -89,6 +172,36 @@ static void np_montar_copper(void)
     uint16_t *p = np_copper;
     uint8_t i;
 
+#if NP_AGA
+    *p++ = 0x0100; *p++ = NP_BPLCON0_AGA;                /* BPLCON0 */
+    *p++ = 0x0104; *p++ = 0x0024;                        /* BPLCON2 */
+    *p++ = 0x0106; *p++ = NP_BPLCON3_BASE;               /* BPLCON3 */
+    *p++ = 0x010C; *p++ = 0x0011;                        /* BPLCON4 */
+    *p++ = 0x01FC; *p++ = NP_FMODE_32;                   /* FMODE */
+    *p++ = 0x008E; *p++ = 0x2C81;                        /* DIWSTRT */
+    *p++ = 0x0090; *p++ = 0x0CC1;                        /* DIWSTOP: 320x224 */
+    *p++ = 0x0092; *p++ = NP_DDFSTRT_AGA;                /* DDFSTRT */
+    *p++ = 0x0094; *p++ = NP_DDFSTOP_AGA;                /* DDFSTOP */
+
+    /* Los 256 colores, en dos vueltas de ocho bancos: primero los cuatro bits
+       altos de cada canal y luego los cuatro bajos, con LOCT puesto. */
+    {
+        uint8_t mitad, banco;
+        for (mitad = 0; mitad < 2; mitad++) {
+            for (banco = 0; banco < 8; banco++) {
+                *p++ = 0x0106;
+                *p++ = (uint16_t)((banco << 13) | NP_BPLCON3_BASE
+                                  | (mitad ? 0x0200 : 0));
+                for (i = 0; i < 32; i++) {
+                    uint32_t c = np_colores[banco * 32 + i];
+                    *p++ = (uint16_t)(0x0180 + i * 2);
+                    *p++ = mitad ? np_color_bajo(c) : np_color_alto(c);
+                }
+            }
+        }
+    }
+    *p++ = 0x0106; *p++ = NP_BPLCON3_BASE;   /* banco 0 otra vez, para pintar */
+#else
 #if NP_DOBLE_PLANO
     /* seis bitplanes y el bit de doble plano: dos planos de tres cada uno */
     *p++ = 0x0100; *p++ = (6 << 12) | 0x0400 | 0x0200;   /* BPLCON0 */
@@ -105,6 +218,7 @@ static void np_montar_copper(void)
         *p++ = (uint16_t)(0x0180 + i * 2);
         *p++ = np_colores[i];
     }
+#endif /* NP_AGA */
 
     /* franja del marcador */
     *p++ = 0x0102; *p++ = 0x0000;                        /* BPLCON1: sin scroll */
@@ -393,7 +507,12 @@ void np_video_frame(const NpWorld *w)
     if (w->level != np_nivel_actual) {
         np_nivel_actual = w->level;
         /* el color 0 es el fondo de la pantalla, y cada nivel trae el suyo */
+#if NP_AGA
+        np_copper[NP_COP_COLOR0] = np_color_alto(w->level->background);
+        np_copper[NP_COP_COLOR0_BAJO] = np_color_bajo(w->level->background);
+#else
         np_copper[NP_COP_COLOR0] = w->level->background;
+#endif
 #if NP_DOBLE_PLANO
         np_pintar_fondo(w);          /* el parallax se pinta una vez por nivel */
 #endif
@@ -443,20 +562,27 @@ void np_video_frame(const NpWorld *w)
                          (uint8_t)!p->facing);
     }
 
-    /* scroll: los punteros van al pixel de arriba a la izquierda de lo que se ve */
+    /* Scroll: los punteros van al pixel de arriba a la izquierda de lo que se
+       ve, y lo que no llega a un salto entero lo pone el scroll fino.
+       El salto es de 16 pixeles (dos bytes) en OCS y de 32 (cuatro) en AGA,
+       porque leyendo de 32 en 32 bits la DMA no mira los bits de abajo del
+       puntero: moverlo de dos en dos bytes no haria nada la mitad de las
+       veces, y el scroll se veria a tirones. */
     direccion = NP_DIR(np_bitmap)
         + (uint32_t)(w->cam_y + NP_HUD_ALTO) * NP_PASO_FILA
-        + (uint32_t)((w->cam_x - np_base_tile * NP_TILE) / 16) * 2;
+        + (uint32_t)((w->cam_x - np_base_tile * NP_TILE) / NP_SALTO_SCROLL)
+          * (NP_SALTO_SCROLL / 8);
     np_punteros(direccion);
-#if NP_DOBLE_PLANO
     {
+        uint16_t suelto = (uint16_t)(w->cam_x & (NP_SALTO_SCROLL - 1));
+#if NP_DOBLE_PLANO
         uint16_t fino = np_mover_fondo(w);
-        np_copper[NP_COP_HUD + 1] = (uint16_t)(fino << 4);
-        np_copper[NP_COP_JUEGO + 1] = (uint16_t)((fino << 4) | (w->cam_x & 15));
-    }
+        np_copper[NP_COP_HUD + 1] = np_scroll_fino(0, fino);
+        np_copper[NP_COP_JUEGO + 1] = np_scroll_fino(suelto, fino);
 #else
-    np_copper[NP_COP_JUEGO + 1] = (uint16_t)(((w->cam_x & 15) << 4) | (w->cam_x & 15));
+        np_copper[NP_COP_JUEGO + 1] = np_scroll_fino(suelto, suelto);
 #endif
+    }
 
 #if NP_HUD_ENABLED
     np_hud_draw(w);

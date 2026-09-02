@@ -220,6 +220,7 @@ def _compilador_de(sistema) -> str:
         "neogeo": ["m68k-neogeo-elf-gcc", "m68k-elf-gcc"],
         "megadrive": ["m68k-elf-gcc", "m68k-linux-gnu-gcc"],
         "amiga": ["m68k-amigaos-gcc", "vc", "m68k-elf-gcc", "m68k-linux-gnu-gcc"],
+        "amiga1200": ["m68k-amigaos-gcc", "m68k-elf-gcc", "m68k-linux-gnu-gcc"],
         "jaguar": ["m68k-linux-gnu-gcc", "m68k-elf-gcc"],
         "atarist": ["m68k-atari-mint-gcc", "m68k-elf-gcc", "m68k-linux-gnu-gcc"],
         # los mismos dos que busca su Makefile: si no estan los dos listados
@@ -237,6 +238,7 @@ def _como_instalar(sistema) -> str:
         "neogeo": "ngdevkit: https://github.com/dciabrin/ngdevkit",
         "megadrive": "apt install gcc-m68k-linux-gnu   (o el m68k-elf-gcc que uses)",
         "amiga": "apt install gcc-m68k-linux-gnu   (o vbcc / m68k-amigaos-gcc)",
+        "amiga1200": "apt install gcc-m68k-linux-gnu   (o m68k-amigaos-gcc)",
         "jaguar": "apt install gcc-m68k-linux-gnu   (el GPU y el DSP no se usan)",
         "atarist": "apt install gcc-m68k-linux-gnu   (o m68k-atari-mint-gcc)",
         "x68000": "apt install gcc-m68k-linux-gnu   (o el m68k-elf-gcc que uses)",

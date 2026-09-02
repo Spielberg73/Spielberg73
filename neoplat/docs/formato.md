@@ -21,6 +21,7 @@ juego:
   hud: si                   # marcador de puntos/vidas
   camara: scroll            # scroll o pantallas
   amiga: 32colores          # solo en Amiga: 32colores o 8colores
+                            # (en el A1200: 256colores o 16colores)
   fondo: "#101830"          # color de fondo por defecto
   sistema: neogeo           # neogeo, megadrive, amiga, jaguar o atarist
 ```
@@ -38,7 +39,7 @@ Con `pantallas` conviene que los niveles midan un número exacto de pantallas
 anterior y el compilador avisa.
 
 **Lo que cuesta el salto.** Cambiar de pantalla obliga a repintar las veinte
-columnas del escenario de una vez, y eso aprieta en las seis máquinas. Cada
+columnas del escenario de una vez, y eso aprieta en todas las máquinas. Cada
 una lo lleva a su manera:
 
 | | |
@@ -964,7 +965,7 @@ sonido:
 - El nombre tiene que ser el de una música que exista; escribirlo mal es un
   error del compilador y no un silencio misterioso.
 
-Quién decide cuál suena es el motor (`np_music_now`), así que las seis máquinas
+Quién decide cuál suena es el motor (`np_music_now`), así que las siete máquinas
 y el preview hacen exactamente lo mismo.
 
 Duraciones: `do4:2` dura el doble. Límites: 46 efectos, 14 músicas, 2 pistas
@@ -1030,15 +1031,16 @@ Estos son los del juego, valgan para la que valgan:
 Y estos cambian según la máquina. `ngplat comprobar` los mira antes de
 compilar y te dice cuál te has saltado.
 
-| | Neo Geo | Mega Drive | Amiga | Jaguar |
-|---|---|---|---|---|
-| Colores a la vez | 4096 | 64 (4 paletas de 16) | 32, o 8 + 8 | 256 (una tabla) |
-| Paletas | 256 | 4, fundiendo las tuyas | 1, fundiendo las tuyas | 1, fundiendo las tuyas |
-| Dibujos distintos | 65536 tiles | 1408 tiles de 8 × 8 | 1024 de 16 × 16 | sin límite fijo |
-| Actores en pantalla | 96 sprites | 80 sprites | sin límite fijo (los dibuja el blitter) | sin límite fijo |
-| Alto del nivel | 256 tiles | 32 tiles | 16, o 32 si el nivel no pasa de 22 de ancho | 16, o 32 si el nivel no pasa de 22 de ancho |
-| Capas de parallax | todas | una | una, con `amiga: 8colores` | una |
-| Sonido | YM2610 | PSG SN76489 | Paula | los DAC, por el DSP |
-| Qué sale | ROMs de cartucho | `.bin` de cartucho | disquete `.adf` | cartucho `.j64` |
+| | Neo Geo | Mega Drive | Amiga | Amiga 1200 | Jaguar |
+|---|---|---|---|---|---|
+| Colores a la vez | 4096 | 64 (4 paletas de 16) | 32, o 8 + 8 | 256, o 16 + 16 | 256 (una tabla) |
+| Por canal | 5 bits | 3 bits | 4 bits | **8 bits** (exactos) | 8 bits |
+| Paletas | 256 | 4, fundiendo las tuyas | 1, fundiendo las tuyas | 1, fundiendo las tuyas | 1, fundiendo las tuyas |
+| Dibujos distintos | 65536 tiles | 1408 tiles de 8 × 8 | 1024 de 16 × 16 | 1024 de 16 × 16 | sin límite fijo |
+| Actores en pantalla | 96 sprites | 80 sprites | sin límite fijo (los dibuja el blitter) | sin límite fijo | sin límite fijo |
+| Alto del nivel | 256 tiles | 32 tiles | 16, o 32 si el nivel no pasa de 22 de ancho | igual | 16, o 32 si el nivel no pasa de 22 de ancho |
+| Capas de parallax | todas | una | una, con `amiga: 8colores` | una, con `amiga: 16colores` | una |
+| Sonido | YM2610 | PSG SN76489 | Paula | Paula | los DAC, por el DSP |
+| Qué sale | ROMs de cartucho | `.bin` de cartucho | disquete `.adf` | disquete `.adf` (pide AGA) | cartucho `.j64` |
 
 `ngplat sistemas` los enseña sin salir de la terminal.

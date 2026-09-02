@@ -1,8 +1,9 @@
 # NeoPlat
 
 Kit para hacer juegos de plataformas 2D **sin programar** y compilarlos para
-seis máquinas de verdad: **Neo Geo** (AES/MVS), **Mega Drive** (Genesis),
-**Amiga** (OCS/ECS), **Atari Jaguar**, **Atari ST** y **Sharp X68000**.
+siete máquinas de verdad: **Neo Geo** (AES/MVS), **Mega Drive** (Genesis),
+**Amiga** (OCS/ECS), **Amiga 1200** (AGA), **Atari Jaguar**, **Atari ST** y
+**Sharp X68000**.
 
 Describes el juego en un archivo `game.yaml`, dibujas los gráficos en PNG y el
 compilador genera el proyecto en C, los gráficos ya convertidos al formato de
@@ -15,6 +16,7 @@ segundos.
 game.yaml + PNG  ──►  ngplat  ──┼──►  build/neogeo/         ROMs C1/C2/S1/M1
                                 ├──►  build/megadrive/      cartucho .bin
                                 ├──►  build/amiga/          disquete .adf
+                                ├──►  build/amiga1200/      disquete .adf (AGA)
                                 ├──►  build/jaguar/         cartucho .j64
                                 ├──►  build/atarist/        disquete .st
                                 └──►  build/x68000/         ejecutable .X y disquete .xdf
@@ -22,18 +24,19 @@ game.yaml + PNG  ──►  ngplat  ──┼──►  build/neogeo/         RO
 
 El juego lo describes una vez. Lo que cambia de una máquina a otra es cómo se
 dibuja y cómo suena, no lo que pasa: la simulación (`engine/core/np_world.c`)
-es la misma en las seis, así que un salto mide exactamente lo mismo en todas.
-Y las seis llevan un **68000**, que es lo que hace que el motor sea uno solo.
+es la misma en las siete, así que un salto mide exactamente lo mismo en todas.
+Y las siete llevan un **68000** (el A1200 su 68EC020), que es lo que hace que el
+motor sea uno solo.
 
-| | Neo Geo | Mega Drive | Amiga | Jaguar | Atari ST | X68000 |
-|---|---|---|---|---|---|---|
-| CPU | 68000 a 12 MHz | 68000 a 7,6 MHz | 68000 a 7 MHz | 68000 a 13,3 MHz | 68000 a 8 MHz | 68000 a 10 MHz |
-| Escenario | columnas de sprites | plano A del VDP | mapa de bits + blitter | mapa de bits lineal | bitplanes, movidos por la CPU | capa de fondo del chip |
-| Actores | sprites | sprites del VDP | blitter con máscara | objetos del chip | dibujados a mano, con máscara | sprites de 16×16 |
-| Colores | 4096 en pantalla | 4 paletas de 16 | una de 32, o dos de 8 | una tabla de 256 | una de 16 | 16 bloques de 16 |
-| Sonido | YM2610 (SSG) por Z80 | PSG SN76489 | Paula (4 canales) | los DAC, por el DSP de Jerry | YM2149 | YM2151 (FM) y ADPCM |
-| Parallax | sí | una capa | una capa (`amiga: 8colores`) | una capa | una capa (`camara: pantallas`) | no |
-| Sale | ROMs de cartucho | `.bin` con cabecera y suma | disquete `.adf` arrancable | cartucho `.j64` | disquete `.st` arrancable | `.X` de Human68k y disquete `.xdf` |
+| | Neo Geo | Mega Drive | Amiga | Amiga 1200 | Jaguar | Atari ST | X68000 |
+|---|---|---|---|---|---|---|---|
+| CPU | 68000 a 12 MHz | 68000 a 7,6 MHz | 68000 a 7 MHz | 68EC020 a 14 MHz | 68000 a 13,3 MHz | 68000 a 8 MHz | 68000 a 10 MHz |
+| Escenario | columnas de sprites | plano A del VDP | mapa de bits + blitter | igual, con 8 bitplanes | mapa de bits lineal | bitplanes, movidos por la CPU | capa de fondo del chip |
+| Actores | sprites | sprites del VDP | blitter con máscara | blitter con máscara | objetos del chip | dibujados a mano, con máscara | sprites de 16×16 |
+| Colores | 4096 en pantalla | 4 paletas de 16 | una de 32, o dos de 8 | una de **256**, o dos de 16, **de 24 bits** | una tabla de 256 | una de 16 | 16 bloques de 16 |
+| Sonido | YM2610 (SSG) por Z80 | PSG SN76489 | Paula (4 canales) | Paula (4 canales) | los DAC, por el DSP de Jerry | YM2149 | YM2151 (FM) y ADPCM |
+| Parallax | sí | una capa | una capa (`amiga: 8colores`) | una capa, con 16 colores por plano | una capa | una capa (`camara: pantallas`) | no |
+| Sale | ROMs de cartucho | `.bin` con cabecera y suma | disquete `.adf` arrancable | disquete `.adf` arrancable | cartucho `.j64` | disquete `.st` arrancable | `.X` de Human68k y disquete `.xdf` |
 
 El Atari ST es el caso raro y por eso merece la pena: mismo 68000 que los
 demás y **nada** que le eche una mano —sin sprites, sin blitter y sin scroll
@@ -41,6 +44,18 @@ por hardware—, así que todo lo que se mueve lo mueve la CPU. Enseña 200 lín
 en vez de 224 (una ventana del mismo mundo) y dibuja a 25 frames por segundo
 simulando a 50, que es lo que da de sí la máquina;
 [docs/atarist.md](docs/atarist.md) cuenta cómo se midió.
+
+El **Amiga 1200** es el mismo Amiga con el chipset AGA sacando pecho, y por eso
+es un destino aparte y no una opción del otro: su disquete pide una máquina AGA
+y en un A500 no se vería nada. Comparte el motor entero con el OCS —bitplanes,
+blitter, copper y Paula— y lo que cambia son números: **ocho bitplanes** en vez
+de cinco (256 colores a la vez), **ocho bits por canal** en vez de cuatro (o
+sea, los colores salen exactos, sin redondear), el doble plano a **16+16**
+colores en vez de 7+7, y el 68EC020 a 14 MHz. Ocho bitplanes en baja resolución
+no caben en la DMA de siempre: hacen falta las lecturas de 32 bits del AGA, y
+con ellas el puntero de pantalla salta de 32 en 32 píxeles y el resto lo pone el
+scroll fino extendido. Está medido en un A1200 emulado y se mueve píxel a píxel
+igual que el OCS; [docs/amiga.md](docs/amiga.md) lo cuenta.
 
 El X68000 es el otro caso raro, por lo contrario: es la que más ayuda da (sus
 patrones son de 16×16, justo el tile del kit) y a la vez la que menos
@@ -162,7 +177,7 @@ edites; <kbd>Enter</kbd> y lo estás jugando otra vez.
   espejo y deshacer). El PNG se descarga listo para dejarlo en `graficos/`.
 - **Cámara a elegir**: `scroll` (el escenario se desliza, como en consola) o
   `pantallas` (la vista salta de una pantalla fija a la siguiente, como en los
-  ordenadores de 8 bits). Es la misma opción para las seis máquinas.
+  ordenadores de 8 bits). Es la misma opción para las siete máquinas.
 - **El sonido, con botón de escuchar**: los doce momentos que el juego produce
   (saltar, coger una moneda, recibir un golpe…) con su tipo —notas, barrido o
   ruido— y sus números, y las canciones con sus dos pistas de notas. Lo oyes ahí
@@ -258,7 +273,7 @@ niveles:
 que se atraviesa desde abajo, `^` pinchos. Los demás símbolos los defines tú.
 
 El jugador puede **atacar**, no sólo pisar: con `ataque:` dispara un proyectil
-o pega de cerca, y el botón de acción de las seis máquinas pasa a hacer algo.
+o pega de cerca, y el botón de acción de las siete máquinas pasa a hacer algo.
 `ngplat nuevo` ya te lo deja montado.
 
 La meta se puede **cerrar con llave**: un objeto con `efecto: llave` y un nivel
@@ -320,7 +335,7 @@ hace daño: es escenario que se mueve.
 Con `jugadores: 2` juegan dos a la vez en la misma pantalla, cada uno con su
 mando y con sus vidas: la cámara va al punto medio y el que se queda atrás se
 para pegado al borde. En cada máquina el segundo mando está donde toca (en el
-Amiga y en el Atari ST, en el puerto del ratón), y las seis se comprueban en
+Amiga y en el Atari ST, en el puerto del ratón), y las siete se comprueban en
 emulador. Los detalles, en [docs/formato.md](docs/formato.md).
 
 La referencia completa está en [docs/formato.md](docs/formato.md) y hay un
@@ -338,9 +353,9 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.19.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
-| `neoplat-kit-1.19.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.19.zip` | el `ngplat.exe` y su LEEME |
+| `neoplat-docs-1.20.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
+| `neoplat-kit-1.20.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.20.zip` | el `ngplat.exe` y su LEEME |
 
 El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
 plantillas; no necesita Python ni nada instalado. Con **doble clic** —sin
@@ -355,7 +370,7 @@ make paquetes-exe PYTHON_WINDOWS="wine /ruta/a/python.exe"
 
 pero el que se reparte lo hace la acción de GitHub en un `windows-latest`, que
 es lo único que garantiza que el binario es el que va a usar la gente. La
-acción, además, lo ejecuta: crea un proyecto y compila para las seis máquinas.
+acción, además, lo ejecuta: crea un proyecto y compila para las siete máquinas.
 
 **Está comprobado que sale lo mismo por los dos caminos**: un proyecto generado
 con el `.exe` en Windows es byte a byte idéntico a uno generado con `./ngplat`
@@ -365,7 +380,7 @@ siempre con saltos de línea de Unix (`newline="\n"`), que si no Windows meterí
 
 Y hay una prueba (`tests/test_empaquetar.py`) que monta el árbol que deja
 PyInstaller al arrancar el `.exe` y comprueba que dentro está todo lo que el
-kit abre en marcha: el motor de las seis máquinas, las plantillas, el preview
+kit abre en marcha: el motor de las siete máquinas, las plantillas, el preview
 y los módulos que el proyecto generado se lleva consigo. Es fácil añadir un
 archivo nuevo y que el `.exe` se quede sin él; así salta antes de repartirlo.
 
@@ -453,7 +468,7 @@ neoplat/
 ├── examples/
 │   ├── bosque-magico/      juego de ejemplo listo para compilar
 │   └── cueva-de-hierro/    el mismo motor con seis colores y parallax en Amiga
-└── tests/                  424 pruebas + 129 de jugabilidad + 81 del editor +
+└── tests/                  430 pruebas + 129 de jugabilidad + 81 del editor +
                             bot que se pasa los niveles + emuladores y navegador
 ```
 
@@ -480,7 +495,7 @@ colisiones, editor, preview, pruebas) ya está hecho y no se toca.
 
 ## La misma simulación en los seis sitios
 
-`engine/core/np_world.c` (las seis máquinas) y `preview/np_core.js` (navegador)
+`engine/core/np_world.c` (las siete máquinas) y `preview/np_core.js` (navegador)
 son la misma simulación escrita dos veces: enteros y coma fija 24.8, sin
 decimales.
 `tests/test_paridad.py` ejecuta las dos con las mismas pulsaciones y compara
@@ -497,7 +512,7 @@ make test           # herramientas, validación, generación de C y paridad C/JS
 make test-emulador  # arranca la ROM y el disquete en emuladores de verdad
 make test-navegador # abre el preview y el editor en Chromium
 node tests/comportamiento.js   # 38 pruebas de jugabilidad
-make ejemplo-todos             # compila el ejemplo para las seis máquinas
+make ejemplo-todos             # compila el ejemplo para las siete máquinas
 ```
 
 Las pruebas con emulador y navegador son opcionales: si no tienes
@@ -594,15 +609,15 @@ Verificado aquí:
 - Las mecánicas de plataformas funcionan (24 pruebas de jugabilidad).
 - Los niveles de ejemplo se pueden terminar: un bot los juega enteros en cada
   prueba, así que nunca se cuela un nivel imposible.
-- El mismo juego compilado para las seis máquinas describe exactamente los
+- El mismo juego compilado para las siete máquinas describe exactamente los
   mismos niveles, enemigos y mapas: lo comprueban las pruebas.
 - Ida y vuelta de los cinco formatos de gráficos (tiles de Neo Geo, tiles del
   VDP, bitplanes y máscaras del Amiga, un byte por píxel de la Jaguar, cuatro
   bitplanes del ST): codificar y decodificar devuelve la imagen original.
-- **Las seis máquinas suenan, y suenan lo que pone el `game.yaml`**: las
+- **Las siete máquinas suenan, y suenan lo que pone el `game.yaml`**: las
   pruebas capturan lo que sale del altavoz —del core de libretro en Mega Drive,
   Amiga, Jaguar, Atari ST y X68000, y del circuito entero 68000 → Z80 → YM2610
-  en la Neo Geo— y reconocen las notas una a una. En las seis salen **16 de 16**
+  en la Neo Geo— y reconocen las notas una a una. En las siete salen **16 de 16**
   de la melodía, la pantalla de título del ejemplo está callada (no declara
   `titulo:`) y al saltar se oye el efecto por encima de la música. Comprobado
   que la prueba sabe fallar: con una placa muda a propósito, fallan las tres
@@ -621,7 +636,7 @@ Verificado aquí:
   mide exactamente lo que la hoja.
 - Los nombres que el editor escribe en el `game.yaml` se comprueban uno a uno
   contra el lector del kit.
-- **Los dos mandos llegan a los dos jugadores en las seis máquinas**: con
+- **Los dos mandos llegan a los dos jugadores en las siete máquinas**: con
   `jugadores: 2`, las pruebas juegan la misma partida tres veces en cada
   emulador —con un mando, con el otro y con los dos— y exigen que las tres
   acaben distintas. Ahí se vio que en la Jaguar las filas de la matriz **no se
@@ -692,7 +707,7 @@ Verificado aquí:
   se comprueba que recibe las órdenes del 68000 y escribe en el chip los
   periodos y volúmenes de las notas escritas en el `game.yaml`.
 
-**Sin probar en hardware real**: las seis se han visto funcionando en
+**Sin probar en hardware real**: las siete se han visto funcionando en
 emuladores, pero no en máquinas de verdad. Y en la Neo Geo el emulador es el del
 propio kit, que da por buenas dos cosas porque las da por buenas también el
 motor: que el sprite 0 va delante de los demás y que la fila 0 del plano fix cae
@@ -708,7 +723,7 @@ Lo que aún no hace:
   razón: la pantalla gráfica es una sola página en ese modo. Dibujarlas con el blitter y quedarse con los 32 colores
   está medido y **no cabe**: 1.311 líneas de barrido sobre las 313 que da un
   frame ([docs/amiga.md](docs/amiga.md)).
-- **Muestras digitales en cinco de las seis máquinas**: un efecto ya puede ser
+- **Muestras digitales en seis de las siete máquinas**: un efecto ya puede ser
   un WAV tuyo (`muestra: sonidos/x.wav`). Lo toca Paula desde la RAM chip en el
   Amiga; en la Mega Drive se lo da al DAC del YM2612 un driver de Z80 que genera
   el propio compilador; en la Jaguar lo lee el DSP del cartucho; en la Neo Geo

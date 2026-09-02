@@ -1411,9 +1411,14 @@
       { valor: "scroll", texto: "scroll (el escenario se desliza)" },
       { valor: "pantallas", texto: "pantalla a pantalla (salta de una a otra)" }
     ]);
+    /* Lo que se elige de verdad es un plano o dos; lo que cambia entre el OCS
+       y el AGA del A1200 es cuantos colores da cada uno. */
+    var aga = DATA.sistema === "amiga1200";
     campoLista(cont, "colores del Amiga", "juego", "amiga", null, j.amiga, [
-      { valor: "32colores", texto: "32 colores (sin parallax)" },
-      { valor: "8colores", texto: "8 colores por plano (con parallax)" }
+      { valor: "32colores",
+        texto: (aga ? "256 colores" : "32 colores") + " (sin parallax)" },
+      { valor: "8colores",
+        texto: (aga ? "16" : "8") + " colores por plano (con parallax)" }
     ]);
     campoLista(cont, "maquina", "juego", "sistema", null, j.sistema,
                (DATA.sistemas || []).map(function (m) {

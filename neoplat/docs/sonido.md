@@ -83,10 +83,10 @@ diluye). Al saltar tiene que aparecer ahí algo que antes no estaba.
 ## Lo que se comprueba en cada máquina
 
 ```bash
-make test-emulador          # las seis
+make test-emulador          # las siete
 ```
 
-En las seis: que la pantalla de título suena **como diga el proyecto** —con
+En las siete: que la pantalla de título suena **como diga el proyecto** —con
 `sonido: titulo:` tiene que sonar y sin ella tiene que estar callada—, que al
 empezar el nivel suenan **las 16 notas** de la melodía del `game.yaml`, y que
 al saltar se oye el efecto por encima de la música.
@@ -182,7 +182,7 @@ canción toca.
 | con un jefe vivo en pantalla | `sonido: jefe:`, si la trae; si no, sigue la del nivel |
 | "game over" y fin de nivel | nada: ahí lo que suena es el efecto |
 
-Las seis máquinas y el preview llaman a esa función y se limitan a mandar el
+Las siete máquinas y el preview llaman a esa función y se limitan a mandar el
 número al chip, así que una regla nueva se escribe una sola vez.
 
 ## Cambiarlo sin salir del navegador

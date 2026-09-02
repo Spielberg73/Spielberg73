@@ -376,4 +376,5 @@ class Emulador:
 
 # --- lo que se mira en la imagen --------------------------------------
 
-from imagen import colores, distintos, franja, guardar_png  # noqa: E402,F401
+from imagen import (colores, distintos, filas_escritas, franja,  # noqa: E402,F401
+                    guardar_png)
