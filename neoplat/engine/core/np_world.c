@@ -404,6 +404,10 @@ static void np_player_reset(NpWorld *w, uint8_t quien)
     p->facing = 1;
     p->health = d->health;
     p->wear_timer = 0;          /* la cuenta atras de `desgaste:` empieza de cero */
+    p->altura = 0;              /* con los pies en el suelo */
+    p->valtura = 0;
+    p->combo_link = 0;          /* la serie de golpes, desde el primero */
+    p->combo_timer = 0;
     p->invuln = 0;
     p->coyote = 0;
     p->buffer = 0;
@@ -708,6 +712,22 @@ static void np_player_attack(NpWorld *w, uint8_t quien)
     p->attack_cd = at->cooldown;
     w->sfx |= NP_SFX_SHOOT;
 
+    /* Golpe nuevo, cuenta nueva: lo que ya haya tocado el anterior vuelve a
+       poder recibir. Sin esto una serie de tres solo acertaria el primero. */
+    if (at->kind == NP_ATTACK_MELEE) {
+        uint8_t i;
+        for (i = 0; i < w->entity_count; i++)
+            w->entities[i].golpeado &= (uint8_t)~(1u << quien);
+    }
+
+    /* La serie: si todavia queda ventana, este golpe es el siguiente de la
+       tanda; si no, se empieza otra vez por el primero. */
+    if (at->kind == NP_ATTACK_MELEE && at->combo > 1) {
+        if (p->combo_timer && p->combo_link + 1 < at->combo) p->combo_link++;
+        else p->combo_link = 0;
+        p->combo_timer = at->combo_window;
+    }
+
     /* La pose de atacar dura lo mismo se pegue o se dispare: es lo que ve el
        jugador y lo que cuenta para `clavado:`. El golpe en si solo lo mira
        np_melee_update, que se desentiende si el ataque es de disparo. */
@@ -996,6 +1016,43 @@ static void np_whip_on(NpWorld *w, uint8_t quien)
 }
 
 /* El golpe cuerpo a cuerpo: mientras dura, una caja delante del jugador. */
+/* ------------------------------------------------ la serie de golpes */
+/*
+ * Los juegos de tortas no van de apretar el boton, van de encadenar: puno,
+ * puno y remate. Lo que lo hace jugable es que el ultimo pega mas fuerte y
+ * **tumba**, asi que quien encadena se quita al matón de encima y quien
+ * machaca el boton se queda a medias.
+ *
+ * `combo_link` dice por cual va y `combo_timer` cuanto queda para que la serie
+ * se corte. Con `combo: 1` -lo normal fuera de este genero- no hay serie y
+ * estas dos funciones devuelven lo de siempre.
+ */
+static uint8_t np_golpe_dano(const NpPlayer *p)
+{
+    const NpAttackDef *at = &np_player_def.attack;
+    if (at->combo > 1 && at->finish_damage && p->combo_link + 1 >= at->combo)
+        return at->finish_damage;
+    return at->damage;
+}
+
+static int np_es_remate(const NpPlayer *p)
+{
+    const NpAttackDef *at = &np_player_def.attack;
+    return at->combo > 1 && p->combo_link + 1 >= at->combo;
+}
+
+/* Al que cobra el remate lo tumba: sale despedido hacia donde miras y se queda
+   unos frames en el suelo, sin gobernarse y sin hacer dano al tocarte. */
+static void np_derribar(const NpPlayer *p, NpEntity *e)
+{
+    const NpAttackDef *at = &np_player_def.attack;
+    if (!np_es_remate(p) || !at->finish_stun) return;
+    if (e->kind != NP_KIND_ENEMY) return;
+    e->knock = at->finish_stun;
+    e->vx = p->facing ? at->finish_push : (np_fix)(-at->finish_push);
+    e->vy = 0;
+}
+
 static void np_melee_update(NpWorld *w, uint8_t quien)
 {
     const NpAttackDef *at = &np_player_def.attack;
@@ -1026,17 +1083,19 @@ static void np_melee_update(NpWorld *w, uint8_t quien)
         if (!e->active) continue;
         if (e->kind != NP_KIND_ENEMY && e->kind != NP_KIND_BREAKABLE
             && e->kind != NP_KIND_GENERATOR) continue;
-        /* Lo que esta parpadeando no se vuelve a tocar. La caja del golpe se
-           queda puesta varios frames y acierta en todos: sin esto, un solo
-           ataque se llevaba por delante a un enemigo de cinco de vida y el
-           `vida:` de los enemigos no servia de nada contra un cuerpo a
-           cuerpo. */
-        if (e->hurt) continue;
+        /* A quien ya ha tocado este golpe no se le toca otra vez. La caja se
+           queda puesta varios frames y acertaria en todos: sin esto, un solo
+           ataque se llevaba por delante a un enemigo de cinco de vida. Lo que
+           se mira es **este** golpe y no el parpadeo, para que el segundo de
+           una serie pueda acertar al que aun parpadea del primero. */
+        if (e->golpeado & (1u << quien)) continue;
         ea = np_entity_def(e);
         if (!np_boxes_overlap(gx, gy, alcance, np_player_height(p),
                               e->x, e->y, ea->box_w, ea->box_h))
             continue;
-        np_hit_entity(w, e, at->damage);
+        e->golpeado |= (uint8_t)(1u << quien);
+        np_hit_entity(w, e, np_golpe_dano(p));
+        if (e->active) np_derribar(p, e);
     }
 }
 
@@ -1308,6 +1367,138 @@ static void np_player_update_cenital(NpWorld *w, uint8_t quien, uint16_t input)
        _resolve_anims), asi que un juego cenital sin arte propio se vera raro
        pero se juega igual. */
     if (p->attack_timer) pose = NP_ANIM_ATTACK;
+    else if (!dx && !dy) pose = NP_ANIM_IDLE;
+    else if (dy < 0 && !dx) pose = NP_ANIM_UP;
+    else if (dy > 0 && !dx) pose = NP_ANIM_DOWN;
+    else pose = NP_ANIM_RUN;
+    np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer, pose);
+    np_anim_tick(a, p->anim, &p->anim_frame, &p->anim_timer);
+}
+
+/* ---------------------------------------------------- la vista de cinta */
+/*
+ * El "yo contra el barrio": Double Dragon, Final Fight, Streets of Rage.
+ *
+ * Se anda por una franja de suelo en las ocho direcciones, como en cenital,
+ * pero **se salta**: hay una tercera coordenada, la altura sobre el suelo, con
+ * su gravedad. Que sean tres y no dos es lo que hace el genero: dos que estan
+ * a la misma altura pero a distinta profundidad no se tocan, y por eso hay que
+ * cuadrarse antes de pegar.
+ *
+ * El truco para que esto no cueste ni una linea en las siete maquinas: `y`
+ * sigue siendo **donde se dibuja** y la altura se guarda aparte. Asi
+ *
+ *   - los dibujantes de las siete maquinas no se enteran de nada;
+ *   - dos cajas se tocan solo si coinciden en profundidad **y** en altura, que
+ *     es justo la regla del genero, y sale gratis de las cajas de siempre: al
+ *     saltar, la caja sube y el punetazo de abajo pasa por debajo;
+ *   - y quien necesita saber por donde se anda -los choques con el escenario y
+ *     la camara- suma la altura y tiene la linea del suelo.
+ *
+ * En el aire no se cambia de idea: la velocidad con la que saltas es la que te
+ * lleva hasta caer, como en los recreativos. Por eso el salto se decide antes
+ * de leer el mando y no despues.
+ */
+static void np_player_update_cinta(NpWorld *w, uint8_t quien, uint16_t input)
+{
+    const NpPlayerDef *d = &np_player_def;
+    const NpActorDef *a = &d->actor;
+    NpPlayer *p = &w->players[quien];
+    int dx = 0, dy = 0;
+    int hit_x = 0, hit_down = 0, hit_up = 0;
+    np_fix suelo;
+    uint8_t pose;
+
+    /* Aqui no se cae de ningun sitio: si no estas por el aire, estas de pie.
+       Lo primero es cuadrar eso, porque un jugador recien colocado viene con
+       `on_ground` a cero -en vista lateral se cae hasta el suelo- y sin esto
+       no podria saltar en su primer frame. */
+    if (p->altura <= 0 && p->valtura <= 0) {
+        p->altura = 0;
+        p->valtura = 0;
+        p->on_ground = 1;
+    }
+
+    if (p->stun) {
+        p->stun--;
+        input = 0;
+    } else {
+        if (input & NP_IN_RIGHT) dx += 1;
+        if (input & NP_IN_LEFT) dx -= 1;
+        if (input & NP_IN_DOWN) dy += 1;
+        if (input & NP_IN_UP) dy -= 1;
+    }
+
+    /* Andar: solo con los pies en el suelo. En el aire manda el impulso. */
+    if (p->on_ground) {
+        if (dx || dy) {
+            p->aim = np_aim_de(dx, dy);
+            if (dx) p->facing = (uint8_t)(dx > 0);
+            p->vx = np_paso_cenital(d->speed, dx, dx && dy);
+            p->vy = np_paso_cenital(d->speed, dy, dx && dy);
+        } else if (p->stun) {
+            p->vx = np_approach(p->vx, 0, d->friction);  /* el empujon se apaga */
+            p->vy = np_approach(p->vy, 0, d->friction);
+        } else {
+            p->vx = 0;
+            p->vy = 0;
+        }
+    }
+
+    /* La linea del suelo, **antes** de tocar la altura: es lo que no se mueve
+       al saltar. Sacarla despues seria sumar la altura nueva a una `y` que
+       todavia lleva la vieja, y el salto se anularia solo. */
+    suelo = p->y + p->altura;
+
+    /* El salto, que aqui es la tercera coordenada: `salto:` y `gravedad:` son
+       los mismos numeros de siempre, solo que no mueven la y sino la altura. */
+    if (!p->stun && (input & NP_IN_JUMP) && !(w->prev_input[quien] & NP_IN_JUMP)
+        && p->on_ground) {
+        p->valtura = d->jump;
+        p->on_ground = 0;
+        w->sfx |= NP_SFX_JUMP;
+    }
+    if (!p->on_ground) {
+        p->altura += p->valtura;
+        p->valtura -= d->gravity;
+        if (p->valtura < -d->max_fall) p->valtura = -d->max_fall;
+        if (p->altura <= 0) {
+            p->altura = 0;
+            p->valtura = 0;
+            p->on_ground = 1;
+        }
+    }
+
+    /* Andar y chocar, en la linea del suelo: saltando se pasa por encima de un
+       enemigo, pero no de una pared. */
+    p->x = np_move_x(w->level, p->x, suelo, a->box_w, a->box_h, p->vx, &hit_x);
+    if (hit_x) p->vx = 0;
+    suelo = np_move_y(w->level, p->x, suelo, a->box_w, a->box_h, p->vy, 1,
+                      &hit_down, &hit_up);
+    if (hit_down || hit_up) p->vy = 0;
+    p->y = suelo - p->altura;
+
+    p->jumps_left = 0;
+    p->stairs = 0;
+    p->crouch = 0;
+
+    /* El boton de accion es el punetazo; el de saltar, saltar. Aqui no hay
+       arma secundaria en el salto como en el comando: en un juego de tortas,
+       saltar **es** media pelea. */
+    if (p->attack_cd) p->attack_cd--;
+    if ((input & NP_IN_ACTION) && !(w->prev_input[quien] & NP_IN_ACTION))
+        np_player_attack(w, quien);
+
+    if (p->invuln) p->invuln--;
+    /* La caja del punetazo, que ademas lleva el reloj del golpe. En vista
+       cenital no se llama: alli el puno tendria que salir en ocho direcciones
+       y los juegos de comando disparan. Aqui se mira a un lado o a otro -como
+       en cualquier juego de tortas- y la caja de delante vale tal cual. */
+    np_melee_update(w, quien);
+
+    if (p->attack_timer)
+        pose = np_es_remate(p) ? NP_ANIM_FINISH : NP_ANIM_ATTACK;
+    else if (!p->on_ground) pose = (p->valtura > 0) ? NP_ANIM_JUMP : NP_ANIM_FALL;
     else if (!dx && !dy) pose = NP_ANIM_IDLE;
     else if (dy < 0 && !dx) pose = NP_ANIM_UP;
     else if (dy > 0 && !dx) pose = NP_ANIM_DOWN;
@@ -1716,6 +1907,19 @@ static void np_enemy_update(NpWorld *w, NpEntity *e)
     const NpPlayer *p = np_nearest_player(w, e->x);
     int hit_x = 0, hit_down = 0, hit_up = 0;
 
+    /* Derribado por un remate: no decide nada, solo resbala con el empujon que
+       se llevo hasta que se le acaba y se levanta. Es lo que hace que encadenar
+       sirva de algo: unos frames sin el encima. */
+    if (e->knock) {
+        e->knock--;
+        e->x = np_move_x(w->level, e->x, e->y, a->box_w, a->box_h, e->vx, &hit_x);
+        if (hit_x) e->vx = 0;
+        e->vx = np_approach(e->vx, 0, np_player_def.friction);
+        np_anim_set(&e->anim, &e->anim_frame, &e->anim_timer, NP_ANIM_HURT);
+        np_anim_tick(a, e->anim, &e->anim_frame, &e->anim_timer);
+        return;
+    }
+
     switch (d->behavior) {
     case NP_AI_PATROL:
         e->vx = e->facing ? d->speed : -d->speed;
@@ -1966,6 +2170,8 @@ static void np_touch_entities(NpWorld *w)
             if (e->kind == NP_KIND_PLATFORM) continue;   /* es suelo, no un bicho */
             if (e->kind == NP_KIND_BREAKABLE) continue;  /* hay que pegarle */
             if (e->kind == NP_KIND_GENERATOR) continue;  /* tambien: y no hace dano */
+            /* uno en el suelo no hace dano: por eso se remata */
+            if (e->kind == NP_KIND_ENEMY && e->knock) continue;
             if (e->kind == NP_KIND_ENEMY_SHOT) continue; /* se mira en su update */
             if (e->kind == NP_KIND_PRISONER) {
                 np_prisoner_free(w, e, p);               /* tocarlo lo suelta */
@@ -2030,14 +2236,16 @@ static void np_camera_update(NpWorld *w)
     for (i = 0; i < NP_MAX_PLAYERS; i++) {
         if (!w->players[i].playing) continue;
         centro_x += NP_F2I(w->players[i].x) + a->box_w / 2;
-        centro_y += NP_F2I(w->players[i].y) + a->box_h / 2;
+        /* En la cinta manda la linea del suelo y no donde se dibuja: si no, la
+           camara daria un brinco con cada salto. */
+        centro_y += NP_F2I(w->players[i].y + w->players[i].altura) + a->box_h / 2;
         cuantos++;
     }
     if (!cuantos) {
         /* game over: no queda nadie en juego, pero la camara tiene que
            quedarse donde estaba y no irse al origen */
         centro_x = NP_F2I(w->players[0].x) + a->box_w / 2;
-        centro_y = NP_F2I(w->players[0].y) + a->box_h / 2;
+        centro_y = NP_F2I(w->players[0].y + w->players[0].altura) + a->box_h / 2;
     } else if (cuantos > 1) {
         centro_x /= cuantos;
         centro_y /= cuantos;
@@ -2141,7 +2349,12 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
     for (quien = 0; quien < NP_MAX_PLAYERS; quien++) {
         NpPlayer *p = &w->players[quien];
         if (!p->playing) continue;
+        /* La ventana para encadenar corre aqui, antes de leer el mando, y no
+           en cada vista: asi la serie va igual se mire desde donde se mire. */
+        if (p->combo_timer) p->combo_timer--;
         if (p->dying) np_player_falling(w, quien);
+        else if (np_vista_cinta)
+            np_player_update_cinta(w, quien, mandos[quien]);
         else if (np_vista_cenital)
             np_player_update_cenital(w, quien, mandos[quien]);
         else np_player_update(w, quien, mandos[quien]);

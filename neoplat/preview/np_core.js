@@ -30,7 +30,9 @@
   var ANIM_IDLE = 0, ANIM_RUN = 1, ANIM_JUMP = 2, ANIM_FALL = 3, ANIM_HURT = 4,
       ANIM_ATTACK = 5, ANIM_STAIR = 6, ANIM_CROUCH = 7,
       /* solo en vista cenital: de espaldas y de frente */
-      ANIM_UP = 8, ANIM_DOWN = 9;
+      ANIM_UP = 8, ANIM_DOWN = 9,
+      /* el ultimo golpe de una serie, el que tumba */
+      ANIM_FINISH = 10;
   var KIND_ENEMY = 0, KIND_ITEM = 1, KIND_SHOT = 2, KIND_PLATFORM = 3;
   var KIND_BREAKABLE = 4, KIND_SUBSHOT = 5, KIND_MELEE = 6;
   var KIND_ENEMY_SHOT = 7;      /* lo que tira un enemigo con `dispara:` */
@@ -74,6 +76,11 @@
         x: 0, y: 0, vx: 0, vy: 0, animTimer: 0, invuln: 0, dying: 0,
         anim: 0, animFrame: 0, onGround: 0, facing: 1, jumpsLeft: 0,
         health: 1, coyote: 0, buffer: 0, lives: 0, playing: 0, wearTimer: 0,
+        /* la tercera coordenada de la vista de cinta: lo alto que estas sobre
+           el suelo y a que velocidad subes o bajas */
+        altura: 0, valtura: 0,
+        /* la serie de golpes: por cual va y cuanto queda de ventana */
+        comboLink: 0, comboTimer: 0,
         attackTimer: 0, attackCd: 0, riding: 0, whip: 0, crouch: 0,
         stun: 0, power: 0,
         stairs: 0, stairDir: 1
@@ -141,7 +148,14 @@
   }
 
   World.prototype.cenital = function () {
-    return !!(this.data.view === "cenital");
+    /* La cinta es una vista cenital que ademas salta: el movimiento, la
+       punteria y el empujon de los golpes son los mismos. Igual que
+       np_vista_cenital en C, que tambien vale 1 con `vista: cinta`. */
+    return !!(this.data.view === "cenital" || this.data.view === "cinta");
+  };
+
+  World.prototype.cinta = function () {
+    return !!(this.data.view === "cinta");
   };
 
   World.prototype.tileKindAt = function (tx, ty) {
@@ -290,7 +304,9 @@
         active: 1, kind: s[2], def: s[3], x: I2F(s[0]), y: I2F(s[1]),
         homeX: I2F(s[0]), homeY: I2F(s[1]), vx: 0, vy: 0, facing: 0,
         anim: ANIM_IDLE,
-        animFrame: 0, animTimer: 0, hurt: 0, timer: 0, health: 1, vida: 0
+        animFrame: 0, animTimer: 0, hurt: 0, timer: 0, health: 1, vida: 0,
+        knock: 0,    /* derribado: frames que se queda en el suelo */
+        golpeado: 0  /* a quien ya ha tocado este golpe: un bit por jugador */
       };
       if (e.kind === KIND_ENEMY) {
         var ed = this.data.enemies[e.def];
@@ -323,6 +339,8 @@
     p.vx = 0; p.vy = 0; p.onGround = 0; p.facing = 1; p.aim = 0;
     p.health = d.health; p.invuln = 0; p.coyote = 0; p.buffer = 0;
     p.wearTimer = 0;            /* la cuenta atras de `desgaste:` de cero */
+    p.altura = 0; p.valtura = 0;   /* con los pies en el suelo */
+    p.comboLink = 0; p.comboTimer = 0;   /* la serie, desde el primero */
     p.dying = 0; p.attackTimer = 0; p.attackCd = 0; p.riding = 0; p.stun = 0;
     p.power = 0;                /* el arma vuelve a la de serie */
     p.crouch = 0;
@@ -434,7 +452,7 @@
       active: 0, kind: KIND_SHOT, def: 0, x: 0, y: 0, homeX: 0, homeY: 0,
       vx: 0, vy: 0,
       facing: 0, anim: ANIM_IDLE, animFrame: 0, animTimer: 0, hurt: 0,
-      timer: 0, health: 1, vida: 0
+      timer: 0, health: 1, vida: 0, knock: 0, golpeado: 0
     });
     i = this.entities.length - 1;
     if (i >= this.entityCount) this.entityCount = i + 1;
@@ -478,7 +496,8 @@
     e.y = suelo - I2F(ia.box_h);
     e.homeX = e.x; e.homeY = e.y;
     e.vx = 0; e.vy = 0;
-    e.health = 1; e.hurt = 0; e.timer = 0; e.vida = 0;
+    e.health = 1; e.hurt = 0; e.timer = 0; e.vida = 0; e.knock = 0;
+    e.golpeado = 0;
     e.anim = ANIM_IDLE; e.animFrame = 0; e.animTimer = 0;
   };
 
@@ -568,6 +587,20 @@
     if (!at || at.kind === ATTACK_NONE || p.attackCd) return;
     p.attackCd = at.cooldown;
     this.sfx |= SFX.SHOOT;
+    /* Golpe nuevo, cuenta nueva: lo que ya haya tocado el anterior vuelve a
+       poder recibir. Igual que np_player_attack. */
+    if (at.kind === ATTACK_MELEE) {
+      for (var k = 0; k < this.entityCount; k++)
+        this.entities[k].golpeado &= ~(1 << quien);
+    }
+
+    /* La serie: si queda ventana, este golpe es el siguiente de la tanda; si
+       no, se empieza otra vez por el primero. Igual que np_player_attack. */
+    if (at.kind === ATTACK_MELEE && at.combo > 1) {
+      if (p.comboTimer && p.comboLink + 1 < at.combo) p.comboLink++;
+      else p.comboLink = 0;
+      p.comboTimer = at.combo_window;
+    }
     /* La pose de atacar dura lo mismo se pegue o se dispare. */
     p.attackTimer = at.duration;
     if (at.kind === ATTACK_MELEE) return;
@@ -658,14 +691,42 @@
       if (!e.active) continue;
       if (e.kind !== KIND_ENEMY && e.kind !== KIND_BREAKABLE
           && e.kind !== KIND_GENERATOR) continue;
-      /* Lo que esta parpadeando no se vuelve a tocar: la caja del golpe dura
-         varios frames y acertaria en todos. Igual que np_melee_update. */
-      if (e.hurt) continue;
+      /* A quien ya ha tocado este golpe no se le toca otra vez: la caja dura
+         varios frames y acertaria en todos. Se mira **este** golpe y no el
+         parpadeo, para que el segundo de una serie acierte al que aun
+         parpadea del primero. Igual que np_melee_update. */
+      if (e.golpeado & (1 << quien)) continue;
       var ea = this.entityDef(e).actor;
       if (!overlap(gx, gy, alcance, this.playerHeight(quien),
                         e.x, e.y, ea.box_w, ea.box_h)) continue;
-      this.hitEntity(e, at.damage);
+      e.golpeado |= (1 << quien);
+      this.hitEntity(e, this.golpeDano(quien));
+      if (e.active) this.derribar(quien, e);
     }
+  };
+
+  /* Lo que hace el golpe que se esta dando ahora: el ultimo de una serie pega
+     mas fuerte. Igual que np_golpe_dano. */
+  World.prototype.golpeDano = function (quien) {
+    var at = this.data.player.attack, p = this.players[quien];
+    if (at.combo > 1 && at.finish_damage && p.comboLink + 1 >= at.combo)
+      return at.finish_damage;
+    return at.damage;
+  };
+
+  World.prototype.esRemate = function (quien) {
+    var at = this.data.player.attack, p = this.players[quien];
+    return !!(at && at.combo > 1 && p.comboLink + 1 >= at.combo);
+  };
+
+  /* Al que cobra el remate lo tumba. Igual que np_derribar. */
+  World.prototype.derribar = function (quien, e) {
+    var at = this.data.player.attack, p = this.players[quien];
+    if (!this.esRemate(quien) || !at.finish_stun) return;
+    if (e.kind !== KIND_ENEMY) return;
+    e.knock = at.finish_stun;
+    e.vx = p.facing ? at.finish_push : -at.finish_push;
+    e.vy = 0;
   };
 
   /* ------------------------------------------------- arma secundaria
@@ -975,6 +1036,95 @@
     animTick(a, p);
   };
 
+  /* El jugador en la vista de cinta: el "yo contra el barrio". Se anda en
+     ocho direcciones como desde arriba, pero se salta, porque hay una tercera
+     coordenada -la altura sobre el suelo- con su gravedad. `y` sigue siendo
+     donde se dibuja, asi que la linea del suelo es y + altura. Traduccion
+     literal de np_player_update_cinta. */
+  World.prototype.playerUpdateCinta = function (quien, input) {
+    var d = this.data.player, a = d.actor, p = this.players[quien];
+    var dx = 0, dy = 0, suelo, pose;
+
+    /* Aqui no se cae de ningun sitio: si no estas por el aire, estas de pie.
+       Igual que np_player_update_cinta, y por el mismo motivo: recien colocado
+       el jugador viene con onGround a cero y no podria saltar. */
+    if (p.altura <= 0 && p.valtura <= 0) {
+      p.altura = 0; p.valtura = 0; p.onGround = 1;
+    }
+
+    if (p.stun) { p.stun--; input = 0; }
+    else {
+      if (input & IN.RIGHT) dx += 1;
+      if (input & IN.LEFT) dx -= 1;
+      if (input & IN.DOWN) dy += 1;
+      if (input & IN.UP) dy -= 1;
+    }
+
+    /* Andar: solo con los pies en el suelo. En el aire manda el impulso. */
+    if (p.onGround) {
+      if (dx || dy) {
+        p.aim = aimDe(dx, dy);
+        if (dx) p.facing = dx > 0 ? 1 : 0;
+        p.vx = pasoCenital(d.speed, dx, dx && dy);
+        p.vy = pasoCenital(d.speed, dy, dx && dy);
+      } else if (p.stun) {
+        p.vx = approach(p.vx, 0, d.friction);
+        p.vy = approach(p.vy, 0, d.friction);
+      } else {
+        p.vx = 0;
+        p.vy = 0;
+      }
+    }
+
+    /* La linea del suelo, antes de tocar la altura: es lo que no se mueve al
+       saltar. Igual que np_player_update_cinta. */
+    suelo = p.y + p.altura;
+
+    /* El salto, que aqui es la tercera coordenada. */
+    if (!p.stun && (input & IN.JUMP) && !(this.prevInput[quien] & IN.JUMP)
+        && p.onGround) {
+      p.valtura = d.jump;
+      p.onGround = 0;
+      this.sfx |= SFX.JUMP;
+    }
+    if (!p.onGround) {
+      p.altura += p.valtura;
+      p.valtura -= d.gravity;
+      if (p.valtura < -d.max_fall) p.valtura = -d.max_fall;
+      if (p.altura <= 0) { p.altura = 0; p.valtura = 0; p.onGround = 1; }
+    }
+
+    /* Andar y chocar, en la linea del suelo: saltando se pasa por encima de un
+       enemigo, pero no de una pared. */
+    p.x = this.moveX(p.x, suelo, a.box_w, a.box_h, p.vx, moveOut);
+    if (moveOut.hit) p.vx = 0;
+    suelo = this.moveY(p.x, suelo, a.box_w, a.box_h, p.vy, 1, moveOut);
+    if (moveOut.hitDown || moveOut.hitUp) p.vy = 0;
+    p.y = suelo - p.altura;
+
+    p.jumpsLeft = 0;
+    p.stairs = 0;
+    p.crouch = 0;
+
+    if (p.attackCd) p.attackCd--;
+    if ((input & IN.ACTION) && !(this.prevInput[quien] & IN.ACTION))
+      this.playerAttack(quien);
+
+    if (p.invuln) p.invuln--;
+    /* La caja del punetazo, que ademas lleva el reloj del golpe. Igual que
+       np_player_update_cinta, y por el mismo motivo no se llama en cenital. */
+    this.meleeUpdate(quien);
+
+    if (p.attackTimer) pose = this.esRemate(quien) ? ANIM_FINISH : ANIM_ATTACK;
+    else if (!p.onGround) pose = p.valtura > 0 ? ANIM_JUMP : ANIM_FALL;
+    else if (!dx && !dy) pose = ANIM_IDLE;
+    else if (dy < 0 && !dx) pose = ANIM_UP;
+    else if (dy > 0 && !dx) pose = ANIM_DOWN;
+    else pose = ANIM_RUN;
+    animSet(p, pose);
+    animTick(a, p);
+  };
+
   World.prototype.playerUpdate = function (quien, input) {
     var d = this.data.player, a = d.actor, p = this.players[quien];
     var dir = 0;
@@ -1254,6 +1404,17 @@
 
   World.prototype.enemyUpdate = function (e) {
     var d = this.data.enemies[e.def], a = d.actor, p = this.nearestPlayer(e.x);
+    /* Derribado por un remate: no decide nada, solo resbala con el empujon que
+       se llevo. Igual que np_enemy_update. */
+    if (e.knock) {
+      e.knock--;
+      e.x = this.moveX(e.x, e.y, a.box_w, a.box_h, e.vx, moveOut);
+      if (moveOut.hit) e.vx = 0;
+      e.vx = approach(e.vx, 0, this.data.player.friction);
+      animSet(e, ANIM_HURT);
+      animTick(a, e);
+      return;
+    }
     switch (d.behavior) {
       case AI_PATROL:
         e.vx = e.facing ? d.speed : -d.speed;
@@ -1429,6 +1590,8 @@
         if (e.kind === KIND_MELEE) continue;     /* es tu propio latigo */
         if (e.kind === KIND_PLATFORM) continue;  /* es suelo, no un bicho */
         if (e.kind === KIND_GENERATOR) continue; /* hay que pegarle, y no hace dano */
+        /* uno en el suelo no hace dano: por eso se remata */
+        if (e.kind === KIND_ENEMY && e.knock) continue;
         if (e.kind === KIND_BREAKABLE) continue; /* hay que pegarle */
         if (e.kind === KIND_ENEMY_SHOT) continue;   /* se mira en su update */
         if (e.kind === KIND_PRISONER) { this.prisonerFree(e, p); continue; }
@@ -1467,13 +1630,15 @@
     for (i = 0; i < MAX_PLAYERS; i++) {
       if (!this.players[i].playing) continue;
       cx += F2I(this.players[i].x) + idiv(a.box_w, 2);
-      cy += F2I(this.players[i].y) + idiv(a.box_h, 2);
+      /* En la cinta manda la linea del suelo y no donde se dibuja: si no, la
+         camara daria un brinco con cada salto. Igual que np_camera_update. */
+      cy += F2I(this.players[i].y + this.players[i].altura) + idiv(a.box_h, 2);
       cuantos++;
     }
     if (!cuantos) {
       /* game over: la camara se queda donde estaba, no se va al origen */
       cx = F2I(this.players[0].x) + idiv(a.box_w, 2);
-      cy = F2I(this.players[0].y) + idiv(a.box_h, 2);
+      cy = F2I(this.players[0].y + this.players[0].altura) + idiv(a.box_h, 2);
     } else if (cuantos > 1) {
       cx = idiv(cx, cuantos); cy = idiv(cy, cuantos);
     }
@@ -1550,7 +1715,11 @@
     for (quien = 0; quien < MAX_PLAYERS; quien++) {
       var jugador = this.players[quien];
       if (!jugador.playing) continue;
+      /* La ventana para encadenar corre aqui, antes de leer el mando, igual
+         que en np_play_step: asi la serie va igual en las dos. */
+      if (jugador.comboTimer) jugador.comboTimer--;
       if (jugador.dying) this.playerFalling(quien);
+      else if (this.cinta()) this.playerUpdateCinta(quien, mandos[quien]);
       else if (this.cenital()) this.playerUpdateCenital(quien, mandos[quien]);
       else this.playerUpdate(quien, mandos[quien]);
     }

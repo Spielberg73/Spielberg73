@@ -113,8 +113,14 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("const uint8_t np_player_count = %d;" % project.players)
     src.append("const uint16_t np_time_limit = %d;" % project.time_limit)
     src.append("/* Desde donde se mira: 0 = de lado (con gravedad), 1 = desde arriba. */")
+    # La cinta es una vista cenital que ademas salta: pone las dos banderas
+    # para que el movimiento, la punteria y el empujon de los golpes sean los
+    # de cenital sin repetir una linea.
     src.append("const uint8_t np_vista_cenital = %d;"
-               % (1 if project.view == "cenital" else 0))
+               % (1 if project.view in ("cenital", "cinta") else 0))
+    src.append("/* Y si ademas se salta (el 'yo contra el barrio'). */")
+    src.append("const uint8_t np_vista_cinta = %d;"
+               % (1 if project.view == "cinta" else 0))
     src.append("const uint8_t np_camara_pantallas = %d;"
                % (1 if project.camera == "pantallas" else 0))
     src.append("const uint16_t np_tileset_first_tile = %d;" % build.tileset.first_tile)
@@ -194,10 +200,16 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
         src.append(_actor_def("np_attack", actor_def_values(build.attack)) + ",")
     else:
         src.append("    " + _actor_vacio() + ",")
-    src.append("        %d, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d"
+    src.append("        %d, %d, %d, %d, %d, %d,"
                % (av["speed"], av["range"], av["cooldown"], av["duration"],
-                  av["windup"], av["range_step"], av["levels"], av["kind"],
-                  av["damage"], av["locks"], av["fx"]))
+                  av["windup"], av["range_step"]))
+    src.append("        %d, %d,   /* la serie: ventana y empujon del remate */"
+               % (av["combo_window"], av["finish_push"]))
+    src.append("        %d, %d, %d,   /* golpes, dano del remate y derribo */"
+               % (av["combo"], av["finish_damage"], av["finish_stun"]))
+    src.append("        %d, %d, %d, %d, %d"
+               % (av["levels"], av["kind"], av["damage"], av["locks"],
+                  av["fx"]))
     src.append("    }")
     src.append("};")
     src.append("")

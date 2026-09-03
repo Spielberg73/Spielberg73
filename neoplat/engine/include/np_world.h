@@ -39,6 +39,14 @@ typedef struct {
     uint8_t crouch;          /* 1 = agachado */
     int8_t stair_dir;        /* hacia donde avanza en x al subir: +1 o -1 */
     uint16_t wear_timer;     /* frames para el siguiente punto de `desgaste:` */
+    /* La tercera coordenada de la vista de cinta: lo alto que estas sobre el
+       suelo, y a que velocidad subes o bajas. En las otras vistas valen cero
+       siempre. `y` sigue siendo donde se dibuja, asi que la linea del suelo
+       -por donde se anda y con lo que se choca- es y + altura. */
+    np_fix altura, valtura;
+    /* La serie de golpes: por cual va y cuanto queda para que se corte. */
+    uint16_t combo_timer;
+    uint8_t combo_link;
     uint8_t lives;           /* las vidas son de cada uno */
     uint8_t playing;         /* 0 = fuera (segundo jugador de una partida a uno,
                                 o el que se ha quedado sin vidas) */
@@ -53,6 +61,16 @@ typedef struct {
     uint16_t anim_timer;
     uint8_t active, kind, def;
     uint8_t anim, anim_frame, facing, health, hurt;
+    /* Derribado: frames que se queda sin gobernarse, resbalando con el empujon
+       del ultimo golpe de una serie. Mientras dura no decide nada ni hace dano
+       al tocarte, que es lo que hace que rematar sirva de algo. */
+    uint8_t knock;
+    /* A quien ya ha tocado **este** golpe: un bit por jugador. La caja del
+       cuerpo a cuerpo se queda puesta varios frames y acertaria en todos, asi
+       que se marca al tocar y se limpia al empezar el golpe siguiente. Antes
+       esto lo hacia el parpadeo (`hurt`), y por eso una serie de tres solo
+       acertaba el primero: el segundo llegaba con el enemigo aun parpadeando. */
+    uint8_t golpeado;
 } NpEntity;
 
 typedef struct {

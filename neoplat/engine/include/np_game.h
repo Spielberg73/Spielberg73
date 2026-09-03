@@ -51,6 +51,14 @@ typedef struct {
      * que es lo que hace que perder una vida duela mas que perder una vida.
      * `levels` a cero deja el arma como estaba y el objeto no hace nada. */
     uint16_t range_step;     /* pixeles que alarga cada mejora */
+    /* La serie de golpes de los juegos de tortas: apretar otra vez antes de
+     * que se acabe `combo_window` encadena el siguiente, y el ultimo es el que
+     * tumba. Con `combo` a 1 -lo normal- no hay serie y todo esto vale cero. */
+    uint16_t combo_window;   /* frames para encadenar el siguiente */
+    np_fix finish_push;      /* con cuanta fuerza sale despedido el ultimo */
+    uint8_t combo;           /* golpes de la serie (1 = no hay serie) */
+    uint8_t finish_damage;   /* lo que hace el ultimo (0 = como los demas) */
+    uint8_t finish_stun;     /* frames que se queda en el suelo el que lo cobra */
     uint8_t levels;          /* cuantas mejoras admite (0 = ninguna) */
     uint8_t kind;            /* NP_ATTACK_* */
     uint8_t damage;
@@ -280,6 +288,12 @@ extern const uint16_t np_time_limit;      /* en segundos, 0 = sin limite */
    escenario se recorre en las dos direcciones, que es como se juega a un
    Ikari. Lo lee el motor en np_world.c. */
 extern const uint8_t np_vista_cenital;
+/* Y la de cinta, el "yo contra el barrio": se anda por una franja de suelo en
+   ocho direcciones, como en cenital, pero **se salta**, porque hay una tercera
+   coordenada -la altura sobre el suelo- con su gravedad. Cuando esta a 1,
+   np_vista_cenital tambien lo esta: el movimiento, la punteria y el empujon de
+   los golpes son los mismos; lo que cambia es el salto. */
+extern const uint8_t np_vista_cinta;
 extern const uint8_t np_camara_pantallas; /* 1 = pantalla a pantalla, 0 = scroll */
 extern const char np_game_title[];
 extern const char np_game_author[];

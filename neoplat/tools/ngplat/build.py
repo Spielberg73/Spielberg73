@@ -23,7 +23,7 @@ from .project import (
 # Las dos ultimas solo se usan en vista cenital (el heroe de espaldas y de
 # frente); en lateral se quedan en su sustituto y no estorban.
 ANIM_SLOTS = ["idle", "run", "jump", "fall", "hurt", "attack", "stair", "crouch",
-              "up", "down"]
+              "up", "down", "remate"]
 SIN_STEPS = 64
 
 
@@ -139,7 +139,7 @@ def _resolve_anims(actor: Actor, where: str, frames_available: int) -> List[Anim
     if "idle" not in given:
         given["idle"] = Animation("idle", [0], 8, True)
     fallback = {"run": "idle", "jump": "idle", "fall": "jump", "hurt": "idle",
-                "up": "run", "down": "run"}
+                "up": "run", "down": "run", "remate": "attack"}
     out: List[Animation] = []
     for slot in ANIM_SLOTS:
         anim = given.get(slot)
@@ -506,7 +506,9 @@ def attack_values(project: Project) -> Dict[str, object]:
     if a is None:
         return {"kind": 0, "speed": 0, "range": 0, "cooldown": 0,
                 "duration": 0, "windup": 0, "damage": 0, "locks": 0,
-                "levels": 0, "range_step": 0, "fx": 0}
+                "levels": 0, "range_step": 0, "fx": 0,
+                "combo": 0, "combo_window": 0, "finish_damage": 0,
+                "finish_stun": 0, "finish_push": 0}
     return {
         "kind": ATTACK_KIND_ID[a.kind],
         "speed": to_fixed(a.speed),
@@ -518,6 +520,12 @@ def attack_values(project: Project) -> Dict[str, object]:
         "locks": 1 if a.locks else 0,
         "levels": a.levels,
         "range_step": a.range_step,
+        # la serie de golpes; con `combo: 1` el motor no la mira siquiera
+        "combo": a.combo,
+        "combo_window": a.combo_window,
+        "finish_damage": a.finish_damage,
+        "finish_stun": a.finish_stun,
+        "finish_push": to_fixed(a.finish_push),
         # con `tipo: golpe`, `sprite:` es el arma en si (el latigo) y se dibuja
         # delante del jugador mientras el golpe hace dano; sin sprite el golpe
         # es invisible, que es como estaba el kit

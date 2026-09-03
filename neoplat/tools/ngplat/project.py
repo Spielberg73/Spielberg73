@@ -290,6 +290,12 @@ class Attack(Actor):
     damage: int = 1
     levels: int = 0                # cuantas mejoras admite (0 = ninguna)
     range_step: int = 12           # px que alarga cada mejora
+    # La serie de golpes: puno, puno y remate. 1 = no hay serie.
+    combo: int = 1                 # golpes que tiene la serie
+    combo_window: int = 30         # frames para encadenar el siguiente
+    finish_damage: int = 0         # lo que hace el ultimo (0 = como los demas)
+    finish_stun: int = 0           # frames que se queda en el suelo el que cobra
+    finish_push: float = 3.0       # con cuanta fuerza sale despedido
 
 
 @dataclass
@@ -477,6 +483,9 @@ ANIM_ALIASES = {
     # solo en vista cenital: el heroe visto de espaldas y de frente
     "arriba": "up", "espaldas": "up", "up": "up", "subiendo": "up",
     "abajo": "down", "frente": "down", "down": "down", "bajando": "down",
+    # el ultimo golpe de una serie, el que tumba (juegos de tortas)
+    "remate": "remate", "finish": "remate", "ultimo": "remate",
+    "final": "remate", "tumbar": "remate",
 }
 
 STANDARD_ANIMS = ["idle", "run", "jump", "fall", "hurt"]
@@ -562,6 +571,10 @@ VISTAS = {
     "cenital": "cenital", "aerea": "cenital", "aérea": "cenital",
     "top": "cenital", "top_down": "cenital", "desde_arriba": "cenital",
     "pajaro": "cenital", "vista_de_pajaro": "cenital",
+    # La cinta: se ve desde arriba como la cenital, pero con salto de verdad.
+    "cinta": "cinta", "belt": "cinta", "cinta_transportadora": "cinta",
+    "yo_contra_el_barrio": "cinta", "beat_em_up": "cinta", "brawler": "cinta",
+    "tortas": "cinta",
 }
 
 
@@ -571,16 +584,21 @@ def _leer_vista(game: Node) -> str:
     'lateral' es lo de siempre: hay gravedad, se salta y se mira a un lado o a
     otro. 'cenital' es la vista desde arriba de los juegos de comando: no hay
     gravedad ni suelo, andas en ocho direcciones y disparas hacia donde miras.
-    No es un genero mas -eso es lo que se puede hacer-, es **desde donde se
-    mira**, y por eso va en `juego:` al lado de la camara.
+    'cinta' es la de los juegos de tortas: se anda en ocho direcciones por una
+    franja de suelo, como en cenital, pero **se salta**, porque hay una tercera
+    coordenada -lo alto que estas sobre el suelo- con su gravedad.
+
+    No son generos -eso es lo que se puede hacer-, son **desde donde se mira**,
+    y por eso van en `juego:` al lado de la camara.
     """
     texto = (game.str_(["vista", "view", "perspectiva"], "lateral") or "lateral")
     clave = str(texto).strip().lower().replace(" ", "_").replace("-", "_")
     if clave not in VISTAS:
         raise ProjectError(
             "no entiendo la vista '%s'" % texto,
-            hint="pon 'lateral' (de lado, con gravedad) o 'cenital' "
-                 "(desde arriba, en ocho direcciones)",
+            hint="pon 'lateral' (de lado, con gravedad), 'cenital' "
+                 "(desde arriba, en ocho direcciones) o 'cinta' (desde arriba "
+                 "y saltando, como en los juegos de tortas)",
             where="juego",
         )
     return VISTAS[clave]
@@ -680,6 +698,16 @@ def _read_attack(node: Node, root: str) -> Optional["Attack"]:
         levels=node.int_(["levels", "mejoras", "niveles"], 0, 0, 8),
         range_step=node.int_(["range_step", "alcance_mejora", "paso_mejora"],
                              12, 1, 128),
+        # La serie de golpes de los juegos de tortas. Con `combo: 1` -lo
+        # normal- no hay serie y los tres numeros de abajo no pintan nada.
+        combo=node.int_(["combo", "serie", "encadenado"], 1, 1, 8),
+        combo_window=node.int_(["combo_window", "ventana", "ventana_combo"],
+                               30, 2, 300),
+        finish_damage=node.int_(["finish_damage", "dano_remate", "daño_remate",
+                                 "remate"], 0, 0, 99),
+        finish_stun=node.int_(["finish_stun", "derribo", "tumbado"], 0, 0, 240),
+        finish_push=node.num(["finish_push", "empujon_remate", "empujón_remate"],
+                             3.0, 0.0, 12.0),
     )
     if ataque.windup >= ataque.duration:
         raise ProjectError(
@@ -699,6 +727,10 @@ def _read_attack(node: Node, root: str) -> Optional["Attack"]:
         "damage", "dano", "daño",
         "levels", "mejoras", "niveles", "range_step", "alcance_mejora",
         "paso_mejora",
+        "combo", "serie", "encadenado", "combo_window", "ventana",
+        "ventana_combo", "finish_damage", "dano_remate", "daño_remate",
+        "remate", "finish_stun", "derribo", "tumbado",
+        "finish_push", "empujon_remate", "empujón_remate",
     ])
     return ataque
 

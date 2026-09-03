@@ -111,7 +111,10 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
    lateral no se usan nunca. */
 #define NP_ANIM_UP   8           /* andando hacia arriba (de espaldas) */
 #define NP_ANIM_DOWN 9           /* andando hacia abajo (de frente) */
-#define NP_ANIM_SLOTS 10
+/* Y la del remate: el ultimo golpe de una serie, el que tumba. Quien no la
+   traiga se queda con la de atacar, asi que un juego sin series ni se entera. */
+#define NP_ANIM_FINISH 10
+#define NP_ANIM_SLOTS 11
 
 /* Eventos de sonido que produce la simulacion (un bit cada uno). Coinciden con
  * EVENTO_BIT de tools/ngplat/sonido.py. La simulacion solo los marca; quien los

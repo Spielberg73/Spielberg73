@@ -31,10 +31,10 @@ function actor(boxW, boxH) {
     first_tile: 0, palette: 0, cols: 1, rows: 1,
     box_x: 0, box_y: 0, box_w: boxW, box_h: boxH,
     frames: 1, frame_w: 16, frame_h: 16, sheet: "x",
-    /* diez ranuras: las ocho de siempre mas las dos de la vista cenital
-       (de espaldas y de frente) */
+    /* once ranuras: las ocho de siempre, las dos de la vista cenital (de
+       espaldas y de frente) y la del remate */
     anims: [anim([0]), anim([0]), anim([0]), anim([0]), anim([0]), anim([0]),
-            anim([0]), anim([0]), anim([0]), anim([0])]
+            anim([0]), anim([0]), anim([0]), anim([0]), anim([0])]
   };
 }
 
@@ -74,7 +74,8 @@ function datos(filas, opciones) {
     hud: true, camara_pantallas: opciones.pantallas ? 1 : 0,
     /* desde donde se mira: con "cenital" no hay gravedad y se anda en
        ocho direcciones */
-    view: opciones.cenital ? "cenital" : "lateral",
+    view: opciones.cinta ? "cinta"
+        : (opciones.cenital ? "cenital" : "lateral"),
     player: {
       actor: jugador,
       speed: fx(opciones.speed || 1.6), accel: fx(0.3), friction: fx(0.35),
@@ -111,6 +112,13 @@ function datos(filas, opciones) {
                                                          : opciones.alcanceMejora,
         /* 1 = el ataque trae dibujo propio (el latigo) y se ve al pegar */
         fx: opciones.latigo ? 1 : 0,
+        /* la serie de golpes de los juegos de tortas: 1 = no hay serie */
+        combo: opciones.combo || 1,
+        combo_window: opciones.ventana === undefined ? 30 : opciones.ventana,
+        finish_damage: opciones.danoRemate || 0,
+        finish_stun: opciones.derribo || 0,
+        finish_push: fx(opciones.empujonRemate === undefined
+                        ? 3 : opciones.empujonRemate),
         actor: actor(6, 6)
       },
       /* las armas secundarias: por defecto ninguna, como un juego sin
@@ -135,9 +143,15 @@ function datos(filas, opciones) {
         })
     },
     enemies: [
-      { actor: enemigo, speed: fx(0.5), gravity: fx(0.28), jump: fx(3.5), range: fx(96),
+      { actor: enemigo,
+        /* con `velocidadEnemigo: 0` se queda quieto, que es lo que hace falta
+           para medir golpes sin que se vaya andando */
+        speed: fx(opciones.velocidadEnemigo === undefined
+                  ? 0.5 : opciones.velocidadEnemigo),
+        gravity: fx(0.28), jump: fx(3.5), range: fx(96),
         amplitude: fx(24), period: 120, interval: 90, score: 100, behavior: 0,
-        health: 1, damage: 1, stompable: 1, edge_turn: 1, name: "patrulla",
+        health: opciones.vidaEnemigo || 1,
+        damage: 1, stompable: 1, edge_turn: 1, name: "patrulla",
         /* con `dispara:` este mismo enemigo te tirotea */
         shot: opciones.dispara ? 1 : 0 },
       { actor: enemigo, speed: fx(0.5), gravity: 0, jump: 0, range: fx(96),
@@ -1976,6 +1990,210 @@ prueba("la comida devuelve vida contra el desgaste", function () {
   assert.ok(w.players[0].health > antes,
             "coger la comida no ha devuelto vida (" + antes + " -> "
             + w.players[0].health + ")");
+});
+
+/* ------------------------------------ la vista de cinta (yo contra el barrio) */
+/*
+ * Con `vista: cinta` se anda por una franja de suelo en ocho direcciones, como
+ * desde arriba, pero **se salta**: hay una tercera coordenada, la altura sobre
+ * el suelo. Es lo que hace un Double Dragon, y lo que hay que comprobar es que
+ * las tres se llevan bien: que se salta, que la altura no mueve el suelo por el
+ * que se anda y que dos cosas a distinta profundidad no se tocan.
+ */
+
+prueba("en la cinta se anda en las cuatro direcciones", function () {
+  var casos = [[NP.IN.RIGHT, 1, 0], [NP.IN.LEFT, -1, 0],
+               [NP.IN.DOWN, 0, 1], [NP.IN.UP, 0, -1]];
+  casos.forEach(function (caso) {
+    var w = mundo(suelo([[6, 8, "P"]]), { cinta: true });
+    var x0 = NP.F2I(w.players[0].x), y0 = NP.F2I(w.players[0].y);
+    correr(w, 30, caso[0]);
+    var dx = NP.F2I(w.players[0].x) - x0, dy = NP.F2I(w.players[0].y) - y0;
+    assert.strictEqual(Math.sign(dx), caso[1], "en x: " + dx);
+    assert.strictEqual(Math.sign(dy), caso[2], "en y: " + dy);
+  });
+});
+
+prueba("en la cinta no hay gravedad en el suelo: quieto se queda quieto",
+       function () {
+  var w = mundo(suelo([[6, 5, "P"]]), { cinta: true });
+  var y = w.players[0].y;
+  correr(w, 60);
+  assert.strictEqual(w.players[0].y, y, "el jugador se ha caido");
+  assert.strictEqual(w.players[0].altura, 0);
+});
+
+prueba("en la cinta se salta y se vuelve al mismo sitio", function () {
+  var w = mundo(suelo([[6, 8, "P"]]), { cinta: true });
+  var y0 = w.players[0].y;
+  w.step(NP.IN.JUMP);
+  assert.ok(w.players[0].altura > 0, "no ha despegado");
+  assert.strictEqual(w.players[0].onGround, 0);
+  var maximo = 0;
+  for (var i = 0; i < 60; i++) {
+    w.step(0);
+    if (w.players[0].altura > maximo) maximo = w.players[0].altura;
+  }
+  assert.ok(NP.F2I(maximo) > 16, "el salto sube " + NP.F2I(maximo) + " pixeles");
+  assert.strictEqual(w.players[0].altura, 0, "no ha vuelto al suelo");
+  assert.strictEqual(w.players[0].onGround, 1);
+  assert.strictEqual(w.players[0].y, y0, "ha acabado en otra fila del suelo");
+});
+
+prueba("saltando se sube el dibujo, no la fila por la que se anda", function () {
+  /* Es la regla de la vista: `y` es donde se dibuja y la linea del suelo es
+     y + altura. Si el salto moviera el suelo, saltar seria andar hacia
+     arriba y se colaria uno por encima de las paredes. */
+  var w = mundo(suelo([[6, 8, "P"]]), { cinta: true });
+  var suelo0 = w.players[0].y + w.players[0].altura;
+  w.step(NP.IN.JUMP);
+  correr(w, 10);
+  var p = w.players[0];
+  assert.ok(p.altura > 0, "no esta en el aire");
+  assert.ok(p.y < suelo0, "el dibujo no ha subido");
+  assert.strictEqual(p.y + p.altura, suelo0, "el suelo se ha movido con el salto");
+});
+
+prueba("saltando no se atraviesan las paredes", function () {
+  var filas = suelo([[6, 8, "P"]]);
+  filas[4] = "#".repeat(24);          // una pared entera por encima
+  var w = mundo(filas, { cinta: true });
+  w.step(NP.IN.JUMP);
+  correr(w, 40, NP.IN.UP);            // saltando y empujando contra la pared
+  var p = w.players[0];
+  assert.ok(NP.F2I(p.y + p.altura) >= 5 * 16,
+            "se ha colado en la pared: suelo=" + NP.F2I(p.y + p.altura));
+});
+
+prueba("en la cinta el mando no manda en el aire", function () {
+  /* En estos juegos no se cambia de idea a medio salto: el impulso con el que
+     saltas es el que te lleva hasta caer. */
+  var w = mundo(suelo([[6, 8, "P"]]), { cinta: true });
+  w.step(NP.IN.JUMP);                 // salto sin correr: sale recto
+  var x0 = NP.F2I(w.players[0].x);
+  for (var i = 0; i < 40 && !w.players[0].onGround; i++) w.step(NP.IN.RIGHT);
+  assert.strictEqual(NP.F2I(w.players[0].x), x0,
+                     "se ha movido en el aire");
+});
+
+prueba("el dano se recibe con los pies en el suelo, no por el aire", function () {
+  /* La prueba de que las cajas hacen de profundidad **y** de altura a la vez:
+     saltando por encima del enemigo no te toca, y el golpe llega justo cuando
+     aterrizas al otro lado. Si la altura no contara, el toque seria el mismo
+     que andando y llegaria a mitad del salto. */
+  var w = mundo(suelo([[8, 6, "P"], [8, 9, "e"]]),
+                { cinta: true, health: 99, aturdido: 0 });
+  var p = w.players[0];
+  var previa = p.health, golpes = [], porElAire = 0;
+  w.step(NP.IN.RIGHT | NP.IN.JUMP);        // se salta hacia el
+  for (var i = 0; i < 60; i++) {
+    w.step(NP.IN.RIGHT);
+    /* la altura se mira **despues** del paso: los toques se comprueban al
+       final del frame, con la altura que haya quedado */
+    if (p.health < previa) {
+      golpes.push(NP.F2I(p.altura));
+      if (p.altura > 0) porElAire++;
+    }
+    previa = p.health;
+  }
+  assert.ok(golpes.length > 0, "no le toca nunca: la prueba no vale");
+  assert.strictEqual(porElAire, 0,
+                     "le ha dado por el aire, a alturas " + golpes.join(", "));
+});
+
+/* --------------------------------- la serie de golpes (Double Dragon) */
+/*
+ * Un juego de tortas no va de apretar el boton, va de encadenar: puno, puno y
+ * remate. El ultimo pega mas fuerte y **tumba**, y mientras el matón esta en el
+ * suelo ni decide ni hace dano. Sin eso, pegar es machacar el boton.
+ */
+
+/** Pega `cuantos` golpes seguidos, soltando el boton entre uno y otro (el
+    ataque va por flanco) y esperando la cadencia. */
+function pegar(w, cuantos, espera) {
+  for (var i = 0; i < cuantos; i++) {
+    w.step(NP.IN.ACTION);
+    correr(w, espera === undefined ? 10 : espera);
+  }
+  return w;
+}
+
+prueba("los golpes se encadenan mientras dura la ventana", function () {
+  var w = mundo(suelo([[8, 6, "P"]]),
+                { cinta: true, ataque: "golpe", combo: 3, ventana: 40,
+                  espera: 6, alcance: 20 });
+  var p = w.players[0];
+  assert.strictEqual(p.comboLink, 0);
+  w.step(NP.IN.ACTION);
+  assert.strictEqual(p.comboLink, 0, "el primero es el primero");
+  correr(w, 8); w.step(NP.IN.ACTION);
+  assert.strictEqual(p.comboLink, 1, "el segundo no encadena");
+  correr(w, 8); w.step(NP.IN.ACTION);
+  assert.strictEqual(p.comboLink, 2, "el tercero no encadena");
+  /* y el cuarto vuelve a empezar la serie */
+  correr(w, 8); w.step(NP.IN.ACTION);
+  assert.strictEqual(p.comboLink, 0, "la serie no vuelve a empezar");
+});
+
+prueba("si te duermes, la serie se corta", function () {
+  var w = mundo(suelo([[8, 6, "P"]]),
+                { cinta: true, ataque: "golpe", combo: 3, ventana: 12,
+                  espera: 6, alcance: 20 });
+  var p = w.players[0];
+  w.step(NP.IN.ACTION);
+  correr(w, 8); w.step(NP.IN.ACTION);
+  assert.strictEqual(p.comboLink, 1, "no ha encadenado el segundo");
+  correr(w, 30);                      // se pasa la ventana entera
+  w.step(NP.IN.ACTION);
+  assert.strictEqual(p.comboLink, 0, "ha encadenado fuera de la ventana");
+});
+
+prueba("el remate hace mas dano que los demas golpes", function () {
+  function golpes(hasta) {
+    var w = mundo(suelo([[8, 6, "P"], [8, 8, "e"]]),
+                  { cinta: true, ataque: "golpe", combo: 3, ventana: 40,
+                    espera: 6, alcance: 24, dano: 1, danoRemate: 5,
+                    vidaEnemigo: 20, velocidadEnemigo: 0 });
+    pegar(w, hasta, 8);
+    return w.entities[0].health;
+  }
+  var trasUno = golpes(1), trasTres = golpes(3);
+  assert.strictEqual(20 - trasUno, 1, "el primero no hace 1 de dano");
+  assert.strictEqual(20 - trasTres, 1 + 1 + 5,
+                     "los tres golpes hacen " + (20 - trasTres) + " y no 7");
+});
+
+prueba("el remate tumba al que lo cobra", function () {
+  var w = mundo(suelo([[8, 6, "P"], [8, 8, "e"]]),
+                { cinta: true, ataque: "golpe", combo: 3, ventana: 40,
+                  espera: 6, alcance: 24, dano: 1, danoRemate: 2,
+                  derribo: 40, empujonRemate: 3, vidaEnemigo: 20,
+                  velocidadEnemigo: 0 });
+  var e = w.entities[0];
+  var x0 = NP.F2I(e.x);
+  pegar(w, 2, 8);
+  assert.strictEqual(e.knock, 0, "un golpe normal ya tumba");
+  pegar(w, 1, 8);
+  assert.ok(e.knock > 0, "el remate no ha tumbado a nadie");
+  var mirando = w.players[0].facing;
+  correr(w, 10);
+  assert.ok(mirando ? NP.F2I(e.x) > x0 : NP.F2I(e.x) < x0,
+            "no ha salido despedido: x=" + NP.F2I(e.x) + " y salio de " + x0);
+});
+
+prueba("uno tumbado no hace dano al tocarlo", function () {
+  var w = mundo(suelo([[8, 6, "P"], [8, 8, "e"]]),
+                { cinta: true, ataque: "golpe", combo: 3, ventana: 40,
+                  espera: 6, alcance: 24, dano: 1, danoRemate: 2,
+                  derribo: 120, empujonRemate: 0, vidaEnemigo: 20,
+                  velocidadEnemigo: 0, health: 9, aturdido: 0 });
+  var e = w.entities[0], p = w.players[0];
+  pegar(w, 3, 8);
+  assert.ok(e.knock > 0, "el remate no ha tumbado a nadie");
+  var salud = p.health;
+  correr(w, 60, NP.IN.RIGHT);         // se le anda por encima
+  assert.strictEqual(p.health, salud,
+                     "el que esta en el suelo sigue haciendo dano");
 });
 
 /* ----------------------------------------------------------------- camara */

@@ -90,6 +90,18 @@ class TestParidad(unittest.TestCase):
         # direcciones, disparo hacia donde miras). Es el que mas se parece a
         # tener otro motor, asi que es el que mas falta hace comparar.
         cls.variantes["cenital"] = cls._preparar("scroll", cenital=True)
+        # La vista de cinta: el mismo juego de arriba pero con una tercera
+        # coordenada, la altura, que ademas es la unica que no se ve en la
+        # traza mas que por lo que mueve la `y`. Por eso hay que compararla.
+        cls.variantes["cinta"] = cls._preparar("scroll", cinta=True)
+        # Y la cinta con la serie de golpes: puno, puno y remate. El remate
+        # tumba, y un tumbado se mueve solo con el empujon que se llevo, asi
+        # que si las dos no encadenaran igual, las entidades se separarian.
+        cls.variantes["combo"] = cls._preparar("scroll", cinta=True, golpe=True,
+                                               combo=True)
+        # el mismo juego sin serie, para ver que la serie hace algo
+        cls.variantes["sin-combo"] = cls._preparar("scroll", cinta=True,
+                                                   golpe=True)
         # La mazmorra: la vida que se gasta sola, los generadores que sacan
         # bichos y la pocima que limpia la pantalla. Son tres cosas que corren
         # **cada frame** en los dos motores, asi que van a la traza.
@@ -103,13 +115,16 @@ class TestParidad(unittest.TestCase):
     @classmethod
     def _preparar(cls, camara, jefe=False, dos=False, golpe=False, llave=False,
                   tablon=False, genero="plataformas", sin_dibujo=False,
-                  cenital=False, nidos_dormidos=False):
+                  cenital=False, nidos_dormidos=False, cinta=False,
+                  combo=False):
         proyecto_dir = os.path.join(
             cls.tmp, "juego-" + camara + ("-jefe" if jefe else "")
             + ("-dos" if dos else "") + ("-golpe" if golpe else "")
             + ("-pelado" if sin_dibujo else "")
             + ("-llave" if llave else "") + ("-tablon" if tablon else "")
             + ("-cenital" if cenital else "")
+            + ("-cinta" if cinta else "")
+            + ("-combo" if combo else "")
             + ("-dormidos" if nidos_dormidos else "")
             + ("-" + genero if genero != "plataformas" else ""))
         crear_proyecto(proyecto_dir, "PARIDAD", "TEST", genero=genero)
@@ -126,12 +141,29 @@ class TestParidad(unittest.TestCase):
             # el mismo juego mirado desde arriba: sin gravedad, en ocho
             # direcciones y disparando hacia donde se mira
             texto = texto.replace("  vidas:", "  vista: cenital\n  vidas:", 1)
+        if cinta:
+            # y el mismo mirado desde arriba **pero saltando**: la vista de los
+            # juegos de tortas, con la altura como tercera coordenada
+            texto = texto.replace("  vidas:", "  vista: cinta\n  vidas:", 1)
+            # y la seta aguanta unos cuantos golpes: con un solo punto de vida
+            # el primer punetazo se la lleva y no hay serie que valga
+            marca = "    comportamiento: patrulla\n"
+            assert marca in texto, "el primer enemigo ya no es de patrulla"
+            texto = texto.replace(marca, marca + "    vida: 9\n", 1)
         if golpe:
             # el mismo proyecto, pero con el ataque cuerpo a cuerpo: no salen
             # proyectiles y el dano lo hace una caja delante del jugador
             marca = "    tipo: disparo"
             assert marca in texto, "el andamiaje ya no trae el ataque asi"
             texto = texto.replace(marca, "    tipo: golpe", 1)
+        if combo:
+            # la serie de golpes, con su remate y su derribo
+            marca = "    tipo: golpe"
+            assert marca in texto, "el ataque ya no es de golpe"
+            texto = texto.replace(
+                marca,
+                "    tipo: golpe\n    combo: 3\n    ventana: 24\n"
+                "    dano_remate: 3\n    derribo: 40\n    empujon_remate: 2.5", 1)
         if sin_dibujo:
             # sin dibujo el golpe es invisible, que es como estaba el kit
             marca = "    sprite: graficos/bala.png\n"
@@ -400,6 +432,61 @@ class TestParidad(unittest.TestCase):
         self.assertGreaterEqual(
             puntos, pocima + 3 * bicho,
             "con %d puntos no ha reventado a los tres bichos" % puntos)
+
+    def test_misma_traza_en_la_vista_de_cinta(self):
+        """La vista de cinta anade una coordenada que no sale en la traza: la
+        altura sobre el suelo. Se ve igual porque `y` es donde se dibuja, o sea
+        el suelo menos la altura: si las dos implementaciones no saltaran
+        exactamente igual, la `y` se separaria al primer salto."""
+        for semilla in (1, 7, 99):
+            self._comparar("cinta", semilla)
+
+    def test_en_la_cinta_se_salta_de_verdad(self):
+        """Y que se salta: sin esto la paridad compararia dos juegos cenitales
+        y no comprobaria nada de la vista nueva. Lo que se mira es que la `y`
+        sube y baja **sin que el jugador cambie de fila**, que es justo lo que
+        hace un salto en esta vista: el dibujo se levanta y el suelo se queda.
+        """
+        traza, _ = self._trazas(7, "cinta")
+        columnas = [linea.split() for linea in traza]
+        jugando = [c for c in columnas if c[5] == str(ESTADO_JUEGO)]
+        ys = [int(c[2]) for c in jugando]
+        subidas = sum(1 for i in range(1, len(ys)) if ys[i] < ys[i - 1])
+        bajadas = sum(1 for i in range(1, len(ys)) if ys[i] > ys[i - 1])
+        self.assertGreater(subidas, 20, "nunca sube: no se esta saltando")
+        self.assertGreater(bajadas, 20, "nunca baja")
+        # y el salto llega alto: mas de lo que se anda en un frame
+        self.assertGreater(max(ys) - min(ys), 16 * 256,
+                           "el recorrido vertical es de menos de un tile")
+
+    def test_misma_traza_con_la_serie_de_golpes(self):
+        """Puno, puno y remate: el ultimo hace mas dano y tumba, y un tumbado
+        se mueve solo con el empujon que se llevo. Si las dos implementaciones
+        no contaran los golpes igual, las entidades se separarian en cuanto
+        empieza el mando aleatorio a machacar el boton."""
+        for semilla in (1, 7, 99):
+            self._comparar("combo", semilla)
+
+    def test_la_serie_de_golpes_cambia_la_partida(self):
+        """Y que la serie hace algo: el mismo juego con `combo: 1` tiene que
+        dar otra traza en cuanto caiga un remate. Con el mando aleatorio no
+        cae ninguno -tres golpes seguidos en la misma ventana y encima de
+        alguien es mucha casualidad-, asi que aqui se pega a proposito: se
+        anda hasta el primer bicho y se machaca el boton."""
+        entradas = ([(IN_START, 0)] * 3 + [(IN_RIGHT, 0)] * 80
+                    + [(IN_ACTION, 0), (0, 0)] * 90)
+        con, _ = self._trazas_de("combo", entradas, "combo")
+        sin, _ = self._trazas_de("sin-combo", entradas, "sin-combo")
+        self.assertEqual(con[0], sin[0],
+                         "los dos juegos ya empiezan distintos")
+        distintos = [i for i, (a, b) in enumerate(zip(con, sin)) if a != b]
+        self.assertTrue(distintos,
+                        "con serie y sin serie pasa lo mismo: no se esta "
+                        "encadenando nada")
+        # y la diferencia esta en las entidades (el remate tumba y empuja) o
+        # en los puntos, no en un frame suelto de mas
+        self.assertGreater(len(distintos), 10,
+                           "solo cambia un frame: no parece un remate")
 
     def test_misma_traza_con_el_genero_de_latigo(self):
         """El ataque con preparacion y clavado, y el empujon con aturdimiento:
