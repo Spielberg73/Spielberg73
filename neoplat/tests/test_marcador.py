@@ -124,6 +124,53 @@ class TestBarraDelJefe(unittest.TestCase):
             self.assertEqual(len(texto), 15, caso)
 
 
+class TestBarraDeVidaQueSeGasta(unittest.TestCase):
+    """La vida del genero de mazmorra, que no son golpes sino puntos.
+
+    Con `desgaste:` la vida llega a 200 y unos cuadrados no dirian nada: la
+    barra escribe el numero, como en Gauntlet. Es la unica parte del marcador
+    que cambia de forma segun el juego, asi que se compila el motor con el
+    proyecto de mazmorra y se mira lo que escribe.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        if not shutil.which("gcc"):
+            raise unittest.SkipTest("no hay gcc para compilar el motor")
+        cls.tmp = tempfile.mkdtemp(prefix="neoplat-desgaste-")
+        cls.lineas = _lineas(_compilar(cls.tmp, "mazmorra",
+                                       genero="mazmorra"), "vida")
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(getattr(cls, "tmp", ""), ignore_errors=True)
+
+    def test_ensena_el_numero_y_no_cuadrados(self):
+        self.assertEqual(self.lineas["p0 200"], "LIFE 200")
+        self.assertEqual(self.lineas["p0 184"], "LIFE 184")
+        self.assertEqual(self.lineas["p0 7"], "LIFE 007")
+        self.assertEqual(self.lineas["p0 0"], "LIFE 000")
+        for clave, texto in self.lineas.items():
+            self.assertNotIn("#", texto, "%s sale con cuadrados: %r"
+                             % (clave, texto))
+
+    def test_la_vida_llega_de_verdad_a_doscientos(self):
+        """Si el proyecto no trajera la vida larga, lo de arriba compararia
+        contra un juego de tres golpes y no probaria nada."""
+        self.assertIn("p0 200", self.lineas)
+
+    def test_ocupa_siempre_lo_mismo(self):
+        """Tres cifras clavadas: el marcador se repinta sin borrar, y con
+        'LIFE 99' detras se quedaria el cero de los doscientos."""
+        for clave, texto in self.lineas.items():
+            if texto.strip():
+                self.assertEqual(len(texto), 8, "%s: %r" % (clave, texto))
+
+    def test_fuera_de_la_partida_sigue_sin_salir(self):
+        self.assertEqual(self.lineas["titulo"].strip(), "")
+        self.assertEqual(self.lineas["p1 fuera"].strip(), "")
+
+
 class TestBarraDeVida(unittest.TestCase):
     """La vida del jugador en el marcador.
 

@@ -86,6 +86,80 @@ class TestNivelesJugables(unittest.TestCase):
                          "el bot no puede terminar el proyecto de comando:\n"
                          + resultado.stdout)
 
+    def test_el_proyecto_de_mazmorra_tambien_se_termina(self):
+        """La mazmorra se ve desde arriba como el comando, pero se juega de
+        otra manera: la vida se gasta sola, la meta pide una llave que esta al
+        otro lado del laberinto y hay generadores sacando bichos. Sus dos
+        laberintos tienen que poder terminarse."""
+        destino = os.path.join(self.tmp, "mazmorra")
+        crear_proyecto(destino, "MAZMORRA", "TEST", genero="mazmorra")
+        resultado = self._jugar(destino)
+        self.assertEqual(resultado.returncode, 0,
+                         "el bot no puede terminar el proyecto de mazmorra:\n"
+                         + resultado.stdout)
+
+    def test_en_la_mazmorra_la_llave_va_antes_que_la_meta(self):
+        """Y que llegue no es casualidad: la meta de los dos laberintos pide
+        una llave que esta al otro lado del mapa. Si tapiamos el rincon de la
+        llave -dejando la meta donde estaba- el bot tiene que decir que no
+        llega **a la llave**. Si dijera que ha terminado, es que se iba
+        derecho a la meta y la llave no pintaba nada."""
+        destino = os.path.join(self.tmp, "mazmorra-sin-llave")
+        crear_proyecto(destino, "SINLLAVE", "TEST", genero="mazmorra")
+        ruta = os.path.join(destino, "game.yaml")
+        with open(ruta, encoding="utf-8") as fh:
+            texto = fh.read()
+        # el rincon de la llave del primer laberinto, tapiado por la derecha y
+        # por abajo: la llave sigue en el mapa, pero no se puede ir a por ella
+        pared = [("#..k...#.T.#...c...#", "#..k####.T.#...c...#"),
+                 ("#......#...#.......#", "####...#...#.......#")]
+        for antes, despues in pared:
+            self.assertEqual(texto.count(antes), 1,
+                             "el laberinto ya no tiene la fila " + antes)
+            texto = texto.replace(antes, despues)
+        with open(ruta, "w", encoding="utf-8") as fh:
+            fh.write(texto)
+        resultado = self._jugar(destino)
+        self.assertNotEqual(resultado.returncode, 0,
+                            "el bot dice que abre una meta sin coger la llave")
+        self.assertIn("la llave", resultado.stdout, resultado.stdout)
+
+    def _mazmorra_con(self, nombre, parches):
+        """Un proyecto de mazmorra con el game.yaml retocado."""
+        destino = os.path.join(self.tmp, nombre)
+        crear_proyecto(destino, nombre.upper(), "TEST", genero="mazmorra")
+        ruta = os.path.join(destino, "game.yaml")
+        with open(ruta, encoding="utf-8") as fh:
+            texto = fh.read()
+        for antes, despues in parches:
+            self.assertIn(antes, texto, "el andamiaje ya no escribe " + antes)
+            texto = texto.replace(antes, despues)
+        with open(ruta, "w", encoding="utf-8") as fh:
+            fh.write(texto)
+        return destino
+
+    def test_en_la_mazmorra_se_come_para_llegar(self):
+        """Con la vida corta no se llega andando: hay que parar a comer. El bot
+        va a por la comida cuando le queda poca, asi que termina los dos
+        laberintos con 60 puntos de vida y 6 frames por punto -que dan para 360
+        frames y el recorrido pasa de 450-."""
+        corta = [("  vida: 200", "  vida: 60"), ("  desgaste: 12", "  desgaste: 6")]
+        resultado = self._jugar(self._mazmorra_con("hambre", corta))
+        self.assertEqual(resultado.returncode, 0,
+                         "el bot no come: no llega con la vida corta:\n"
+                         + resultado.stdout)
+
+    def test_y_sin_comida_no_llega(self):
+        """El control de la de arriba: la misma vida corta pero cambiando la
+        comida del mapa por tesoros, que no alimentan. Si tambien pasara, es
+        que la vida daba de sobra y la prueba anterior no probaba nada."""
+        sin = [("  vida: 200", "  vida: 60"), ("  desgaste: 12", "  desgaste: 6"),
+               ("  c: comida", "  c: tesoro")]
+        resultado = self._jugar(self._mazmorra_con("sin-comida", sin))
+        self.assertNotEqual(resultado.returncode, 0,
+                            "sin comida tambien llega: la vida daba de sobra")
+        self.assertIn("muere", resultado.stdout, resultado.stdout)
+
     def test_avisa_cuando_el_camino_de_arriba_esta_cortado(self):
         """Y lo contrario: si un nivel cenital se queda sin paso, el bot tiene
         que decir que no hay camino, no soltar un 'no llega a tiempo' que no

@@ -90,17 +90,27 @@ class TestParidad(unittest.TestCase):
         # direcciones, disparo hacia donde miras). Es el que mas se parece a
         # tener otro motor, asi que es el que mas falta hace comparar.
         cls.variantes["cenital"] = cls._preparar("scroll", cenital=True)
+        # La mazmorra: la vida que se gasta sola, los generadores que sacan
+        # bichos y la pocima que limpia la pantalla. Son tres cosas que corren
+        # **cada frame** en los dos motores, asi que van a la traza.
+        cls.variantes["mazmorra"] = cls._preparar("scroll", genero="mazmorra")
+        # La misma mazmorra con los nidos dormidos: sirve para probar que los
+        # bichos que salen son de verdad de los generadores y no del mapa.
+        cls.variantes["nidos-dormidos"] = cls._preparar("scroll",
+                                                        genero="mazmorra",
+                                                        nidos_dormidos=True)
 
     @classmethod
     def _preparar(cls, camara, jefe=False, dos=False, golpe=False, llave=False,
                   tablon=False, genero="plataformas", sin_dibujo=False,
-                  cenital=False):
+                  cenital=False, nidos_dormidos=False):
         proyecto_dir = os.path.join(
             cls.tmp, "juego-" + camara + ("-jefe" if jefe else "")
             + ("-dos" if dos else "") + ("-golpe" if golpe else "")
             + ("-pelado" if sin_dibujo else "")
             + ("-llave" if llave else "") + ("-tablon" if tablon else "")
             + ("-cenital" if cenital else "")
+            + ("-dormidos" if nidos_dormidos else "")
             + ("-" + genero if genero != "plataformas" else ""))
         crear_proyecto(proyecto_dir, "PARIDAD", "TEST", genero=genero)
         yaml = os.path.join(proyecto_dir, "game.yaml")
@@ -152,6 +162,29 @@ class TestParidad(unittest.TestCase):
             assert marca in texto, "el primer nivel ya no tiene esa fila"
             texto = texto.replace(
                 marca, "\n      ..T...................c..........c..............", 1)
+        if genero == "mazmorra":
+            # La pocima que limpia la pantalla esta al otro lado del laberinto
+            # y el mando aleatorio no llega: se pone a la salida, con dos
+            # bichos delante, para que la traza compare tambien el momento en
+            # que revienta lo que se ve.
+            marca = "      #####.###,###.######\n      #########P##########"
+            assert marca in texto, "el laberinto ya no empieza asi"
+            texto = texto.replace(
+                marca,
+                "      #####.###r###.######\n      #########P##########", 1)
+            marca = "      #...#....,....#....#\n      #.f.,....,....,..r.#"
+            assert marca in texto, "el laberinto ya no tiene esas filas"
+            texto = texto.replace(
+                marca,
+                "      #...#...bbb...#....#\n      #.f.,....,....,..r.#", 1)
+        if nidos_dormidos:
+            # Los nidos siguen ahi, en el mismo sitio y contando en el hash,
+            # pero con la espera al maximo -un minuto- no les da tiempo a sacar
+            # nada en los 3000 frames que dura la traza.
+            for antes, despues in (("    cada: 100", "    cada: 3600"),
+                                   ("    cada: 150", "    cada: 3600")):
+                assert antes in texto, "el generador ya no se escribe asi"
+                texto = texto.replace(antes, despues, 1)
         if jefe:
             # el jefe del andamiaje vive en el segundo nivel y la traza no llega:
             # se pone uno en el primero, cambiando el enemigo que hay a la salida
@@ -194,6 +227,21 @@ class TestParidad(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         shutil.rmtree(getattr(cls, "tmp", ""), ignore_errors=True)
+
+    def _trazas_de(self, variante, entradas, nombre):
+        """Las dos trazas con unas pulsaciones dadas. Sirve para lo que no sale
+        por casualidad con el mando aleatorio: ir a por un objeto concreto."""
+        binario, datos_json = self.variantes[variante]
+        ruta = os.path.join(self.tmp, "inputs-%s.txt" % nombre)
+        with open(ruta, "w", encoding="utf-8") as fh:
+            fh.write("\n".join("%d %d" % par for par in entradas))
+        traza_c = subprocess.run([binario, ruta], capture_output=True, text=True,
+                                 check=True)
+        traza_js = subprocess.run(
+            ["node", os.path.join(KIT, "tests", "trace.js"), datos_json, ruta],
+            capture_output=True, text=True, check=True,
+        )
+        return traza_c.stdout.strip().split("\n"), traza_js.stdout.strip().split("\n")
 
     def _trazas(self, semilla, camara="scroll"):
         binario, datos_json = self.variantes[camara]
@@ -298,6 +346,60 @@ class TestParidad(unittest.TestCase):
         bajando = sum(1 for i in range(1, len(ys)) if ys[i] > ys[i - 1])
         self.assertGreater(subiendo, 20, "nunca sube: parece que hay gravedad")
         self.assertGreater(bajando, 20, "nunca baja")
+
+    def test_misma_traza_en_la_mazmorra(self):
+        """El genero de mazmorra mete tres cosas que corren cada frame: la vida
+        que se gasta sola, los generadores que sacan bichos y la pocima que
+        limpia lo que se ve. Las tres tienen que dar lo mismo en las dos."""
+        for semilla in (1, 7, 99):
+            self._comparar("mazmorra", semilla)
+
+    def test_la_vida_se_gasta_sola(self):
+        """Si el desgaste no llegara al motor en C, la paridad seguiria
+        pasando: aqui se mira que la vida **baja sin que nadie pegue**, y que
+        baja de uno en uno y no de golpe, que seria un enemigo."""
+        traza, _ = self._trazas(1, "mazmorra")
+        columnas = [linea.split() for linea in traza]
+        jugando = [c for c in columnas if c[5] == str(ESTADO_JUEGO)]
+        vidas = [int(c[6]) for c in jugando]
+        self.assertGreater(len(set(vidas)), 20,
+                           "la vida casi no cambia: no se esta gastando sola")
+        bajadas = sum(1 for i in range(1, len(vidas))
+                      if vidas[i] == vidas[i - 1] - 1)
+        self.assertGreater(bajadas, 20,
+                           "la vida no baja de punto en punto")
+
+    def test_los_nidos_sacan_bichos_de_verdad(self):
+        """Y que los bichos salen de los nidos, no del mapa: la misma mazmorra
+        con los nidos dormidos -mismos nidos, mismo sitio, misma primera
+        linea- tiene que dar otra traza en cuanto al primero le toca sacar."""
+        despiertos, _ = self._trazas(1, "mazmorra")
+        dormidos, _ = self._trazas(1, "nidos-dormidos")
+        self.assertEqual(despiertos[0].split()[14], dormidos[0].split()[14],
+                         "los dos empiezan con entidades distintas: la prueba "
+                         "no compara los nidos sino el mapa")
+        distintos = [i for i, (a, b) in enumerate(zip(despiertos, dormidos))
+                     if a.split()[14] != b.split()[14]]
+        self.assertTrue(distintos, "con los nidos dormidos pasa lo mismo: no "
+                                   "estan sacando bichos")
+        self.assertLess(distintos[0], 400,
+                        "el primer bicho tarda demasiado en salir")
+
+    def test_la_pocima_limpia_lo_que_se_ve(self):
+        """La pocima de `efecto: bomba` revienta lo que hay en pantalla. Se
+        coge andando hacia arriba desde la salida, con tres bichos delante: si
+        no hiciera nada, los puntos serian los del frasco y nada mas."""
+        entradas = [(IN_START, 0)] * 3 + [(IN_UP, 0)] * 240
+        traza_c, traza_js = self._trazas_de("mazmorra", entradas, "pocima")
+        self.assertEqual(traza_c, traza_js)
+        with open(self.variantes["mazmorra"][1], encoding="utf-8") as fh:
+            datos = json.load(fh)
+        pocima = max(o["score"] for o in datos["items"] if o["effect"] == 7)
+        bicho = min(e["score"] for e in datos["enemies"])
+        puntos = max(int(linea.split()[8]) for linea in traza_c)
+        self.assertGreaterEqual(
+            puntos, pocima + 3 * bicho,
+            "con %d puntos no ha reventado a los tres bichos" % puntos)
 
     def test_misma_traza_con_el_genero_de_latigo(self):
         """El ataque con preparacion y clavado, y el empujon con aturdimiento:

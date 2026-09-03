@@ -16,7 +16,8 @@ from .sonido import EVENTOS
 from .build import (
     ANIM_SLOTS, Build, actor_def_values, attack_values, breakable_values,
     enemy_values, item_values, layer_values, platform_values, player_values,
-    enemy_shot_values, prisoner_values, sub_values, tile_tables,
+    enemy_shot_values, generator_values, prisoner_values, sub_values,
+    tile_tables,
 )
 from .fixed import FIXED_ONE
 from .paths import ENGINE_DIR, TEMPLATES_DIR
@@ -181,6 +182,7 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
                                             pv["max_fall"], pv["bounce"]))
     src.append("    %d, %d," % (pv["knockback"], pv["stair_speed"]))
     src.append("    %d, %d," % (pv["invuln"], pv["stun"]))
+    src.append("    %d,   /* desgaste */" % pv["wear"])
     src.append("    %d, %d, %d, %d, %d, %d," % (pv["coyote"], pv["jump_buffer"],
                                                 pv["double_jump"], pv["stomp"],
                                                 pv["health"], pv["crouch_drop"]))
@@ -266,6 +268,25 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
         src.append("    }," if i + 1 < len(build.prisoners) else "    }")
     src.append("};")
     src.append("const uint8_t np_prisoner_count = %d;" % len(build.prisoners))
+    src.append("")
+
+    src.append("/* Los generadores de bichos, en el orden de 'generadores:'. */")
+    for i, gen in enumerate(build.generators):
+        src.append(_anim_arrays("np_generator%d" % i, gen))
+    indice_enemigos = {b.name: i for i, b in enumerate(build.enemies)}
+    src.append("const NpGeneratorDef np_generators[] = {")
+    if not build.generators:
+        src.append("    { %s, 0, 0, 0, 0, 0 }" % _actor_vacio())
+    for i, gen in enumerate(build.generators):
+        gv = generator_values(gen, indice_enemigos)
+        src.append("    {")
+        src.append(_actor_def("np_generator%d" % i, actor_def_values(gen)) + ",")
+        src.append("        %d, %d, %d, %d, %d"
+                   % (gv["score"], gv["cooldown"], gv["health"], gv["enemy"],
+                      gv["cap"]))
+        src.append("    }," if i + 1 < len(build.generators) else "    }")
+    src.append("};")
+    src.append("const uint8_t np_generator_count = %d;" % len(build.generators))
     src.append("")
 
     # --- lo que tiran los enemigos que llevan `dispara:`

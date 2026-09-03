@@ -17,7 +17,8 @@ from . import gfx, sistemas
 from . import sonido as sonido_mod
 from .claves import tabla_para_el_editor
 from .build import (Build, actor_def_values, attack_values, breakable_values,
-                    enemy_shot_values, enemy_values, item_values, prisoner_values,
+                    enemy_shot_values, enemy_values, generator_values,
+                    item_values, prisoner_values,
                     platform_values, player_values,
                     sub_values, tile_tables)
 from .paths import PREVIEW_DIR, TEMPLATES_DIR
@@ -124,6 +125,14 @@ def build_data(build: Build) -> Dict[str, object]:
         entry["name"] = pri.name
         prisoners.append(entry)
 
+    generators: List[Dict[str, object]] = []
+    indice_enemigos = {b.name: i for i, b in enumerate(build.enemies)}
+    for i, gen in enumerate(build.generators):
+        entry = dict(generator_values(gen, indice_enemigos))
+        entry["actor"] = actor_json(gen, "generator%d" % i)
+        entry["name"] = gen.name
+        generators.append(entry)
+
     # lo que tiran los enemigos que llevan `dispara:`
     enemy_shots: List[Dict[str, object]] = []
     for i, disparo in enumerate(build.enemy_shots):
@@ -182,6 +191,8 @@ def build_data(build: Build) -> Dict[str, object]:
     item_index = {b.name: i for i, b in enumerate(build.items)}
     platform_index = {b.name: i for i, b in enumerate(build.platforms)}
     breakable_index = {b.name: i for i, b in enumerate(build.breakables)}
+    prisoner_index = {b.name: i for i, b in enumerate(build.prisoners)}
+    generator_index = {b.name: i for i, b in enumerate(build.generators)}
 
     levels = []
     for level in build.levels:
@@ -199,16 +210,16 @@ def build_data(build: Build) -> Dict[str, object]:
         })
     for salida, original in zip(levels, project.levels):
         salida["rows"] = list(original.rows)
+        # El `kind` con el que el editor sabe que es cada simbolo. Van todos:
+        # un prisionero (8) o un nido (9) que no estuviera aqui no seria un
+        # spawn para el editor, y se pintaria como si fuera un tile.
+        indices = ((enemy_index, 0), (item_index, 1), (platform_index, 3),
+                   (breakable_index, 4), (prisoner_index, 8),
+                   (generator_index, 9))
         salida["spawn_chars"] = {
-            char: ({"kind": 0, "def": enemy_index[nombre]} if nombre in enemy_index
-                   else {"kind": 3, "def": platform_index[nombre]}
-                   if nombre in platform_index
-                   else {"kind": 4, "def": breakable_index[nombre]}
-                   if nombre in breakable_index
-                   else {"kind": 1, "def": item_index[nombre]})
+            char: {"kind": kind, "def": tabla[nombre]}
             for char, nombre in original.spawns.items()
-            if nombre in enemy_index or nombre in item_index
-            or nombre in platform_index or nombre in breakable_index
+            for tabla, kind in indices if nombre in tabla
         }
 
     font = {char: list(rows) for char, rows in gfx.FONT_3X5.items()}
@@ -266,6 +277,7 @@ def build_data(build: Build) -> Dict[str, object]:
         "enemies": enemies,
         "enemy_shots": enemy_shots,
         "prisoners": prisoners,
+        "generators": generators,
         "items": items,
         "platforms": platforms,
         "breakables": breakables,
@@ -288,6 +300,8 @@ def build_data(build: Build) -> Dict[str, object]:
             "objetos": [b.name for b in build.items],
             "plataformas": [b.name for b in build.platforms],
             "rompibles": [b.name for b in build.breakables],
+            "prisioneros": [b.name for b in build.prisoners],
+            "generadores": [b.name for b in build.generators],
         },
         "camara_pantallas": 1 if project.camera == "pantallas" else 0,
         # desde donde se mira: "lateral" (con gravedad) o "cenital"

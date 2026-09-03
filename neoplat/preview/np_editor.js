@@ -203,12 +203,16 @@
       if (kind === 0) return DATA.enemies;
       if (kind === 3) return DATA.platforms || [];
       if (kind === 4) return DATA.breakables || [];
+      if (kind === 8) return DATA.prisoners || [];
+      if (kind === 9) return DATA.generators || [];
       return DATA.items;
     }
     function nombresDeKind(kind) {
       if (kind === 0) return DATA.nombres.enemigos;
       if (kind === 3) return DATA.nombres.plataformas || [];
       if (kind === 4) return DATA.nombres.rompibles || [];
+      if (kind === 8) return DATA.nombres.prisioneros || [];
+      if (kind === 9) return DATA.nombres.generadores || [];
       return DATA.nombres.objetos;
     }
     function actorDe(ch) {
@@ -926,6 +930,12 @@
           var s = chars[ch];
           if (!s) continue;
           entidades++;
+          /* un nido no ocupa una ranura: ocupa la suya y las de los bichos que
+             puede tener fuera a la vez */
+          if (s.kind === 9) {
+            var nido = tablaDeKind(9)[s.def];
+            if (nido) entidades += nido.cap || 0;
+          }
           if (s.kind === 0) {
             var enemigo = DATA.enemies[s.def];
             var conGravedad = enemigo.gravity > 0 && enemigo.behavior !== 1;
@@ -940,7 +950,8 @@
         }
       }
       if (entidades > 64) {
-        problemas.push({ texto: "hay " + entidades + " enemigos y objetos; el maximo es 64",
+        problemas.push({ texto: "hay " + entidades + " enemigos y objetos (contando"
+                                 + " los bichos que pueden sacar los nidos); el maximo es 64",
                          grave: true });
       }
 
@@ -1671,6 +1682,8 @@
             color = k === 0 ? "#c4453c"
                   : k === 3 ? "#b0834a"
                   : k === 4 ? "#9a8fd6"
+                  : k === 8 ? "#7fd6a0"
+                  : k === 9 ? "#d67f2e"
                   : "#f2d98a";
           }
           else {
@@ -1824,7 +1837,8 @@
         var s = chars[ch];
         var d = tablaDeKind(s.kind)[s.def];
         if (!d) return;
-        var tipos = { 0: "enemigo", 1: "objeto", 3: "plataforma", 4: "rompible" };
+        var tipos = { 0: "enemigo", 1: "objeto", 3: "plataforma", 4: "rompible",
+                      8: "prisionero", 9: "generador" };
         lista.push({ char: ch,
                      etiqueta: nombresDeKind(s.kind)[s.def] || tipos[s.kind],
                      tipo: tipos[s.kind], hoja: d.actor.sheet, frame: 0 });

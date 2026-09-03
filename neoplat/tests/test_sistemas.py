@@ -974,6 +974,34 @@ class TestNivelesAltos(unittest.TestCase):
                     build, os.path.join(self.tmp, "comando-" + nombre),
                     sistema, "202")
 
+    def test_el_proyecto_de_mazmorra_compila_para_las_siete(self):
+        """Y el de mazmorra igual: sus laberintos son de 20x28 y traen cosas
+        que las otras maquinas no habian visto nunca -generadores de bichos y
+        un marcador de vida de tres cifras-, asi que se genera el proyecto
+        entero para las siete y se mira que ninguna se queje."""
+        from ngplat.scaffold import crear_proyecto
+        raiz = os.path.join(self.tmp, "mazmorra")
+        if not os.path.isdir(raiz):
+            crear_proyecto(raiz, "MAZMORRA", "TEST", genero="mazmorra")
+        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "jaguar",
+                       "atarist", "x68000"):
+            with self.subTest(sistema=nombre):
+                build = cargar_demo(raiz, nombre)
+                self.assertTrue(build.generators,
+                                "el proyecto de mazmorra no trae generadores")
+                sistema = sistemas.obtener(nombre)
+                sistema.comprobar(build)
+                salida = os.path.join(self.tmp, "mazmorra-" + nombre)
+                generar_para_sistema(build, salida, sistema, "202")
+                # los generadores tienen que llegar al C de la maquina, no
+                # quedarse en el preview
+                with open(os.path.join(salida, "src", "gamedata.c"),
+                          encoding="utf-8") as fh:
+                    texto = fh.read()
+                self.assertIn("np_generators", texto)
+                self.assertIn("np_generator_count = %d"
+                              % len(build.generators), texto)
+
     def test_el_mapa_de_bits_cambia_de_forma_solo(self):
         """Nadie elige la forma: la decide el nivel mas alto. Se mira en el
         gamedata.h, que es lo que de verdad compila la maquina."""
@@ -1437,6 +1465,75 @@ class TestCompilacionReal(unittest.TestCase):
                                 "una direccion se sale del hunk %d" % destino)
                 vistos += 1
         self.assertEqual(vistos, info["reloc_codigo"] + info["reloc_bss"])
+
+
+class TestMazmorraEnLaMaquina(unittest.TestCase):
+    """El genero de mazmorra encendiendo la consola.
+
+    Lo de aqui no lo puede ver ni la paridad (que es simulacion) ni el preview
+    (que es JavaScript): que el marcador de tres cifras se pinta de verdad y
+    que **baja solo**, sin tocar el mando. Se mira en la Mega Drive, que es la
+    maquina con el emulador mas rapido de las siete; el resto del genero ya se
+    genera y compila para todas en TestNivelesAltos.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cc = _compilador_68k()
+        if not cls.cc:
+            raise unittest.SkipTest("no hay un compilador de 68000 instalado")
+        from libretro import buscar_core
+        import emulador_md
+        if not buscar_core(emulador_md.CORE, "NEOPLAT_CORE_MD"):
+            raise unittest.SkipTest("no esta instalado el core de Genesis Plus GX")
+        cls.tmp = tempfile.mkdtemp(prefix="neoplat-mazmorra-")
+        from ngplat.scaffold import crear_proyecto
+        proyecto = os.path.join(cls.tmp, "mazmorra")
+        crear_proyecto(proyecto, "MAZMORRA", "TEST", genero="mazmorra")
+        build = cargar_demo(proyecto, "megadrive")
+        out = os.path.join(cls.tmp, "megadrive")
+        generar_para_sistema(build, out, sistemas.obtener("megadrive"), "202")
+        hecho = subprocess.run(["make", "-C", out], capture_output=True, text=True)
+        if hecho.returncode:
+            raise AssertionError(hecho.stdout + hecho.stderr)
+        cls.rom = os.path.join(out, "rom/juego.bin")
+
+    @classmethod
+    def tearDownClass(cls):
+        if getattr(cls, "tmp", ""):
+            shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_la_vida_baja_sola_en_la_consola(self):
+        """Se enciende, se empieza la partida y **no se toca el mando**: el
+        marcador tiene que cambiar solo. Si el desgaste no llegara a la
+        maquina, esa franja se quedaria clavada."""
+        from libretro import Emulador, buscar_core
+        import emulador_md
+        from imagen import distintos, franja, guardar_png
+
+        capturas = os.path.join(self.tmp, "capturas")
+        os.makedirs(capturas, exist_ok=True)
+        emu = Emulador(buscar_core(emulador_md.CORE, "NEOPLAT_CORE_MD"))
+        emu.cargar(self.rom)
+        emu.avanzar(120)
+        emu.pulsar("START")
+        emu.avanzar(10)
+        emu.pulsar()
+        emu.avanzar(30)
+        empieza = emu.frame
+        guardar_png(empieza, os.path.join(capturas, "md_mazmorra.png"))
+        self.assertGreater(len(set(franja(empieza, 24))), 2,
+                           "no se ve el marcador arriba")
+        # el desgaste del andamiaje es de 12 frames por punto: en 120 frames se
+        # van diez, y las cifras del marcador tienen que cambiar
+        emu.avanzar(120)
+        despues = emu.frame
+        guardar_png(despues, os.path.join(capturas, "md_mazmorra_despues.png"))
+        cambio = distintos((empieza[0], 24, franja(empieza, 24)),
+                           (despues[0], 24, franja(despues, 24)))
+        self.assertGreater(cambio, 0.0,
+                           "el marcador no cambia en dos segundos sin tocar el "
+                           "mando: la vida no se esta gastando sola")
 
 
 class TestCamaraPorPantallas(unittest.TestCase):

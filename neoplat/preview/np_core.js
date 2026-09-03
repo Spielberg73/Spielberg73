@@ -35,6 +35,7 @@
   var KIND_BREAKABLE = 4, KIND_SUBSHOT = 5, KIND_MELEE = 6;
   var KIND_ENEMY_SHOT = 7;      /* lo que tira un enemigo con `dispara:` */
   var KIND_PRISONER = 8;        /* el rehen: se suelta tocandolo */
+  var KIND_GENERATOR = 9;       /* el nido: saca bichos hasta que lo rompes */
   /* el arma secundaria: 0 ninguna, 1 recta, 2 en arco */
   var SUB_NONE = 0, SUB_LINE = 1, SUB_ARC = 2;
   /* por donde va y viene una plataforma movil */
@@ -72,7 +73,7 @@
       this.players.push({
         x: 0, y: 0, vx: 0, vy: 0, animTimer: 0, invuln: 0, dying: 0,
         anim: 0, animFrame: 0, onGround: 0, facing: 1, jumpsLeft: 0,
-        health: 1, coyote: 0, buffer: 0, lives: 0, playing: 0,
+        health: 1, coyote: 0, buffer: 0, lives: 0, playing: 0, wearTimer: 0,
         attackTimer: 0, attackCd: 0, riding: 0, whip: 0, crouch: 0,
         stun: 0, power: 0,
         stairs: 0, stairDir: 1
@@ -248,6 +249,7 @@
     if (e.kind === KIND_MELEE) return this.data.player.attack;
     if (e.kind === KIND_ENEMY_SHOT) return this.data.enemy_shots[e.def];
     if (e.kind === KIND_PRISONER) return this.data.prisoners[e.def];
+    if (e.kind === KIND_GENERATOR) return this.data.generators[e.def];
     return this.data.items[e.def];
   };
 
@@ -303,6 +305,10 @@
       } else if (e.kind === KIND_PRISONER) {
         e.health = 1;
         e.timer = 0;              /* cero = sigue atado */
+      } else if (e.kind === KIND_GENERATOR) {
+        var gd = this.data.generators[e.def];
+        e.health = gd.health;
+        e.timer = 0;              /* el primer bicho tarda lo mismo que los demas */
       }
       this.entities.push(e);
       this.entityCount++;
@@ -316,6 +322,7 @@
     this.placePlayer(quien);
     p.vx = 0; p.vy = 0; p.onGround = 0; p.facing = 1; p.aim = 0;
     p.health = d.health; p.invuln = 0; p.coyote = 0; p.buffer = 0;
+    p.wearTimer = 0;            /* la cuenta atras de `desgaste:` de cero */
     p.dying = 0; p.attackTimer = 0; p.attackCd = 0; p.riding = 0; p.stun = 0;
     p.power = 0;                /* el arma vuelve a la de serie */
     p.crouch = 0;
@@ -362,6 +369,20 @@
     p.anim = ANIM_HURT;
     p.animFrame = 0;
     if (!this.playersUp()) { this.state = STATE.DYING; this.stateTimer = DYING_TIME; }
+  };
+
+  /* La vida que se gasta sola: `desgaste:` frames por punto. Igual que
+     np_player_wear en C. No pasa por playerHurt a proposito: ahi rebota la
+     invulnerabilidad, y la cuenta atras se pararia cada vez que te rozan. */
+  World.prototype.playerWear = function (quien) {
+    var d = this.data.player, p = this.players[quien];
+    if (!d.wear || !p.playing || p.dying) return;
+    if (this.state !== STATE.PLAY) return;
+    if (++p.wearTimer < d.wear) return;
+    p.wearTimer = 0;
+    if (p.health > 1) { p.health--; return; }
+    p.health = 0;
+    this.playerDie(quien);
   };
 
   World.prototype.playerHurt = function (quien, damage) {
@@ -461,10 +482,25 @@
     e.anim = ANIM_IDLE; e.animFrame = 0; e.animTimer = 0;
   };
 
+  /* Un generador aguanta unos tiros y se acabo. Igual que np_hit_generator. */
+  World.prototype.hitGenerator = function (e, damage) {
+    var d = this.data.generators[e.def];
+    if (e.health > damage) {
+      e.health -= damage;
+      e.hurt = 10;
+      this.sfx |= SFX.BREAK;
+      return;
+    }
+    this.score += d.score;
+    this.sfx |= SFX.BREAK;
+    e.active = 0;
+  };
+
   /* Lo que hace un ataque al tocar algo. Igual que np_hit_entity. */
   World.prototype.hitEntity = function (e, damage) {
     if (e.kind === KIND_ENEMY) this.hitEnemy(e, damage);
     else if (e.kind === KIND_BREAKABLE) this.hitBreakable(e, damage);
+    else if (e.kind === KIND_GENERATOR) this.hitGenerator(e, damage);
   };
 
   /* El alcance del arma ahora mismo: el de siempre mas lo que suman las
@@ -592,7 +628,8 @@
         e.active = 0;
         return;
       }
-      if (otra.kind !== KIND_ENEMY && otra.kind !== KIND_BREAKABLE) continue;
+      if (otra.kind !== KIND_ENEMY && otra.kind !== KIND_BREAKABLE
+          && otra.kind !== KIND_GENERATOR) continue;
       var ea = this.entityDef(otra).actor;
       if (!overlap(e.x, e.y, a.box_w, a.box_h,
                         otra.x, otra.y, ea.box_w, ea.box_h)) continue;
@@ -619,7 +656,8 @@
     for (i = 0; i < this.entityCount; i++) {
       var e = this.entities[i];
       if (!e.active) continue;
-      if (e.kind !== KIND_ENEMY && e.kind !== KIND_BREAKABLE) continue;
+      if (e.kind !== KIND_ENEMY && e.kind !== KIND_BREAKABLE
+          && e.kind !== KIND_GENERATOR) continue;
       /* Lo que esta parpadeando no se vuelve a tocar: la caja del golpe dura
          varios frames y acertaria en todos. Igual que np_melee_update. */
       if (e.hurt) continue;
@@ -711,7 +749,8 @@
         e.active = 0;
         return;
       }
-      if (otra.kind !== KIND_ENEMY && otra.kind !== KIND_BREAKABLE) continue;
+      if (otra.kind !== KIND_ENEMY && otra.kind !== KIND_BREAKABLE
+          && otra.kind !== KIND_GENERATOR) continue;
       var ea = this.entityDef(otra).actor;
       if (!overlap(e.x, e.y, a.box_w, a.box_h,
                         otra.x, otra.y, ea.box_w, ea.box_h)) continue;
@@ -1147,6 +1186,51 @@
     }
   };
 
+  /* ------------------------------------------ generadores de bichos */
+  /* Los nidos de Gauntlet: cada `cooldown` frames sacan un enemigo, hasta que
+     los destruyes. Igual que np_generator_update en C, paso por paso: el orden
+     en que se pide hueco en la lista tiene que ser el mismo o la paridad
+     falla. */
+  World.prototype.cuantosBichos = function (def) {
+    var i, cuantos = 0;
+    for (i = 0; i < this.entityCount; i++) {
+      var e = this.entities[i];
+      if (e.active && e.kind === KIND_ENEMY && e.def === def) cuantos++;
+    }
+    return cuantos;
+  };
+
+  World.prototype.generatorUpdate = function (e) {
+    var d = this.data.generators[e.def], a = d.actor;
+    animSet(e, ANIM_IDLE);
+    animTick(a, e);
+    /* la cuenta va hacia arriba, igual que la del desgaste */
+    if (++e.timer < d.cooldown) return;
+    e.timer = 0;
+    if (this.cuantosBichos(d.enemy) >= d.cap) return;
+    var hueco = this.huecoLibre();
+    if (hueco < 0) return;               /* no cabe: este bicho no sale */
+    var b = this.entities[hueco];
+    var ed = this.data.enemies[d.enemy], ba = ed.actor;
+    b.active = 1;
+    b.kind = KIND_ENEMY;
+    b.def = d.enemy;
+    b.x = e.x + I2F((a.box_w >> 1) - (ba.box_w >> 1));
+    b.y = e.y + I2F(a.box_h - ba.box_h);
+    b.homeX = b.x;
+    b.homeY = b.y;
+    b.vx = ed.speed;
+    b.vy = 0;
+    b.facing = 1;
+    b.health = ed.health;
+    b.hurt = 0;
+    b.vida = 0;
+    b.timer = ed.interval;
+    b.anim = ANIM_IDLE;
+    b.animFrame = 0;
+    b.animTimer = 0;
+  };
+
   World.prototype.prisonerUpdate = function (e) {
     var d = this.data.prisoners[e.def], a = d.actor;
     if (!e.timer) {
@@ -1260,6 +1344,25 @@
     animTick(d.actor, e);
   };
 
+  /* La pocima de Gauntlet: todo lo que **se ve** recibe un golpe. Lo que se
+     ve y no el nivel entero, que se cargaria el juego. Igual que np_bomba. */
+  World.prototype.bomba = function (dano) {
+    var i;
+    if (!dano) dano = 1;
+    for (i = 0; i < this.entityCount; i++) {
+      var e = this.entities[i];
+      if (!e.active) continue;
+      if (e.kind !== KIND_ENEMY && e.kind !== KIND_GENERATOR
+          && e.kind !== KIND_BREAKABLE) continue;
+      var ea = this.entityDef(e).actor;
+      if (F2I(e.x) + ea.box_w <= this.camX) continue;
+      if (F2I(e.x) >= this.camX + SCREEN_W) continue;
+      if (F2I(e.y) + ea.box_h <= this.camY) continue;
+      if (F2I(e.y) >= this.camY + SCREEN_H) continue;
+      this.hitEntity(e, dano);
+    }
+  };
+
   /* Lo recoge quien lo toca: la vida y la salud van a ese jugador, y los
      puntos y las llaves al marcador, que es comun. */
   World.prototype.collect = function (quien, e) {
@@ -1277,6 +1380,8 @@
     } else if (d.effect === 6) {
       /* cambia el arma secundaria: `amount` es su numero en la lista */
       if (d.amount < this.data.player.subs.length) this.sub = d.amount;
+    } else if (d.effect === 7) {
+      this.bomba(d.amount);
     }
     e.active = 0;
   };
@@ -1323,6 +1428,7 @@
           continue;                              /* es tuyo: no te toca */
         if (e.kind === KIND_MELEE) continue;     /* es tu propio latigo */
         if (e.kind === KIND_PLATFORM) continue;  /* es suelo, no un bicho */
+        if (e.kind === KIND_GENERATOR) continue; /* hay que pegarle, y no hace dano */
         if (e.kind === KIND_BREAKABLE) continue; /* hay que pegarle */
         if (e.kind === KIND_ENEMY_SHOT) continue;   /* se mira en su update */
         if (e.kind === KIND_PRISONER) { this.prisonerFree(e, p); continue; }
@@ -1469,6 +1575,7 @@
       else if (e.kind === KIND_SUBSHOT) this.subshotUpdate(e);
       else if (e.kind === KIND_ENEMY_SHOT) this.enemyShotUpdate(e);
       else if (e.kind === KIND_PRISONER) this.prisonerUpdate(e);
+      else if (e.kind === KIND_GENERATOR) this.generatorUpdate(e);
       else if (e.kind === KIND_ENEMY) this.enemyUpdate(e);
       else if (e.kind === KIND_BREAKABLE) this.breakableUpdate(e);
       else this.itemUpdate(e);
@@ -1500,6 +1607,8 @@
         this.playerHurt(quien, 99);
         continue;
       }
+      this.playerWear(quien);
+      if (q.dying) continue;
       this.checkTouch(quien);
       /* La meta solo se abre si se llevan las llaves que pide el nivel. Las
          llaves son de la partida, no de cada jugador. */

@@ -14,7 +14,7 @@
   "use strict";
 
   var TILE_SOLID = 1, TILE_PLATFORM = 2, TILE_HAZARD = 3, TILE_GOAL = 4;
-  var KIND_ENEMY = 0, KIND_PRISONER = 8;
+  var KIND_ENEMY = 0, KIND_ITEM = 1, KIND_PRISONER = 8;
 
   /**
    * @param NPCore  el motor (preview/np_core.js)
@@ -172,12 +172,16 @@
   }
 
   /**
-   * Camino mas corto de una casilla a la meta, en anchura y por los cuatro
-   * lados (nada de diagonales: rozarian las esquinas). Devuelve la lista de
-   * casillas o null si no hay camino, que es justo lo que interesa saber de un
-   * nivel dibujado a mano.
+   * Camino mas corto de una casilla a **lo que se busque**, en anchura y por
+   * los cuatro lados (nada de diagonales: rozarian las esquinas). Devuelve la
+   * lista de casillas o null si no hay camino, que es justo lo que interesa
+   * saber de un nivel dibujado a mano.
+   *
+   * `quiere(x, y)` dice si esa casilla vale. Por defecto es la meta, pero en
+   * una mazmorra tambien se va a por una llave o a por comida.
    */
-  function camino(w, desdeX, desdeY) {
+  function camino(w, desdeX, desdeY, quiere) {
+    if (!quiere) quiere = function (x, y) { return w.tileKindAt(x, y) === TILE_GOAL; };
     var an = w.level.width, al = w.level.height;
     var previo = new Int32Array(an * al);
     var visto = new Uint8Array(an * al);
@@ -188,7 +192,7 @@
     while (cabeza < cola.length) {
       var c = cola[cabeza++];
       var cx = c % an, cy = (c / an) | 0;
-      if (w.tileKindAt(cx, cy) === TILE_GOAL) { meta = c; break; }
+      if (quiere(cx, cy)) { meta = c; break; }
       var lados = [[cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1]];
       for (var i = 0; i < 4; i++) {
         var nx = lados[i][0], ny = lados[i][1];
@@ -205,6 +209,58 @@
     return ruta;
   }
 
+  /**
+   * Que buscar, por orden de preferencia. En un juego de comando siempre es la
+   * meta; en una mazmorra hay que decidir, que es de lo que va el genero:
+   *
+   *   1. si la vida se gasta sola y queda poca, **comida** antes que nada
+   *   2. si la meta pide llaves y no se tienen, la **llave** (y aqui la meta
+   *      ya no vale de recambio: cerrada no se abre)
+   *   3. y si no, la meta
+   *
+   * Va una lista y no un objetivo suelto porque lo de arriba puede estar
+   * encerrado: quien llama se queda con el primero al que haya camino. Si lo
+   * que falta no esta en el nivel, devuelve {falta: "..."} y no hay mas que
+   * hablar.
+   */
+  function objetivos(w, data, F2I) {
+    var p = w.players[0];
+    var casillas = function (efecto) {
+      var sitios = {}, cuantos = 0;
+      for (var k = 0; k < w.entityCount; k++) {
+        var e = w.entities[k];
+        if (!e.active || e.kind !== KIND_ITEM) continue;
+        var d = data.items[e.def];
+        if (!d || d.effect !== efecto) continue;
+        /* la casilla, en una sola clave: los niveles llegan a 512 de ancho,
+           asi que el hueco para la x tiene que ser de 1024 y no de 256 */
+        sitios[(F2I(e.y) >> 4) * 1024 + (F2I(e.x) >> 4)] = 1;
+        cuantos++;
+      }
+      return cuantos ? sitios : null;
+    };
+    var hacia = function (nombre, sitios) {
+      return { nombre: nombre,
+               quiere: function (x, y) { return sitios[y * 1024 + x] === 1; } };
+    };
+    var lista = [];
+    if (data.player.wear && p.health * 5 < data.player.health * 2) {
+      var comida = casillas(2);              /* efecto salud */
+      if (comida) lista.push(hacia("la comida", comida));
+    }
+    var piden = w.level.keys_needed || 0;
+    if (piden && w.keys < piden) {
+      var llaves = casillas(3);              /* efecto llave */
+      if (!llaves)
+        return { falta: "le faltan llaves para abrir la meta y no queda "
+                        + "ninguna a mano: tiene " + w.keys + " de " + piden };
+      lista.push(hacia("la llave", llaves));
+    } else {
+      lista.push({ nombre: "la meta", quiere: null });
+    }
+    return { lista: lista };
+  }
+
   function jugarCenital(NPCore, data, nivel, opciones) {
     var w = NPCore.create(data);
     w.step(NPCore.IN.START);
@@ -217,6 +273,7 @@
     var alcance = ataque ? Math.max(96, ataque.range || 160) : 0;
     var golpeCd = 0, muertes = 0, mejorY = 99999, sinAvanzar = 0;
     var ruta = null, paso = 0, recalcular = 0;
+    var voy = "", mejorFalta = 99999;
 
     function centroX(p) { return NPCore.F2I(p.x) + (pa.box_w >> 1); }
     function centroY(p) { return NPCore.F2I(p.y) + (pa.box_h >> 1); }
@@ -227,14 +284,29 @@
       var tx = cx >> 4, ty = cy >> 4;
 
       /* El camino se recalcula de vez en cuando: al empezar, al morir y al
-         perder el hilo. El mapa no cambia, pero el jugador si se mueve. */
+         perder el hilo. El mapa no cambia, pero el jugador si se mueve, y en
+         una mazmorra lo que se busca tampoco es siempre lo mismo: primero la
+         comida o la llave, y la meta al final. */
       if (!ruta || recalcular <= 0) {
-        ruta = camino(w, tx, ty);
+        var busca = objetivos(w, data, NPCore.F2I);
+        if (busca.falta) {
+          return { ok: false, motivo: busca.falta, muertes: muertes,
+                   avance: mejorY === 99999 ? 0 : mejorY, y: cy };
+        }
+        ruta = null;
+        for (var o = 0; o < busca.lista.length && !ruta; o++) {
+          ruta = camino(w, tx, ty, busca.lista[o].quiere);
+          if (ruta && voy !== busca.lista[o].nombre) {
+            voy = busca.lista[o].nombre;
+            mejorFalta = 99999;
+          }
+        }
         paso = 0;
-        recalcular = 120;
+        recalcular = 60;
         if (!ruta) {
-          return { ok: false, motivo: "no hay camino andando hasta la meta",
-                   muertes: muertes, avance: 0, y: cy };
+          return { ok: false, muertes: muertes, avance: 0, y: cy,
+                   motivo: "no hay camino andando hasta "
+                           + busca.lista[busca.lista.length - 1].nombre };
         }
       }
       recalcular--;
@@ -312,15 +384,19 @@
                    avance: mejorY, y: cy };
         }
         w.players[0].lives = data.lives;
-        ruta = null; mejorY = 99999; sinAvanzar = 0;
+        ruta = null; mejorY = 99999; sinAvanzar = 0; mejorFalta = 99999;
         continue;
       }
 
-      /* Aqui se avanza subiendo, asi que "ir bien" es que la y baje. */
+      /* "Ir bien" no es subir: en una mazmorra se baja a por la llave y se
+         vuelve. Lo que tiene que menguar es **lo que falta de camino hasta lo
+         que se busca ahora**, y eso se reinicia al cambiar de objetivo. */
       var ahora = centroY(w.players[0]);
-      if (ahora < mejorY) { mejorY = ahora; sinAvanzar = 0; }
+      if (ahora < mejorY) mejorY = ahora;
+      var falta = ruta.length - 1 - paso;
+      if (falta < mejorFalta) { mejorFalta = falta; sinAvanzar = 0; }
       else if (++sinAvanzar > 600) {
-        return { ok: false, motivo: "se queda atascado subiendo",
+        return { ok: false, motivo: "se queda atascado yendo a " + voy,
                  muertes: muertes, avance: mejorY, y: ahora };
       }
     }

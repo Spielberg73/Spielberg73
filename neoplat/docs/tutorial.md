@@ -15,15 +15,17 @@ que tipo de juego quieres hacer?
   1) plataformas   salto controlado en el aire, disparo y pisar enemigos
   2) castlevania   salto sin control, latigo, escaleras y arma secundaria
   3) comando       visto desde arriba: ocho direcciones, granadas y prisioneros
+  4) mazmorra      laberinto: la vida se gasta sola y los nidos sacan bichos
 
 elige [1]:
 ```
 
 El género no es un adorno: cambia la física del salto, el arma, si puedes
-pisar enemigos y hasta el mapa del primer nivel. El tercero cambia más aún: se
-ve **desde arriba**, así que no hay gravedad ni saltos, se anda en ocho
-direcciones y se sube la pantalla a tiros (mira
-[«un juego visto desde arriba»](#un-juego-visto-desde-arriba) al final). Si ya lo tienes claro, pásalo
+pisar enemigos y hasta el mapa del primer nivel. Los dos últimos cambian más
+aún: se ven **desde arriba**, así que no hay gravedad ni saltos y se anda en
+ocho direcciones (mira [«un juego visto desde
+arriba»](#un-juego-visto-desde-arriba) y [«una mazmorra»](#una-mazmorra) al
+final). Si ya lo tienes claro, pásalo
 directo y se salta el menú:
 
 ```bash
@@ -342,6 +344,59 @@ poner ancho (44 × 16 casillas) o alto (22 × 32), y lo eligen solos según el n
 más alto del juego; a cambio, con la forma alta el nivel tiene que caber entero
 de ancho: 22 casillas. Si te pasas, `ngplat comprobar` te lo dice con esas
 palabras antes de compilar.
+
+## Una mazmorra
+
+```bash
+./ngplat nuevo micripta --genero mazmorra
+```
+
+También se ve desde arriba, pero se juega de otra manera: esto es un Gauntlet.
+El nivel no es un camino, es un **laberinto** de 20 × 28 casillas que se ve casi
+entero, y lo que decide la partida no es la puntería sino por dónde tiras.
+
+Tres reglas lo cambian todo:
+
+- **La vida se gasta sola.** El jugador trae `vida: 200` y `desgaste: 12`, o
+  sea un punto cada doce frames: unos cuarenta segundos de reloj. El marcador
+  lo enseña como número (`LIFE 184`) y va bajando siempre, te pegue alguien o
+  no. Se recupera con la comida (`efecto: salud`), que es lo único que para la
+  cuenta atrás.
+- **Los nidos sueltan bichos sin parar.** El símbolo `n` pone un nido y `N` una
+  cripta, y cada uno saca su bicho cada tantos frames hasta que lo revientas a
+  flechazos. Mientras siga en pie, matar lo que sale no sirve para nada: es lo
+  que te empuja a meterte donde no querías.
+- **La poción limpia la pantalla.** El botón de saltar no salta (aquí no hay
+  nada que saltar): tira una poción. Y hay otra, `r`, que al cogerla hace daño a
+  **todo lo que se ve en ese momento**, nidos incluidos. La *smart bomb* de toda
+  la vida: vale lo que valga el momento en que la cojas.
+
+Y encima la meta pide una llave que está al otro lado del laberinto, así que
+hay que dar la vuelta entera con el reloj corriendo. Ir a por todo —la comida
+de un lado y el tesoro del otro— es quedarse sin vida: eso es el género.
+
+```yaml
+jugador:
+  vida: 200
+  desgaste: 12         # un punto cada 12 frames
+
+generadores:
+  nido:
+    genera: bicho      # qué saca
+    cada: 100          # cada cuántos frames
+    tope: 3            # cuántos suyos puede haber a la vez
+    vida: 3            # flechazos que aguanta
+```
+
+Los dos laberintos que trae se pueden terminar andando, y hay una prueba que lo
+comprueba con un bot que va **primero a por la llave** y después a la salida
+(`tests/test_niveles.py`). Si tocas el mapa y cierras un paso, esa prueba te lo
+dice.
+
+Todo lo demás es igual que siempre: los mismos PNG, el mismo editor y el mismo
+`ngplat compilar` para las siete máquinas. Están explicados al detalle en
+[formato.md](formato.md#generadores) (`generadores`, `desgaste` y
+`efecto: bomba`).
 
 ## Cuando algo falla
 

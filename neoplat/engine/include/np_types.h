@@ -69,6 +69,7 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_KIND_MELEE 6          /* el latigo: solo se ve, no toca a nadie */
 #define NP_KIND_ENEMY_SHOT 7     /* lo que tira un enemigo con `dispara:` */
 #define NP_KIND_PRISONER 8       /* el rehen: se suelta tocandolo */
+#define NP_KIND_GENERATOR 9      /* el nido: saca bichos hasta que lo rompes */
 
 /* El arma secundaria: se lanza con arriba + accion y gasta municion. */
 #define NP_SUB_NONE  0
@@ -94,6 +95,7 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_ITEM_AMMO   4         /* municion del arma secundaria */
 #define NP_ITEM_UPGRADE 5        /* mejora el arma: cada uno la alarga un paso */
 #define NP_ITEM_WEAPON  6        /* cambia el arma secundaria que llevas */
+#define NP_ITEM_BOMB    7        /* la pocima: hace dano a todo lo que se ve */
 
 /* Ranuras de animacion (las que genera el compilador para cada actor). */
 #define NP_ANIM_IDLE 0

@@ -38,6 +38,7 @@ typedef struct {
     uint8_t stairs;          /* 1 = subido a una escalera */
     uint8_t crouch;          /* 1 = agachado */
     int8_t stair_dir;        /* hacia donde avanza en x al subir: +1 o -1 */
+    uint16_t wear_timer;     /* frames para el siguiente punto de `desgaste:` */
     uint8_t lives;           /* las vidas son de cada uno */
     uint8_t playing;         /* 0 = fuera (segundo jugador de una partida a uno,
                                 o el que se ha quedado sin vidas) */

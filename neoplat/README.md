@@ -123,6 +123,7 @@ el nivel de partida.
 | `plataformas` | saltas, pisas enemigos y disparas, y el salto se corrige en el aire. Lo de toda la vida |
 | `castlevania` | pegas con **látigo** (que se ve, y se alarga con cada mejora), te agachas, subes escaleras y tiras cuchillos o el hacha gastando munición. El salto **no** se corrige, un golpe te tira al vacío y hay puntos de control. Trae sus propios bichos: esqueleto, murciélago y un encapuchado de jefe |
 | `comando` | **se ve desde arriba**: andas en ocho direcciones, disparas hacia donde miras, tiras granadas con el botón de saltar y subes la pantalla rescatando prisioneros. Los soldados y las torretas **te disparan**; a los presos atados, no: si les das, los pierdes |
+| `mazmorra` | un **laberinto** visto desde arriba, al estilo Gauntlet. La vida **se gasta sola**, así que la partida es una cuenta atrás y hay que ir buscando comida; los **generadores** sueltan bichos sin parar hasta que los revientas, y la poción del botón de saltar se lleva por delante todo lo que se ve. La meta pide una llave que está al otro lado del laberinto |
 
 Si prefieres decirlo de una:
 
@@ -353,9 +354,9 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.20.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
-| `neoplat-kit-1.20.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.20.zip` | el `ngplat.exe` y su LEEME |
+| `neoplat-docs-1.21.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
+| `neoplat-kit-1.21.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.21.zip` | el `ngplat.exe` y su LEEME |
 
 El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
 plantillas; no necesita Python ni nada instalado. Con **doble clic** —sin
@@ -391,6 +392,7 @@ archivo nuevo y que el `.exe` se quede sin él; así salta antes de repartirlo.
 | `ngplat nuevo <carpeta>` | Crea un proyecto jugable con gráficos de ejemplo, preguntando el género |
 | `ngplat nuevo <carpeta> --genero castlevania` | Lo mismo, con látigo, escaleras, munición y puntos de control en vez de saltar y pisar |
 | `ngplat nuevo <carpeta> --genero comando` | Lo mismo, pero visto desde arriba: ocho direcciones, granadas, enemigos que disparan y prisioneros que rescatar |
+| `ngplat nuevo <carpeta> --genero mazmorra` | Un laberinto tipo Gauntlet: la vida se gasta sola, hay generadores de bichos y una poción que limpia la pantalla |
 | `ngplat nuevo <carpeta> --estilo hierro` | Lo mismo, pero dibujado con seis colores y listo para el doble plano del Amiga |
 | `ngplat comprobar [proyecto]` | Valida el `game.yaml` y dice cuánto ocupa el juego |
 | `ngplat probar [proyecto]` | Abre el preview y el editor, y se queda sirviéndolo |
@@ -493,7 +495,7 @@ llega esa separación: no tiene sprites, ni blitter, ni scroll por hardware, y
 aun así el `np_world.c` que corre dentro es exactamente el mismo. Todo lo demás (niveles, física, enemigos,
 colisiones, editor, preview, pruebas) ya está hecho y no se toca.
 
-## La misma simulación en los seis sitios
+## La misma simulación en los ocho sitios
 
 `engine/core/np_world.c` (las siete máquinas) y `preview/np_core.js` (navegador)
 son la misma simulación escrita dos veces: enteros y coma fija 24.8, sin
@@ -511,7 +513,7 @@ consola, y da igual en cuál.
 make test           # herramientas, validación, generación de C y paridad C/JS
 make test-emulador  # arranca la ROM y el disquete en emuladores de verdad
 make test-navegador # abre el preview y el editor en Chromium
-node tests/comportamiento.js   # 38 pruebas de jugabilidad
+node tests/comportamiento.js   # 142 pruebas de jugabilidad
 make ejemplo-todos             # compila el ejemplo para las siete máquinas
 ```
 

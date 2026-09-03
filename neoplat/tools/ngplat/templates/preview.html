@@ -241,7 +241,7 @@
   <span id="teclas-atacar"><kbd>X</kbd> atacar</span>
   <span id="teclas-disparar" hidden><kbd>X</kbd> disparar hacia donde miras</span>
   <span id="teclas-secundaria" hidden><kbd>&uarr;</kbd>+<kbd>X</kbd> arma secundaria</span>
-  <span id="teclas-granada" hidden><kbd>Z</kbd> / <kbd>espacio</kbd> lanzar granada</span>
+  <span id="teclas-granada" hidden><kbd>Z</kbd> / <kbd>espacio</kbd> <span id="teclas-granada-que">lanzar granada</span></span>
   <span id="teclas-agachar"><kbd>&darr;</kbd> agacharse / bajar de plataforma</span>
   <span><kbd>Enter</kbd> empezar</span>
   <span id="teclas-2p" hidden>jugador 2: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> moverse &middot; <kbd>G</kbd> saltar &middot; <kbd>H</kbd> atacar</span>
@@ -614,6 +614,14 @@
   if ((DATA.player.subs || []).length) {
     verTecla("teclas-secundaria", !CENITAL);
     verTecla("teclas-granada", CENITAL);
+    /* De arriba el boton de saltar tira el arma secundaria, y esa no siempre
+       es una granada: en una mazmorra es una pocima. Se dice la que sea, con
+       el nombre que el juego le pone en el marcador. */
+    var arma = DATA.player.subs[0];
+    var comoSeLlama = String(arma.name || arma.label || "").trim();
+    var donde = document.getElementById("teclas-granada-que");
+    if (donde && comoSeLlama)
+      donde.textContent = "lanzar " + comoSeLlama.toLowerCase();
   }
   var PAD = {
     left: NPCore.IN.LEFT, right: NPCore.IN.RIGHT, down: NPCore.IN.DOWN,
@@ -1107,9 +1115,16 @@
       for (var j = 0; j < (DOS_JUGADORES ? 2 : 1); j++) {
         var q = world.players[j];
         if (!q.playing) continue;
-        var pips = "";
-        for (var k = 0; k < cabe; k++) pips += (k < Math.min(q.health, cabe)) ? "#" : ".";
-        text(2 + j * 18, 3, (DOS_JUGADORES ? (j ? "2P   " : "1P   ") : "LIFE ") + pips);
+        /* Con `desgaste:` la vida baja sola y es una cuenta atras: sale el
+           numero, no los cuadrados. Igual que np_life_bar en C. */
+        var cuanto = DATA.player.wear
+                   ? pad(Math.min(q.health, 255), 3)
+                   : "";
+        if (!DATA.player.wear) {
+          for (var k = 0; k < cabe; k++)
+            cuanto += (k < Math.min(q.health, cabe)) ? "#" : ".";
+        }
+        text(2 + j * 18, 3, (DOS_JUGADORES ? (j ? "2P   " : "1P   ") : "LIFE ") + cuanto);
       }
     }
     if (world.state === NPCore.STATE.TITLE) {

@@ -190,7 +190,9 @@ jugador:
   buffer_salto: 6      # frames de margen para saltar antes de aterrizar
   pisar_enemigos: si
   rebote: 3.6          # impulso al pisar un enemigo
-  vida: 1              # golpes que aguanta
+  vida: 1              # golpes que aguanta (1 a 255)
+  desgaste: 0          # frames por punto de vida que se va solo
+                       # (0 = la vida no se gasta sola)
   invulnerable: 90     # frames de parpadeo tras un golpe
   retroceso: 3.0       # con cuánta fuerza sales despedido al recibir un golpe
   aturdido: 24         # frames sin control después del golpe (0 = ninguno)
@@ -229,6 +231,32 @@ y sin `bucle: no` volvería al primero a mitad del latigazo.
 
 **La caja de colisión** se centra horizontalmente en el fotograma y se apoya en
 su borde inferior. Hazla algo más estrecha que el dibujo: se juega mejor.
+
+### `desgaste`: la vida que se gasta sola
+
+Con `desgaste: N` el jugador **pierde un punto de vida cada N frames**, esté
+haciendo lo que esté haciendo. Es lo que convierte una partida en una cuenta
+atrás, y es el motor del género de mazmorra: si no comes, te mueres solo.
+
+```yaml
+jugador:
+  vida: 200            # aquí la vida no son tres golpes: son 200 puntos
+  desgaste: 12         # uno cada 12 frames, o sea 200 puntos = 40 segundos
+```
+
+Detalles que importan:
+
+- el desgaste **no respeta la invulnerabilidad**: el parpadeo de después de un
+  golpe te salva de los enemigos, no del hambre;
+- se para con la partida (en la pantalla de título, muriéndote o con el nivel
+  terminado no baja);
+- al llegar a cero te mueres igual que de un golpe, con su animación y su vida
+  menos.
+
+Lo natural es juntarlo con una `vida:` alta (100, 200...) y objetos de
+`efecto: salud` repartidos por el mapa. Y con `desgaste:` puesto el marcador
+deja de dibujar cuadrados y **escribe el número** (`LIFE 184`), que es lo que
+hacía el Gauntlet: cien cuadrados no caben en ninguna de estas pantallas.
 
 ### El golpe recibido: `retroceso` y `aturdido`
 
@@ -707,7 +735,7 @@ objetos:
     caja: [10, 10]
     puntos: 10
     efecto: puntos       # puntos | vida | salud | llave | municion | mejora
-                         # | subarma
+                         # | subarma | bomba
     cantidad: 1
     animaciones:
       quieto: {frames: [0, 1, 2, 3], velocidad: 7}
@@ -726,11 +754,74 @@ tope que marque `mejoras:`, y si el ataque no admite ninguna el objeto no hace
 nada. A diferencia de las llaves, el nivel del arma es **de cada jugador**, y se
 pierde al morir.
 
+**La bomba.** Un objeto con `efecto: bomba` hace daño `cantidad` a **todo lo
+que se ve en ese momento**: enemigos, generadores y rompibles que estén dentro
+de la pantalla. Lo de fuera no se entera, y esa es la gracia: la poción no
+limpia el nivel, limpia *la pantalla*, así que vale lo que valga el momento en
+que la cojas. Es la *smart bomb* de toda la vida.
+
+```yaml
+  rayo:
+    sprite: graficos/pocima.png
+    puntos: 300
+    efecto: bomba
+    cantidad: 4          # el daño que reparte, no cuántas bombas te da
+```
+
 **Cambiar de arma secundaria.** Un objeto con `efecto: subarma` y `arma: hacha`
 cambia el arma secundaria que se lleva por la que diga (ver
 [`secundarias`](#varias-armas-y-el-objeto-que-las-cambia)). El arma tiene que
 existir en `secundarias:` o `ngplat` no compila: si no, se cogería y no pasaría
 nada.
+
+## `generadores`
+
+Los nidos del Gauntlet: **sueltan bichos sin parar hasta que los revientas**.
+Es la regla que le da la vuelta al juego, porque mientras uno siga en pie,
+matar lo que sale no sirve de nada.
+
+```yaml
+generadores:
+  nido:
+    sprite: graficos/nido.png
+    frame: [16, 16]
+    caja: [14, 14]
+    genera: bicho        # qué enemigo saca; tiene que existir en `enemigos:`
+    cada: 100            # frames entre bicho y bicho (8 a 3600)
+    tope: 3              # cuántos suyos puede haber a la vez (1 a 32)
+    vida: 3              # tiros que aguanta
+    puntos: 1000         # lo que suma destruirlo
+    animaciones:
+      quieto: {frames: [0, 1, 2, 1], velocidad: 10}
+```
+
+Se colocan en el mapa con su símbolo en [`spawns`](#spawns), igual que un
+enemigo:
+
+```yaml
+spawns:
+  n: nido
+```
+
+Cómo se comporta:
+
+- **cuenta `cada` frames y saca un `genera`** en su propia casilla, con la vida
+  y el comportamiento que tenga ese enemigo en `enemigos:`;
+- **`tope` es su cuenta, no la del nivel**: cuando ya tiene `tope` bichos vivos
+  se calla, y vuelve a sacar en cuanto matas a uno. Dos nidos del mismo tipo no
+  se estorban;
+- **no hace daño al tocarlo**: se le pega, no te pega. Se destruye a tiros
+  (o con una `bomba`), y al caer suma `puntos` y suena `romper`;
+- si la lista de entidades está llena, ese bicho no sale y ya está: el nido no
+  se atasca.
+
+Un generador es un actor como los demás, así que se dibuja, se anima y se
+mueve por las siete máquinas sin nada especial.
+
+**Cuánto cuestan.** Cada bicho que sale ocupa una ranura de la lista de
+entidades (64 en total, contando disparos y objetos), así que `tope: 3` en
+cuatro nidos son doce bichos posibles y ya vas justo. Si quieres una marea, baja `cada`; si quieres agobio,
+sube `tope`.
 
 ## `prisioneros`
 
@@ -878,13 +969,16 @@ usa:
 | `AMMO 05` | con arma `secundaria:` (con varias, el nombre de la que llevas: `HACHA 05`) |
 | `BOSS ####` | con un jefe en pantalla |
 | `LIFE ###.` | con `vida:` mayor que 1 |
+| `LIFE 184` | con `desgaste:` puesto: ahí la vida es un número de tres cifras |
 
 La barra de vida lleva un cuadrado por golpe: los llenos (`#`) son los que te
 quedan y los puntos (`.`) los que has perdido, así que se ve a la vez cuánto
 aguantas y cuánto aguantabas entero. A dos jugadores sale una por cabeza
-(`1P ###` y `2P ###`). Fuera de la partida se apaga: en el Amiga, la Jaguar y
-el Atari ST el marcador es una banda de tres filas y esa tercera fila es la que
-usan el título y el *game over*.
+(`1P ###` y `2P ###`), y como mucho salen nueve cuadrados: con más `vida:` se
+dibujan nueve y ya. Con `desgaste:` no hay cuadrados que valgan —doscientos no
+caben en ninguna de estas pantallas— y sale el número. Fuera de la partida se
+apaga: en el Amiga, la Jaguar y el Atari ST el marcador es una banda de tres
+filas y esa tercera fila es la que usan el título y el *game over*.
 
 **Momentos que puedes sonorizar** (los produce el juego solo): `empezar`,
 `salto`, `doble_salto`, `moneda`, `pisar`, `golpe`, `muerte`, `meta`, `vida`,

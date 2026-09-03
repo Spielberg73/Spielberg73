@@ -61,6 +61,7 @@ function datos(filas, opciones) {
       else if (ch === "V") { spawns.push([x * 16 + 2, y * 16 + 16 - candelabro.box_h, 4, 1]); ch = "."; }
       else if (ch === "J") { spawns.push([x * 16 + 2, y * 16 + 16 - enemigo.box_h, 0, 2]); ch = "."; }
       else if (ch === "R") { spawns.push([x * 16 + 2, y * 16 + 16 - enemigo.box_h, 8, 0]); ch = "."; }
+      else if (ch === "N") { spawns.push([x * 16 + 1, y * 16 + 2, 9, 0]); ch = "."; }
       assert.ok(ch in LEYENDA, "simbolo desconocido: " + ch);
       celdas.push(LEYENDA[ch]);
     }
@@ -90,6 +91,8 @@ function datos(filas, opciones) {
       double_jump: opciones.doubleJump ? 1 : 0,
       stomp: opciones.stomp === false ? 0 : 1,
       health: opciones.health || 1,
+      /* `desgaste:` frames por punto de vida; 0 = la vida solo se pierde a golpes */
+      wear: opciones.desgaste || 0,
       /* cuanto baja el techo de la caja al agacharse; 0 = no se puede */
       crouch_drop: opciones.agachado || 0,
       /* el ataque: por defecto ninguno, como un proyecto sin `ataque:` */
@@ -166,8 +169,19 @@ function datos(filas, opciones) {
         damage: opciones.tiroDano === undefined ? 1 : opciones.tiroDano,
         name: "tiro" }
     ],
+    /* Los nidos de Gauntlet: sacan el enemigo 0 (el de patrulla) */
+    generators: [
+      { actor: actor(14, 14), score: 1000,
+        cooldown: opciones.nidoCada === undefined ? 30 : opciones.nidoCada,
+        health: opciones.nidoVida === undefined ? 3 : opciones.nidoVida,
+        enemy: 0, cap: opciones.nidoTope === undefined ? 3 : opciones.nidoTope,
+        name: "nido" }
+    ],
     items: [
-      { actor: objeto, score: 10, effect: 0, amount: 1, name: "moneda" },
+      { actor: objeto, score: 10,
+        effect: opciones.objetoEfecto === undefined ? 0 : opciones.objetoEfecto,
+        amount: opciones.objetoCantidad === undefined ? 1 : opciones.objetoCantidad,
+        name: "moneda" },
       /* efecto 3 = llave: no da puntos de vida, suma al contador de la partida */
       { actor: objeto, score: 50, effect: 3, amount: opciones.valorLlave || 1,
         name: "llave" },
@@ -1801,6 +1815,167 @@ prueba("morir devuelve el arma a como estaba", function () {
   assert.strictEqual(w.players[0].power, 1, "no se ha cogido la mejora");
   morirYVolver(w);
   assert.strictEqual(w.players[0].power, 0, "la mejora sobrevive a la muerte");
+});
+
+/* --------------------------------------- generadores de bichos (Gauntlet) */
+
+/* El boton de accion dispara al **pulsarlo**, no mientras se aguanta: para
+   soltar varios tiros hay que soltarlo entre uno y otro. */
+function disparar(w, frames) {
+  for (var i = 0; i < frames; i++) w.step(i % 2 ? NP.IN.ACTION : 0);
+  return w;
+}
+
+function bichos(w) {
+  var cuantos = 0;
+  for (var i = 0; i < w.entityCount; i++) {
+    var e = w.entities[i];
+    if (e.active && e.kind === 0) cuantos++;
+  }
+  return cuantos;
+}
+
+function primerNido(w) {
+  for (var i = 0; i < w.entityCount; i++) {
+    if (w.entities[i].active && w.entities[i].kind === 9) return w.entities[i];
+  }
+  return null;
+}
+
+prueba("un generador saca bichos cada tantos frames", function () {
+  var w = mundo(["......", "..N...", "P.....", "######"],
+                { cenital: true, nidoCada: 30, nidoTope: 5 });
+  assert.strictEqual(bichos(w), 0, "ha salido alguno antes de tiempo");
+  correr(w, 29);
+  assert.strictEqual(bichos(w), 0, "el primero ha salido antes de los 30 frames");
+  correr(w, 1);
+  assert.strictEqual(bichos(w), 1, "no ha salido el primero");
+  correr(w, 30);
+  assert.strictEqual(bichos(w), 2, "no ha salido el segundo");
+});
+
+prueba("el generador no pasa de su tope", function () {
+  var w = mundo(["......", "..N...", "P.....", "######"],
+                { cenital: true, nidoCada: 5, nidoTope: 2 });
+  correr(w, 300);
+  assert.strictEqual(bichos(w), 2, "se ha pasado del tope de dos");
+});
+
+prueba("a tiros el generador se acaba, y deja de sacar bichos", function () {
+  var w = mundo(["......", "P.N...", "......", "######"],
+                { cenital: true, ataque: "disparo", alcance: 96, espera: 4,
+                  nidoCada: 40, nidoTope: 5, nidoVida: 2 });
+  assert.ok(primerNido(w), "no hay generador");
+  disparar(w, 80);
+  assert.ok(!primerNido(w), "el generador aguanta mas de lo que dice su vida");
+  var antes = bichos(w);
+  correr(w, 200);
+  assert.strictEqual(bichos(w), antes, "sigue sacando bichos despues de roto");
+});
+
+prueba("destruir un generador suma sus puntos", function () {
+  var w = mundo(["......", "P.N...", "......", "######"],
+                { cenital: true, ataque: "disparo", alcance: 96, espera: 4,
+                  nidoCada: 400, nidoVida: 1 });
+  disparar(w, 40);
+  assert.strictEqual(w.score, 1000, "no ha sumado los puntos del generador");
+});
+
+prueba("el generador no hace dano al tocarlo", function () {
+  /* En Gauntlet lo que mata son los bichos, no el nido: hay que poder
+     pegarse a el para reventarlo de cerca. */
+  var w = mundo(["......", "PN....", "......", "######"],
+                { cenital: true, health: 5, nidoCada: 400 });
+  correr(w, 60, NP.IN.RIGHT);
+  assert.strictEqual(w.players[0].health, 5, "el nido le ha quitado vida");
+});
+
+/* ------------------------------------------ la pocima (Gauntlet) */
+
+prueba("la pocima se lleva por delante lo que se ve", function () {
+  var w = mundo(["..........", "P.o.e.e.e.", "..........", "##########"],
+                { cenital: true, objetoEfecto: 7, objetoCantidad: 3 });
+  assert.strictEqual(bichos(w), 3, "no hay tres bichos para empezar");
+  correr(w, 60, NP.IN.RIGHT);
+  assert.strictEqual(bichos(w), 0, "la pocima no se los ha llevado");
+});
+
+prueba("la pocima tambien revienta generadores", function () {
+  var w = mundo(["..........", "P.o.N.....", "..........", "##########"],
+                { cenital: true, objetoEfecto: 7, objetoCantidad: 5,
+                  nidoVida: 3, nidoCada: 400 });
+  assert.ok(primerNido(w), "no hay generador");
+  correr(w, 60, NP.IN.RIGHT);
+  assert.ok(!primerNido(w), "la pocima no se ha llevado el nido");
+});
+
+prueba("la pocima no llega a lo que esta fuera de pantalla", function () {
+  /* Una pocima que limpiara el nivel entero se cargaria el juego: en
+     Gauntlet se lleva lo que ves, y por eso hay que elegir cuando usarla. */
+  var filas = ["", "", "", ""];
+  for (var x = 0; x < 40; x++) {
+    filas[0] += ".";
+    filas[1] += (x === 0 ? "P" : (x === 2 ? "o" : (x === 38 ? "e" : ".")));
+    filas[2] += ".";
+    filas[3] += "#";
+  }
+  var w = mundo(filas, { cenital: true, objetoEfecto: 7, objetoCantidad: 3 });
+  assert.strictEqual(bichos(w), 1, "no hay un bicho lejos");
+  correr(w, 60, NP.IN.RIGHT);
+  assert.strictEqual(bichos(w), 1, "se ha llevado uno que no se veia");
+});
+
+/* ------------------------------------------- el desgaste (Gauntlet) */
+
+prueba("con desgaste, la vida se va sola", function () {
+  var w = mundo(["....", "....", "P...", "####"], { health: 20, desgaste: 10 });
+  correr(w, 9);
+  assert.strictEqual(w.players[0].health, 20, "se ha ido antes de tiempo");
+  correr(w, 1);
+  assert.strictEqual(w.players[0].health, 19, "no se ha ido el primer punto");
+  correr(w, 50);
+  assert.strictEqual(w.players[0].health, 14, "no baja uno cada diez frames");
+});
+
+prueba("sin desgaste la vida no se mueve sola", function () {
+  var w = mundo(["....", "....", "P...", "####"], { health: 5 });
+  correr(w, 600);
+  assert.strictEqual(w.players[0].health, 5, "ha bajado sin que nadie la toque");
+});
+
+prueba("el desgaste mata, y cuesta una vida", function () {
+  var w = mundo(["....", "....", "P...", "####"],
+                { health: 3, desgaste: 5, lives: 3 });
+  correr(w, 15);
+  assert.strictEqual(w.players[0].health, 0, "no ha llegado a cero");
+  assert.strictEqual(w.state, NP.STATE.DYING, "no se esta muriendo");
+  /* hasta que reaparece: el nivel vuelve a empezar */
+  for (var i = 0; i < 400 && w.state !== NP.STATE.PLAY; i++) w.step(0);
+  assert.strictEqual(w.state, NP.STATE.PLAY, "no ha vuelto a la partida");
+  assert.strictEqual(w.players[0].lives, 2, "no ha costado una vida");
+  assert.strictEqual(w.players[0].health, 3, "no ha vuelto con la vida entera");
+});
+
+prueba("la invulnerabilidad no para el desgaste", function () {
+  /* Si el desgaste pasara por donde pasa un golpe, cada roce con un bicho
+     dejaria la cuenta atras parada noventa frames. */
+  var w = mundo(["....", "....", "P...", "####"], { health: 20, desgaste: 10 });
+  w.players[0].invuln = 600;
+  correr(w, 100);
+  assert.strictEqual(w.players[0].health, 10,
+                     "la invulnerabilidad ha parado la cuenta");
+});
+
+prueba("la comida devuelve vida contra el desgaste", function () {
+  var w = mundo(["....", "....", "P.o.", "####"],
+                { health: 60, desgaste: 4, objetoEfecto: 2, objetoCantidad: 20 });
+  correr(w, 60);
+  var antes = w.players[0].health;
+  assert.ok(antes < 60, "no se ha gastado nada");
+  correr(w, 40, NP.IN.RIGHT);
+  assert.ok(w.players[0].health > antes,
+            "coger la comida no ha devuelto vida (" + antes + " -> "
+            + w.players[0].health + ")");
 });
 
 /* ----------------------------------------------------------------- camara */

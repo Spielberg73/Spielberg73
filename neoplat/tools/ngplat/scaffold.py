@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass, replace
 from typing import Dict, List
 
-from . import art, art_comando, art_hierro, art_sonido
+from . import art, art_comando, art_hierro, art_mazmorra, art_sonido
 from .errors import ProjectError
 from .png import write_png
 from .wav import escribir as escribir_wav
@@ -269,6 +269,100 @@ def _nivel_comando_2() -> List[str]:
         "AAAAA...P....AAAAAA",
     ]
     return [_fila_cenital(f) for f in filas]
+
+
+# --------------------------------------------------------- la mazmorra
+#
+# Un laberinto, no un pasillo. Se entra por abajo, se sale por arriba y por el
+# camino hay que decidir: los generadores estan a un lado y la comida al otro,
+# asi que ir a por todo es quedarse sin vida. Eso es Gauntlet.
+#
+# Como el nivel es un laberinto, va **entero en pantalla y media**: 20 de ancho
+# por 28 de alto. Lo que hace que se juegue no es el tamano sino los cruces.
+
+MAZMORRA_ANCHO = 20
+MAZMORRA_ALTO = 28
+
+
+def _fila_mazmorra(mapa: str) -> str:
+    """Completa una fila a lo ancho del nivel, con muro a los lados."""
+    fila = mapa[:MAZMORRA_ANCHO]
+    return fila + "#" * (MAZMORRA_ANCHO - len(fila))
+
+
+def _nivel_mazmorra_1() -> List[str]:
+    """La cripta: cuatro salas alrededor de un cruce, con un nido en cada
+    esquina y la comida en la sala de enfrente de cada uno."""
+    filas = [
+        "####################",
+        "#########G##########",
+        "#######,,,,,########",
+        "#######,,,,,########",
+        "####,,,,,,,,,,,#####",
+        "####,#########,#####",
+        "####,#..t..#..,#####",
+        "####,#.....#..,#####",
+        "#c...#..n..#..,...t#",
+        "#....###.##.###....#",
+        "#..t.......,...b...#",
+        "#####.####,####.####",
+        "#...#.#..,,,..#.#..#",
+        "#.n.,.#.,~~~,.#.,.p#",
+        "#...#.#.,~~~,.#.#..#",
+        "#####.#..,,,..#.####",
+        "#..,..#########..,.#",
+        "#..,..b.......b..,.#",
+        "####.###.###.###.###",
+        "#..k...#.T.#...c...#",
+        "#......#...#.......#",
+        "###.####...####.####",
+        "#...#....,....#....#",
+        "#.f.,....,....,..r.#",
+        "#...#....,....#....#",
+        "#####.###,###.######",
+        "#########P##########",
+        "####################",
+    ]
+    return [_fila_mazmorra(f) for f in filas]
+
+
+def _nivel_mazmorra_2() -> List[str]:
+    """El foso: mas estrecho, con lava por el medio y el guardian arriba. Aqui
+    los nidos estan **en el camino**, no a un lado: hay que reventarlos.
+
+    Se entra por abajo y se sale por arriba, y las dos maneras de subir son los
+    pasillos de los lados: por el medio esta la lava, que no se pisa."""
+    filas = [
+        "####################",
+        "#########G##########",
+        "########,,,,,#######",
+        "#######,,,B,,,######",
+        "#######,,,,,,,######",
+        "########,,,,,#######",
+        "####.....,,.....####",
+        "####.####,,####.####",
+        "#t...#...NN...#...t#",
+        "#.R.....R..R.....R.#",
+        "#.d..#Rn....nR#..d.#",
+        "#....#...cc...#....#",
+        "####...R....R...####",
+        "####.#.~~~~~~.#.####",
+        "####.#.~~~~~~.#.####",
+        "####.#.~~~~~~.#.####",
+        "####.#.~~~~~~.#.####",
+        "####...R....R...####",
+        "####.##########.####",
+        "####.,,,,bb,,,,.####",
+        "####.####..####.####",
+        "#c...#.f.R..f.#...p#",
+        "#....#....R...#....#",
+        "####.####,,####.####",
+        "#..k..R......R..r..#",
+        "#.R..............R.#",
+        "#####.....T....#####",
+        "#########P##########",
+    ]
+    return [_fila_mazmorra(f) for f in filas]
 
 
 GAME_YAML = """# Proyecto NeoPlat: un juego de plataformas que compila para Neo Geo.
@@ -611,6 +705,271 @@ spawns:
   R: prisionero
   g: caja
   c: medalla
+
+niveles:
+{niveles}"""
+
+
+GAME_YAML_MAZMORRA = """# Proyecto NeoPlat de mazmorra: un juego al estilo Gauntlet.
+#
+#   ngplat probar     -> abre el preview jugable en el navegador
+#   ngplat compilar   -> genera el proyecto en C y las ROMs graficas
+#
+# Se ve desde arriba, como el de comando, pero se juega de otra manera. Tres
+# cosas lo cambian todo:
+#
+#   1. la vida **se gasta sola** (`desgaste:`). La partida es una cuenta atras
+#      y hay que ir buscando comida: no se puede esperar a que pase el bicho.
+#   2. los **generadores** sacan bichos sin parar hasta que los destruyes. Con
+#      uno en pie, matar bichos no sirve de nada.
+#   3. la **pocima** se lleva por delante lo que se ve. Solo lo que se ve.
+#
+# Sumadas, hacen que el juego no vaya de limpiar salas sino de decidir por
+# donde tirar antes de que se acabe la vida.
+
+juego:
+  titulo: "{titulo}"
+  autor: "{autor}"
+  vista: cenital       # desde arriba: sin gravedad y en ocho direcciones
+  jugadores: 1         # 1 o 2 a la vez, cada uno con su mando
+  vidas: 3
+  tiempo: 0            # segundos por nivel (0 = sin limite)
+  camara: scroll
+  amiga: 32colores
+  fondo: "#101018"
+
+jugador:
+  sprite: graficos/heroe.png
+  frame: [16, 16]
+  caja: [10, 12]
+  velocidad: 1.5
+  friccion: 0.35
+  # La vida no son tres golpes: son **doscientos puntos que se van solos**. El
+  # marcador la ensena como numero, no como cuadrados.
+  vida: 200
+  desgaste: 12         # frames por punto: 200 puntos son unos 40 segundos
+  retroceso: 2.0
+  aturdido: 14
+  animaciones:
+    quieto: {{frames: [0], velocidad: 30}}
+    abajo:  {{frames: [1, 2], velocidad: 8}}
+    arriba: {{frames: [3, 4], velocidad: 8}}
+    correr: {{frames: [5, 6], velocidad: 8}}
+    atacar: {{frames: [7], velocidad: 6}}
+    dano:   {{frames: [8]}}
+  # El arco: dispara hacia donde miras, en las ocho direcciones.
+  ataque:
+    tipo: disparo
+    sprite: graficos/flecha.png
+    frame: [16, 16]
+    caja: [6, 4]
+    desplazamiento: [5, 6]
+    velocidad: 4.5
+    alcance: 150
+    espera: 12
+    dano: 1
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 4}}
+  # La pocima va en el **boton de saltar**: aqui no hay nada que saltar.
+  secundarias:
+    pocima:
+      tipo: recta
+      marcador: POCI
+      sprite: graficos/pocima.png
+      frame: [16, 16]
+      caja: [8, 8]
+      desplazamiento: [4, 4]
+      velocidad: 3.0
+      alcance: 64
+      espera: 60
+      coste: 1
+      dano: 4
+      a_la_vez: 1
+      animaciones:
+        quieto: {{frames: [0, 1], velocidad: 6}}
+
+tiles:
+  imagen: graficos/tiles.png
+  leyenda:
+    '.': {{tile: 5, tipo: vacio}}      # suelo
+    ',': {{tile: 0, tipo: vacio}}      # losa
+    'o': {{tile: 6, tipo: vacio}}      # grieta
+    '#': {{tile: 1, tipo: solido}}     # muro
+    'R': {{tile: 2, tipo: solido}}     # roca
+    '~': {{tile: 3, tipo: peligro}}    # lava: no se pisa
+    'G': {{tile: 4, tipo: meta}}       # la salida
+    'T': {{tile: 7, tipo: control}}    # el altar: si te matan, vuelves aqui
+
+enemigos:
+  # El bicho de siempre: da vueltas y te hace dano al tocarte.
+  bicho:
+    sprite: graficos/bicho.png
+    caja: [12, 12]
+    comportamiento: patrulla
+    velocidad: 0.6
+    puntos: 100
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 14}}
+      correr: {{frames: [0, 1], velocidad: 9}}
+  # El fantasma **te persigue**: es el que convierte un pasillo en una trampa.
+  fantasma:
+    sprite: graficos/fantasma.png
+    caja: [12, 12]
+    comportamiento: perseguidor
+    velocidad: 0.9
+    rango: 160
+    puntos: 150
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 12}}
+      correr: {{frames: [0, 1], velocidad: 7}}
+  # El demonio no se mueve, pero te tira bolas de fuego.
+  demonio:
+    sprite: graficos/demonio.png
+    caja: [14, 14]
+    comportamiento: fijo
+    vida: 3
+    puntos: 400
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 16}}
+    dispara:
+      sprite: graficos/bola.png
+      frame: [16, 16]
+      caja: [6, 6]
+      desplazamiento: [5, 5]
+      velocidad: 2.4
+      alcance: 190
+      espera: 80
+      dano: 8            # con la vida en puntos, un golpe se nota
+      animaciones:
+        quieto: {{frames: [0, 1], velocidad: 5}}
+  # Un jefe es un enemigo con 'jefe: si': el marcador ensena lo que le queda y
+  # al matarlo se acaba el nivel.
+  guardian:
+    sprite: graficos/demonio.png
+    caja: [14, 14]
+    comportamiento: perseguidor
+    velocidad: 0.7
+    rango: 220
+    vida: 12
+    puntos: 3000
+    jefe: si
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 8}}
+      correr: {{frames: [0, 1], velocidad: 6}}
+    dispara:
+      sprite: graficos/bola.png
+      frame: [16, 16]
+      caja: [6, 6]
+      desplazamiento: [5, 5]
+      velocidad: 3.0
+      alcance: 240
+      espera: 46
+      dano: 10
+      animaciones:
+        quieto: {{frames: [0, 1], velocidad: 4}}
+
+# Los generadores: **esto es Gauntlet**. Mientras uno siga en pie saca bichos
+# sin parar, asi que matar lo que sale no sirve de nada: hay que ir a por el.
+generadores:
+  nido:
+    sprite: graficos/nido.png
+    frame: [16, 16]
+    caja: [14, 14]
+    genera: bicho        # que saca
+    cada: 100            # frames entre bicho y bicho
+    tope: 3              # cuantos suyos puede haber a la vez
+    vida: 3              # flechas que aguanta
+    puntos: 1000
+    animaciones:
+      quieto: {{frames: [0, 1, 2, 1], velocidad: 10}}
+  cripta:
+    sprite: graficos/nido.png
+    frame: [16, 16]
+    caja: [14, 14]
+    genera: fantasma
+    cada: 150
+    tope: 2
+    vida: 4
+    puntos: 1500
+    animaciones:
+      quieto: {{frames: [2, 1, 0, 1], velocidad: 8}}
+
+objetos:
+  # La comida es lo unico que para la cuenta atras: 'efecto: salud'.
+  comida:
+    sprite: graficos/comida.png
+    frame: [16, 16]
+    caja: [10, 10]
+    puntos: 50
+    efecto: salud
+    cantidad: 60
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 16}}
+  # La pocima recarga el arma secundaria, que aqui limpia la pantalla.
+  frasco:
+    sprite: graficos/pocima.png
+    frame: [16, 16]
+    caja: [8, 10]
+    puntos: 100
+    efecto: municion
+    cantidad: 1
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 12}}
+  # Y la de verdad: 'efecto: bomba' se lleva por delante lo que se ve.
+  rayo:
+    sprite: graficos/pocima.png
+    frame: [16, 16]
+    caja: [8, 10]
+    puntos: 300
+    efecto: bomba
+    cantidad: 4          # el dano que reparte
+    animaciones:
+      quieto: {{frames: [1, 0], velocidad: 6}}
+  llave:
+    sprite: graficos/llave.png
+    frame: [16, 16]
+    caja: [8, 12]
+    puntos: 100
+    efecto: llave
+    cantidad: 1
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 10}}
+  tesoro:
+    sprite: graficos/tesoro.png
+    frame: [16, 16]
+    caja: [12, 8]
+    puntos: 500
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 8}}
+
+# Sonido. En una mazmorra lo que hace falta es que se oiga de donde viene el
+# peligro: el disparo corto, el golpe seco y la comida con su nota de alivio.
+sonido:
+  efectos:
+    empezar: {{notas: "la4 do5 mi5", velocidad: 5}}
+    disparo: {{tipo: barrido, desde: 1400, hasta: 600, duracion: 3}}
+    golpe:   {{tipo: ruido, duracion: 10}}
+    romper:  {{tipo: ruido, duracion: 16}}
+    moneda:  {{notas: "mi6 la6", velocidad: 4}}
+    vida:    {{notas: "do5 mi5 la5 do6", velocidad: 5}}
+    control: {{notas: "la4 mi5", velocidad: 6}}
+    muerte:  {{notas: "la4 fa4 re4 la3", velocidad: 7}}
+    meta:    {{notas: "la4 do5 mi5 la5", velocidad: 6}}
+    salto:   {{tipo: barrido, desde: 300, hasta: 1200, duracion: 6}}
+{musica}
+# Simbolos del mapa que colocan bichos, generadores y objetos.
+spawns:
+  b: bicho
+  f: fantasma
+  d: demonio
+  B: guardian
+  n: nido
+  N: cripta
+  c: comida
+  p: frasco
+  r: rayo
+  k: llave
+  t: tesoro
 
 niveles:
 {niveles}"""
@@ -1045,6 +1404,91 @@ _MUSICA_COMANDO = """  musica:
 """
 
 
+_MUSICA_MAZMORRA = """  musica:
+    # Una mazmorra no suena a marcha: suena a sitio grande y vacio donde algo
+    # te esta esperando. Menor natural, notas largas y el bajo andando solo.
+    cripta:
+      velocidad: 11
+      pistas:
+        - |
+          la4 - - - do5 - - -
+          si4 - - - sol4 - - -
+          la4 - - - mi5 - - -
+          re5 - do5 - si4 - - -
+        - |
+          la2 - - - la2 - - -
+          mi2 - - - mi2 - - -
+          fa2 - - - fa2 - - -
+          mi2 - - - mi2 - - -
+    perseguido:
+      velocidad: 7
+      pistas:
+        - |
+          la4 si4 do5 si4 la4 sol4 la4 -
+          la4 si4 do5 re5 do5 si4 la4 -
+          mi5 - re5 do5 si4 - la4 -
+          sol4 la4 si4 la4 sol4 fa4 mi4 -
+          la4 si4 do5 si4 la4 sol4 la4 -
+          do5 re5 mi5 re5 do5 si4 do5 -
+          mi5 fa5 mi5 re5 do5 si4 la4 -
+          la4:2 mi4:2 la4:2 - -
+        - |
+          la2 la3 la2 la3 mi2 mi3 mi2 mi3
+          fa2 fa3 fa2 fa3 do3 do4 do3 do4
+          la2 la3 la2 la3 mi2 mi3 mi2 mi3
+          re2 re3 re2 re3 mi2 mi3 mi2 mi3
+          la2 la3 la2 la3 mi2 mi3 mi2 mi3
+          fa2 fa3 fa2 fa3 do3 do4 do3 do4
+          re2 re3 mi2 mi3 fa2 fa3 sol2 sol3
+          la2:2 mi2:2 la2:2 - -
+    hondo:
+      velocidad: 9
+      pistas:
+        - |
+          re4 - fa4 - la4 - fa4 -
+          mi4 - sol4 - si4 - sol4 -
+          fa4 - la4 - do5 - la4 -
+          mi4 - - - re4 - - -
+          re5 - do5 - sib4 - la4 -
+          sol4 - fa4 - mi4 - re4 -
+          la4 - sib4 - do5 - re5 -
+          la4:2 re4:2 la4:2 - -
+        - |
+          re2 - la2 - re2 - la2 -
+          mi2 - si2 - mi2 - si2 -
+          fa2 - do3 - fa2 - do3 -
+          la2 - mi3 - la2 - mi3 -
+          sib2 - fa3 - sib2 - fa3 -
+          sol2 - re3 - sol2 - re3 -
+          la2 - mi3 - la2 - mi3 -
+          re2:2 la2:2 re2:2 - -
+    guardian:
+      velocidad: 5
+      pistas:
+        - |
+          re5 do#5 re5 mi5 fa5 mi5 re5 do#5
+          re5 - la4 - re5 - fa5 -
+          sol5 fa5 mi5 re5 do#5 re5 mi5 fa5
+          re5:2 - - la4:2 - -
+          fa5 mi5 fa5 sol5 la5 sol5 fa5 mi5
+          fa5 - do5 - fa5 - la5 -
+          sib5 la5 sol5 fa5 mi5 fa5 sol5 la5
+          re5:2 la4:2 re5:2 - -
+        - |
+          re2 re3 re2 re3 re2 re3 re2 re3
+          la2 la3 la2 la3 la2 la3 la2 la3
+          sib2 sib3 sib2 sib3 fa2 fa3 fa2 fa3
+          re2 re3 re2 re3 la2 la3 la2 la3
+          fa2 fa3 fa2 fa3 fa2 fa3 fa2 fa3
+          do3 do4 do3 do4 do3 do4 do3 do4
+          sol2 sol3 sol2 sol3 la2 la3 la2 la3
+          re2:2 la2:2 re2:2 - -
+  # Las dos canciones que no son de ningun nivel se dicen aqui por su nombre.
+  titulo: cripta
+  jefe: guardian
+"""
+
+
 # --------------------------------------------------------------- generos
 #
 # El **genero** decide como se juega y el **estilo** como se ve: son dos ejes
@@ -1356,7 +1800,7 @@ def _genero_castlevania(nombres: Dict[str, str]) -> Genero:
     )
 
 
-GENEROS = ("plataformas", "castlevania", "comando")
+GENEROS = ("plataformas", "castlevania", "comando", "mazmorra")
 
 # Como se llama cada cosa en cada estilo de dibujo.
 _NOMBRES = {
@@ -1384,12 +1828,29 @@ def _genero_comando(nombres: Dict[str, str], estilo: str) -> Genero:
     )
 
 
+def _genero_mazmorra(nombres: Dict[str, str], estilo: str) -> Genero:
+    """El de Gauntlet: laberinto visto desde arriba.
+
+    Como el de comando, trae su plantilla entera en vez de armarse a trozos.
+    De este objeto solo se usa como se llama y que promete.
+    """
+    return replace(
+        _genero_plataformas(nombres, estilo),
+        nombre="mazmorra",
+        titulo="mazmorra",
+        resumen=("laberinto visto desde arriba: la vida se gasta sola y los "
+                 "generadores sacan bichos sin parar."),
+    )
+
+
 def genero_de(nombre: str, estilo: str) -> Genero:
     nombres = _NOMBRES[estilo]
     if nombre == "castlevania":
         return _genero_castlevania(nombres)
     if nombre == "comando":
         return _genero_comando(nombres, estilo)
+    if nombre == "mazmorra":
+        return _genero_mazmorra(nombres, estilo)
     return _genero_plataformas(nombres, estilo)
 
 
@@ -1466,6 +1927,9 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
         # este genero pisan a los del estilo.
         dibujos = dict(dibujos)
         dibujos.update(art_comando.todos(estilo))
+    elif genero == "mazmorra":
+        dibujos = dict(dibujos)
+        dibujos.update(art_mazmorra.todos(estilo))
     for relativo, imagen in dibujos.items():
         ruta = os.path.join(destino, relativo)
         write_png(ruta, imagen)
@@ -1488,6 +1952,28 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
         contenido = GAME_YAML_COMANDO.format(
             titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles,
             musica=_MUSICA_COMANDO)
+        with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
+                  newline="\n") as fh:
+            fh.write(contenido)
+        creados.append("game.yaml")
+        with open(os.path.join(destino, ".gitignore"), "w", encoding="utf-8",
+                  newline="\n") as fh:
+            fh.write("build/\npreview.html\n.neoplat/\n")
+        creados.append(".gitignore")
+        return creados
+
+    if genero == "mazmorra":
+        # Un laberinto: se entra por abajo y se sale por arriba, pero por el
+        # camino hay que elegir, que es de lo que va Gauntlet.
+        niveles = (
+            _nivel_yaml("LA CRIPTA", _nivel_mazmorra_1(),
+                        "#101018", musica="perseguido", llaves=1)
+            + _nivel_yaml("EL FOSO", _nivel_mazmorra_2(),
+                          "#141018", musica="hondo", llaves=1)
+        )
+        contenido = GAME_YAML_MAZMORRA.format(
+            titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles,
+            musica=_MUSICA_MAZMORRA)
         with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
                   newline="\n") as fh:
             fh.write(contenido)

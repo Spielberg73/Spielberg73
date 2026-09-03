@@ -99,6 +99,10 @@ def cmd_comprobar(args: argparse.Namespace) -> int:
         print("  plataformas     %d" % stats["plataformas"])
     if stats.get("rompibles"):
         print("  rompibles       %d" % stats["rompibles"])
+    if stats.get("prisioneros"):
+        print("  prisioneros     %d" % stats["prisioneros"])
+    if stats.get("generadores"):
+        print("  generadores     %d" % stats["generadores"])
     if "tiles_sprite" in stats:
         print("  tiles de sprite %d  (%d KB de ROM C)"
               % (stats["tiles_sprite"], (stats["bytes_c1"] + stats["bytes_c2"]) // 1024))
@@ -190,7 +194,9 @@ def cmd_compilar(args: argparse.Namespace) -> int:
               "%d enemigos" % stats["enemigos"],
               "%d objetos" % stats["objetos"]]
     for clave, singular, plural in (("plataformas", "plataforma", "plataformas"),
-                                    ("rompibles", "rompible", "rompibles")):
+                                    ("rompibles", "rompible", "rompibles"),
+                                    ("prisioneros", "prisionero", "prisioneros"),
+                                    ("generadores", "generador", "generadores")):
         cuantos = stats.get(clave, 0)
         if cuantos:
             partes.append("%d %s" % (cuantos, singular if cuantos == 1 else plural))
@@ -519,8 +525,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_nuevo.add_argument("--genero", choices=GENEROS, default=None,
                          help="como se juega: 'plataformas' (saltar, pisar y "
                               "disparar), 'castlevania' (latigo, escaleras y "
-                              "municion) o 'comando' (visto desde arriba, ocho "
-                              "direcciones y prisioneros). Sin esto, se pregunta")
+                              "municion), 'comando' (visto desde arriba, ocho "
+                              "direcciones y prisioneros) o 'mazmorra' (un "
+                              "laberinto: la vida se gasta sola y los nidos "
+                              "sacan bichos). Sin esto, se pregunta")
     p_nuevo.set_defaults(func=cmd_nuevo)
 
     p_check = sub.add_parser("comprobar", aliases=["check"],

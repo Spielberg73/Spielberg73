@@ -116,6 +116,32 @@ class TestErrores(BaseProyecto):
         error = self.error(texto)
         self.assertIn("velocidadd", error.message)
 
+    def test_un_nombre_en_dos_secciones(self):
+        """El simbolo del mapa saldria como una cosa o como otra segun el orden
+        en que se miren las listas: eso no puede compilar. Se prueba con las dos
+        secciones que llegaron despues -prisioneros y generadores-, que son las
+        que se quedaban fuera de la comprobacion."""
+        base = _yaml_con_mapa(MAPA_MINIMO.split("\n"))
+        casos = (
+            ("prisioneros:\n  bicho:\n    sprite: e.png\n", "prisionero"),
+            ("generadores:\n  bicho:\n    sprite: e.png\n    genera: bicho\n",
+             "generador"),
+        )
+        for seccion, palabra in casos:
+            with self.subTest(seccion=palabra):
+                error = self.error(base + "\n" + seccion)
+                self.assertIn("'bicho'", error.message)
+                self.assertIn("enemigo", error.message)
+                self.assertIn(palabra, error.message)
+
+    def test_un_generador_que_saca_lo_que_no_existe(self):
+        """Estaria ahi soltando nada y nadie lo diria."""
+        base = _yaml_con_mapa(MAPA_MINIMO.split("\n"))
+        error = self.error(base + "\ngeneradores:\n  nido:\n"
+                                  "    sprite: e.png\n    genera: dragon\n")
+        self.assertIn("dragon", error.message)
+        self.assertIn("bicho", error.hint)
+
     def test_seccion_desconocida(self):
         texto = _yaml_con_mapa(MAPA_MINIMO.split("\n")) + "\nmusica:\n  tema: x\n"
         error = self.error(texto)

@@ -222,6 +222,7 @@ const NpActorDef *np_entity_def(const NpEntity *e)
     if (e->kind == NP_KIND_MELEE) return &np_player_def.attack.actor;
     if (e->kind == NP_KIND_ENEMY_SHOT) return &np_enemy_shots[e->def].actor;
     if (e->kind == NP_KIND_PRISONER) return &np_prisoners[e->def].actor;
+    if (e->kind == NP_KIND_GENERATOR) return &np_generators[e->def].actor;
     return &np_items[e->def].actor;
 }
 
@@ -351,6 +352,10 @@ static void np_spawn_entities(NpWorld *w)
         } else if (e->kind == NP_KIND_PRISONER) {
             e->health = 1;
             e->timer = 0;            /* cero = sigue atado */
+        } else if (e->kind == NP_KIND_GENERATOR) {
+            const NpGeneratorDef *gd = &np_generators[e->def];
+            e->health = gd->health;
+            e->timer = 0;             /* el primer bicho tarda lo mismo que los demas */
         } else {
             e->health = 1;
         }
@@ -398,6 +403,7 @@ static void np_player_reset(NpWorld *w, uint8_t quien)
     p->on_ground = 0;
     p->facing = 1;
     p->health = d->health;
+    p->wear_timer = 0;          /* la cuenta atras de `desgaste:` empieza de cero */
     p->invuln = 0;
     p->coyote = 0;
     p->buffer = 0;
@@ -533,6 +539,32 @@ static void np_player_hurt(NpWorld *w, uint8_t quien, uint8_t damage)
     p->stairs = 0;              /* un golpe te tira de la escalera */
 }
 
+/* La vida que se gasta sola.
+ *
+ * Con `desgaste:` puesto, cada tantos frames se va un punto sin que nadie te
+ * toque. Es la mecanica de Gauntlet y cambia el juego entero: ya no se puede
+ * esperar a que pase el bicho, hay que ir a por la comida. El ultimo punto
+ * mata, igual que un golpe, y va por el mismo sitio (np_player_hurt) para que
+ * la muerte se vea y suene igual.
+ *
+ * No hay invulnerabilidad que valga contra esto: se resta a mano y no por
+ * np_player_hurt, que rebota en `invuln` y dejaria la cuenta atras parada
+ * cada vez que te rozan. */
+static void np_player_wear(NpWorld *w, uint8_t quien)
+{
+    NpPlayer *p = &w->players[quien];
+    if (!np_player_def.wear || !p->playing || p->dying) return;
+    if (w->state != NP_STATE_PLAY) return;
+    if (++p->wear_timer < np_player_def.wear) return;
+    p->wear_timer = 0;
+    if (p->health > 1) {
+        p->health--;
+        return;
+    }
+    p->health = 0;
+    np_player_die(w, quien);
+}
+
 static void np_finish_level(NpWorld *w);
 
 /* ---------------------------------------------------------------- ataque */
@@ -626,10 +658,28 @@ static int np_hit_breakable(NpWorld *w, NpEntity *e, uint8_t damage)
 
 /* Lo que hace un ataque al tocar una entidad: hacer dano a un enemigo o
  * reventar un candelabro. Devuelve 1 si ha pasado algo. */
+/* Un generador aguanta unos cuantos tiros y se acabo. No suelta nada: lo que
+   suelta es lo que ya haya sacado, y eso sigue vivo. */
+static int np_hit_generator(NpWorld *w, NpEntity *e, uint8_t damage)
+{
+    const NpGeneratorDef *d = &np_generators[e->def];
+    if (e->health > damage) {
+        e->health = (uint8_t)(e->health - damage);
+        e->hurt = 10;
+        w->sfx |= NP_SFX_BREAK;
+        return 1;
+    }
+    w->score += d->score;
+    w->sfx |= NP_SFX_BREAK;
+    e->active = 0;
+    return 1;
+}
+
 static int np_hit_entity(NpWorld *w, NpEntity *e, uint8_t damage)
 {
     if (e->kind == NP_KIND_ENEMY) return np_hit_enemy(w, e, damage);
     if (e->kind == NP_KIND_BREAKABLE) return np_hit_breakable(w, e, damage);
+    if (e->kind == NP_KIND_GENERATOR) return np_hit_generator(w, e, damage);
     return 0;
 }
 
@@ -818,7 +868,8 @@ static void np_subshot_update(NpWorld *w, NpEntity *e)
             e->active = 0;
             return;
         }
-        if (otra->kind != NP_KIND_ENEMY && otra->kind != NP_KIND_BREAKABLE) continue;
+        if (otra->kind != NP_KIND_ENEMY && otra->kind != NP_KIND_BREAKABLE
+            && otra->kind != NP_KIND_GENERATOR) continue;
         ea = np_entity_def(otra);
         if (!np_boxes_overlap(e->x, e->y, a->box_w, a->box_h,
                               otra->x, otra->y, ea->box_w, ea->box_h))
@@ -878,7 +929,8 @@ static void np_shot_update(NpWorld *w, NpEntity *e)
             e->active = 0;
             return;
         }
-        if (otra->kind != NP_KIND_ENEMY && otra->kind != NP_KIND_BREAKABLE) continue;
+        if (otra->kind != NP_KIND_ENEMY && otra->kind != NP_KIND_BREAKABLE
+            && otra->kind != NP_KIND_GENERATOR) continue;
         ea = np_entity_def(otra);
         if (!np_boxes_overlap(e->x, e->y, a->box_w, a->box_h,
                               otra->x, otra->y, ea->box_w, ea->box_h))
@@ -972,7 +1024,8 @@ static void np_melee_update(NpWorld *w, uint8_t quien)
         NpEntity *e = &w->entities[i];
         const NpActorDef *ea;
         if (!e->active) continue;
-        if (e->kind != NP_KIND_ENEMY && e->kind != NP_KIND_BREAKABLE) continue;
+        if (e->kind != NP_KIND_ENEMY && e->kind != NP_KIND_BREAKABLE
+            && e->kind != NP_KIND_GENERATOR) continue;
         /* Lo que esta parpadeando no se vuelve a tocar. La caja del golpe se
            queda puesta varios frames y acierta en todos: sin esto, un solo
            ataque se llevaba por delante a un enemigo de cinco de vida y el
@@ -1465,6 +1518,67 @@ static void np_prisoner_free(NpWorld *w, NpEntity *e, const NpPlayer *p)
     }
 }
 
+/* ------------------------------------------------ generadores de bichos */
+/*
+ * Los nidos de Gauntlet. Se estan quietos y cada `cooldown` frames sacan un
+ * enemigo, hasta que los destruyes a tiros. Mientras uno siga en pie, matar
+ * bichos no sirve de nada: es lo que convierte la mazmorra en una carrera y no
+ * en una sala que se limpia.
+ *
+ * El tope de bichos suyos a la vez (`cap`) no es un adorno: la lista de
+ * entidades tiene 64 sitios y los comparten los disparos. Tres generadores sin
+ * tope la llenarian en unos segundos y el juego se quedaria sin poder disparar.
+ */
+static uint8_t np_cuantos_bichos(const NpWorld *w, uint8_t def)
+{
+    uint8_t i, cuantos = 0;
+    for (i = 0; i < w->entity_count; i++) {
+        const NpEntity *e = &w->entities[i];
+        if (e->active && e->kind == NP_KIND_ENEMY && e->def == def) cuantos++;
+    }
+    return cuantos;
+}
+
+static void np_generator_update(NpWorld *w, NpEntity *e)
+{
+    const NpGeneratorDef *d = &np_generators[e->def];
+    const NpActorDef *a = &d->actor;
+    int hueco;
+
+    np_anim_set(&e->anim, &e->anim_frame, &e->anim_timer, NP_ANIM_IDLE);
+    np_anim_tick(a, e->anim, &e->anim_frame, &e->anim_timer);
+    /* la cuenta va hacia arriba, igual que la del desgaste: asi "cada 30
+       frames" son treinta clavados y no treinta y uno */
+    if (++e->timer < d->cooldown) return;
+    e->timer = 0;
+    if (np_cuantos_bichos(w, d->enemy) >= d->cap) return;
+    hueco = np_hueco_libre(w);
+    if (hueco < 0) return;               /* no cabe: este bicho no sale */
+    {
+        NpEntity *b = &w->entities[hueco];
+        const NpEnemyDef *ed = &np_enemies[d->enemy];
+        const NpActorDef *ba = &ed->actor;
+        b->active = 1;
+        b->kind = NP_KIND_ENEMY;
+        b->def = d->enemy;
+        /* sale centrado en el nido y apoyado en su misma linea de suelo */
+        b->x = e->x + NP_I2F((int32_t)a->box_w / 2 - (int32_t)ba->box_w / 2);
+        b->y = e->y + NP_I2F((int32_t)a->box_h - (int32_t)ba->box_h);
+        b->home_x = b->x;
+        b->home_y = b->y;
+        b->vx = ed->speed;
+        b->vy = 0;
+        b->facing = 1;
+        b->health = ed->health;
+        b->hurt = 0;
+        b->vida = 0;
+        b->timer = ed->interval;
+        b->anim = NP_ANIM_IDLE;
+        b->anim_frame = 0;
+        b->anim_timer = 0;
+    }
+}
+
 static void np_prisoner_update(NpWorld *w, NpEntity *e)
 {
     const NpPrisonerDef *d = &np_prisoners[e->def];
@@ -1722,6 +1836,33 @@ static void np_item_update(NpWorld *w, NpEntity *e)
     np_anim_tick(&d->actor, e->anim, &e->anim_frame, &e->anim_timer);
 }
 
+/* La pocima de Gauntlet: al cogerla, todo lo que se **ve** recibe un golpe.
+ *
+ * Lo que se ve y no todo el nivel: en una mazmorra hay bichos por todas
+ * partes, y una pocima que limpiara el mapa entero se cargaria el juego. La
+ * pantalla es la que dice la camara, asi que el reparto es el mismo en las
+ * siete maquinas y en el preview -todas la calculan igual-, y por eso la
+ * paridad sigue en pie.
+ */
+static void np_bomba(NpWorld *w, uint8_t dano)
+{
+    uint8_t i;
+    if (!dano) dano = 1;
+    for (i = 0; i < w->entity_count; i++) {
+        NpEntity *e = &w->entities[i];
+        const NpActorDef *ea;
+        if (!e->active) continue;
+        if (e->kind != NP_KIND_ENEMY && e->kind != NP_KIND_GENERATOR
+            && e->kind != NP_KIND_BREAKABLE) continue;
+        ea = np_entity_def(e);
+        if (NP_F2I(e->x) + (int32_t)ea->box_w <= w->cam_x) continue;
+        if (NP_F2I(e->x) >= w->cam_x + NP_SCREEN_W) continue;
+        if (NP_F2I(e->y) + (int32_t)ea->box_h <= w->cam_y) continue;
+        if (NP_F2I(e->y) >= w->cam_y + NP_SCREEN_H) continue;
+        np_hit_entity(w, e, dano);
+    }
+}
+
 /* Lo recoge quien lo toca: la vida y la salud van a ese jugador, y los puntos
    y las llaves al marcador, que es comun. */
 static void np_collect(NpWorld *w, uint8_t quien, NpEntity *e)
@@ -1752,6 +1893,9 @@ static void np_collect(NpWorld *w, uint8_t quien, NpEntity *e)
         /* Cambia el arma secundaria que se lleva. `amount` es su indice en
            np_subs, que pone el compilador a partir del nombre. */
         if (d->amount < np_sub_count) w->sub = d->amount;
+        break;
+    case NP_ITEM_BOMB:
+        np_bomba(w, d->amount);
         break;
     default:
         break;
@@ -1821,6 +1965,7 @@ static void np_touch_entities(NpWorld *w)
             if (e->kind == NP_KIND_MELEE) continue;  /* es tu propio latigo */
             if (e->kind == NP_KIND_PLATFORM) continue;   /* es suelo, no un bicho */
             if (e->kind == NP_KIND_BREAKABLE) continue;  /* hay que pegarle */
+            if (e->kind == NP_KIND_GENERATOR) continue;  /* tambien: y no hace dano */
             if (e->kind == NP_KIND_ENEMY_SHOT) continue; /* se mira en su update */
             if (e->kind == NP_KIND_PRISONER) {
                 np_prisoner_free(w, e, p);               /* tocarlo lo suelta */
@@ -2025,6 +2170,7 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
         else if (e->kind == NP_KIND_SUBSHOT) np_subshot_update(w, e);
         else if (e->kind == NP_KIND_ENEMY_SHOT) np_enemy_shot_update(w, e);
         else if (e->kind == NP_KIND_PRISONER) np_prisoner_update(w, e);
+        else if (e->kind == NP_KIND_GENERATOR) np_generator_update(w, e);
         else if (e->kind == NP_KIND_ENEMY) np_enemy_update(w, e);
         else if (e->kind == NP_KIND_BREAKABLE) np_breakable_update(w, e);
         else np_item_update(w, e);
@@ -2061,6 +2207,8 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
             np_player_hurt(w, quien, 99);
             continue;
         }
+        np_player_wear(w, quien);
+        if (p->dying) continue;
         np_check_touch(w, quien);
         /* La meta solo se abre si se llevan las llaves que pide el nivel. Las
          * llaves son de la partida, no de cada jugador: a dos, las que coge
@@ -2113,6 +2261,15 @@ static void np_dos_digitos(char *out, uint8_t valor)
     if (valor > 99) valor = 99;
     out[0] = (char)('0' + valor / 10);
     out[1] = (char)('0' + valor % 10);
+}
+
+/* Y "NNN" en tres, para la vida que se gasta sola: ahi no son golpes que se
+   cuentan con los dedos sino una cuenta atras de hasta 255. */
+static void np_tres_digitos(char *out, uint8_t valor)
+{
+    out[0] = (char)('0' + valor / 100);
+    out[1] = (char)('0' + (valor / 10) % 10);
+    out[2] = (char)('0' + valor % 10);
 }
 
 /* La linea de "lo que llevas": llaves y municion, "KEYS 01/03 AMMO 05" (en
@@ -2177,9 +2334,17 @@ void np_life_bar(char *out, const NpWorld *w, uint8_t quien)
         return;
     }
     titulo = (np_player_count > 1) ? (quien ? "2P   " : "1P   ") : "LIFE ";
+    for (i = 0; i < 5; i++) out[i] = titulo[i];
+    /* Con `desgaste:` la vida no son tres golpes sino una cuenta atras que
+       baja sola, y unos cuadrados no dicen nada: lo que hace falta saber es
+       cuanto queda. Sale el numero, como en Gauntlet. */
+    if (np_player_def.wear) {
+        np_tres_digitos(out + 5, p->health);
+        out[8] = 0;
+        return;
+    }
     capacidad = np_life_pips();
     llenos = (p->health > capacidad) ? capacidad : p->health;
-    for (i = 0; i < 5; i++) out[i] = titulo[i];
     for (i = 0; i < capacidad; i++) out[5 + i] = (i < llenos) ? '#' : '.';
     out[5 + capacidad] = 0;
 }
@@ -2189,6 +2354,8 @@ void np_life_bar(char *out, const NpWorld *w, uint8_t quien)
    vez y repintar solo los cuadrados. */
 uint8_t np_life_pips(void)
 {
+    /* Con `desgaste:` la barra es un numero de tres cifras, no cuadrados. */
+    if (np_player_def.wear) return 3;
     if (np_player_def.health <= 1) return 0;
     return (np_player_def.health > NP_LIFE_BAR)
          ? NP_LIFE_BAR : np_player_def.health;

@@ -35,8 +35,9 @@ guías de pantalla, flechas para moverte (con <kbd>Shift</kbd> más rápido),
 Un **trazo entero cuenta como un solo paso de deshacer**, no uno por casilla.
 
 La **paleta** se construye desde tu propio `game.yaml`: sale un botón por cada
-símbolo de la leyenda (con su dibujo real) y otro por cada enemigo u objeto que
-hayas definido en `spawns`, más la salida del jugador. Si el juego tiene
+símbolo de la leyenda (con su dibujo real) y otro por cada cosa que hayas
+puesto en `spawns` —enemigos, objetos, plataformas móviles, rompibles,
+prisioneros y generadores—, más la salida del jugador. Si el juego tiene
 **escaleras** (`tipo: escalera` y `escalera_izquierda`), salen como un símbolo
 más: se pintan casilla a casilla, subiendo una fila y avanzando una columna por
 escalón, que es como las recorre el motor. Los **puntos de control**
@@ -226,12 +227,17 @@ Una lista en vivo de lo que está mal en el nivel, con clic para ir al sitio:
 - no hay meta: el nivel no se puede terminar
 - un enemigo colocado en el aire, que se caerá al empezar
 - un hueco más ancho de lo que cruza el salto (con **tus** números)
-- más de 64 enemigos y objetos, o un nivel más pequeño que una pantalla
+- más de 64 enemigos y objetos —contando los bichos que pueden tener fuera
+  los generadores—, o un nivel más pequeño que una pantalla
 
 Y el botón **«¿se puede terminar?»**: lanza un bot que juega el nivel de
 principio a fin igual que lo haría alguien la primera vez (andar y saltar
-cuando ve algo). Si no llega, te dice por qué y te lleva al punto donde se
-quedó. Es el mismo bot que usan las pruebas del kit.
+cuando ve algo). En los juegos vistos desde arriba busca el paso hasta la meta
+y decide como decidiría una persona: si la vida se gasta sola y le queda poca
+va a por **comida**, si la meta pide **llaves** que no tiene va a por una, y la
+meta la deja para el final. Si no llega, te dice por qué —«no hay camino andando
+hasta la llave», «se queda atascado»— y te lleva al punto donde se quedó. Es el
+mismo bot que usan las pruebas del kit.
 
 ## game.yaml
 

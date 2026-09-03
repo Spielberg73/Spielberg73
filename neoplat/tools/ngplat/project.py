@@ -213,10 +213,13 @@ ITEM_EFFECTS = {
     # cambia el arma secundaria que se lleva: `secundaria: hacha`
     "subarma": "weapon", "arma_secundaria": "weapon", "weapon": "weapon",
     "cambiar_arma": "weapon",
+    # la pocima de Gauntlet: al cogerla hace dano a todo lo que se ve
+    "bomba": "bomb", "bomb": "bomb", "pocima": "bomb", "pocion": "bomb",
+    "poción": "bomb", "smart_bomb": "bomb",
 }
 
 ITEM_EFFECT_ID = {"points": 0, "life": 1, "health": 2, "key": 3, "ammo": 4,
-                  "upgrade": 5, "weapon": 6}
+                  "upgrade": 5, "weapon": 6, "bomb": 7}
 
 
 @dataclass
@@ -257,6 +260,8 @@ class Player(Actor):
     stomp: bool = True
     bounce: float = 3.6
     health: int = 1
+    # Frames que tarda en irse un punto de vida sola. 0 = no se va nunca.
+    wear: int = 0
     invuln: int = 90
     knockback: float = 0.0        # 0 = tanto como la velocidad de andar
     stun: int = 0                 # frames sin control tras un golpe
@@ -363,6 +368,23 @@ class Prisoner(Actor):
 
 
 @dataclass
+class Generator(Actor):
+    """Un generador de bichos, de los de Gauntlet.
+
+    No se mueve y no hace dano: lo que hace es **sacar enemigos** cada tantos
+    frames, uno detras de otro, hasta que lo destruyes a tiros. Es lo que
+    convierte una mazmorra en una carrera: mientras siga en pie, matar bichos
+    no sirve de nada, y el juego deja de ser "limpiar la sala" para ser "llegar
+    al generador".
+    """
+    enemy: str = ""          # que enemigo saca; tiene que estar en `enemigos:`
+    health: int = 3          # tiros que aguanta
+    score: int = 1000        # lo que vale destruirlo
+    cooldown: int = 90       # frames entre bicho y bicho
+    cap: int = 3             # cuantos suyos puede haber a la vez
+
+
+@dataclass
 class Platform(Actor):
     """Plataforma movil: va y viene, y el que se sube encima va con ella."""
     axis: str = "x"          # "x" (de lado) o "y" (arriba y abajo)
@@ -427,6 +449,7 @@ class Project:
     platforms: Dict[str, "Platform"]
     breakables: Dict[str, "Breakable"]
     prisoners: Dict[str, "Prisoner"]
+    generators: Dict[str, "Generator"]
     layers: Dict[str, Layer]
     sound: "sonido_mod.Sonido"
     levels: List[Level]
@@ -434,7 +457,8 @@ class Project:
 
     def spawn_names(self) -> List[str]:
         return (list(self.enemies) + list(self.items) + list(self.platforms)
-                + list(self.breakables) + list(self.prisoners))
+                + list(self.breakables) + list(self.prisoners)
+                + list(self.generators))
 
 
 # ------------------------------------------------------------------- lectura
@@ -843,6 +867,35 @@ def _read_prisoner(name: str, data: Any, root: str) -> "Prisoner":
     return prisionero
 
 
+def _read_generator(name: str, data: Any, root: str) -> "Generator":
+    where = "generadores.%s" % name
+    node = Node(data, where)
+    sprite = node.str_(["sprite", "imagen", "image"], required=True)
+    _require_file(root, sprite, where)
+    fw, fh, bw, bh, bx, by = _actor_geometry(node, where, (16, 16))
+    anims = _read_animations(node.child("animations", "animaciones", "anims"), where)
+    generador = Generator(
+        name=name, sprite=sprite, frame_w=fw, frame_h=fh,
+        box_w=bw, box_h=bh, box_x=bx, box_y=by, animations=anims,
+        enemy=node.str_(["enemy", "genera", "saca", "bicho"], required=True) or "",
+        health=node.int_(["health", "salud", "vida"], 3, 1, 99),
+        score=node.int_(["score", "puntos"], 1000, 0, 99999),
+        cooldown=node.int_(["cooldown", "cada", "intervalo", "espera"], 90, 8, 3600),
+        cap=node.int_(["cap", "tope", "a_la_vez", "maximo"], 3, 1, 32),
+    )
+    _warn_unknown(node, where, [
+        "sprite", "imagen", "image", "frame", "fotograma", "tamano_frame",
+        "hitbox", "caja", "colision", "colisión", "tamano", "tamaño", "size",
+        "hitbox_offset", "offset_caja", "desplazamiento",
+        "animations", "animaciones", "anims",
+        "enemy", "genera", "saca", "bicho",
+        "health", "salud", "vida", "score", "puntos",
+        "cooldown", "cada", "intervalo", "espera",
+        "cap", "tope", "a_la_vez", "maximo",
+    ])
+    return generador
+
+
 def _read_player(node: Node, root: str) -> Player:
     where = "jugador"
     sprite = node.str_(["sprite", "imagen", "image"], required=True)
@@ -865,7 +918,11 @@ def _read_player(node: Node, root: str) -> Player:
         jump_buffer=node.int_(["jump_buffer", "buffer_salto"], 6, 0, 30),
         stomp=node.bool_(["stomp", "pisar", "pisar_enemigos"], True),
         bounce=node.num(["bounce", "rebote"], 3.6, 0.0, 12.0),
-        health=node.int_(["health", "salud", "vida"], 1, 1, 9),
+        health=node.int_(["health", "salud", "vida"], 1, 1, 255),
+        # `desgaste:` es lo que convierte la partida en una cuenta atras: cada
+        # tantos frames se va un punto de vida sin que nadie te toque, y hay
+        # que ir buscando comida. Es la mecanica de Gauntlet.
+        wear=node.int_(["wear", "desgaste", "hambre"], 0, 0, 3600),
         invuln=node.int_(["invuln", "invulnerable", "invulnerabilidad"], 90, 0, 600),
         knockback=node.num(["knockback", "retroceso", "empujon", "empujón"], 0.0,
                            0.0, 12.0),
@@ -911,6 +968,7 @@ def _read_player(node: Node, root: str) -> Player:
         "double_jump", "doble_salto", "coyote", "coyote_time", "margen_salto",
         "jump_buffer", "buffer_salto", "stomp", "pisar", "pisar_enemigos",
         "bounce", "rebote", "health", "salud", "vida", "invuln", "invulnerable",
+        "wear", "desgaste", "hambre",
         "invulnerabilidad", "attack", "ataque",
         "knockback", "retroceso", "empujon", "empujón",
         "stun", "aturdido", "aturdimiento",
@@ -939,7 +997,9 @@ def _read_enemy(name: str, data: Any, root: str) -> Enemy:
         speed=node.num(["speed", "velocidad"], 0.5, 0.0, 8.0),
         gravity=node.num(["gravity", "gravedad"], default_gravity, 0.0, 4.0),
         health=node.int_(["health", "salud", "vida"], 1, 1, 99),
-        damage=node.int_(["damage", "dano", "daño"], 1, 0, 9),
+        # Hasta 99 y no 9: con `desgaste:` la vida son cientos de puntos
+        # y un golpe de uno no se notaria.
+        damage=node.int_(["damage", "dano", "daño"], 1, 0, 99),
         score=node.int_(["score", "puntos"], 100, 0, 99999),
         stompable=node.bool_(["stompable", "pisable"], True),
         edge_turn=node.bool_(["edge_turn", "girar_en_borde", "girar"], True),
@@ -972,7 +1032,9 @@ def _read_enemy_shot(node: Node, root: str, donde: str) -> Optional[EnemyShot]:
         speed=node.num(["speed", "velocidad"], 2.0, 0.1, 8.0),
         range=node.num(["range", "alcance"], 200.0, 8.0, 1024.0),
         cooldown=node.int_(["cooldown", "espera", "cadencia"], 90, 4, 1200),
-        damage=node.int_(["damage", "dano", "daño"], 1, 0, 9),
+        # Hasta 99 y no 9: con `desgaste:` la vida son cientos de puntos
+        # y un golpe de uno no se notaria.
+        damage=node.int_(["damage", "dano", "daño"], 1, 0, 99),
     )
     _warn_unknown(node, where, [
         "sprite", "imagen", "image", "frame", "fotograma", "tamano_frame",
@@ -997,7 +1059,9 @@ def _read_item(name: str, data: Any, root: str) -> Item:
         box_w=bw, box_h=bh, box_x=bx, box_y=by, animations=anims,
         effect=node.choice(["effect", "efecto", "tipo"], ITEM_EFFECTS, "points"),
         score=node.int_(["score", "puntos"], 10, 0, 99999),
-        amount=node.int_(["amount", "cantidad"], 1, 1, 9),
+        # Hasta 99: con `desgaste:` la vida son cientos de puntos y la
+        # comida tiene que devolver un pellizco de verdad.
+        amount=node.int_(["amount", "cantidad"], 1, 1, 99),
         # con 'efecto: subarma', a que arma secundaria cambia
         weapon=node.str_(["weapon", "arma", "secundaria"], "") or "",
     )
@@ -1533,6 +1597,21 @@ def load_project(path: str) -> Project:
     for name, data_pri in (top.child("prisoners", "prisioneros",
                                      "rehenes").data or {}).items():
         prisoners[str(name)] = _read_prisoner(str(name), data_pri, root)
+
+    generators: Dict[str, Generator] = {}
+    for name, data_gen in (top.child("generators", "generadores",
+                                     "nidos").data or {}).items():
+        generators[str(name)] = _read_generator(str(name), data_gen, root)
+    # el enemigo que saca tiene que existir: si no, el generador estaria ahi
+    # soltando nada y nadie lo diria
+    for nombre, gen in generators.items():
+        if gen.enemy not in enemies:
+            raise ProjectError(
+                "el generador '%s' saca '%s', que no esta en 'enemigos:'"
+                % (nombre, gen.enemy),
+                hint="los enemigos que hay son: %s" % (", ".join(enemies) or "ninguno"),
+                where="generadores.%s" % nombre,
+            )
     # el objeto que cambia de arma tiene que decir a cual, y esa tiene que
     # existir: si no, se cogeria y no pasaria nada
     nombres_armas = [arma.name for arma in player.subs]
@@ -1562,18 +1641,22 @@ def load_project(path: str) -> Project:
                 hint="definelo en 'objetos:', o quita la linea 'suelta:'",
                 where="rompibles.%s" % nombre)
 
-    for a, b, texto in ((enemies, items, "enemigo y como objeto"),
-                        (enemies, platforms, "enemigo y como plataforma"),
-                        (items, platforms, "objeto y como plataforma"),
-                        (enemies, breakables, "enemigo y como rompible"),
-                        (items, breakables, "objeto y como rompible"),
-                        (platforms, breakables, "plataforma y como rompible")):
-        repetidos = set(a) & set(b)
-        if repetidos:
-            raise ProjectError(
-                "'%s' esta definido como %s" % (sorted(repetidos)[0], texto),
-                hint="usa nombres distintos",
-            )
+    # Un nombre repetido en dos secciones no se puede resolver: el simbolo del
+    # mapa saldria como una cosa o como otra segun el orden en que se miren las
+    # listas, que no es algo que nadie tenga que saber. Se miran las seis, dos
+    # a dos, para que no se quede fuera ninguna al anadir una nueva.
+    secciones = (("enemigo", enemies), ("objeto", items),
+                 ("plataforma", platforms), ("rompible", breakables),
+                 ("prisionero", prisoners), ("generador", generators))
+    for i, (nombre_a, a) in enumerate(secciones):
+        for nombre_b, b in secciones[i + 1:]:
+            repetidos = set(a) & set(b)
+            if repetidos:
+                raise ProjectError(
+                    "'%s' esta definido como %s y como %s"
+                    % (sorted(repetidos)[0], nombre_a, nombre_b),
+                    hint="usa nombres distintos",
+                )
 
     global_spawns = {str(k): str(v) for k, v in
                      (top.child("spawns", "simbolos", "símbolos").data or {}).items()}
@@ -1593,7 +1676,7 @@ def load_project(path: str) -> Project:
     levels = _read_levels(
         top.raw("levels", "niveles"), tiles,
         list(enemies) + list(items) + list(platforms) + list(breakables)
-        + list(prisoners),
+        + list(prisoners) + list(generators),
         global_spawns, default_bg, warnings, necesitan_suelo, list(layers),
         list(sound.musica), jefes=jefes, llaves=llaves,
     )
@@ -1603,6 +1686,7 @@ def load_project(path: str) -> Project:
         "enemies", "enemigos", "items", "objetos", "levels", "niveles",
         "platforms", "plataformas", "breakables", "rompibles",
         "prisoners", "prisioneros", "rehenes",
+        "generators", "generadores", "nidos",
         "spawns", "simbolos", "símbolos", "backgrounds", "fondos", "capas",
         "sound", "sonido", "audio",
     }
@@ -1632,7 +1716,7 @@ def load_project(path: str) -> Project:
         amiga_modo=amiga_modo,
         time_limit=time_limit, hud=hud, player=player, tileset=tileset, tiles=tiles,
         enemies=enemies, items=items, platforms=platforms,
-        breakables=breakables, prisoners=prisoners,
+        breakables=breakables, prisoners=prisoners, generators=generators,
         layers=layers, sound=sound, levels=levels,
         warnings=warnings,
     )

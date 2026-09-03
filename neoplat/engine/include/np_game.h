@@ -97,6 +97,12 @@ typedef struct {
      * que hace que una escalera sea un sitio donde te pueden cazar. */
     np_fix stair_speed;
     uint16_t invuln, stun;
+    /* Frames que tarda en irse un punto de vida **sola**, sin que nadie te
+     * toque. Cero -lo normal- quiere decir que la vida solo se pierde a
+     * golpes. Con un numero, la partida es una cuenta atras y hay que ir
+     * buscando comida: es la mecanica de Gauntlet, y cambia el juego entero
+     * -ya no se puede esperar a que pase el bicho-. */
+    uint16_t wear;
     uint8_t coyote, jump_buffer, double_jump, stomp, health;
     /* Cuanto baja el techo de la caja al agacharse, en pixeles. Cero quiere
      * decir que el juego no lleva agacharse, y el boton de abajo solo sirve
@@ -123,6 +129,25 @@ typedef struct {
     np_fix speed;            /* lo que corre al soltarse */
     uint16_t escape;         /* frames corriendo antes de perderse de vista */
 } NpPrisonerDef;
+
+/* Un generador de bichos, de los de Gauntlet.
+ *
+ * No se mueve y no hace dano: lo que hace es sacar enemigos cada `cooldown`
+ * frames, uno detras de otro, hasta que lo destruyes a tiros. Es lo que
+ * convierte una mazmorra en una carrera contra el reloj: mientras siga en pie,
+ * matar bichos no sirve de nada.
+ *
+ * `cap` es cuantos bichos suyos puede haber a la vez. Sin ese tope, tres
+ * generadores llenarian la lista de entidades en unos segundos y el juego se
+ * quedaria sin sitio para los disparos. */
+typedef struct {
+    NpActorDef actor;
+    uint16_t score;          /* lo que vale destruirlo */
+    uint16_t cooldown;       /* frames entre bicho y bicho */
+    uint8_t health;          /* tiros que aguanta */
+    uint8_t enemy;           /* que enemigo saca: indice en np_enemies */
+    uint8_t cap;             /* cuantos suyos puede haber a la vez */
+} NpGeneratorDef;
 
 /* Lo que tira un enemigo con `dispara:`. Es un actor mas -su dibujo y su
  * caja- con lo justo para volar: a que velocidad, cuanto llega, cada cuanto
@@ -210,6 +235,7 @@ extern const NpPlayerDef np_player_def;
 extern const NpEnemyDef np_enemies[];
 extern const NpEnemyShotDef np_enemy_shots[];   /* lo que tiran ellos */
 extern const NpPrisonerDef np_prisoners[];     /* los rehenes que rescatas */
+extern const NpGeneratorDef np_generators[];   /* los nidos que sacan bichos */
 extern const NpItemDef np_items[];
 extern const NpSubDef np_subs[];         /* las armas secundarias del juego */
 extern const NpPlatformDef np_platforms[];
@@ -233,6 +259,7 @@ extern const uint16_t np_layer_count;
 extern const uint16_t np_enemy_count;
 extern const uint8_t np_enemy_shot_count;
 extern const uint8_t np_prisoner_count;
+extern const uint8_t np_generator_count;
 extern const uint16_t np_item_count;
 extern const uint8_t np_sub_count;       /* 0 = el juego no lleva secundaria */
 /* Como se llama cada arma secundaria en el marcador: cinco letras, que es lo

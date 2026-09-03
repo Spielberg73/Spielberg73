@@ -2,8 +2,81 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.20.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.21.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.21
+
+**Cuarto género: la mazmorra, al estilo Gauntlet.**
+
+```bash
+ngplat nuevo micripta --genero mazmorra
+```
+
+Se ve desde arriba como el de comando, pero se juega de otra manera: el nivel no
+es un camino sino un **laberinto** de 20 × 28 casillas que se ve casi entero, y
+lo que decide la partida no es la puntería sino por dónde tiras. Tres cosas
+nuevas del motor, las tres iguales en las siete máquinas y en el preview:
+
+- **`desgaste:`, la vida que se gasta sola.** Con `vida: 200` y `desgaste: 12`
+  el jugador pierde un punto cada doce frames: la partida es una cuenta atrás de
+  cuarenta segundos que solo para la comida (`efecto: salud`). No respeta la
+  invulnerabilidad —el parpadeo te salva de los golpes, no del hambre— y al
+  llegar a cero te mueres como de un golpe. Con la vida por encima de nueve el
+  marcador deja de dibujar cuadrados y **escribe el número** (`LIFE 184`), que
+  es lo que hacía el Gauntlet.
+- **`generadores:`, los nidos que sueltan bichos sin parar.** Cada uno saca su
+  enemigo cada `cada:` frames hasta que lo revientas, con un `tope:` de bichos
+  suyos vivos a la vez y su propia `vida:`. Mientras siga en pie, matar lo que
+  sale no sirve de nada: esa es la regla que le da la vuelta al juego. No hace
+  daño al tocarlo —se le pega, no te pega—, y es un actor como los demás, así
+  que se dibuja y se anima en las siete máquinas sin una línea de código por
+  máquina.
+- **`efecto: bomba`, la poción que limpia la pantalla.** Hace daño a todo lo que
+  se ve en ese momento —enemigos, nidos y rompibles—, y solo a eso: la *smart
+  bomb* de siempre, que vale lo que valga el momento en que la cojas.
+
+El proyecto que sale trae dos laberintos (LA CRIPTA y EL FOSO), cuatro
+enemigos con su guardián de jefe, dos clases de nido y la meta cerrada con una
+llave que está al otro lado del mapa: hay que dar la vuelta entera con el reloj
+corriendo, y eso es el género.
+
+**Y el bot ahora va a por la llave.** El que comprueba que un nivel se puede
+terminar (el del botón «¿se puede terminar?» del editor y el de las pruebas)
+iba derecho a la meta desde arriba: en una mazmorra con la meta cerrada se
+quedaba dando vueltas. Ahora decide igual que una persona —primero comida si le
+queda poca vida, después la llave que falte, y la meta al final— y mide el
+avance por lo que le queda de camino **hasta lo que busca ahora**, que es lo
+que le deja bajar a por la llave sin creerse atascado.
+
+**Arreglado de paso: el editor no conocía a los prisioneros ni a los nidos.**
+Su tabla de tipos se paraba en el rompible, así que un `R` de prisionero (desde
+la 1.17) o un `n` de nido caían en la lista de objetos: no salían en la paleta,
+no se podían pintar y en el mapa se dibujaban como si fueran otra cosa. Ahora
+salen los seis tipos con su nombre y su dibujo, y el aviso de «demasiadas
+entidades» cuenta también los bichos que pueden tener fuera los nidos.
+
+**Y otro del validador**: un nombre repetido en dos secciones no compilaba
+—`ngplat` lo dice— salvo si una de las dos era `prisioneros:` o
+`generadores:`, que se quedaban fuera de la comprobación. Ahora se miran las
+seis, dos a dos, así que añadir una séptima no vuelve a dejar un hueco.
+
+**En el preview**, el botón de saltar ya no dice «lanzar granada» siempre: dice
+el arma secundaria que lleve el juego (en la mazmorra, «lanzar pocima»).
+
+Pruebas nuevas: los dos laberintos se terminan con el bot (y si se tapia el
+rincón de la llave, lo dice); la paridad C/JS del desgaste, de los nidos y de la
+poción, cada una con su comprobación de que la mecánica está de verdad (la vida
+baja de punto en punto; los mismos nidos dormidos dan otra traza; la poción
+suma los puntos de los tres bichos que revienta); el proyecto entero se genera
+para las siete máquinas y los generadores llegan a su `gamedata.c`; el marcador
+de tres cifras, compilando el motor de verdad; el editor con un juego que trae
+nidos; que con la vida corta el bot solo termina los laberintos si para a
+comer, y cambiando la comida por tesoros ya no llega; y, encendiendo una Mega
+Drive emulada, que el marcador **baja solo** sin tocar el mando.
+
+El `ngplat comprobar` también cuenta ahora los prisioneros y los generadores
+que trae el proyecto, que antes no salían por ningún lado.
 
 ## 1.20
 

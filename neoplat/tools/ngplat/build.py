@@ -80,6 +80,7 @@ class Build:
     platforms: List[ActorBuild] = field(default_factory=list)
     breakables: List[ActorBuild] = field(default_factory=list)
     prisoners: List[ActorBuild] = field(default_factory=list)   # los rehenes
+    generators: List[ActorBuild] = field(default_factory=list)  # los nidos
     attack: Optional[ActorBuild] = None       # el proyectil, si el juego lo lleva
     subs: List[ActorBuild] = field(default_factory=list)   # las armas secundarias
     # Los disparos de los enemigos que llevan `dispara:`. Van en su propia
@@ -106,7 +107,7 @@ class Build:
         para no mover los indices de lo que ya estaba, que es lo que guardan
         los niveles."""
         todos = ([self.player] + self.enemies + self.items + self.platforms
-                 + self.breakables + self.prisoners)
+                 + self.breakables + self.prisoners + self.generators)
         if self.attack is not None:
             todos.append(self.attack)
         todos.extend(self.subs)
@@ -125,6 +126,7 @@ class Build:
             "plataformas": len(self.platforms),
             "rompibles": len(self.breakables),
             "prisioneros": len(self.prisoners),
+            "generadores": len(self.generators),
             "bytes_mapas": sum(len(lv.cells) for lv in self.levels),
         }
         datos.update(self.info.get("stats", {}))     # lo que anada cada sistema
@@ -284,6 +286,11 @@ def build_project(project: Project) -> Build:
         for name, pri in project.prisoners.items()
     ]
     prisoner_index = {b.name: i for i, b in enumerate(prisoners)}
+    generators = [
+        _load_actor(gen, "generadores.%s" % name, project.root)
+        for name, gen in project.generators.items()
+    ]
+    generator_index = {b.name: i for i, b in enumerate(generators)}
 
     music_order = list(project.sound.musica)
     music_index = {name: i + 1 for i, name in enumerate(music_order)}
@@ -319,6 +326,9 @@ def build_project(project: Project) -> Build:
                         # numero que el de la entidad, no otro
                         kind, index = 8, prisoner_index[name]
                         actor = prisoners[index].actor
+                    elif name in generator_index:
+                        kind, index = 9, generator_index[name]   # NP_KIND_GENERATOR
+                        actor = generators[index].actor
                     else:
                         kind, index = 1, item_index[name]
                         actor = items[index].actor
@@ -350,7 +360,7 @@ def build_project(project: Project) -> Build:
         project=project, rom=rom, tiles=tiles, tile_index=tile_index, tileset=tileset,
         player=player, enemies=enemies, items=items, layers=layers, levels=levels,
         platforms=platforms, breakables=breakables, attack=attack, subs=subs,
-        enemy_shots=enemy_shots, prisoners=prisoners,
+        enemy_shots=enemy_shots, prisoners=prisoners, generators=generators,
         music_order=music_order, music_title=music_title, music_boss=music_boss,
         sin_table=_sin_table(),
     )
@@ -451,6 +461,15 @@ def prisoner_values(build: ActorBuild) -> Dict[str, object]:
     return {"score": pr.score, "speed": to_fixed(pr.speed), "escape": pr.escape}
 
 
+def generator_values(build: ActorBuild,
+                     enemy_index: Dict[str, int]) -> Dict[str, object]:
+    """Los campos de NpGeneratorDef. `enemy` es el indice del enemigo que saca,
+    que el lector del proyecto ya ha comprobado que existe."""
+    g = build.actor          # type: ignore[assignment]
+    return {"score": g.score, "cooldown": g.cooldown, "health": g.health,
+            "enemy": enemy_index.get(g.enemy, 0), "cap": g.cap}
+
+
 def breakable_values(build: ActorBuild, item_index: Dict[str, int]) -> Dict[str, object]:
     """Los campos de NpBreakableDef. `drop` es el indice del objeto **mas uno**:
     el cero significa 'no suelta nada'."""
@@ -469,7 +488,7 @@ def player_values(project: Project) -> Dict[str, object]:
         "bounce": to_fixed(p.bounce), "invuln": p.invuln,
         "knockback": to_fixed(p.knockback), "stun": p.stun,
         "stair_speed": to_fixed(p.stair_speed),
-        "coyote": p.coyote, "jump_buffer": p.jump_buffer,
+        "coyote": p.coyote, "jump_buffer": p.jump_buffer, "wear": p.wear,
         "double_jump": 1 if p.double_jump else 0, "stomp": 1 if p.stomp else 0,
         "health": p.health,
         # cuanto baja el techo de la caja al agacharse; 0 = no se puede

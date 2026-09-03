@@ -200,5 +200,36 @@ class TestEditor(unittest.TestCase):
                          "el bot no termina el nivel nuevo: " + resultado.stdout)
 
 
+class TestEditorConGeneradores(unittest.TestCase):
+    """El editor con el juego de mazmorra, que trae generadores y por tanto
+    bichos de `kind` 9: la tabla del editor se paraba en el rompible."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not shutil.which("node"):
+            raise unittest.SkipTest("node no esta instalado")
+        from ngplat.scaffold import crear_proyecto
+        cls.tmp = tempfile.mkdtemp(prefix="neoplat-editor-mazmorra-")
+        proyecto = os.path.join(cls.tmp, "mazmorra")
+        crear_proyecto(proyecto, "MAZMORRA", "TEST", genero="mazmorra")
+        datos = build_data(build_project(load_project(proyecto)))
+        for hoja in datos["sheets"].values():
+            hoja["url"] = ""
+        cls.datos = os.path.join(cls.tmp, "datos.json")
+        with open(cls.datos, "w", encoding="utf-8") as fh:
+            json.dump(datos, fh)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(getattr(cls, "tmp", ""), ignore_errors=True)
+
+    def test_el_editor_conoce_los_generadores(self):
+        resultado = subprocess.run(
+            ["node", os.path.join(KIT, "tests", "editor_mazmorra.js"), self.datos],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(resultado.returncode, 0, resultado.stdout + resultado.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
