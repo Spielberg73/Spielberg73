@@ -101,7 +101,7 @@ static void np_bg_column(const NpWorld *w, uint16_t column, int32_t tile_x, int3
     uint16_t tiles[NP_BG_ROWS];
     uint16_t atributos = (uint16_t)(np_tileset_palette << 8);
     uint16_t row;
-    np_tile_gfx_column(w->level, tile_x, tile_y, NP_BG_ROWS, tiles);
+    np_tile_gfx_column(w, tile_x, tile_y, NP_BG_ROWS, tiles);
     np_vram_seek((uint16_t)(NP_SCB1 + sprite * 64), 1);
     for (row = 0; row < NP_BG_ROWS; row++) {
         np_vram_write(tiles[row]);              /* numero de tile */
@@ -240,6 +240,9 @@ static void np_draw_background(const NpWorld *w)
     static int32_t cargada[NP_BG_COLUMNS];
     static int32_t last_row = -9999;
     static const NpLevel *last_level = 0;
+    /* cuantas puertas habia abiertas al pintar: al abrirse una, la casilla
+       pasa a ser aire y hay que rehacer las columnas */
+    static uint8_t ultimos_abiertos = 0;
     static uint8_t primera_vez = 1;
     int32_t col = w->cam_x >> NP_TILE_SHIFT;
     int32_t row = w->cam_y >> NP_TILE_SHIFT;
@@ -247,7 +250,8 @@ static void np_draw_background(const NpWorld *w)
     int16_t off_y = (int16_t)(w->cam_y & 15);
     /* Si cambia la fila (o el nivel) no vale nada de lo que hay: al moverse en
      * vertical cambian los quince tiles de todas las columnas. */
-    uint8_t todas = primera_vez || row != last_row || w->level != last_level;
+    uint8_t todas = primera_vez || row != last_row || w->level != last_level
+                  || w->abiertos_n != ultimos_abiertos;
     /* La camara nunca sale del nivel, pero un resto negativo aqui se saldria
      * del array: mas vale gastar una comparacion al frame. */
     int32_t resto = col % NP_BG_COLUMNS;
@@ -258,6 +262,7 @@ static void np_draw_background(const NpWorld *w)
     primera_vez = 0;
     last_row = row;
     last_level = w->level;
+    ultimos_abiertos = w->abiertos_n;
 
     for (i = 0; i < NP_BG_COLUMNS; i++) {
         int32_t mapa = col + i;

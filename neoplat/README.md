@@ -125,6 +125,7 @@ el nivel de partida.
 | `comando` | **se ve desde arriba**: andas en ocho direcciones, disparas hacia donde miras, tiras granadas con el botón de saltar y subes la pantalla rescatando prisioneros. Los soldados y las torretas **te disparan**; a los presos atados, no: si les das, los pierdes |
 | `mazmorra` | un **laberinto** visto desde arriba, al estilo Gauntlet. La vida **se gasta sola**, así que la partida es una cuenta atrás y hay que ir buscando comida; los **generadores** sueltan bichos sin parar hasta que los revientas, y la poción del botón de saltar se lleva por delante todo lo que se ve. La meta pide una llave que está al otro lado del laberinto |
 | `barrio` | **yo contra el barrio**, al estilo Double Dragon: se anda por una calle **con profundidad** —arriba y abajo te mueves por el ancho de la calle— y se pelea. Los golpes se **encadenan** (puño, puño y remate, que tumba), al que se tambalea se le **agarra** para darle rodillazos o lanzarlo por encima del hombro, y la cámara **no pasa de pantalla** mientras quede alguien vivo |
+| `aventura` | una **aventura de pantallas**, al estilo Dizzy. Aquí **no se pega**: el botón suelta lo que llevas, y en la bolsa caben tres cosas. Lo que te para no es un bicho sino un **cerrojo** —una puerta, una hoguera, una pared— que solo se abre si apareces con lo suyo; al abrirlo se gasta el objeto y el paso se queda abierto. Y el salto **no se manda en el aire**: al despegar decides hacia dónde vas y hasta caer no se cambia |
 
 Si prefieres decirlo de una:
 
@@ -355,9 +356,9 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.22.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
-| `neoplat-kit-1.22.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.22.zip` | el `ngplat.exe` y su LEEME |
+| `neoplat-docs-1.23.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
+| `neoplat-kit-1.23.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.23.zip` | el `ngplat.exe` y su LEEME |
 
 El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
 plantillas; no necesita Python ni nada instalado. Con **doble clic** —sin
@@ -395,6 +396,7 @@ archivo nuevo y que el `.exe` se quede sin él; así salta antes de repartirlo.
 | `ngplat nuevo <carpeta> --genero comando` | Lo mismo, pero visto desde arriba: ocho direcciones, granadas, enemigos que disparan y prisioneros que rescatar |
 | `ngplat nuevo <carpeta> --genero mazmorra` | Un laberinto tipo Gauntlet: la vida se gasta sola, hay generadores de bichos y una poción que limpia la pantalla |
 | `ngplat nuevo <carpeta> --genero barrio` | Un juego de tortas tipo Double Dragon: calle con profundidad, golpes encadenados, agarres y la cámara con cerrojo |
+| `ngplat nuevo <carpeta> --genero aventura` | Una aventura tipo Dizzy: cuatro pantallas por nivel, una bolsa de tres cosas, puertas que piden lo suyo y el salto sin control |
 | `ngplat nuevo <carpeta> --estilo hierro` | Lo mismo, pero dibujado con seis colores y listo para el doble plano del Amiga |
 | `ngplat comprobar [proyecto]` | Valida el `game.yaml` y dice cuánto ocupa el juego |
 | `ngplat probar [proyecto]` | Abre el preview y el editor, y se queda sirviéndolo |

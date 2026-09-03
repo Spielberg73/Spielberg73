@@ -183,10 +183,16 @@ TILE_KINDS = {
     # punto de control: se atraviesa, y al tocarlo apunta donde reapareces
     "control": "check", "punto_control": "check", "punto_de_control": "check",
     "checkpoint": "check", "check": "check", "bandera": "check",
+    # cerrojo: frena como una pared hasta que llegas con el objeto que pide
+    "cerrojo": "lock", "lock": "lock", "puerta": "lock", "candado": "lock",
+    "cerradura": "lock",
 }
 
 TILE_KIND_ID = {"empty": 0, "solid": 1, "platform": 2, "hazard": 3, "goal": 4,
-                "decor": 5, "stair_r": 6, "stair_l": 7, "check": 8}
+                "decor": 5, "stair_r": 6, "stair_l": 7, "check": 8,
+                # el cerrojo de las aventuras: frena como una pared hasta que
+                # llegas con el objeto que pide, y entonces se abre para siempre
+                "lock": 9}
 
 BEHAVIORS = {
     "patrulla": "patrol", "patrol": "patrol", "andar": "patrol", "walker": "patrol",
@@ -216,10 +222,14 @@ ITEM_EFFECTS = {
     # la pocima de Gauntlet: al cogerla hace dano a todo lo que se ve
     "bomba": "bomb", "bomb": "bomb", "pocima": "bomb", "pocion": "bomb",
     "poción": "bomb", "smart_bomb": "bomb",
+    # el objeto que se lleva encima, de las aventuras tipo Dizzy: no hace nada
+    # al cogerlo, se guarda en la bolsa y abre el sitio que lo pide
+    "llevar": "carry", "carry": "carry", "objeto": "carry", "coger": "carry",
+    "inventario": "carry", "herramienta": "carry",
 }
 
 ITEM_EFFECT_ID = {"points": 0, "life": 1, "health": 2, "key": 3, "ammo": 4,
-                  "upgrade": 5, "weapon": 6, "bomb": 7}
+                  "upgrade": 5, "weapon": 6, "bomb": 7, "carry": 8}
 
 
 @dataclass
@@ -255,6 +265,9 @@ class Player(Actor):
     gravity: float = 0.28
     max_fall: float = 6.0
     double_jump: bool = False
+    # Si se manda en el aire. False es el salto de las aventuras clasicas: al
+    # despegar se decide hacia donde vas y hasta caer no se cambia.
+    air_control: bool = True
     coyote: int = 6
     jump_buffer: int = 6
     stomp: bool = True
@@ -340,6 +353,9 @@ class Item(Actor):
     score: int = 10
     amount: int = 1
     weapon: str = ""               # con 'efecto: subarma', a cual cambia
+    # Como sale en la bolsa del marcador (cinco letras). Solo lo miran los
+    # objetos de `efecto: llevar`; sin `marcador:` se recorta el nombre.
+    label: str = ""
 
 
 @dataclass
@@ -408,6 +424,9 @@ class TileDef:
     char: str
     index: int          # numero de tile dentro del tileset
     kind: str
+    # con `tipo: cerrojo`, que objeto lo abre. Vacio = ninguno (y entonces no
+    # se abre nunca, que es un error del juego y se avisa).
+    needs: str = ""
 
 
 @dataclass
@@ -966,6 +985,10 @@ def _read_player(node: Node, root: str) -> Player:
         gravity=node.num(["gravity", "gravedad"], 0.28, 0.01, 4.0),
         max_fall=node.num(["max_fall", "max_caida", "caida_maxima"], 6.0, 0.5, 16.0),
         double_jump=node.bool_(["double_jump", "doble_salto"], False),
+        # `salto_fijo: si` quita el mando en el aire: el salto sale con el
+        # impulso que llevabas al despegar y hace siempre el mismo arco. Es el
+        # salto de las aventuras tipo Dizzy, y es media dificultad del genero.
+        air_control=not node.bool_(["fixed_jump", "salto_fijo"], False),
         coyote=node.int_(["coyote", "coyote_time", "margen_salto"], 6, 0, 30),
         jump_buffer=node.int_(["jump_buffer", "buffer_salto"], 6, 0, 30),
         stomp=node.bool_(["stomp", "pisar", "pisar_enemigos"], True),
@@ -1021,7 +1044,8 @@ def _read_player(node: Node, root: str) -> Player:
         "friction", "friccion", "fricción", "air_accel", "control_aire",
         "aceleracion_aire", "jump", "salto", "jump_cut", "corte_salto",
         "gravity", "gravedad", "max_fall", "max_caida", "caida_maxima",
-        "double_jump", "doble_salto", "coyote", "coyote_time", "margen_salto",
+        "double_jump", "doble_salto", "fixed_jump", "salto_fijo",
+        "coyote", "coyote_time", "margen_salto",
         "jump_buffer", "buffer_salto", "stomp", "pisar", "pisar_enemigos",
         "bounce", "rebote", "health", "salud", "vida", "invuln", "invulnerable",
         "wear", "desgaste", "hambre", "grab", "agarre",
@@ -1110,7 +1134,7 @@ def _read_item(name: str, data: Any, root: str) -> Item:
     _require_file(root, sprite, where)
     fw, fh, bw, bh, bx, by = _actor_geometry(node, where, (16, 16))
     anims = _read_animations(node.child("animations", "animaciones", "anims"), where)
-    return Item(
+    objeto = Item(
         name=name, sprite=sprite, frame_w=fw, frame_h=fh,
         box_w=bw, box_h=bh, box_x=bx, box_y=by, animations=anims,
         effect=node.choice(["effect", "efecto", "tipo"], ITEM_EFFECTS, "points"),
@@ -1120,7 +1144,13 @@ def _read_item(name: str, data: Any, root: str) -> Item:
         amount=node.int_(["amount", "cantidad"], 1, 1, 99),
         # con 'efecto: subarma', a que arma secundaria cambia
         weapon=node.str_(["weapon", "arma", "secundaria"], "") or "",
+        # como sale en la bolsa, para los objetos que se llevan
+        label=(node.str_(["label", "marcador", "etiqueta"], "") or "").upper(),
     )
+    if not objeto.label:
+        # sin `marcador:`, el propio nombre en mayusculas y recortado a cinco
+        objeto.label = str(name).upper().replace(" ", "")[:5]
+    return objeto
 
 
 PLATFORM_AXES = {
@@ -1191,13 +1221,21 @@ def _read_tiles(node: Node, root: str) -> Tuple[Tileset, Dict[str, TileDef]]:
                         hint="tipos: %s" % ", ".join(sorted(TILE_KIND_ID)),
                         where=sub_where,
                     )
-            else:
+            needs = ""
+            if isinstance(value, dict):
+                sub = Node(value, sub_where)
+                index = sub.int_(["tile", "indice", "índice", "id"], 0, minimum=0)
+                kind = sub.choice(["type", "tipo", "clase"], TILE_KINDS, "solid")
+                # con `tipo: cerrojo`, que objeto lo abre
+                needs = sub.str_(["needs", "abre_con", "pide", "llave",
+                                  "objeto"], "") or ""
+            elif not isinstance(value, (int, float, list, tuple)):
                 sub = Node(value, sub_where)
                 index = sub.int_(["tile", "indice", "índice", "id"], 0, minimum=0)
                 kind = sub.choice(["type", "tipo", "clase"], TILE_KINDS, "solid")
             if index < 0:
                 raise ProjectError("el numero de tile no puede ser negativo", where=sub_where)
-            tiles[char] = TileDef(char, index, kind)
+            tiles[char] = TileDef(char, index, kind, needs)
         tiles.setdefault(".", TileDef(".", 0, "empty"))
         tiles.setdefault(" ", TileDef(" ", 0, "empty"))
     return Tileset(image=image, size=size), tiles
@@ -1713,6 +1751,34 @@ def load_project(path: str) -> Project:
                     % (sorted(repetidos)[0], nombre_a, nombre_b),
                     hint="usa nombres distintos",
                 )
+
+    # Lo que pide un cerrojo tiene que existir y tiene que ser de los que se
+    # llevan: una puerta que pide algo que no se puede coger no se abre nunca,
+    # y eso no es un puzle dificil, es un juego roto.
+    for char, tile in tiles.items():
+        if tile.kind != "lock":
+            continue
+        donde = "tiles.leyenda['%s']" % char
+        if not tile.needs:
+            raise ProjectError(
+                "el cerrojo '%s' no dice con que se abre" % char,
+                hint="anade 'abre_con: <objeto>' con un objeto de "
+                     "'efecto: llevar'",
+                where=donde)
+        objeto = items.get(tile.needs)
+        if objeto is None:
+            raise ProjectError(
+                "el cerrojo '%s' se abre con '%s', que no es ningun objeto"
+                % (char, tile.needs),
+                hint="los objetos que hay son: %s" % (", ".join(items) or "ninguno"),
+                where=donde)
+        if objeto.effect != "carry":
+            raise ProjectError(
+                "el cerrojo '%s' se abre con '%s', que no se puede llevar"
+                % (char, tile.needs),
+                hint="ponle 'efecto: llevar' a ese objeto: los cerrojos se "
+                     "abren con lo que llevas en la bolsa",
+                where=donde)
 
     global_spawns = {str(k): str(v) for k, v in
                      (top.child("spawns", "simbolos", "símbolos").data or {}).items()}

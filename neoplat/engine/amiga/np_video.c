@@ -26,6 +26,10 @@ static int32_t np_base_tile;          /* primera columna de tiles dibujada */
    mapa de bits es estrecho y alto y no queda margen para ir corriendolo. */
 static uint8_t np_mapa_fijo;
 static const NpLevel *np_nivel_actual;
+/* Cuantas puertas habia abiertas la ultima vez que se pinto el escenario. Al
+   abrirse una, la casilla pasa a ser aire y hay que repintar: el escenario vive
+   en la pantalla y no se entera solo. */
+static uint8_t np_abiertos_pintados;
 
 /* Lista del copper. Tiene dos partes: la de arriba pinta el marcador desde
    np_hud_bitmap y, al llegar a la linea NP_HUD_ALTO, engancha los bitplanes al
@@ -338,7 +342,7 @@ static void np_columna(const NpWorld *w, int32_t tile_x)
     if (columna < 0 || columna >= NP_MAPA_ANCHO / NP_TILE) return;
     /* se pinta la columna entera, tambien lo que queda por debajo del nivel:
        si no, ahi se quedaria lo que hubiera dibujado antes */
-    np_tile_gfx_column(w->level, tile_x, 0, NP_MAPA_ALTO / NP_TILE, tiles);
+    np_tile_gfx_column(w, tile_x, 0, NP_MAPA_ALTO / NP_TILE, tiles);
     for (fila = 0; fila < NP_MAPA_ALTO / NP_TILE; fila++)
         np_blit_tile(tiles[fila], columna * NP_TILE, fila * NP_TILE);
 }
@@ -460,7 +464,7 @@ static void np_repintar_rastros(const NpWorld *w)
                 indice = (uint16_t)(ty * NP_TILES_X + columna);
                 if (np_ya_repintado[indice >> 3] & (1 << (indice & 7))) continue;
                 np_ya_repintado[indice >> 3] |= (uint8_t)(1 << (indice & 7));
-                np_blit_tile(np_tile_gfx_at(w->level, tx, ty),
+                np_blit_tile(np_tile_gfx_at(w, tx, ty),
                              columna * NP_TILE, ty * NP_TILE);
             }
         }
@@ -506,8 +510,9 @@ void np_video_frame(const NpWorld *w)
     uint32_t direccion;
     uint8_t i;
 
-    if (w->level != np_nivel_actual) {
+    if (w->level != np_nivel_actual || w->abiertos_n != np_abiertos_pintados) {
         np_nivel_actual = w->level;
+        np_abiertos_pintados = w->abiertos_n;
         /* el color 0 es el fondo de la pantalla, y cada nivel trae el suyo */
 #if NP_AGA
         np_copper[NP_COP_COLOR0] = np_color_alto(w->level->background);

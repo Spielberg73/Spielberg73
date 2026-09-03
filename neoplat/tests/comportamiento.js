@@ -19,8 +19,13 @@ function fx(v) { return Math.round(v * F); }
    tile que entiende el motor (0 vacio, 1 solido, 2 plataforma, 3 peligro,
    4 meta, 6 escalera que sube a la derecha, 7 la que sube a la izquierda,
    8 punto de control). */
-var LEYENDA = { ".": 0, "#": 1, "=": 2, "^": 3, "G": 4, "/": 5, "\\": 6, "!": 7 };
-var TIPOS = [0, 1, 2, 3, 4, 6, 7, 8];
+var LEYENDA = { ".": 0, "#": 1, "=": 2, "^": 3, "G": 4, "/": 5, "\\": 6, "!": 7,
+                /* las dos puertas de las aventuras: "L" la abre la llave y
+                   "Y" el tablon (los objetos 5 y 6 de la lista) */
+                "L": 8, "Y": 9 };
+var TIPOS = [0, 1, 2, 3, 4, 6, 7, 8, 9, 9];
+/* que objeto abre cada tile: el objeto mas uno, 0 = no es cerrojo */
+var NECESITA = [0, 0, 0, 0, 0, 0, 0, 0, 6, 7];
 
 function anim(frames, speed) {
   return { frames: frames, count: frames.length, speed: speed || 8, loop: 1 };
@@ -62,6 +67,10 @@ function datos(filas, opciones) {
       else if (ch === "J") { spawns.push([x * 16 + 2, y * 16 + 16 - enemigo.box_h, 0, 2]); ch = "."; }
       else if (ch === "R") { spawns.push([x * 16 + 2, y * 16 + 16 - enemigo.box_h, 8, 0]); ch = "."; }
       else if (ch === "N") { spawns.push([x * 16 + 1, y * 16 + 2, 9, 0]); ch = "."; }
+      /* los tres objetos que se llevan: llave, tablon y cubo */
+      else if (ch === "1") { spawns.push([x * 16 + 3, y * 16 + 6, 1, 5]); ch = "."; }
+      else if (ch === "2") { spawns.push([x * 16 + 3, y * 16 + 6, 1, 6]); ch = "."; }
+      else if (ch === "3") { spawns.push([x * 16 + 3, y * 16 + 6, 1, 7]); ch = "."; }
       assert.ok(ch in LEYENDA, "simbolo desconocido: " + ch);
       celdas.push(LEYENDA[ch]);
     }
@@ -72,6 +81,8 @@ function datos(filas, opciones) {
     title: "TEST", author: "", lives: opciones.lives || 3, time_limit: opciones.time || 0,
     players: opciones.jugadores || 1,
     hud: true, camara_pantallas: opciones.pantallas ? 1 : 0,
+    /* 1 = el juego lleva bolsa (objetos de `efecto: llevar`) */
+    bolsa_activa: opciones.bolsa ? 1 : 0,
     /* desde donde se mira: con "cenital" no hay gravedad y se anda en
        ocho direcciones */
     view: opciones.cinta ? "cinta"
@@ -90,6 +101,8 @@ function datos(filas, opciones) {
       coyote: opciones.coyote === undefined ? 6 : opciones.coyote,
       jump_buffer: opciones.buffer === undefined ? 6 : opciones.buffer,
       double_jump: opciones.doubleJump ? 1 : 0,
+      /* 0 = el salto de las aventuras: al despegar se decide y ya no se cambia */
+      air_control: opciones.saltoFijo ? 0 : 1,
       stomp: opciones.stomp === false ? 0 : 1,
       health: opciones.health || 1,
       /* `desgaste:` frames por punto de vida; 0 = la vida solo se pierde a golpes */
@@ -213,7 +226,15 @@ function datos(filas, opciones) {
       /* efecto 6 = cambia el arma secundaria; `amount` es su numero */
       { actor: objeto, score: 0, effect: 6,
         amount: opciones.armaDelObjeto === undefined ? 1 : opciones.armaDelObjeto,
-        name: "hacha" }
+        name: "hacha" },
+      /* efecto 8 = se lleva encima (la bolsa de las aventuras). Van tres para
+         poder llenarla, que es donde esta la gracia del genero. */
+      { actor: objeto, score: 0, effect: 8, amount: 1, name: "llave",
+        label: "LLAVE" },
+      { actor: objeto, score: 0, effect: 8, amount: 1, name: "tablon",
+        label: "TABLO" },
+      { actor: objeto, score: 0, effect: 8, amount: 1, name: "cubo",
+        label: "CUBO" }
     ],
     breakables: [
       /* "C": suelta la moneda; "V": no suelta nada */
@@ -229,7 +250,8 @@ function datos(filas, opciones) {
       axis: opciones.tablonEje === "vertical" ? 1 : 0,
       name: "tablon"
     }],
-    tiles: { kind: TIPOS, gfx: [0, 1, 2, 3, 4, 5, 6, 7] },
+    tiles: { kind: TIPOS, gfx: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+             need: NECESITA },
     levels: [{
       name: "TEST", width: ancho, height: alto, cells: celdas,
       spawns: spawns, start: start, background: "#000000",
@@ -327,6 +349,60 @@ prueba("el techo corta el salto", function () {
   correr(w, 30);
   correr(w, 20, NP.IN.JUMP);
   assert.ok(w.players[0].vy >= 0, "deberia estar cayendo tras chocar con el techo");
+});
+
+/* ------------------------------------- el salto fijo (aventuras tipo Dizzy) */
+/*
+ * Con `salto_fijo: si` el jugador no manda en el aire: al despegar se decide
+ * hacia donde va y con cuanto impulso, y hasta que aterriza no se cambia. Ni
+ * soltar el boton acorta el salto. Es lo que hace que en una aventura cada
+ * salto sea una decision y no un tramite.
+ */
+
+prueba("con salto fijo, en el aire el mando no mueve", function () {
+  var w = mundo(suelo([[13, 6, "P"]]), { saltoFijo: true });
+  correr(w, 20);
+  w.step(NP.IN.JUMP);                     // salta parado
+  var x0 = NP.F2I(w.players[0].x);
+  correr(w, 20, NP.IN.RIGHT);             // y ahora empuja a la derecha
+  assert.strictEqual(NP.F2I(w.players[0].x), x0,
+                     "se ha movido en el aire con el salto fijo");
+});
+
+prueba("sin salto fijo, en el aire si se manda", function () {
+  /* El control: el salto de siempre sigue dejando corregir en el aire. */
+  var w = mundo(suelo([[13, 6, "P"]]));
+  correr(w, 20);
+  w.step(NP.IN.JUMP);
+  var x0 = NP.F2I(w.players[0].x);
+  correr(w, 20, NP.IN.RIGHT);
+  assert.ok(NP.F2I(w.players[0].x) > x0 + 8,
+            "el salto de siempre deberia dejar mover en el aire");
+});
+
+prueba("el salto fijo sale con el impulso que llevabas", function () {
+  var w = mundo(suelo([[13, 2, "P"]]), { saltoFijo: true });
+  correr(w, 40, NP.IN.RIGHT);             // corriendo
+  var x0 = NP.F2I(w.players[0].x);
+  w.step(NP.IN.RIGHT | NP.IN.JUMP);
+  correr(w, 20, 0);                       // se suelta todo al despegar
+  assert.ok(NP.F2I(w.players[0].x) > x0 + 20,
+            "el salto no ha conservado el impulso: x=" + NP.F2I(w.players[0].x));
+});
+
+prueba("el salto fijo hace siempre el mismo arco", function () {
+  function altura(mantener) {
+    var w = mundo(suelo([[13, 2, "P"]]), { saltoFijo: true });
+    correr(w, 30);
+    var y0 = NP.F2I(w.players[0].y), min = y0;
+    for (var i = 0; i < 90; i++) {
+      w.step(mantener || i < 2 ? NP.IN.JUMP : 0);
+      min = Math.min(min, NP.F2I(w.players[0].y));
+    }
+    return y0 - min;
+  }
+  assert.strictEqual(altura(true), altura(false),
+                     "soltar el boton ha cambiado el salto fijo");
 });
 
 /* -------------------------------------------------------- ayudas de salto */
@@ -2355,6 +2431,173 @@ prueba("el cerrojo es solo de la vista de cinta", function () {
                          aturdido: 0 });
   correr(w, 200, NP.IN.RIGHT);
   assert.ok(w.camX > 0, "la camara no avanza en un juego cenital");
+});
+
+/* ----------------------------------------- la bolsa (aventuras tipo Dizzy) */
+/*
+ * En una aventura lo que te para no es un bicho: es una puerta cerrada y la
+ * llave esta tres pantallas atras. Se llevan tres cosas a la vez, se cogen
+ * tocandolas y se sueltan con el boton, y elegir **que** llevas encima es
+ * medio juego.
+ */
+
+prueba("los objetos de llevar se guardan en la bolsa", function () {
+  var w = mundo(suelo([[13, 6, "P"], [13, 8, "1"]]), { bolsa: true });
+  correr(w, 60, NP.IN.RIGHT);
+  assert.deepStrictEqual(w.bolsa, [6, 0, 0], "no lo lleva encima");
+  assert.strictEqual(w.bolsaCuantos(), 1);
+});
+
+prueba("la bolsa se llena y el cuarto objeto se queda en el suelo", function () {
+  var w = mundo(suelo([[13, 4, "P"], [13, 6, "1"], [13, 8, "2"], [13, 10, "3"]]),
+                { bolsa: true });
+  correr(w, 120, NP.IN.RIGHT);
+  assert.strictEqual(w.bolsaCuantos(), 3, "no ha cogido las tres");
+  /* y ahora una cuarta cosa: no cabe */
+  var libres = 0;
+  for (var i = 0; i < w.entityCount; i++) if (w.entities[i].active) libres++;
+  assert.strictEqual(libres, 0, "queda algo por el suelo y cabia");
+
+  var lleno = mundo(suelo([[13, 4, "P"], [13, 6, "1"], [13, 8, "2"],
+                           [13, 10, "3"], [13, 12, "1"]]), { bolsa: true });
+  correr(lleno, 160, NP.IN.RIGHT);
+  assert.strictEqual(lleno.bolsaCuantos(), 3, "lleva mas de tres cosas");
+  var enElSuelo = 0;
+  for (var k = 0; k < lleno.entityCount; k++)
+    if (lleno.entities[k].active) enElSuelo++;
+  assert.strictEqual(enElSuelo, 1,
+                     "el que no cabia no se ha quedado en el suelo");
+});
+
+prueba("el boton suelta lo primero de la bolsa", function () {
+  var w = mundo(suelo([[13, 4, "P"], [13, 6, "1"], [13, 8, "2"]]),
+                { bolsa: true });
+  correr(w, 90, NP.IN.RIGHT);
+  assert.deepStrictEqual(w.bolsa, [6, 7, 0]);
+  w.step(NP.IN.ACTION);
+  assert.deepStrictEqual(w.bolsa, [7, 0, 0], "no ha soltado el primero");
+  /* y esta en el suelo, a los pies */
+  var sueltos = [];
+  for (var i = 0; i < w.entityCount; i++)
+    if (w.entities[i].active && w.entities[i].kind === 1) sueltos.push(w.entities[i]);
+  assert.strictEqual(sueltos.length, 1, "no ha caido nada al suelo");
+  assert.ok(Math.abs(NP.F2I(sueltos[0].x) - NP.F2I(w.players[0].x)) < 8,
+            "no ha caido a sus pies");
+});
+
+prueba("lo que acabas de soltar no se recoge solo", function () {
+  var w = mundo(suelo([[13, 4, "P"], [13, 6, "1"]]), { bolsa: true });
+  correr(w, 60, NP.IN.RIGHT);
+  assert.strictEqual(w.bolsaCuantos(), 1);
+  w.step(NP.IN.ACTION);
+  correr(w, 20);                    // quieto encima de el
+  assert.strictEqual(w.bolsaCuantos(), 0,
+                     "lo ha vuelto a coger sin moverse");
+  /* pasada la gracia, si se recoge otra vez */
+  correr(w, 40);
+  assert.strictEqual(w.bolsaCuantos(), 1,
+                     "pasada la gracia sigue sin poder cogerse");
+});
+
+prueba("sin bolsa el boton hace lo de siempre", function () {
+  /* El control: en cualquier otro juego, accion es atacar y los objetos se
+     cogen y se gastan al tocarlos, sin bolsa que valga. */
+  var w = mundo(suelo([[13, 4, "P"]]), { ataque: "disparo", alcance: 40 });
+  correr(w, 30, NP.IN.RIGHT);
+  assert.strictEqual(w.bolsaCuantos(), 0, "guarda cosas sin llevar bolsa");
+  w.step(NP.IN.ACTION);
+  var disparos = 0;
+  for (var i = 0; i < w.entityCount; i++)
+    if (w.entities[i].active && w.entities[i].kind === 2) disparos++;
+  assert.strictEqual(disparos, 1, "el boton no dispara");
+});
+
+/* ------------------------------------- los cerrojos (aventuras tipo Dizzy) */
+/*
+ * La otra mitad del genero: una casilla que no se pasa hasta que llegas con el
+ * objeto que pide. Al abrirla se gasta el objeto y el paso se queda abierto
+ * para siempre, que es lo que convierte un mapa pequeno en una aventura.
+ */
+
+prueba("un cerrojo frena como una pared", function () {
+  var filas = suelo([[13, 4, "P"]]);
+  var f = filas[13].split("");
+  f[8] = "L";                       // una puerta a la derecha
+  filas[13] = f.join("");
+  var w = mundo(filas, { bolsa: true });
+  correr(w, 120, NP.IN.RIGHT);
+  var x = NP.F2I(w.players[0].x);
+  assert.ok(x < 8 * 16, "ha pasado por la puerta: x=" + x);
+});
+
+prueba("con el objeto que pide, la puerta se abre y se queda abierta",
+       function () {
+  var filas = suelo([[13, 4, "P"], [13, 6, "1"]]);   // la llave por el camino
+  var f = filas[13].split("");
+  f[9] = "L";
+  filas[13] = f.join("");
+  var w = mundo(filas, { bolsa: true });
+  correr(w, 200, NP.IN.RIGHT);
+  var x = NP.F2I(w.players[0].x);
+  assert.ok(x > 10 * 16, "no ha pasado por la puerta: x=" + x);
+  assert.strictEqual(w.bolsaCuantos(), 0, "no ha gastado la llave");
+  assert.strictEqual(w.abiertos.length, 1, "no ha apuntado la puerta abierta");
+  /* y sigue abierta: se vuelve y se pasa otra vez */
+  correr(w, 200, NP.IN.LEFT);
+  correr(w, 200, NP.IN.RIGHT);
+  assert.ok(NP.F2I(w.players[0].x) > 10 * 16, "la puerta se ha vuelto a cerrar");
+});
+
+prueba("cada puerta quiere lo suyo", function () {
+  /* La llave no abre la puerta del tablon: si abriera cualquiera, no habria
+     puzle que valga. */
+  var filas = suelo([[13, 4, "P"], [13, 6, "1"]]);
+  var f = filas[13].split("");
+  f[9] = "Y";                       // esta pide el tablon
+  filas[13] = f.join("");
+  var w = mundo(filas, { bolsa: true });
+  correr(w, 200, NP.IN.RIGHT);
+  assert.ok(NP.F2I(w.players[0].x) < 9 * 16, "la llave ha abierto la del tablon");
+  assert.strictEqual(w.bolsaCuantos(), 1, "se ha gastado la llave igualmente");
+});
+
+prueba("una puerta alta se abre entera y cuesta un solo objeto", function () {
+  /* Dos casillas de puerta, una encima de otra, son **una** puerta: se abren
+     las dos y se gasta una sola llave. Si costara una por casilla, dibujar una
+     puerta de la altura de una persona saldria al doble de precio. */
+  var filas = suelo([[13, 4, "P"], [13, 6, "1"], [13, 7, "1"]]);
+  var f = filas[13].split(""); f[10] = "L"; filas[13] = f.join("");
+  var g = filas[12].split(""); g[10] = "L"; filas[12] = g.join("");
+  var w = mundo(filas, { bolsa: true });
+  correr(w, 260, NP.IN.RIGHT);
+  assert.strictEqual(w.abiertos.length, 2, "no ha abierto la puerta entera");
+  assert.strictEqual(w.bolsaCuantos(), 1, "se ha gastado mas de una llave");
+  assert.ok(NP.F2I(w.players[0].x) > 11 * 16, "no ha pasado por la puerta");
+});
+
+prueba("dos puertas separadas cuestan dos objetos", function () {
+  /* El control: se abren juntas porque estan **pegadas**, no por ser del mismo
+     tipo. Con un hueco en medio, cada una pide lo suyo. */
+  var filas = suelo([[13, 4, "P"], [13, 6, "1"], [13, 7, "1"]]);
+  var f = filas[13].split(""); f[10] = "L"; f[13] = "L"; filas[13] = f.join("");
+  var w = mundo(filas, { bolsa: true });
+  correr(w, 320, NP.IN.RIGHT);
+  assert.strictEqual(w.abiertos.length, 2, "no ha abierto las dos");
+  assert.strictEqual(w.bolsaCuantos(), 0, "deberia haber gastado las dos llaves");
+});
+
+prueba("al cambiar de nivel la bolsa se vacia y las puertas se cierran",
+       function () {
+  var filas = suelo([[13, 4, "P"], [13, 6, "1"]]);
+  var f = filas[13].split("");
+  f[9] = "L";
+  filas[13] = f.join("");
+  var w = mundo(filas, { bolsa: true, niveles: 2 });
+  correr(w, 200, NP.IN.RIGHT);
+  assert.strictEqual(w.abiertos.length, 1);
+  w.loadLevel(0);                   // volver a empezar el nivel
+  assert.strictEqual(w.abiertos.length, 0, "la puerta sigue abierta");
+  assert.strictEqual(w.bolsaCuantos(), 0, "la bolsa no se ha vaciado");
 });
 
 /* ----------------------------------------------------------------- camara */

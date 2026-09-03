@@ -78,6 +78,7 @@ void np_hud_draw(const NpWorld *w)
 {
     static uint8_t ultimo_jefe = 0xFF;
     static uint32_t ultimas_llaves = 0xFFFFFFFFu;
+    static uint32_t ultima_bolsa = 0xFFFFFFFFu;
     static uint32_t ultima_vida = 0xFFFFFFFFu;
     if (!np_hud_etiquetas) {
         np_hud_print(2, 0, "SCORE");
@@ -126,11 +127,15 @@ void np_hud_draw(const NpWorld *w)
            colgado */
         uint32_t ahora = ((uint32_t)w->keys << 16) | ((uint32_t)w->hearts << 8)
                        | (uint32_t)(w->level ? w->level->keys_needed : 0);
-        if (ahora != ultimas_llaves) {
+        /* y lo que llevas encima: sin esto la bolsa cambiaba y el
+           marcador seguia ensenando lo de antes */
+        uint32_t bolsa = np_bolsa_firma(w);
+        if (ahora != ultimas_llaves || bolsa != ultima_bolsa) {
             char llaves[NP_EXTRAS_BAR + 1];
             np_extras_bar(llaves, w);
             np_hud_print(20, 1, llaves);
             ultimas_llaves = ahora;
+            ultima_bolsa = bolsa;
         }
     }
 

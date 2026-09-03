@@ -41,6 +41,10 @@ typedef struct {
     uint8_t *pixeles;
     int32_t vista_x, vista_y;        /* esquina de arriba a la izquierda */
     const NpLevel *nivel;
+    /* cuantas puertas habia abiertas al pintar esta pantalla: al abrirse una,
+       la casilla pasa a ser aire y hay que repintar. Va por pantalla porque
+       aqui hay dos y cada una lleva su cuenta. */
+    uint8_t abiertos;
     NpRastro rastros[NP_MAX_RASTROS];
     uint8_t rastro_count;
     uint8_t hud;                     /* 1 = hay que copiar el marcador */
@@ -496,7 +500,7 @@ static void np_columna(NpBuffer *b, const NpWorld *w, int32_t tile_x)
     int32_t primera = (b->vista_y + NP_HUD_ALTO) >> 4;
     int32_t f;
     if (x < 0 || x >= NP_ANCHO) return;
-    np_tile_gfx_column(w->level, tile_x, primera, NP_FILAS, tiles);
+    np_tile_gfx_column(w, tile_x, primera, NP_FILAS, tiles);
     for (f = 0; f < NP_FILAS; f++)
         np_celda(b, tiles[f], tile_x, f, x, (primera + f) * NP_TILE - b->vista_y);
 }
@@ -646,7 +650,7 @@ static void np_repintar_rastros(NpBuffer *b, const NpWorld *w)
             if (columna < 0 || columna >= NP_COLUMNAS) continue;
             if (cuantos > (int32_t)(sizeof(tiles) / sizeof(tiles[0])))
                 cuantos = (int32_t)(sizeof(tiles) / sizeof(tiles[0]));
-            np_tile_gfx_column(w->level, tx, ty0, (uint16_t)cuantos, tiles);
+            np_tile_gfx_column(w, tx, ty0, (uint16_t)cuantos, tiles);
             for (ty = ty0; ty < ty0 + cuantos; ty++) {
                 int32_t fila = ty - ((b->vista_y + NP_HUD_ALTO) >> 4);
                 uint16_t indice;
@@ -753,8 +757,10 @@ void np_video_escenario(const NpWorld *w)
 #endif
 
     if (w->level != b->nivel || vista_y != b->vista_y
+        || w->abiertos_n != b->abiertos
         || grupos <= -NP_COLUMNAS || grupos >= NP_COLUMNAS) {
         b->nivel = w->level;
+        b->abiertos = w->abiertos_n;
         b->vista_x = vista_x;
         b->vista_y = vista_y;
         np_redibujar_todo(b, w);

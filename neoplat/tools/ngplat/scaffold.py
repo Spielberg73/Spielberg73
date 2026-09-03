@@ -6,7 +6,8 @@ import os
 from dataclasses import dataclass, replace
 from typing import Dict, List
 
-from . import (art, art_barrio, art_comando, art_hierro, art_mazmorra,
+from . import (art, art_aventura, art_barrio, art_comando, art_hierro,
+               art_mazmorra,
                art_sonido)
 from .errors import ProjectError
 from .png import write_png
@@ -1179,6 +1180,188 @@ def _nivel_barrio_2() -> List[str]:
     return _calle(altas, suelo, "c" * BARRIO_ANCHO)
 
 
+# --------------------------------------------------------- la aventura
+#
+# Una aventura tipo Dizzy no es un nivel largo: es un **mapa de pantallas** por
+# el que se va y se vuelve. Aqui cada nivel son cuatro pantallas de 20x14 -lo
+# que cabe de golpe- pegadas una al lado de otra, y la camara salta de una a la
+# siguiente sin scroll, como en los originales.
+#
+# Lo que hace que sea una aventura y no un pasillo son los cerrojos: cada
+# pantalla acaba en algo que no se pasa (una puerta, una hoguera, una pared) y
+# lo que lo abre esta en la anterior. Asi que el nivel no se recorre: se
+# **resuelve**, aunque el camino sea corto.
+
+AVENTURA_ANCHO = 20
+AVENTURA_ALTO = 14
+
+
+def _pantallas(*pantallas: List[str]) -> List[str]:
+    """Pega pantallas de 20x14 una al lado de otra, en una sola tira.
+
+    Se escriben sueltas porque asi se ven: cada una es lo que se ve de golpe en
+    la maquina, y de un vistazo al codigo se sabe con que se encuentra el que
+    entra por la izquierda."""
+    for i, p in enumerate(pantallas):
+        if len(p) != AVENTURA_ALTO:
+            raise ProjectError("la pantalla %d tiene %d filas y no %d"
+                               % (i + 1, len(p), AVENTURA_ALTO))
+        for j, fila in enumerate(p):
+            if len(fila) != AVENTURA_ANCHO:
+                raise ProjectError(
+                    "la fila %d de la pantalla %d mide %d y no %d"
+                    % (j + 1, i + 1, len(fila), AVENTURA_ANCHO))
+    return ["".join(p[y] for p in pantallas) for y in range(AVENTURA_ALTO)]
+
+
+def _nivel_aventura_1() -> List[str]:
+    """El valle: la cadena de tres, en el orden facil.
+
+    Cada pantalla trae lo que abre la siguiente: la llave abre la puerta, tras
+    la puerta esta el cubo que apaga la hoguera, y tras la hoguera el pico que
+    tira la pared. Es la version que ensena la regla; el segundo nivel ya la
+    rompe."""
+    entrada = [
+        "....................",
+        "....................",
+        "....................",
+        "....................",
+        "....................",
+        "....................",
+        "....................",
+        "....................",
+        "....................",
+        "....................",
+        ".............o......",
+        "............===.....",
+        "..P......k..........",
+        "gggggggggggggggggggg",
+    ]
+    puerta = [
+        "......r.............",
+        "......r.............",
+        "......r.............",
+        "......r.............",
+        "......r.............",
+        "......r.............",
+        "......r.............",
+        "......r.............",
+        "......r.........v...",
+        "......r.............",
+        "......r.............",
+        "......D.............",
+        "......D....c...a...o",
+        "gggggggggggggggggggg",
+    ]
+    hoguera = [
+        "......r.............",
+        "......r.............",
+        "......r.............",
+        "......r.............",
+        "......r.............",
+        "......r.............",
+        "......r.............",
+        "......r.............",
+        "......r.............",
+        "......r.............",
+        "......r.............",
+        "......F.............",
+        "......F...x...^..m..",
+        "gggggggggggggggggggg",
+    ]
+    salida = [
+        "......r.............",
+        "......r.............",
+        "......r.............",
+        "......r.............",
+        "......r.............",
+        "......r.............",
+        "......r.............",
+        "......r.............",
+        "......r.............",
+        "......r.............",
+        ".................G..",
+        "......W.....gggggggg",
+        "......W...o.tttttttt",
+        "gggggggggggggggggggg",
+    ]
+    return _pantallas(entrada, puerta, hoguera, salida)
+
+
+def _nivel_aventura_2() -> List[str]:
+    """La cueva: la misma cadena, pero desordenada.
+
+    Aqui las dos primeras cosas se cogen juntas y hacen falta en pantallas
+    distintas: la de la mano izquierda abre lo de dos pantallas mas alla. Es la
+    diferencia entre recorrer un nivel y jugar a una aventura -hay que acordarse
+    de lo que llevas- y cabe en los mismos cuatro cuadros."""
+    entrada = [
+        "....................",
+        "....................",
+        "....................",
+        "....................",
+        "................x.k.",
+        ".............rrrrrrr",
+        ".............rrrrrrr",
+        "..........rrrrrrrrrr",
+        "..........rrrrrrrrrr",
+        ".......rrrrrrrrrrrrr",
+        ".......rrrrrrrrrrrrr",
+        "....rrrrrrrrrrrrrrrr",
+        "..P.rrrrrrrrrrrrrrrr",
+        "ttttrrrrrrrrrrrrrrrr",
+    ]
+    pared = [
+        ".....r..............",
+        ".....r..............",
+        ".....r..........v...",
+        ".....r..............",
+        ".....r..............",
+        ".....r..............",
+        ".....r..............",
+        ".....r..............",
+        ".....r..............",
+        ".....r..............",
+        ".....r..............",
+        ".....W..............",
+        ".....W...^..a.c...o.",
+        "tttttttttttttttttttt",
+    ]
+    puerta = [
+        ".......r............",
+        ".......r............",
+        ".......r............",
+        ".......r............",
+        ".......r............",
+        ".......r............",
+        ".......r............",
+        ".......r......v.....",
+        ".......r............",
+        ".......r............",
+        ".......r............",
+        ".......D............",
+        ".......D....m....^..",
+        "tttttttttttttttttttt",
+    ]
+    salida = [
+        "....r...............",
+        "....r...............",
+        "....r...............",
+        "....r...............",
+        "....r...............",
+        "....r...............",
+        "....r...............",
+        "....r...............",
+        "....r...............",
+        "....r...............",
+        "....r...............",
+        "....F...............",
+        "....F..a...o...o..G.",
+        "tttttttttttttttttttt",
+    ]
+    return _pantallas(entrada, pared, puerta, salida)
+
+
 # ------------------------------------------------------------------ musica
 #
 # Cada genero trae la suya: la de plataformas cambia con el estilo del dibujo,
@@ -1643,6 +1826,76 @@ _MUSICA_BARRIO = """  musica:
 """
 
 
+_MUSICA_AVENTURA = """  musica:
+    # Una aventura no suena a marcha ni a pelea: suena a paseo. Compas de tres,
+    # melodia que sube y baja sin prisa y un bajo que solo marca el primer
+    # tiempo, que es lo que deja pensar mientras se anda de una pantalla a otra.
+    valle:
+      velocidad: 8
+      pistas:
+        - |
+          do5 - mi5 - sol5 -
+          mi5 - do5 - la4 -
+          re5 - fa5 - la5 -
+          fa5 - re5 - si4 -
+          do5 - mi5 - sol5 -
+          la5 - sol5 - mi5 -
+          fa5 - mi5 - re5 -
+          do5:2 - - - -
+        - |
+          do3 - - sol3 - -
+          la2 - - mi3 - -
+          re3 - - la3 - -
+          sol2 - - re3 - -
+          do3 - - sol3 - -
+          fa3 - - do4 - -
+          sol3 - - re3 - -
+          do3:2 - - - -
+    cueva:
+      velocidad: 9
+      pistas:
+        - |
+          la4 - do5 - mi5 -
+          do5 - la4 - fa4 -
+          sol4 - si4 - re5 -
+          si4 - sol4 - mi4 -
+          la4 - do5 - mi5 -
+          fa5 - mi5 - do5 -
+          si4 - la4 - sol4 -
+          la4:2 - - - -
+        - |
+          la2 - - mi3 - -
+          fa2 - - do3 - -
+          sol2 - - re3 - -
+          mi2 - - si2 - -
+          la2 - - mi3 - -
+          fa2 - - do3 - -
+          mi2 - - si2 - -
+          la2:2 - - - -
+    presentacion:
+      velocidad: 8
+      pistas:
+        - |
+          do5 - mi5 sol5 do6 - sol5 -
+          la5 - sol5 mi5 do5 - - -
+        - |
+          do3 - do4 - do3 - do4 -
+          la2 - la3 - do3 - - -
+    jefazo:
+      velocidad: 6
+      pistas:
+        - |
+          la4 si4 do5 - re5 do5 si4 -
+          la4 si4 do5 re5 mi5 - - -
+        - |
+          la2 la2 la2 la2 mi2 mi2 mi2 mi2
+          la2 la2 la2 la2 la2 - - -
+  # Las dos canciones que no son de ningun nivel se dicen aqui por su nombre.
+  titulo: presentacion
+  jefe: jefazo
+"""
+
+
 GAME_YAML_BARRIO = """# Proyecto NeoPlat de tortas: un juego al estilo Double Dragon.
 #
 #   ngplat probar     -> abre el preview jugable en el navegador
@@ -1832,6 +2085,182 @@ spawns:
   J: jefazo
   p: pollo
   B: barril
+
+niveles:
+{niveles}"""
+
+
+GAME_YAML_AVENTURA = """# Proyecto NeoPlat de aventura: un juego al estilo Dizzy.
+#
+#   ngplat probar     -> abre el preview jugable en el navegador
+#   ngplat compilar   -> genera el proyecto en C y las ROMs graficas
+#
+# Se ve de lado, como el de plataformas, pero **no va de saltar bien**: va de
+# llevar la cosa correcta al sitio correcto. De ahi salen las tres reglas del
+# genero:
+#
+#   1. no se pega. El boton no ataca: **suelta** lo que llevas encima, y la
+#      bolsa son tres huecos, asi que hay que elegir con que se carga;
+#   2. lo que te para no es un bicho sino un **cerrojo**: una puerta, una
+#      hoguera o una pared que solo se abren si apareces con lo suyo. Al
+#      abrirse se gasta el objeto y el paso se queda abierto para siempre;
+#   3. el salto **no se manda en el aire**: al despegar se decide hacia donde
+#      vas y hasta caer no se cambia. Suena incomodo y es justo lo que hace que
+#      cada salto sea una decision.
+#
+# Y la camara no hace scroll: salta de pantalla en pantalla, que es como se
+# recorre un mapa de aventura -cada cuadro es un sitio, no un tramo-.
+
+juego:
+  titulo: "{titulo}"
+  autor: "{autor}"
+  vidas: 3
+  tiempo: 0            # segundos por nivel (0 = sin limite)
+  camara: pantallas    # sin scroll: cada pantalla es un cuadro
+  amiga: 32colores
+  fondo: "#204878"
+
+jugador:
+  sprite: graficos/heroe.png
+  frame: [16, 16]
+  caja: [10, 12]
+  velocidad: 1.4
+  aceleracion: 0.5
+  friccion: 0.5
+  salto: 5.0
+  gravedad: 0.30
+  max_caida: 6.0
+  # Las dos lineas que hacen que esto sea una aventura y no un plataformas:
+  salto_fijo: si       # en el aire no se manda: se decide al despegar
+  pisar_enemigos: no   # aqui no se mata nada; a los bichos se les esquiva
+  vida: 3
+  invulnerable: 90
+  retroceso: 1.2
+  animaciones:
+    quieto: {{frames: [0], velocidad: 30}}
+    correr: {{frames: [1, 2], velocidad: 8}}
+    saltar: {{frames: [3]}}
+    caer:   {{frames: [3]}}
+    dano:   {{frames: [4]}}
+  # Sin bloque `ataque:` el juego no lleva golpe, y entonces el boton de accion
+  # pasa a soltar lo primero de la bolsa. Es asi a proposito: en una aventura
+  # las manos sirven para dejar cosas, no para pegar.
+
+tiles:
+  imagen: graficos/tiles.png
+  leyenda:
+    '.': {{tile: 0, tipo: vacio}}        # cielo
+    'g': {{tile: 1, tipo: solido}}       # hierba
+    't': {{tile: 2, tipo: solido}}       # tierra
+    'r': {{tile: 3, tipo: solido}}       # roca
+    '^': {{tile: 4, tipo: peligro}}      # pinchos
+    '=': {{tile: 5, tipo: plataforma}}   # rama: se atraviesa por abajo
+    'G': {{tile: 6, tipo: meta}}         # la salida
+    # Los tres cerrojos. Frenan como una pared hasta que llegas con lo que
+    # piden; entonces se gasta el objeto y el paso se queda abierto. Una puerta
+    # de dos casillas es **una** puerta: se abre entera y cuesta un solo objeto.
+    'D': {{tile: 7, tipo: cerrojo, abre_con: llave}}
+    'F': {{tile: 8, tipo: cerrojo, abre_con: cubo}}
+    'W': {{tile: 9, tipo: cerrojo, abre_con: pico}}
+
+enemigos:
+  # No se matan: se esquivan. Por eso lo que importa de ellos es **donde
+  # estan**, no cuanto aguantan.
+  arana:
+    sprite: graficos/arana.png
+    caja: [14, 8]
+    comportamiento: patrulla
+    velocidad: 0.6
+    vida: 99
+    dano: 1
+    puntos: 0
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 14}}
+      correr: {{frames: [0, 1], velocidad: 10}}
+      dano:   {{frames: [1]}}
+  murcielago:
+    sprite: graficos/murcielago.png
+    caja: [14, 8]
+    comportamiento: volador
+    velocidad: 0.8
+    rango: 48
+    vida: 99
+    dano: 1
+    puntos: 0
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 8}}
+      correr: {{frames: [0, 1], velocidad: 6}}
+      dano:   {{frames: [1]}}
+
+objetos:
+  # Los tres del puzle. `efecto: llevar` es lo que los mete en la bolsa en vez
+  # de gastarlos al tocarlos, y `marcador:` es como salen escritos arriba: sin
+  # eso no se sabe que se lleva encima.
+  llave:
+    sprite: graficos/llave.png
+    frame: [16, 16]
+    caja: [10, 12]
+    efecto: llevar
+    marcador: LLAVE
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 20}}
+  cubo:
+    sprite: graficos/cubo.png
+    frame: [16, 16]
+    caja: [12, 12]
+    efecto: llevar
+    marcador: CUBO
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 20}}
+  pico:
+    sprite: graficos/pico.png
+    frame: [16, 16]
+    caja: [14, 12]
+    efecto: llevar
+    marcador: PICO
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 20}}
+  # Y dos que se gastan al tocarlos, como en cualquier otro juego.
+  manzana:
+    sprite: graficos/manzana.png
+    frame: [16, 16]
+    caja: [10, 10]
+    puntos: 50
+    efecto: salud
+    cantidad: 1
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 16}}
+  moneda:
+    sprite: graficos/moneda.png
+    frame: [16, 16]
+    caja: [10, 10]
+    puntos: 100
+    efecto: puntos
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 10}}
+
+# Sonido. En una aventura lo que hay que oir es **coger** y **abrir**: son las
+# dos cosas que pasan, y las dos suenan a nota y no a ruido.
+sonido:
+  efectos:
+    empezar: {{notas: "do5 mi5 sol5 do6", velocidad: 6}}
+    moneda:  {{notas: "sol5 do6", velocidad: 4}}
+    vida:    {{notas: "do5 mi5 sol5", velocidad: 5}}
+    control: {{notas: "do5 sol5 do6 mi6", velocidad: 5}}
+    salto:   {{tipo: barrido, desde: 240, hasta: 780, duracion: 6}}
+    golpe:   {{tipo: ruido, duracion: 12, tono: 14}}
+    muerte:  {{notas: "do5 la4 fa4 do4", velocidad: 7}}
+    meta:    {{notas: "do5 mi5 sol5 do6", velocidad: 6}}
+{musica}
+# Simbolos del mapa que colocan bichos y objetos.
+spawns:
+  a: arana
+  v: murcielago
+  k: llave
+  c: cubo
+  x: pico
+  m: manzana
+  o: moneda
 
 niveles:
 {niveles}"""
@@ -2149,7 +2578,7 @@ def _genero_castlevania(nombres: Dict[str, str]) -> Genero:
 
 
 GENEROS = ("plataformas", "castlevania", "comando", "mazmorra",
-           "barrio")
+           "barrio", "aventura")
 
 # Como se llama cada cosa en cada estilo de dibujo.
 _NOMBRES = {
@@ -2207,6 +2636,22 @@ def _genero_barrio(nombres: Dict[str, str], estilo: str) -> Genero:
     )
 
 
+def _genero_aventura(nombres: Dict[str, str], estilo: str) -> Genero:
+    """El de Dizzy: una aventura de pantallas.
+
+    Como el de comando, el de mazmorra y el de barrio, trae su plantilla entera
+    en vez de armarse a trozos. De este objeto solo se usa como se llama y que
+    promete.
+    """
+    return replace(
+        _genero_plataformas(nombres, estilo),
+        nombre="aventura",
+        titulo="aventura",
+        resumen=("una aventura de pantallas: cargar con las cosas, abrir con "
+                 "ellas lo que no se pasa y un salto que no se manda."),
+    )
+
+
 def genero_de(nombre: str, estilo: str) -> Genero:
     nombres = _NOMBRES[estilo]
     if nombre == "castlevania":
@@ -2217,6 +2662,8 @@ def genero_de(nombre: str, estilo: str) -> Genero:
         return _genero_mazmorra(nombres, estilo)
     if nombre == "barrio":
         return _genero_barrio(nombres, estilo)
+    if nombre == "aventura":
+        return _genero_aventura(nombres, estilo)
     return _genero_plataformas(nombres, estilo)
 
 
@@ -2299,6 +2746,9 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
     elif genero == "barrio":
         dibujos = dict(dibujos)
         dibujos.update(art_barrio.todos(estilo))
+    elif genero == "aventura":
+        dibujos = dict(dibujos)
+        dibujos.update(art_aventura.todos(estilo))
     for relativo, imagen in dibujos.items():
         ruta = os.path.join(destino, relativo)
         write_png(ruta, imagen)
@@ -2343,6 +2793,29 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
         contenido = GAME_YAML_BARRIO.format(
             titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles,
             musica=_MUSICA_BARRIO)
+        with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
+                  newline="\n") as fh:
+            fh.write(contenido)
+        creados.append("game.yaml")
+        with open(os.path.join(destino, ".gitignore"), "w", encoding="utf-8",
+                  newline="\n") as fh:
+            fh.write("build/\npreview.html\n.neoplat/\n")
+        creados.append(".gitignore")
+        return creados
+
+    if genero == "aventura":
+        # Cuatro pantallas por nivel, cada una con su cerrojo. Sin scroll: la
+        # camara salta de cuadro en cuadro, que es como se recorre un mapa de
+        # aventura.
+        niveles = (
+            _nivel_yaml("EL VALLE", _nivel_aventura_1(), "#204878",
+                        musica="valle")
+            + _nivel_yaml("LA CUEVA", _nivel_aventura_2(), "#181430",
+                          musica="cueva")
+        )
+        contenido = GAME_YAML_AVENTURA.format(
+            titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles,
+            musica=_MUSICA_AVENTURA)
         with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
                   newline="\n") as fh:
             fh.write(contenido)

@@ -528,9 +528,10 @@ def build_parser() -> argparse.ArgumentParser:
                               "municion), 'comando' (visto desde arriba, ocho "
                               "direcciones y prisioneros), 'mazmorra' (un "
                               "laberinto: la vida se gasta sola y los nidos "
-                              "sacan bichos) o 'barrio' (tortas: una calle con "
-                              "profundidad, golpes encadenados y agarres). "
-                              "Sin esto, se pregunta")
+                              "sacan bichos), 'barrio' (tortas: una calle con "
+                              "profundidad, golpes encadenados y agarres) o "
+                              "'aventura' (cargar con las cosas y abrir con "
+                              "ellas lo que no se pasa). Sin esto, se pregunta")
     p_nuevo.set_defaults(func=cmd_nuevo)
 
     p_check = sub.add_parser("comprobar", aliases=["check"],

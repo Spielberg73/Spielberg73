@@ -107,6 +107,14 @@ class TestParidad(unittest.TestCase):
         # una entidad -y no el jugador- usa la tercera coordenada.
         cls.variantes["agarre"] = cls._preparar("scroll", cinta=True, golpe=True,
                                                 combo=True, agarre=True)
+        # La aventura: la bolsa, los cerrojos y el salto que no se manda. Los
+        # tres corren en el jugador **cada frame**, y ademas la camara va de
+        # pantalla en pantalla, que es otra manera de moverla.
+        cls.variantes["aventura"] = cls._preparar("pantallas", genero="aventura")
+        # La misma aventura sin la llave del primer nivel: sirve para probar
+        # que la puerta se abre **con la llave** y no sola.
+        cls.variantes["sin-llave"] = cls._preparar("pantallas", genero="aventura",
+                                                   sin_llave=True)
         # La mazmorra: la vida que se gasta sola, los generadores que sacan
         # bichos y la pocima que limpia la pantalla. Son tres cosas que corren
         # **cada frame** en los dos motores, asi que van a la traza.
@@ -121,7 +129,7 @@ class TestParidad(unittest.TestCase):
     def _preparar(cls, camara, jefe=False, dos=False, golpe=False, llave=False,
                   tablon=False, genero="plataformas", sin_dibujo=False,
                   cenital=False, nidos_dormidos=False, cinta=False,
-                  combo=False, agarre=False):
+                  combo=False, agarre=False, sin_llave=False):
         proyecto_dir = os.path.join(
             cls.tmp, "juego-" + camara + ("-jefe" if jefe else "")
             + ("-dos" if dos else "") + ("-golpe" if golpe else "")
@@ -132,6 +140,7 @@ class TestParidad(unittest.TestCase):
             + ("-combo" if combo else "")
             + ("-agarre" if agarre else "")
             + ("-dormidos" if nidos_dormidos else "")
+            + ("-sinllave" if sin_llave else "")
             + ("-" + genero if genero != "plataformas" else ""))
         crear_proyecto(proyecto_dir, "PARIDAD", "TEST", genero=genero)
         yaml = os.path.join(proyecto_dir, "game.yaml")
@@ -139,8 +148,14 @@ class TestParidad(unittest.TestCase):
             texto = fh.read()
         # el andamiaje ya trae 'camara: scroll': hay que cambiar esa linea, no
         # anadir otra, o el lector se queda con la ultima
-        assert "  camara: scroll" in texto, "el andamiaje ya no trae la camara"
-        texto = texto.replace("  camara: scroll", "  camara: " + camara, 1)
+        # El genero de aventura sale ya con la camara de pantallas: es media
+        # gracia del genero, asi que ahi no se cambia.
+        if genero == "aventura":
+            assert "  camara: pantallas" in texto, \
+                "el genero de aventura ya no trae la camara de pantallas"
+        else:
+            assert "  camara: scroll" in texto, "el andamiaje ya no trae la camara"
+            texto = texto.replace("  camara: scroll", "  camara: " + camara, 1)
         if dos:
             texto = texto.replace("  vidas:", "  jugadores: 2\n  vidas:", 1)
         if cenital:
@@ -231,6 +246,13 @@ class TestParidad(unittest.TestCase):
                                    ("    cada: 150", "    cada: 3600")):
                 assert antes in texto, "el generador ya no se escribe asi"
                 texto = texto.replace(antes, despues, 1)
+        if sin_llave:
+            # se quita la llave del primer nivel dejando el mapa igual: la
+            # puerta sigue ahi y el camino tambien, lo unico que falta es con
+            # que abrirla
+            marca = "      ..P......k.........."
+            assert marca in texto, "el primer nivel ya no empieza asi"
+            texto = texto.replace(marca, "      ..P.................", 1)
         if jefe:
             # el jefe del andamiaje vive en el segundo nivel y la traza no llega:
             # se pone uno en el primero, cambiando el enemigo que hay a la salida
@@ -446,6 +468,53 @@ class TestParidad(unittest.TestCase):
         self.assertGreaterEqual(
             puntos, pocima + 3 * bicho,
             "con %d puntos no ha reventado a los tres bichos" % puntos)
+
+    def test_misma_traza_en_la_aventura(self):
+        """El genero de aventura mete tres cosas en el bucle del jugador: la
+        bolsa, los cerrojos y un salto que no se manda en el aire. Las tres
+        tienen que dar lo mismo en las dos implementaciones."""
+        for semilla in (1, 7, 99):
+            self._comparar("aventura", semilla)
+
+    def test_la_puerta_se_abre_con_la_llave(self):
+        """Y que la puerta se abre **con la llave**, no sola.
+
+        Andando hacia la derecha se coge la llave del suelo y se llega a la
+        puerta, que esta en la pantalla siguiente. Con la llave se pasa; sin
+        ella -el mismo mapa, la misma puerta, pero sin llave que coger- el
+        jugador se queda plantado delante. Si el cerrojo no frenara, las dos
+        partidas acabarian en el mismo sitio y esta prueba no valdria nada."""
+        entradas = [(IN_START, 0)] * 3 + [(IN_RIGHT, 0)] * 600
+        traza_c, traza_js = self._trazas_de("aventura", entradas, "puerta")
+        self.assertEqual(traza_c, traza_js)
+        sin_c, sin_js = self._trazas_de("sin-llave", entradas, "sin-llave")
+        self.assertEqual(sin_c, sin_js)
+        # la puerta esta en la casilla 26, o sea en x = 416
+        con_llave = max(int(linea.split()[1]) for linea in traza_c) // 256
+        sin_llave = max(int(linea.split()[1]) for linea in sin_c) // 256
+        self.assertGreater(con_llave, 432,
+                           "con la llave no ha pasado la puerta: x=%d" % con_llave)
+        self.assertLess(sin_llave, 416,
+                        "sin llave ha pasado igual: x=%d" % sin_llave)
+        # y que la ha gastado: la ultima columna es cuantas casillas ha abierto
+        self.assertGreater(int(traza_c[-1].split()[-1]), 0,
+                           "no ha abierto ninguna casilla")
+        self.assertEqual(int(sin_c[-1].split()[-1]), 0,
+                         "sin llave ha abierto algo igualmente")
+
+    def test_el_salto_de_la_aventura_no_se_manda(self):
+        """El salto fijo: en el aire el mando no mueve. Se salta parado y se
+        empuja a la derecha; la `x` no puede cambiar hasta aterrizar."""
+        entradas = ([(IN_START, 0)] * 3 + [(0, 0)] * 20 + [(IN_JUMP, 0)]
+                    + [(IN_RIGHT, 0)] * 40)
+        traza_c, traza_js = self._trazas_de("aventura", entradas, "salto-fijo")
+        self.assertEqual(traza_c, traza_js)
+        columnas = [linea.split() for linea in traza_c]
+        # desde que despega hasta que vuelve a tener vy 0, la x no se mueve
+        volando = [c for c in columnas if c[4] != "0"]
+        self.assertGreater(len(volando), 20, "no ha llegado a saltar")
+        self.assertEqual(len(set(c[1] for c in volando)), 1,
+                         "se ha movido en el aire: el salto no es fijo")
 
     def test_misma_traza_en_la_vista_de_cinta(self):
         """La vista de cinta anade una coordenada que no sale en la traza: la
@@ -682,7 +751,7 @@ class TestParidad(unittest.TestCase):
         en su sitio y la prueba de paridad pasaria sin comprobar nada."""
         traza, _ = self._trazas(1, "dos")
         columnas = [linea.split() for linea in traza]
-        self.assertTrue(all(len(c) == 34 for c in columnas),
+        self.assertTrue(all(len(c) == 36 for c in columnas),
                         "la traza no trae las columnas del segundo jugador")
         # al empezar los dos estan dentro; luego el mando aleatorio puede
         # dejarlo sin vidas, y eso tambien tiene que salir igual en las dos

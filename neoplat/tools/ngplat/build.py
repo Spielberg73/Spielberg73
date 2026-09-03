@@ -494,6 +494,8 @@ def player_values(project: Project) -> Dict[str, object]:
         "throw_damage": p.throw_damage, "throw_speed": to_fixed(p.throw_speed),
         "double_jump": 1 if p.double_jump else 0, "stomp": 1 if p.stomp else 0,
         "health": p.health,
+        # 0 = el salto de las aventuras: al despegar se decide y ya no se cambia
+        "air_control": 1 if p.air_control else 0,
         # cuanto baja el techo de la caja al agacharse; 0 = no se puede
         "crouch_drop": (p.box_h - p.crouch_h) if p.crouch else 0,
     }

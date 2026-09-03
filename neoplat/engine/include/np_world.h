@@ -97,6 +97,21 @@ typedef struct {
     uint16_t prev_input[NP_MAX_PLAYERS];
     uint16_t sfx;            /* eventos de sonido de este frame (NP_SFX_*) */
     uint8_t keys, hearts, entity_count;
+    /* Lo que se lleva encima: el objeto de cada hueco **mas uno** (0 = vacio).
+       Es de la partida y no de cada jugador, como las llaves: a dos, lo que
+       coge uno le sirve al otro.
+       Van en palabras y no en bytes aunque quepan de sobra en un byte: son
+       tres huecos seguidos que se recorren en bucle, y gcc junta dos lecturas
+       de byte pegadas en una sola de palabra. Si la bolsa cae en una direccion
+       impar -y con tres bytes cae la mitad de las veces-, esa palabra es un
+       "address error" y el 68000 se para en seco. En palabras la direccion es
+       par siempre y no hay nada que juntar mal. */
+    uint16_t bolsa[NP_BOLSA];
+    /* Los cerrojos que ya se han abierto en este nivel, por su casilla. Se
+       guardan aparte porque el mapa vive en ROM y no se puede tocar: son ocho
+       huecos, que es lo que cabe en una aventura de una tarde. */
+    uint16_t abiertos[NP_MAX_ABIERTOS];
+    uint8_t abiertos_n;
     /* El arma secundaria que se lleva en la mano, indice en np_subs. Es de la
        partida y no de cada jugador, igual que la municion: a dos, la que coge
        uno la llevan los dos. */
@@ -119,8 +134,8 @@ void np_world_step(NpWorld *w, uint16_t input, uint16_t input2);
 
 /* Consultas que usa la capa grafica. */
 uint8_t np_tile_kind_at(const NpLevel *level, int32_t tx, int32_t ty);
-uint16_t np_tile_gfx_at(const NpLevel *level, int32_t tx, int32_t ty);
-void np_tile_gfx_column(const NpLevel *level, int32_t tx, int32_t ty,
+uint16_t np_tile_gfx_at(const NpWorld *w, int32_t tx, int32_t ty);
+void np_tile_gfx_column(const NpWorld *w, int32_t tx, int32_t ty,
                         uint16_t count, uint16_t *out);
 const NpActorDef *np_entity_def(const NpEntity *e);
 
@@ -172,6 +187,10 @@ void np_boss_bar(char *out, const NpWorld *w);
    escribe lo que salga. Hace falta un buffer de NP_EXTRAS_BAR + 1 caracteres. */
 #define NP_EXTRAS_BAR 20
 void np_extras_bar(char *out, const NpWorld *w);
+/* Lo que lleva la bolsa en un solo numero, para que el marcador sepa si la
+   linea de arriba ha cambiado. Cero con la bolsa vacia y en los juegos que no
+   llevan bolsa, que es lo mismo que decir que nunca molesta. */
+uint32_t np_bolsa_firma(const NpWorld *w);
 
 /* La vida del jugador para el marcador: "LIFE ##...". Los llenos son los
    golpes que le quedan y los puntos los que ha perdido, asi que se ve de un

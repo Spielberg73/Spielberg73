@@ -53,6 +53,13 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
  * estas. Si te matan y te quedan vidas, vuelves ahi en vez de al principio del
  * nivel, que es lo que hace que un nivel largo no sea un castigo. */
 #define NP_TILE_CHECK    8
+/* Cerrojo: una casilla que **no se pasa** hasta que llegas con el objeto que
+ * pide. Es la otra mitad de una aventura: lo que te para no es un bicho, es
+ * una puerta, y la llave esta tres pantallas atras. Al abrirla se gasta el
+ * objeto y el paso se queda abierto para siempre.
+ *
+ * Que objeto abre cada cerrojo lo dice `np_tile_need` (el objeto mas uno). */
+#define NP_TILE_LOCK     9
 
 /* Tipos de ataque del jugador (NpAttackDef.kind). */
 #define NP_ATTACK_NONE  0
@@ -96,6 +103,19 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_ITEM_UPGRADE 5        /* mejora el arma: cada uno la alarga un paso */
 #define NP_ITEM_WEAPON  6        /* cambia el arma secundaria que llevas */
 #define NP_ITEM_BOMB    7        /* la pocima: hace dano a todo lo que se ve */
+/* El objeto que se **lleva**: no hace nada al cogerlo, se guarda en la bolsa y
+   sirve para abrir el sitio que lo pide. Es la mecanica de los Dizzy, y es lo
+   que convierte un juego de saltar en una aventura: lo que te para no es un
+   bicho, es una puerta cerrada y el objeto esta tres pantallas atras. */
+#define NP_ITEM_CARRY   8
+
+/* Cuantos cerrojos puede haber abiertos a la vez en un nivel. Ocho puertas
+   dan de sobra para una aventura de las de entonces, y son ocho bytes. */
+#define NP_MAX_ABIERTOS 12
+
+/* Cuantas cosas se llevan a la vez. Tres, como en los Dizzy: con dos no hay
+   puzle y con cinco te llevas media pantalla encima y ya no eliges. */
+#define NP_BOLSA 3
 
 /* Ranuras de animacion (las que genera el compilador para cada actor). */
 #define NP_ANIM_IDLE 0

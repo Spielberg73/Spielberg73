@@ -1828,8 +1828,15 @@
       DATA.tiles.chars.forEach(function (ch, i) {
         if (ch === " ") return;
         var tipos = ["vacio", "solido", "plataforma", "peligro", "meta", "decorado",
-                     "escalera", "escalera izq", "punto de control"];
-        lista.push({ char: ch, etiqueta: tipos[DATA.tiles.kind[i]] || "tile",
+                     "escalera", "escalera izq", "punto de control", "cerrojo"];
+        var etiqueta = tipos[DATA.tiles.kind[i]] || "tile";
+        /* Un cerrojo se llama por lo que pide: en una aventura hay tres y
+           puestos en la paleta como "cerrojo" a secas no habria manera de
+           saber cual es cual. */
+        var pide = DATA.tiles.need ? DATA.tiles.need[i] : 0;
+        if (pide && DATA.nombres.objetos[pide - 1])
+          etiqueta = "cerrojo: " + DATA.nombres.objetos[pide - 1];
+        lista.push({ char: ch, etiqueta: etiqueta,
                      tipo: "tile", hoja: "__tiles__", frame: DATA.tiles.gfx[i] });
       });
       var chars = spawnChars();

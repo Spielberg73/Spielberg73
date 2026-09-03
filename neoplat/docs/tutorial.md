@@ -17,6 +17,7 @@ que tipo de juego quieres hacer?
   3) comando       visto desde arriba: ocho direcciones, granadas y prisioneros
   4) mazmorra      laberinto: la vida se gasta sola y los nidos sacan bichos
   5) barrio        yo contra el barrio: calle con profundidad y tortas
+  6) aventura      cargar con las cosas y abrir con ellas lo que no se pasa
 
 elige [1]:
 ```
@@ -459,6 +460,78 @@ cámara no pasa, cada grupo es una pantalla.
 Y una cosa que se nota al jugar: los actores se pintan **de más lejos a más
 cerca**. En un juego donde todo el mundo se pisa, si no, no se entiende quién
 está delante de quién. De eso se encarga el motor en las siete máquinas.
+
+## Una aventura
+
+```bash
+./ngplat nuevo miaventura --genero aventura
+```
+
+Una aventura de las de Dizzy. Se ve **de lado**, como el de plataformas, pero
+no va de saltar bien: va de **llevar la cosa correcta al sitio correcto**.
+
+Tres reglas, y las tres cambian cómo se juega:
+
+- **No se pega.** El botón de acción no ataca: **suelta** lo primero de lo que
+  llevas encima. Y en la bolsa caben **tres cosas**, así que cargar con una es
+  decidir no cargar con otra.
+- **Lo que te para no es un bicho: es un cerrojo.** Una puerta, una hoguera o
+  una pared que frenan como un muro hasta que apareces con lo suyo. Al abrirlas
+  se gasta el objeto y el paso se queda abierto **para siempre**. A los bichos
+  no se les mata: se les esquiva.
+- **El salto no se manda en el aire.** Al despegar decides hacia dónde vas y
+  con cuánto impulso, y hasta caer no se cambia; ni soltar el botón lo acorta.
+  Suena incómodo y es justo lo que hace que cada salto sea una decisión. Ojo:
+  si chocas de lado contra una pared te quedas sin impulso, así que para subir
+  un escalón hay que saltar **antes** de llegar a él.
+
+Los mandos:
+
+- **Flechas**: andar.
+- <kbd>Z</kbd> / <kbd>espacio</kbd>: saltar (el salto fijo).
+- <kbd>X</kbd>: soltar lo primero de la bolsa, a tus pies.
+
+Arriba, en el marcador, sale **lo que llevas**: sin mirarlo no se sabe si la
+puerta de delante se abre o hay que dar media vuelta.
+
+La cámara va **de pantalla en pantalla**, sin scroll: cada nivel son cuatro
+pantallas de 20 × 14 pegadas, y cada una es un sitio. Los dos niveles del
+proyecto de partida son la misma cadena contada de dos maneras:
+
+- **EL VALLE**, en orden: la llave abre la puerta, detrás está el cubo que apaga
+  la hoguera, y detrás el pico que tira la pared.
+- **LA CUEVA**, desordenada: el pico y la llave se cogen juntos arriba del todo
+  y hacen falta en pantallas distintas, así que hay que **acordarse** de lo que
+  llevas.
+
+En el `game.yaml`, un cerrojo es un tile con `tipo: cerrojo` y el objeto que lo
+abre:
+
+```yaml
+tiles:
+  leyenda:
+    'D': {tile: 7, tipo: cerrojo, abre_con: llave}
+    'F': {tile: 8, tipo: cerrojo, abre_con: cubo}
+    'W': {tile: 9, tipo: cerrojo, abre_con: pico}
+
+objetos:
+  llave:
+    efecto: llevar     # no se gasta al tocarlo: se guarda en la bolsa
+    marcador: LLAVE    # como sale escrito arriba
+```
+
+Lo que pide un cerrojo tiene que existir y tiene que ser de los que se llevan:
+si no, `ngplat comprobar` te lo dice antes de compilar, porque una puerta que
+pide algo que no se puede coger no es un puzle difícil, es un juego roto.
+
+Una puerta de **dos casillas** (una encima de otra) es **una** puerta: se abre
+entera y cuesta un solo objeto. Y el jugador lleva `salto_fijo: si` y
+`pisar_enemigos: no`, que son las dos líneas que convierten el plataformas en
+una aventura.
+
+Como en el resto de géneros, el bot comprueba que los dos niveles se pueden
+resolver (`tests/test_niveles.py`), y hay un control que quita los tres objetos
+del mapa y exige que entonces **no** se pase.
 
 ## Cuando algo falla
 

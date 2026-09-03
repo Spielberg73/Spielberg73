@@ -47,10 +47,36 @@ uint8_t np_tile_kind_at(const NpLevel *level, int32_t tx, int32_t ty)
     return np_tile_kind[level->cells[ty * level->width + tx]];
 }
 
-uint16_t np_tile_gfx_at(const NpLevel *level, int32_t tx, int32_t ty)
+/* Lo mismo, pero contando los cerrojos que ya se han abierto: una puerta
+ * abierta es aire, y hay que verla como aire desde todos los sitios que miran
+ * el escenario -andar, chocar, caerse-. Por eso la pregunta de verdad es esta
+ * y no la de arriba.
+ *
+ * Se mira la lista de abiertos **solo** cuando la casilla es un cerrojo, que
+ * es una entre mil: en un juego sin cerrojos esto no cuesta nada. */
+static uint8_t np_tile_visto(const NpWorld *w, int32_t tx, int32_t ty)
 {
+    uint8_t kind = np_tile_kind_at(w->level, tx, ty);
+    uint16_t casilla;
+    uint8_t i;
+    if (kind != NP_TILE_LOCK) return kind;
+    casilla = (uint16_t)(ty * (int32_t)w->level->width + tx);
+    for (i = 0; i < w->abiertos_n; i++)
+        if (w->abiertos[i] == casilla) return NP_TILE_EMPTY;
+    return kind;
+}
+
+uint16_t np_tile_gfx_at(const NpWorld *w, int32_t tx, int32_t ty)
+{
+    const NpLevel *level = w->level;
     if (tx < 0 || tx >= (int32_t)level->width) return 0;
     if (ty < 0 || ty >= (int32_t)level->height) return 0;
+    /* Una puerta abierta se ve por lo que hay detras: el aire. Solo se
+       pregunta cuando hay alguna abierta, que en casi todos los juegos es
+       nunca. */
+    if (w->abiertos_n && np_tile_kind_at(level, tx, ty) == NP_TILE_LOCK
+        && np_tile_visto(w, tx, ty) == NP_TILE_EMPTY)
+        return np_tile_gfx_vacio;
     return np_tile_gfx[level->cells[ty * level->width + tx]];
 }
 
@@ -62,11 +88,13 @@ uint16_t np_tile_gfx_at(const NpLevel *level, int32_t tx, int32_t ty)
  * a una rutina en software. Aqui se multiplica una vez y el resto de la
  * columna se baja sumando el ancho del mapa. Fuera del nivel devuelve 0, igual
  * que np_tile_gfx_at(). */
-void np_tile_gfx_column(const NpLevel *level, int32_t tx, int32_t ty,
+void np_tile_gfx_column(const NpWorld *w, int32_t tx, int32_t ty,
                         uint16_t count, uint16_t *out)
 {
+    const NpLevel *level = w->level;
     const uint8_t *cell;
     uint16_t i = 0;
+    int32_t primera = ty;
 
     if (tx < 0 || tx >= (int32_t)level->width) {
         for (; i < count; i++) out[i] = 0;
@@ -83,18 +111,34 @@ void np_tile_gfx_column(const NpLevel *level, int32_t tx, int32_t ty,
     }
     for (; i < count; i++)
         out[i] = 0;
+    /* Y las puertas ya abiertas, por el hueco que dejan. Se mira aparte -y
+       solo si hay alguna abierta- para no meter una pregunta mas en el bucle
+       de arriba, que es el que pinta el escenario entero en un 68000. */
+    if (w->abiertos_n) {
+        for (i = 0; i < count; i++) {
+            int32_t fila = primera + (int32_t)i;
+            if (np_tile_kind_at(level, tx, fila) != NP_TILE_LOCK) continue;
+            if (np_tile_visto(w, tx, fila) == NP_TILE_EMPTY)
+                out[i] = np_tile_gfx_vacio;
+        }
+    }
 }
 
-static int np_blocks(uint8_t kind) { return kind == NP_TILE_SOLID; }
+/* Un cerrojo frena como una pared hasta que se abre: en cuanto se abre,
+   np_tile_visto ya lo devuelve como aire y aqui no llega. */
+static int np_blocks(uint8_t kind)
+{
+    return kind == NP_TILE_SOLID || kind == NP_TILE_LOCK;
+}
 
 /* La escalera que hay en ese punto del mundo, o 0 si no hay ninguna.
  *
  * Las escaleras no frenan a nadie: se pasa por delante andando, igual que por
  * un decorado. Solo cuentan cuando el jugador decide subirse, y por eso no
  * aparecen en np_blocks ni en np_move_*. */
-static uint8_t np_stair_at(const NpLevel *lv, np_fix x, np_fix y)
+static uint8_t np_stair_at(const NpWorld *w, np_fix x, np_fix y)
 {
-    uint8_t kind = np_tile_kind_at(lv, NP_F2I(x) >> NP_TILE_SHIFT,
+    uint8_t kind = np_tile_visto(w, NP_F2I(x) >> NP_TILE_SHIFT,
                                    NP_F2I(y) >> NP_TILE_SHIFT);
     return (kind == NP_TILE_STAIR_R || kind == NP_TILE_STAIR_L) ? kind : 0;
 }
@@ -111,7 +155,7 @@ static int np_boxes_overlap(np_fix ax, np_fix ay, int aw, int ah,
 
 /* ------------------------------------------------------- movimiento y tiles */
 
-static np_fix np_move_x(const NpLevel *lv, np_fix x, np_fix y,
+static np_fix np_move_x(const NpWorld *w, np_fix x, np_fix y,
                         int bw, int bh, np_fix dx, int *hit)
 {
     *hit = 0;
@@ -125,7 +169,7 @@ static np_fix np_move_x(const NpLevel *lv, np_fix x, np_fix y,
         if (step > 0) {
             int32_t tx = NP_F2I(nx + NP_I2F(bw) - 1) >> NP_TILE_SHIFT;
             for (ty = ty0; ty <= ty1; ty++) {
-                if (np_blocks(np_tile_kind_at(lv, tx, ty))) {
+                if (np_blocks(np_tile_visto(w, tx, ty))) {
                     nx = NP_I2F(tx * NP_TILE - bw);
                     *hit = 1;
                     dx = 0;
@@ -135,7 +179,7 @@ static np_fix np_move_x(const NpLevel *lv, np_fix x, np_fix y,
         } else {
             int32_t tx = NP_F2I(nx) >> NP_TILE_SHIFT;
             for (ty = ty0; ty <= ty1; ty++) {
-                if (np_blocks(np_tile_kind_at(lv, tx, ty))) {
+                if (np_blocks(np_tile_visto(w, tx, ty))) {
                     nx = NP_I2F((tx + 1) * NP_TILE);
                     *hit = 1;
                     dx = 0;
@@ -148,7 +192,7 @@ static np_fix np_move_x(const NpLevel *lv, np_fix x, np_fix y,
     return x;
 }
 
-static np_fix np_move_y(const NpLevel *lv, np_fix x, np_fix y,
+static np_fix np_move_y(const NpWorld *w, np_fix x, np_fix y,
                         int bw, int bh, np_fix dy,
                         int drop_through, int *hit_down, int *hit_up)
 {
@@ -166,7 +210,7 @@ static np_fix np_move_y(const NpLevel *lv, np_fix x, np_fix y,
             int32_t ty = bottom >> NP_TILE_SHIFT;
             int32_t old_bottom = NP_F2I(y + NP_I2F(bh) - 1);
             for (tx = tx0; tx <= tx1; tx++) {
-                uint8_t kind = np_tile_kind_at(lv, tx, ty);
+                uint8_t kind = np_tile_visto(w, tx, ty);
                 int stops = np_blocks(kind);
                 if (!stops && kind == NP_TILE_PLATFORM && !drop_through) {
                     /* las plataformas solo frenan si venias por encima */
@@ -182,7 +226,7 @@ static np_fix np_move_y(const NpLevel *lv, np_fix x, np_fix y,
         } else {
             int32_t ty = NP_F2I(ny) >> NP_TILE_SHIFT;
             for (tx = tx0; tx <= tx1; tx++) {
-                if (np_blocks(np_tile_kind_at(lv, tx, ty))) {
+                if (np_blocks(np_tile_visto(w, tx, ty))) {
                     ny = NP_I2F((ty + 1) * NP_TILE);
                     *hit_up = 1;
                     dy = 0;
@@ -196,7 +240,7 @@ static np_fix np_move_y(const NpLevel *lv, np_fix x, np_fix y,
 }
 
 /* Devuelve 1 si la caja toca algun tile del tipo pedido. */
-static int np_box_touches(const NpLevel *lv, np_fix x, np_fix y, int bw, int bh,
+static int np_box_touches(const NpWorld *w, np_fix x, np_fix y, int bw, int bh,
                           uint8_t kind)
 {
     int32_t tx0 = NP_F2I(x) >> NP_TILE_SHIFT;
@@ -206,7 +250,7 @@ static int np_box_touches(const NpLevel *lv, np_fix x, np_fix y, int bw, int bh,
     int32_t tx, ty;
     for (ty = ty0; ty <= ty1; ty++)
         for (tx = tx0; tx <= tx1; tx++)
-            if (np_tile_kind_at(lv, tx, ty) == kind) return 1;
+            if (np_tile_visto(w, tx, ty) == kind) return 1;
     return 0;
 }
 
@@ -442,6 +486,10 @@ void np_world_load_level(NpWorld *w, uint16_t index)
     for (i = 0; i < NP_MAX_PLAYERS; i++) np_player_reset(w, i);
     w->keys = 0;
     w->hearts = 0;
+    /* La bolsa y las puertas abiertas son de este nivel: empezar otro es
+       empezarlo de cero, con las manos vacias y todo cerrado. */
+    for (i = 0; i < NP_BOLSA; i++) w->bolsa[i] = 0;
+    w->abiertos_n = 0;
     w->sub = 0;                 /* se empieza con la primera arma secundaria */
     w->boss_health = 0;
     w->boss_max = 0;
@@ -866,10 +914,10 @@ static void np_subshot_update(NpWorld *w, NpEntity *e)
         e->vy += sb->gravity;
         if (e->vy > NP_ENTITY_FALL) e->vy = NP_ENTITY_FALL;
     }
-    e->x = np_move_x(w->level, e->x, e->y, a->box_w, a->box_h, e->vx, &hit_x);
+    e->x = np_move_x(w, e->x, e->y, a->box_w, a->box_h, e->vx, &hit_x);
     if (hit_x) { e->active = 0; return; }
     if (e->vy) {
-        e->y = np_move_y(w->level, e->x, e->y, a->box_w, a->box_h, e->vy, 1,
+        e->y = np_move_y(w, e->x, e->y, a->box_w, a->box_h, e->vy, 1,
                          &hit_down, &hit_up);
         if (hit_down || hit_up) { e->active = 0; return; }
     }
@@ -922,13 +970,13 @@ static void np_shot_update(NpWorld *w, NpEntity *e)
 
     if (!e->vida) { e->active = 0; return; }
     e->vida--;
-    e->x = np_move_x(w->level, e->x, e->y, a->box_w, a->box_h, e->vx, &hit_x);
+    e->x = np_move_x(w, e->x, e->y, a->box_w, a->box_h, e->vx, &hit_x);
     if (hit_x) { e->active = 0; return; }
     if (np_vista_cenital && e->vy) {
         /* mirando desde arriba el disparo tambien vuela en vertical, y una
            pared lo para igual que en horizontal */
         int arriba = 0, abajo = 0;
-        e->y = np_move_y(w->level, e->x, e->y, a->box_w, a->box_h, e->vy, 1,
+        e->y = np_move_y(w, e->x, e->y, a->box_w, a->box_h, e->vy, 1,
                          &abajo, &arriba);
         if (abajo || arriba) { e->active = 0; return; }
     }
@@ -1171,10 +1219,120 @@ static void np_ride_update(NpWorld *w, uint8_t quien, np_fix antes_y, int soltar
 /* El boton de accion. Va aparte porque se usa igual andando que subido a una
    escalera: en los clasicos se pega desde la escalera, y no poder hacerlo
    convertiria cada escalera en una trampa. */
+/* Frames que un objeto recien soltado no se deja coger. Poco mas de medio
+   segundo: lo justo para poder dejarlo y apartarse. */
+#define NP_GRACIA_SOLTAR 40
+
+/* ------------------------------------------------------------- la bolsa */
+/*
+ * Lo que llevas encima, que en una aventura de las de Dizzy es medio juego: se
+ * cargan tres cosas a la vez, se cogen tocandolas y se sueltan con el boton, y
+ * lo que te para no es un bicho sino una puerta que pide una llave que dejaste
+ * tres pantallas atras.
+ *
+ * Cada hueco guarda el objeto **mas uno**, para que el cero sea "vacio". Se
+ * llena por delante y se suelta por delante: la bolsa gira, como en los
+ * originales, y por eso el orden en que coges las cosas importa.
+ */
+static int np_bolsa_meter(NpWorld *w, uint8_t objeto)
+{
+    uint8_t i;
+    for (i = 0; i < NP_BOLSA; i++) {
+        if (w->bolsa[i]) continue;
+        w->bolsa[i] = (uint16_t)(objeto + 1);
+        return 1;
+    }
+    return 0;                       /* llena: el objeto se queda en el suelo */
+}
+
+uint8_t np_bolsa_cuantos(const NpWorld *w)
+{
+    uint8_t i, n = 0;
+    for (i = 0; i < NP_BOLSA; i++) if (w->bolsa[i]) n++;
+    return n;
+}
+
+/* Saca el primero de la bolsa y corre los demas hacia delante. Devuelve el
+   objeto (mas uno) o cero si no llevaba nada. */
+static uint16_t np_bolsa_sacar(NpWorld *w)
+{
+    uint16_t primero = w->bolsa[0];
+    uint8_t i;
+    if (!primero) return 0;
+    for (i = 1; i < NP_BOLSA; i++) w->bolsa[i - 1] = w->bolsa[i];
+    w->bolsa[NP_BOLSA - 1] = 0;
+    return primero;
+}
+
+/* ¿Llevas esto? Devuelve el hueco mas uno, o cero. */
+static uint8_t np_bolsa_busca(const NpWorld *w, uint8_t objeto)
+{
+    uint8_t i;
+    for (i = 0; i < NP_BOLSA; i++)
+        if (w->bolsa[i] == (uint16_t)(objeto + 1)) return (uint8_t)(i + 1);
+    return 0;
+}
+
+/* Soltar lo primero de la bolsa: cae a tus pies y ahi se queda.
+ *
+ * Sale con unos frames de gracia (`timer`) para que no lo vuelvas a coger en el
+ * mismo sitio donde lo acabas de dejar: sin eso, soltar y coger serian el mismo
+ * boton y no habria forma de dejar nada en el suelo.
+ */
+static void np_soltar_objeto(NpWorld *w, uint8_t quien)
+{
+    NpPlayer *p = &w->players[quien];
+    const NpActorDef *pa = &np_player_def.actor;
+    uint16_t objeto = w->bolsa[0];
+    const NpItemDef *d;
+    const NpActorDef *ia;
+    int hueco;
+    NpEntity *e;
+
+    if (!objeto) return;
+    hueco = np_hueco_libre(w);
+    if (hueco < 0) return;              /* no cabe: mejor seguir llevandolo */
+    np_bolsa_sacar(w);
+    objeto--;
+    d = &np_items[objeto];
+    ia = &d->actor;
+    e = &w->entities[hueco];
+    e->active = 1;
+    e->kind = NP_KIND_ITEM;
+    e->def = objeto;
+    e->x = p->x + NP_I2F((int32_t)(pa->box_w - ia->box_w) / 2);
+    e->y = p->y + NP_I2F((int32_t)pa->box_h - (int32_t)ia->box_h);
+    e->home_x = e->x;
+    e->home_y = e->y;
+    e->vx = 0;
+    e->vy = 0;
+    e->health = 1;
+    e->hurt = 0;
+    e->knock = 0;
+    e->golpeado = 0;
+    e->altura = 0;
+    e->valtura = 0;
+    e->vida = 0;
+    e->timer = NP_GRACIA_SOLTAR;
+    e->anim = NP_ANIM_IDLE;
+    e->anim_frame = 0;
+    e->anim_timer = 0;
+    w->sfx |= NP_SFX_COIN;
+}
+
 static void np_player_action(NpWorld *w, uint8_t quien, uint16_t input)
 {
     NpPlayer *p = &w->players[quien];
     if (p->attack_cd) p->attack_cd--;
+    /* En una aventura el boton no pega: **suelta lo que llevas**. Es lo unico
+       que se hace con las manos en un Dizzy, y por eso se queda con el boton
+       entero. Con `np_bolsa_activa` a cero -cualquier otro juego- esto no
+       existe y el boton hace lo de siempre. */
+    if (np_bolsa_activa) {
+        if ((input & NP_IN_ACTION) && !(w->prev_input[quien] & NP_IN_ACTION))
+            np_soltar_objeto(w, quien);
+        return;
+    }
     if ((input & NP_IN_ACTION) && !(w->prev_input[quien] & NP_IN_ACTION)) {
         /* arriba + accion tira el arma secundaria; el boton a secas, el
            ataque de siempre. Si no hay arma o no queda municion, se pega. */
@@ -1240,7 +1398,7 @@ static int np_stair_mount(NpWorld *w, uint8_t quien, uint16_t input)
 
     if (input & NP_IN_UP) {
         int32_t ty = NP_F2I(np_ref_y(p, a)) >> NP_TILE_SHIFT;
-        kind = np_stair_at(w->level, np_ref_x(p, a), np_ref_y(p, a));
+        kind = np_stair_at(w, np_ref_x(p, a), np_ref_y(p, a));
         if (kind) {
             p->stairs = 1;
             p->stair_dir = (kind == NP_TILE_STAIR_R) ? 1 : -1;
@@ -1285,7 +1443,7 @@ static int np_stair_update(NpWorld *w, uint8_t quien, uint16_t input)
         p->y += d->stair_speed;
         moviendo = 1;
     }
-    if (!np_stair_at(w->level, np_ref_x(p, a), np_ref_y(p, a))) {
+    if (!np_stair_at(w, np_ref_x(p, a), np_ref_y(p, a))) {
         /* se ha acabado la escalera: de pie en la fila donde han quedado los
            pies, que es el suelo de arriba subiendo y el de abajo bajando */
         int32_t ty = NP_F2I(np_ref_y(p, a)) >> NP_TILE_SHIFT;
@@ -1339,9 +1497,9 @@ static void np_player_update_cenital(NpWorld *w, uint8_t quien, uint16_t input)
     }
 
     /* Aqui no hay suelo: se choca con las paredes en los dos ejes. */
-    p->x = np_move_x(w->level, p->x, p->y, a->box_w, a->box_h, p->vx, &hit_x);
+    p->x = np_move_x(w, p->x, p->y, a->box_w, a->box_h, p->vx, &hit_x);
     if (hit_x) p->vx = 0;
-    p->y = np_move_y(w->level, p->x, p->y, a->box_w, a->box_h, p->vy, 1,
+    p->y = np_move_y(w, p->x, p->y, a->box_w, a->box_h, p->vy, 1,
                      &hit_down, &hit_up);
     if (hit_down || hit_up) p->vy = 0;
     /* Pisar no significa nada mirando desde arriba, pero lo miran cosas que
@@ -1582,9 +1740,9 @@ static void np_player_update_cinta(NpWorld *w, uint8_t quien, uint16_t input)
 
     /* Andar y chocar, en la linea del suelo: saltando se pasa por encima de un
        enemigo, pero no de una pared. */
-    p->x = np_move_x(w->level, p->x, suelo, a->box_w, a->box_h, p->vx, &hit_x);
+    p->x = np_move_x(w, p->x, suelo, a->box_w, a->box_h, p->vx, &hit_x);
     if (hit_x) p->vx = 0;
-    suelo = np_move_y(w->level, p->x, suelo, a->box_w, a->box_h, p->vy, 1,
+    suelo = np_move_y(w, p->x, suelo, a->box_w, a->box_h, p->vy, 1,
                       &hit_down, &hit_up);
     if (hit_down || hit_up) p->vy = 0;
     p->y = suelo - p->altura;
@@ -1635,10 +1793,10 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
         const NpEntity *e = &w->entities[p->riding - 1];
         if (e->active && e->kind == NP_KIND_PLATFORM) {
             int llevado = 0;
-            if (e->vx) p->x = np_move_x(w->level, p->x, p->y, a->box_w, a->box_h,
+            if (e->vx) p->x = np_move_x(w, p->x, p->y, a->box_w, a->box_h,
                                         e->vx, &llevado);
             (void)llevado;              /* si topa con una pared, se queda ahi */
-            if (e->vy) p->y = np_move_y(w->level, p->x, p->y, a->box_w, a->box_h,
+            if (e->vy) p->y = np_move_y(w, p->x, p->y, a->box_w, a->box_h,
                                         e->vy, 0, &hit_down, &hit_up);
         }
     }
@@ -1697,6 +1855,9 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
         p->vx = 0;
     } else if (p->stun) {
         /* ni acelerar ni frenar: el empujon del golpe llega hasta el final */
+    } else if (!d->air_control && !p->on_ground) {
+        /* El salto de las aventuras: al despegar se decide hacia donde vas y
+           ya no se cambia. Es lo que convierte cada salto en una decision. */
     } else if (dir > 0) { p->vx = np_approach(p->vx, d->speed, p->on_ground ? d->accel : d->air_accel); p->facing = 1; }
     else if (dir < 0) { p->vx = np_approach(p->vx, -d->speed, p->on_ground ? d->accel : d->air_accel); p->facing = 0; }
     else if (p->on_ground) p->vx = np_approach(p->vx, 0, d->friction);
@@ -1725,16 +1886,23 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
         p->buffer = 0;
         p->coyote = 0;
         p->on_ground = 0;
+        /* sin control en el aire, el impulso se fija aqui: lo que se pulsaba
+           al despegar es lo que dura todo el salto */
+        if (!d->air_control)
+            p->vx = dir > 0 ? d->speed : (dir < 0 ? -d->speed : 0);
     }
-    if (!(input & NP_IN_JUMP) && p->vy < -d->jump_cut) p->vy = -d->jump_cut;
+    /* soltar el boton solo corta el salto si se manda en el aire: el salto de
+       las aventuras siempre hace el mismo arco */
+    if (d->air_control && !(input & NP_IN_JUMP) && p->vy < -d->jump_cut)
+        p->vy = -d->jump_cut;
 
     p->vy += d->gravity;
     if (p->vy > d->max_fall) p->vy = d->max_fall;
 
-    p->x = np_move_x(w->level, p->x, p->y, a->box_w, a->box_h, p->vx, &hit_x);
+    p->x = np_move_x(w, p->x, p->y, a->box_w, a->box_h, p->vx, &hit_x);
     if (hit_x) p->vx = 0;
     antes_y = p->y;
-    p->y = np_move_y(w->level, p->x, p->y, a->box_w, a->box_h, p->vy,
+    p->y = np_move_y(w, p->x, p->y, a->box_w, a->box_h, p->vy,
                      (input & NP_IN_DOWN) ? 1 : 0, &hit_down, &hit_up);
     p->on_ground = (uint8_t)hit_down;
     if (hit_down && p->vy > 0) p->vy = 0;
@@ -1895,11 +2063,11 @@ static void np_prisoner_update(NpWorld *w, NpEntity *e)
     e->timer--;
     if (!e->timer) { e->active = 0; return; }   /* se ha perdido de vista */
     if (e->vx) {
-        e->x = np_move_x(w->level, e->x, e->y, a->box_w, a->box_h, e->vx, &hit_x);
+        e->x = np_move_x(w, e->x, e->y, a->box_w, a->box_h, e->vx, &hit_x);
         if (hit_x) e->vx = -e->vx;              /* rebota en las paredes */
     }
     if (e->vy) {
-        e->y = np_move_y(w->level, e->x, e->y, a->box_w, a->box_h, e->vy, 1,
+        e->y = np_move_y(w, e->x, e->y, a->box_w, a->box_h, e->vy, 1,
                          &hit_down, &hit_up);
         if (hit_down || hit_up) e->vy = -e->vy;
     }
@@ -1988,11 +2156,11 @@ static void np_enemy_shot_update(NpWorld *w, NpEntity *e)
     if (!e->vida) { e->active = 0; return; }
     e->vida--;
     if (e->vx) {
-        e->x = np_move_x(w->level, e->x, e->y, a->box_w, a->box_h, e->vx, &hit_x);
+        e->x = np_move_x(w, e->x, e->y, a->box_w, a->box_h, e->vx, &hit_x);
         if (hit_x) { e->active = 0; return; }
     }
     if (e->vy) {
-        e->y = np_move_y(w->level, e->x, e->y, a->box_w, a->box_h, e->vy, 1,
+        e->y = np_move_y(w, e->x, e->y, a->box_w, a->box_h, e->vy, 1,
                          &hit_down, &hit_up);
         if (hit_down || hit_up) { e->active = 0; return; }
     }
@@ -2032,7 +2200,7 @@ static void np_enemy_update(NpWorld *w, NpEntity *e)
             e->valtura -= np_player_def.gravity;
             if (e->altura <= 0) { e->altura = 0; e->valtura = 0; }
         }
-        e->x = np_move_x(w->level, e->x, suelo, a->box_w, a->box_h, e->vx, &hit_x);
+        e->x = np_move_x(w, e->x, suelo, a->box_w, a->box_h, e->vx, &hit_x);
         if (hit_x) e->vx = 0;
         e->y = suelo - e->altura;
         /* por el aire no se frena: se frena al tocar el suelo */
@@ -2110,7 +2278,7 @@ static void np_enemy_update(NpWorld *w, NpEntity *e)
         if (e->vy > NP_ENTITY_FALL) e->vy = NP_ENTITY_FALL;
     }
 
-    e->x = np_move_x(w->level, e->x, e->y, a->box_w, a->box_h, e->vx, &hit_x);
+    e->x = np_move_x(w, e->x, e->y, a->box_w, a->box_h, e->vx, &hit_x);
     if (hit_x) {
         e->facing = (uint8_t)!e->facing;
         e->vx = 0;
@@ -2118,12 +2286,12 @@ static void np_enemy_update(NpWorld *w, NpEntity *e)
     if (np_vista_cenital) {
         /* desde arriba las paredes frenan tambien por arriba y por abajo */
         if (e->vy) {
-            e->y = np_move_y(w->level, e->x, e->y, a->box_w, a->box_h, e->vy, 1,
+            e->y = np_move_y(w, e->x, e->y, a->box_w, a->box_h, e->vy, 1,
                              &hit_down, &hit_up);
             if (hit_down || hit_up) e->vy = 0;
         }
     } else if (d->behavior != NP_AI_FLYER) {
-        e->y = np_move_y(w->level, e->x, e->y, a->box_w, a->box_h, e->vy, 0,
+        e->y = np_move_y(w, e->x, e->y, a->box_w, a->box_h, e->vy, 0,
                          &hit_down, &hit_up);
         if (hit_down && e->vy > 0) e->vy = 0;
         if (hit_up && e->vy < 0) e->vy = 0;
@@ -2158,6 +2326,8 @@ static void np_item_update(NpWorld *w, NpEntity *e)
 {
     const NpItemDef *d = &np_items[e->def];
     (void)w;
+    /* los frames de gracia de lo que se acaba de soltar */
+    if (e->timer) e->timer--;
     np_anim_set(&e->anim, &e->anim_frame, &e->anim_timer, NP_ANIM_IDLE);
     np_anim_tick(&d->actor, e->anim, &e->anim_frame, &e->anim_timer);
 }
@@ -2223,6 +2393,12 @@ static void np_collect(NpWorld *w, uint8_t quien, NpEntity *e)
     case NP_ITEM_BOMB:
         np_bomba(w, d->amount);
         break;
+    case NP_ITEM_CARRY:
+        /* No hace nada al cogerlo: se guarda. Y si no queda hueco en la bolsa
+           **se queda donde estaba**, que es lo que obliga a elegir que llevas
+           encima: en un Dizzy, la mitad del juego es esa decision. */
+        if (!np_bolsa_meter(w, e->def)) return;
+        break;
     default:
         break;
     }
@@ -2243,6 +2419,80 @@ static void np_finish_level(NpWorld *w)
    Volver a pasar por el que ya esta marcado no hace nada (ni suena), pero
    pasar por uno anterior si lo mueve hacia atras: manda el ultimo que se toca,
    que es lo que uno espera despues de retroceder a por algo. */
+/* Abrir lo que se pueda de lo que tienes al lado.
+ *
+ * Una puerta se abre llegando con el objeto que pide: se gasta el objeto, la
+ * casilla pasa a ser aire para siempre y suena. Es la otra mitad de una
+ * aventura -la primera es cargar con las cosas- y lo que hace que un mapa
+ * pequeno de una tarde de trabajo de mas juego que un nivel largo.
+ *
+ * Se apunta la casilla abierta en una lista y no se toca el mapa: el mapa vive
+ * en ROM. Si se llena la lista no se abre ninguna mas, que es mejor que abrir
+ * una y que se cierre sola al frame siguiente.
+ */
+/* Apunta una casilla como abierta. Devuelve 0 si la lista ya estaba llena. */
+static int np_apuntar_abierta(NpWorld *w, uint16_t casilla)
+{
+    if (w->abiertos_n >= NP_MAX_ABIERTOS) return 0;
+    w->abiertos[w->abiertos_n++] = casilla;
+    return 1;
+}
+
+/* Una puerta de dos casillas es **una puerta**, no dos: se abre entera con un
+ * solo objeto. Desde la casilla que se ha abierto se sigue el rastro en las
+ * cuatro direcciones mientras haya el mismo tile, que es como se dibuja una
+ * puerta alta (una columna) o un paso ancho (una fila).
+ */
+static void np_abrir_vecinas(NpWorld *w, int32_t tx, int32_t ty, uint16_t tile)
+{
+    static const int8_t pasos[4][2] = {{0, -1}, {0, 1}, {-1, 0}, {1, 0}};
+    uint8_t d;
+    for (d = 0; d < 4; d++) {
+        int32_t x = tx, y = ty;
+        for (;;) {
+            uint16_t casilla;
+            x += pasos[d][0];
+            y += pasos[d][1];
+            if (x < 0 || y < 0 || x >= (int32_t)w->level->width
+                || y >= (int32_t)w->level->height) break;
+            casilla = (uint16_t)(y * (int32_t)w->level->width + x);
+            if (w->level->cells[casilla] != tile) break;
+            if (np_tile_visto(w, x, y) != NP_TILE_LOCK) break;
+            if (!np_apuntar_abierta(w, casilla)) return;
+        }
+    }
+}
+
+static void np_abrir_cerrojos(NpWorld *w, int32_t tx0, int32_t ty0,
+                              int32_t tx1, int32_t ty1)
+{
+    int32_t tx, ty;
+    if (!np_bolsa_activa) return;
+    for (ty = ty0; ty <= ty1; ty++) {
+        for (tx = tx0; tx <= tx1; tx++) {
+            uint16_t casilla;
+            uint8_t pide, hueco, i;
+            if (tx < 0 || ty < 0 || tx >= (int32_t)w->level->width
+                || ty >= (int32_t)w->level->height) continue;
+            if (np_tile_visto(w, tx, ty) != NP_TILE_LOCK) continue;
+            casilla = (uint16_t)(ty * (int32_t)w->level->width + tx);
+            pide = np_tile_need[w->level->cells[casilla]];
+            if (!pide) continue;                 /* un cerrojo sin llave: nunca */
+            hueco = np_bolsa_busca(w, (uint8_t)(pide - 1));
+            if (!hueco) continue;                /* no llevas lo que pide */
+            if (w->abiertos_n >= NP_MAX_ABIERTOS) return;
+            /* el objeto se gasta y la bolsa se cierra por delante, para que no
+               queden huecos en medio */
+            for (i = (uint8_t)(hueco - 1); i + 1 < NP_BOLSA; i++)
+                w->bolsa[i] = w->bolsa[i + 1];
+            w->bolsa[NP_BOLSA - 1] = 0;
+            np_apuntar_abierta(w, casilla);
+            np_abrir_vecinas(w, tx, ty, w->level->cells[casilla]);
+            w->sfx |= NP_SFX_CHECK;
+        }
+    }
+}
+
 static void np_check_touch(NpWorld *w, uint8_t quien)
 {
     const NpActorDef *a = &np_player_def.actor;
@@ -2252,6 +2502,10 @@ static void np_check_touch(NpWorld *w, uint8_t quien)
     int32_t ty0 = NP_F2I(p->y) >> NP_TILE_SHIFT;
     int32_t ty1 = NP_F2I(p->y + NP_I2F(a->box_h) - 1) >> NP_TILE_SHIFT;
     int32_t tx, ty;
+    /* Los cerrojos se miran un poco mas alla de la caja: una puerta se abre
+       **poniendote delante**, no metiendote dentro, y dentro no se puede
+       estar porque frena como una pared. */
+    np_abrir_cerrojos(w, tx0 - 1, ty0, tx1 + 1, ty1);
     for (ty = ty0; ty <= ty1; ty++) {
         for (tx = tx0; tx <= tx1; tx++) {
             if (np_tile_kind_at(w->level, tx, ty) != NP_TILE_CHECK) continue;
@@ -2312,7 +2566,8 @@ static void np_touch_entities(NpWorld *w)
                 continue;
             }
             if (e->kind == NP_KIND_ITEM) {
-                np_collect(w, quien, e);
+                /* lo que acabas de soltar no se recoge solo */
+                if (!e->timer) np_collect(w, quien, e);
                 continue;
             }
             {
@@ -2640,7 +2895,7 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
     for (quien = 0; quien < NP_MAX_PLAYERS; quien++) {
         NpPlayer *p = &w->players[quien];
         if (!p->playing || p->dying) continue;
-        if (np_box_touches(w->level,
+        if (np_box_touches(w,
                            p->x + NP_I2F(NP_HAZARD_INSET_X),
                            np_player_top(p) + NP_I2F(NP_HAZARD_INSET_Y),
                            pa->box_w - NP_HAZARD_INSET_X * 2,
@@ -2656,7 +2911,7 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
          * llaves son de la partida, no de cada jugador: a dos, las que coge
          * uno le valen al otro. */
         if (w->keys >= w->level->keys_needed &&
-            np_box_touches(w->level, p->x, p->y, pa->box_w, pa->box_h,
+            np_box_touches(w, p->x, p->y, pa->box_w, pa->box_h,
                            NP_TILE_GOAL)) {
             np_finish_level(w);            /* llega uno, se acaba para los dos */
             return;
@@ -2714,6 +2969,20 @@ static void np_tres_digitos(char *out, uint8_t valor)
     out[2] = (char)('0' + valor % 10);
 }
 
+/* Lo que lleva la bolsa, en un solo numero. Los marcadores de las siete
+ * maquinas solo repintan la linea de "lo que llevas" cuando algo cambia, y sin
+ * esto la bolsa no contaba: se cogia una llave y el marcador seguia ensenando
+ * lo de tres pantallas atras. Con NP_BOLSA huecos de un byte cabe entera en un
+ * entero, asi que la comparacion es exacta y no un resumen que pueda repetirse.
+ */
+uint32_t np_bolsa_firma(const NpWorld *w)
+{
+    uint32_t firma = 0;
+    uint8_t i;
+    for (i = 0; i < NP_BOLSA; i++) firma = (firma << 8) | w->bolsa[i];
+    return firma;
+}
+
 /* La linea de "lo que llevas": llaves y municion, "KEYS 01/03 AMMO 05" (en
    ingles como el resto del marcador: SCORE, LIVES, BOSS). Cada mitad sale en
    blanco si el juego no la usa, asi que el marcador no tiene que saber nada de
@@ -2742,6 +3011,20 @@ void np_extras_bar(char *out, const NpWorld *w)
         const char *etiqueta = np_sub_names[w->sub];
         for (i = 0; i < 5 && etiqueta[i]; i++) out[11 + i] = etiqueta[i];
         np_dos_digitos(out + 12 + i, w->hearts);
+    }
+    /* Y en una aventura, lo que llevas encima. Ocupa la linea entera porque en
+       estos juegos es **la** informacion: sin mirar la bolsa no se sabe si la
+       puerta de delante se puede abrir o hay que dar media vuelta. */
+    if (np_bolsa_activa) {
+        uint8_t hueco, columna = 0;
+        for (hueco = 0; hueco < NP_BOLSA; hueco++) {
+            const char *nombre;
+            if (!w->bolsa[hueco]) continue;
+            nombre = np_item_names[w->bolsa[hueco] - 1];
+            for (i = 0; i < 5 && nombre[i]; i++)
+                if (columna + i < NP_EXTRAS_BAR) out[columna + i] = nombre[i];
+            columna = (uint8_t)(columna + i + 1);
+        }
     }
 }
 

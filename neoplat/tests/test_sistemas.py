@@ -33,6 +33,75 @@ def _banderas_del_makefile(ruta):
     return [b for b in ("-fno-store-merging",) if b in texto]
 
 
+# Una instruccion de palabra (.w) o palabra larga (.l) sobre un registro de
+# direccion con desplazamiento: movew %d0,%a0@(2109).
+_ACCESO = re.compile(
+    r"\b(?!lea|pea)[a-z]+[wl]\s+\S*%(a\d|sp|fp)@\((\d+)\)")
+# Lo que carga un registro de direccion con una direccion de verdad: un puntero
+# a una estructura, la pila, una variable. Todo eso es par.
+_CARGA = re.compile(r"\bmovea[wl]?\s+(\S+),%(a\d)\b")
+# Un `lea` con desplazamiento impar deja el registro apuntando a la mitad de una
+# palabra **a proposito**: gcc lo hace para llegar con desplazamientos cortos a
+# un grupo de campos (lea %a2@(27),%a3), y entonces un desplazamiento impar es
+# una direccion par y no pasa nada. De esos registros no se puede decir nada
+# mirando el desplazamiento, asi que se dejan en paz.
+_LEA = re.compile(r"\blea\s+%(a\d|sp|fp)@\((-?\d+)(?:,[^)]*)?\),%(a\d)\b")
+_LEA_OTRA = re.compile(r"\blea\s+\S+,%(a\d)\b")
+_ARITMETICA = re.compile(r"\b(?:add|sub)[aq]?[wl]?\s+\S+,%(a\d)\b")
+_ETIQUETA = re.compile(r"^[0-9a-f]+ <([^>]*)>:")
+
+
+def _accesos_impares(desmontado):
+    """Los accesos de palabra a una direccion impar de un desmontado.
+
+    El fallo que se busca es el de gcc juntando dos accesos de byte pegados en
+    uno de palabra: sale un `movew %a0@(3365)` con `a0` apuntando a una
+    estructura, o sea a una direccion par, y el 68000 se para con un "address
+    error".
+
+    Para no dar por malo lo que no lo es se lleva la cuenta de que registros
+    son **de fiar** (apuntan a par): los que se cargan con una direccion, la
+    pila y las copias de otro de fiar. Un `lea` con desplazamiento impar, o
+    cualquier suma, deja el registro sin saber, y de esos no se dice nada: es
+    justo lo que hace gcc cuando coge una base impar para llegar a un grupo de
+    campos con desplazamientos cortos, y ahi un desplazamiento impar es una
+    direccion par."""
+    impares = []
+    fiables = {}
+    funcion = ""
+    for linea in desmontado.split("\n"):
+        etiqueta = _ETIQUETA.match(linea)
+        if etiqueta:
+            funcion = etiqueta.group(1)
+            fiables = {}
+            continue
+        for base, desplazamiento in _ACCESO.findall(linea):
+            if not int(desplazamiento) % 2:
+                continue
+            if base in ("sp", "fp") or fiables.get(base, True):
+                impares.append((funcion, linea.strip()))
+        lea = _LEA.search(linea)
+        if lea:
+            base = lea.group(1)
+            par = (base in ("sp", "fp") or fiables.get(base, True))
+            fiables[lea.group(3)] = par and int(lea.group(2)) % 2 == 0
+            continue
+        otra = _LEA_OTRA.search(linea)
+        if otra:
+            fiables[otra.group(1)] = True
+            continue
+        suma = _ARITMETICA.search(linea)
+        if suma:
+            fiables[suma.group(1)] = False
+            continue
+        carga = _CARGA.search(linea)
+        if carga:
+            origen = re.fullmatch(r"%(a\d)", carga.group(1))
+            fiables[carga.group(2)] = (fiables.get(origen.group(1), True)
+                                       if origen else True)
+    return impares
+
+
 def _comprobar_amiga(prueba, disco, capturas, proyecto="", pantallas=False,
                      modelo="A500"):
     """Arranca el disquete del Amiga en PUAE, en un proceso aparte.
@@ -1272,8 +1341,6 @@ class TestCompilacionReal(unittest.TestCase):
         objdump = self.cc.replace("-gcc", "-objdump")
         if not shutil.which(objdump):
             self.skipTest("no hay %s" % objdump)
-        patron = re.compile(
-            r"\b(?!lea|pea)[a-z]+[wl]\s+\S*%(?:a\d|sp|fp)@\((\d+)\)")
         for sistema in ("neogeo", "megadrive", "amiga", "amiga1200", "jaguar",
                         "atarist", "x68000"):
             build = cargar_demo(self.proyecto, sistema)
@@ -1297,10 +1364,9 @@ class TestCompilacionReal(unittest.TestCase):
                     continue          # algun fuente necesita cabeceras del kit
                 hecho = subprocess.run([objdump, "-d", objeto],
                                        capture_output=True, text=True)
-                for linea in hecho.stdout.split("\n"):
-                    for desplazamiento in patron.findall(linea):
-                        if int(desplazamiento) % 2:
-                            impares.append("%s/%s: %s" % (sistema, fuente, linea.strip()))
+                for funcion, linea in _accesos_impares(hecho.stdout):
+                    impares.append("%s/%s %s: %s"
+                                   % (sistema, fuente, funcion, linea))
             self.assertEqual(impares, [], "\n".join(impares[:5]))
 
     def test_no_hay_accesos_a_direcciones_impares(self):
@@ -1311,20 +1377,12 @@ class TestCompilacionReal(unittest.TestCase):
         objdump = self.cc.replace("-gcc", "-objdump")
         if not shutil.which(objdump):
             self.skipTest("no hay %s" % objdump)
-        # una instruccion de palabra (.w) o palabra larga (.l) sobre un registro
-        # de direccion con desplazamiento: movew %d0,%a0@(2109)
-        patron = re.compile(
-            r"\b(?!lea|pea)[a-z]+[wl]\s+\S*%(?:a\d|sp|fp)@\((\d+)\)")
         for sistema in ("megadrive", "amiga", "atarist", "x68000"):
             out = self._construir(sistema)
             hecho = subprocess.run([objdump, "-d", os.path.join(out, "juego.elf")],
                                    capture_output=True, text=True)
             self.assertEqual(hecho.returncode, 0, hecho.stderr)
-            impares = []
-            for linea in hecho.stdout.split("\n"):
-                for desplazamiento in patron.findall(linea):
-                    if int(desplazamiento) % 2:
-                        impares.append(linea.strip())
+            impares = ["%s: %s" % par for par in _accesos_impares(hecho.stdout)]
             self.assertEqual(impares, [],
                              "%s: accesos a direcciones impares:\n%s"
                              % (sistema, "\n".join(impares[:5])))

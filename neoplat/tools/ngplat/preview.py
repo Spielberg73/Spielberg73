@@ -148,6 +148,7 @@ def build_data(build: Build) -> Dict[str, object]:
         entry = dict(item_values(item, sub_index))
         entry["actor"] = actor_json(item, "item%d" % i)
         entry["name"] = item.name
+        entry["label"] = item.actor.label     # como sale en la bolsa
         items.append(entry)
 
     platforms: List[Dict[str, object]] = []
@@ -288,6 +289,14 @@ def build_data(build: Build) -> Dict[str, object]:
             "gfx": [t.index for t in build.tiles],
             "chars": tile_chars,
             "index": tile_index,
+            # que objeto abre cada cerrojo (el objeto mas uno; 0 = ninguno)
+            "need": [({o.name: i for i, o in enumerate(build.items)}
+                      .get(t.needs, -1) + 1) if t.kind == "lock" else 0
+                     for t in build.tiles],
+            # el dibujo que se ve por el hueco de una puerta abierta: el del
+            # primer tile vacio de la leyenda. Igual que np_tile_gfx_vacio.
+            "gfx_vacio": next((t.index for t in build.tiles
+                               if t.kind == "empty"), 0),
         },
         "levels": levels,
         "layers": layers,
@@ -304,6 +313,9 @@ def build_data(build: Build) -> Dict[str, object]:
             "generadores": [b.name for b in build.generators],
         },
         "camara_pantallas": 1 if project.camera == "pantallas" else 0,
+        # 1 = el juego lleva bolsa (algun objeto de `efecto: llevar`)
+        "bolsa_activa": 1 if any(o.actor.effect == "carry"
+                                 for o in build.items) else 0,
         # desde donde se mira: "lateral" (con gravedad) o "cenital"
         "view": project.view,
         "amiga_modo": project.amiga_modo,

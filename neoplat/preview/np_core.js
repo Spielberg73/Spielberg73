@@ -26,6 +26,8 @@
   var TILE_STAIR_R = 6, TILE_STAIR_L = 7;
   /* punto de control: se atraviesa y apunta donde reaparece el jugador */
   var TILE_CHECK = 8;
+  /* cerrojo: frena como una pared hasta que llegas con el objeto que pide */
+  var TILE_LOCK = 9;
   var AI_PATROL = 0, AI_FLYER = 1, AI_CHASER = 2, AI_JUMPER = 3;
   var ANIM_IDLE = 0, ANIM_RUN = 1, ANIM_JUMP = 2, ANIM_FALL = 3, ANIM_HURT = 4,
       ANIM_ATTACK = 5, ANIM_STAIR = 6, ANIM_CROUCH = 7,
@@ -42,6 +44,9 @@
   var SUB_NONE = 0, SUB_LINE = 1, SUB_ARC = 2;
   /* lo que se aparta un maton despues de pegarte, en frames (np_world.c) */
   var RECULA = 26;
+  /* La bolsa de las aventuras: tres cosas a la vez, como en los Dizzy. Y los
+     frames que un objeto recien soltado no se deja coger (np_world.c). */
+  var BOLSA = 3, GRACIA_SOLTAR = 40, MAX_ABIERTOS = 12;
   /* por donde va y viene una plataforma movil */
   var PLAT_X = 0, PLAT_Y = 1;
   var ATTACK_NONE = 0, ATTACK_SHOT = 1, ATTACK_MELEE = 2;
@@ -93,6 +98,10 @@
     this.playerCount = data.players || 1;
     this.entities = [];
     this.camX = 0; this.camY = 0;
+    /* lo que se lleva encima: el objeto de cada hueco mas uno (0 = vacio) */
+    this.bolsa = [0, 0, 0];
+    /* las casillas de cerrojo ya abiertas en este nivel */
+    this.abiertos = [];
     this.score = 0; this.frame = 0;
     this.levelIndex = 0;
     this.state = STATE.TITLE; this.stateTimer = 0;
@@ -172,13 +181,32 @@
     return this.data.tiles.kind[lv.cells[ty * lv.width + tx]];
   };
 
+  /* Lo mismo, pero contando los cerrojos ya abiertos: una puerta abierta es
+     aire y hay que verla como aire desde todos los sitios que miran el
+     escenario. Igual que np_tile_visto. */
+  World.prototype.tileVisto = function (tx, ty) {
+    var kind = this.tileKindAt(tx, ty);
+    if (kind !== TILE_LOCK) return kind;
+    var casilla = ty * this.level.width + tx;
+    for (var i = 0; i < this.abiertos.length; i++)
+      if (this.abiertos[i] === casilla) return TILE_EMPTY;
+    return kind;
+  };
+
   World.prototype.tileGfxAt = function (tx, ty) {
     var lv = this.level;
     if (tx < 0 || tx >= lv.width || ty < 0 || ty >= lv.height) return -1;
+    /* Una puerta abierta se ve por lo que hay detras: el aire. Igual que
+       np_tile_gfx_at en C. */
+    if (this.abiertos.length && this.tileKindAt(tx, ty) === TILE_LOCK
+        && this.tileVisto(tx, ty) === TILE_EMPTY)
+      return this.data.tiles.gfx_vacio || 0;
     return this.data.tiles.gfx[lv.cells[ty * lv.width + tx]];
   };
 
-  function blocks(kind) { return kind === TILE_SOLID; }
+  /* Un cerrojo frena como una pared hasta que se abre: en cuanto se abre,
+     tileVisto ya lo devuelve como aire y aqui no llega. */
+  function blocks(kind) { return kind === TILE_SOLID || kind === TILE_LOCK; }
 
   function overlap(ax, ay, aw, ah, bx, by, bw, bh) {
     if (ax + I2F(aw) <= bx) return false;
@@ -200,14 +228,14 @@
       if (step > 0) {
         tx = F2I(nx + I2F(bw) - 1) >> TILE_SHIFT;
         for (ty = ty0; ty <= ty1; ty++) {
-          if (blocks(this.tileKindAt(tx, ty))) {
+          if (blocks(this.tileVisto(tx, ty))) {
             nx = I2F(tx * TILE - bw); out.hit = 1; dx = 0; break;
           }
         }
       } else {
         tx = F2I(nx) >> TILE_SHIFT;
         for (ty = ty0; ty <= ty1; ty++) {
-          if (blocks(this.tileKindAt(tx, ty))) {
+          if (blocks(this.tileVisto(tx, ty))) {
             nx = I2F((tx + 1) * TILE); out.hit = 1; dx = 0; break;
           }
         }
@@ -230,7 +258,7 @@
         ty = F2I(ny + I2F(bh) - 1) >> TILE_SHIFT;
         var oldBottom = F2I(y + I2F(bh) - 1);
         for (tx = tx0; tx <= tx1; tx++) {
-          var kind = this.tileKindAt(tx, ty);
+          var kind = this.tileVisto(tx, ty);
           var stops = blocks(kind);
           if (!stops && kind === TILE_PLATFORM && !dropThrough)
             stops = oldBottom < ty * TILE;
@@ -239,7 +267,7 @@
       } else {
         ty = F2I(ny) >> TILE_SHIFT;
         for (tx = tx0; tx <= tx1; tx++) {
-          if (blocks(this.tileKindAt(tx, ty))) {
+          if (blocks(this.tileVisto(tx, ty))) {
             ny = I2F((ty + 1) * TILE); out.hitUp = 1; dy = 0; break;
           }
         }
@@ -254,7 +282,7 @@
     var ty0 = F2I(y) >> TILE_SHIFT, ty1 = F2I(y + I2F(bh) - 1) >> TILE_SHIFT;
     for (var ty = ty0; ty <= ty1; ty++)
       for (var tx = tx0; tx <= tx1; tx++)
-        if (this.tileKindAt(tx, ty) === kind) return true;
+        if (this.tileVisto(tx, ty) === kind) return true;
     return false;
   };
 
@@ -366,6 +394,9 @@
     for (i = 0; i < MAX_PLAYERS; i++) this.resetPlayer(i);
     this.keys = 0;
     this.hearts = 0;
+    /* La bolsa y las puertas abiertas son de este nivel. Igual que en C. */
+    this.bolsa = [0, 0, 0];
+    this.abiertos = [];
     this.sub = 0;                 /* se empieza con la primera arma */
     this.bossHealth = 0; this.bossMax = 0;
     this.timeLeft = this.data.time_limit * 60;
@@ -900,7 +931,7 @@
    * choques, y todo se apoya en el pixel de abajo del centro de la caja. */
 
   World.prototype.stairAt = function (x, y) {
-    var kind = this.tileKindAt(F2I(x) >> TILE_SHIFT, F2I(y) >> TILE_SHIFT);
+    var kind = this.tileVisto(F2I(x) >> TILE_SHIFT, F2I(y) >> TILE_SHIFT);
     return (kind === TILE_STAIR_R || kind === TILE_STAIR_L) ? kind : 0;
   };
 
@@ -976,6 +1007,13 @@
   World.prototype.playerAction = function (quien, input) {
     var p = this.players[quien];
     if (p.attackCd) p.attackCd--;
+    /* En una aventura el boton no pega: suelta lo que llevas. Igual que
+       np_player_action. */
+    if (this.data.bolsa_activa) {
+      if ((input & IN.ACTION) && !(this.prevInput[quien] & IN.ACTION))
+        this.soltarObjeto(quien);
+      return;
+    }
     if ((input & IN.ACTION) && !(this.prevInput[quien] & IN.ACTION)) {
       var sb = this.data.player.subs[this.sub];
       if ((input & IN.UP) && sb && sb.kind !== SUB_NONE && this.hearts >= sb.cost)
@@ -1255,6 +1293,9 @@
       p.vx = 0;
     } else if (p.stun) {
       /* ni acelerar ni frenar */
+    } else if (!d.air_control && !p.onGround) {
+      /* El salto de las aventuras: al despegar se decide hacia donde vas y ya
+         no se cambia. Igual que en np_player_update. */
     } else if (dir > 0) { p.vx = approach(p.vx, d.speed, p.onGround ? d.accel : d.air_accel); p.facing = 1; }
     else if (dir < 0) { p.vx = approach(p.vx, -d.speed, p.onGround ? d.accel : d.air_accel); p.facing = 0; }
     else if (p.onGround) p.vx = approach(p.vx, 0, d.friction);
@@ -1278,8 +1319,12 @@
       if (!p.coyote) p.jumpsLeft--;
       p.vy = -d.jump;
       p.buffer = 0; p.coyote = 0; p.onGround = 0;
+      /* sin control en el aire, el impulso se fija al despegar */
+      if (!d.air_control) p.vx = dir > 0 ? d.speed : (dir < 0 ? -d.speed : 0);
     }
-    if (!(input & IN.JUMP) && p.vy < -d.jump_cut) p.vy = -d.jump_cut;
+    /* el arco fijo de las aventuras: soltar el boton no corta el salto */
+    if (d.air_control && !(input & IN.JUMP) && p.vy < -d.jump_cut)
+      p.vy = -d.jump_cut;
 
     p.vy += d.gravity;
     if (p.vy > d.max_fall) p.vy = d.max_fall;
@@ -1590,6 +1635,8 @@
 
   World.prototype.itemUpdate = function (e) {
     var d = this.data.items[e.def];
+    /* los frames de gracia de lo que se acaba de soltar */
+    if (e.timer) e.timer--;
     animSet(e, ANIM_IDLE);
     animTick(d.actor, e);
   };
@@ -1615,6 +1662,64 @@
 
   /* Lo recoge quien lo toca: la vida y la salud van a ese jugador, y los
      puntos y las llaves al marcador, que es comun. */
+  /* ------------------------------------------------------------ la bolsa
+   *
+   * Lo que llevas encima, que en una aventura es medio juego. Traduccion
+   * literal de np_bolsa_meter / np_bolsa_sacar / np_bolsa_busca. */
+  World.prototype.bolsaMeter = function (objeto) {
+    for (var i = 0; i < BOLSA; i++) {
+      if (this.bolsa[i]) continue;
+      this.bolsa[i] = objeto + 1;
+      return true;
+    }
+    return false;                  /* llena: se queda en el suelo */
+  };
+
+  World.prototype.bolsaCuantos = function () {
+    var n = 0;
+    for (var i = 0; i < BOLSA; i++) if (this.bolsa[i]) n++;
+    return n;
+  };
+
+  World.prototype.bolsaSacar = function () {
+    var primero = this.bolsa[0], i;
+    if (!primero) return 0;
+    for (i = 1; i < BOLSA; i++) this.bolsa[i - 1] = this.bolsa[i];
+    this.bolsa[BOLSA - 1] = 0;
+    return primero;
+  };
+
+  World.prototype.bolsaBusca = function (objeto) {
+    for (var i = 0; i < BOLSA; i++)
+      if (this.bolsa[i] === objeto + 1) return i + 1;
+    return 0;
+  };
+
+  /* Soltar lo primero: cae a tus pies, con unos frames de gracia para que no
+     lo vuelvas a coger donde lo acabas de dejar. Igual que np_soltar_objeto. */
+  World.prototype.soltarObjeto = function (quien) {
+    var p = this.players[quien], pa = this.data.player.actor;
+    var objeto = this.bolsa[0];
+    if (!objeto) return;
+    var hueco = this.huecoLibre();
+    if (hueco < 0) return;
+    this.bolsaSacar();
+    objeto--;
+    var d = this.data.items[objeto], ia = d.actor, e = this.entities[hueco];
+    e.active = 1;
+    e.kind = KIND_ITEM;
+    e.def = objeto;
+    e.x = p.x + I2F(idiv(pa.box_w - ia.box_w, 2));
+    e.y = p.y + I2F(pa.box_h - ia.box_h);
+    e.homeX = e.x; e.homeY = e.y;
+    e.vx = 0; e.vy = 0;
+    e.health = 1; e.hurt = 0; e.knock = 0; e.golpeado = 0;
+    e.altura = 0; e.valtura = 0; e.vida = 0;
+    e.timer = GRACIA_SOLTAR;
+    e.anim = ANIM_IDLE; e.animFrame = 0; e.animTimer = 0;
+    this.sfx |= SFX.COIN;
+  };
+
   World.prototype.collect = function (quien, e) {
     var d = this.data.items[e.def], p = this.players[quien];
     this.score += d.score;
@@ -1632,6 +1737,10 @@
       if (d.amount < this.data.player.subs.length) this.sub = d.amount;
     } else if (d.effect === 7) {
       this.bomba(d.amount);
+    } else if (d.effect === 8) {
+      /* el objeto que se lleva: si no cabe en la bolsa **se queda donde
+         estaba**, que es lo que obliga a elegir. Igual que np_collect. */
+      if (!this.bolsaMeter(e.def)) return;
     }
     e.active = 0;
   };
@@ -1640,6 +1749,57 @@
      porque lo que hay que guardar es donde estaba. Volver a pasar por el que
      ya esta marcado no hace nada; pasar por uno anterior si lo mueve hacia
      atras. Igual que np_check_touch en C. */
+  /* Abrir lo que se pueda de lo que tienes al lado: la puerta se abre con el
+     objeto que pide, el objeto se gasta y la casilla queda abierta para
+     siempre. Igual que np_abrir_cerrojos. */
+  /* Apunta una casilla como abierta; 0 si la lista ya estaba llena. */
+  World.prototype.apuntarAbierta = function (casilla) {
+    if (this.abiertos.length >= MAX_ABIERTOS) return 0;
+    this.abiertos.push(casilla);
+    return 1;
+  };
+
+  /* Una puerta de dos casillas es una puerta, no dos: se abre entera con un
+     solo objeto. Igual que np_abrir_vecinas. */
+  World.prototype.abrirVecinas = function (tx, ty, tile) {
+    var pasos = [[0, -1], [0, 1], [-1, 0], [1, 0]], d;
+    for (d = 0; d < 4; d++) {
+      var x = tx, y = ty;
+      for (;;) {
+        x += pasos[d][0];
+        y += pasos[d][1];
+        if (x < 0 || y < 0 || x >= this.level.width || y >= this.level.height) break;
+        var casilla = y * this.level.width + x;
+        if (this.level.cells[casilla] !== tile) break;
+        if (this.tileVisto(x, y) !== TILE_LOCK) break;
+        if (!this.apuntarAbierta(casilla)) return;
+      }
+    }
+  };
+
+  World.prototype.abrirCerrojos = function (tx0, ty0, tx1, ty1) {
+    if (!this.data.bolsa_activa) return;
+    for (var ty = ty0; ty <= ty1; ty++) {
+      for (var tx = tx0; tx <= tx1; tx++) {
+        if (tx < 0 || ty < 0 || tx >= this.level.width
+            || ty >= this.level.height) continue;
+        if (this.tileVisto(tx, ty) !== TILE_LOCK) continue;
+        var casilla = ty * this.level.width + tx;
+        var pide = this.data.tiles.need[this.level.cells[casilla]];
+        if (!pide) continue;
+        var hueco = this.bolsaBusca(pide - 1);
+        if (!hueco) continue;
+        if (this.abiertos.length >= MAX_ABIERTOS) return;
+        for (var i = hueco - 1; i + 1 < BOLSA; i++)
+          this.bolsa[i] = this.bolsa[i + 1];
+        this.bolsa[BOLSA - 1] = 0;
+        this.apuntarAbierta(casilla);
+        this.abrirVecinas(tx, ty, this.level.cells[casilla]);
+        this.sfx |= SFX.CHECK;
+      }
+    }
+  };
+
   World.prototype.checkTouch = function (quien) {
     var a = this.data.player.actor, p = this.players[quien];
     var tx0 = F2I(p.x) >> TILE_SHIFT;
@@ -1647,9 +1807,12 @@
     var ty0 = F2I(p.y) >> TILE_SHIFT;
     var ty1 = F2I(p.y + I2F(a.box_h) - 1) >> TILE_SHIFT;
     var tx, ty;
+    /* Los cerrojos se miran un poco mas alla de la caja: una puerta se abre
+       poniendote delante. Igual que np_check_touch. */
+    this.abrirCerrojos(tx0 - 1, ty0, tx1 + 1, ty1);
     for (ty = ty0; ty <= ty1; ty++) {
       for (tx = tx0; tx <= tx1; tx++) {
-        if (this.tileKindAt(tx, ty) !== TILE_CHECK) continue;
+        if (this.tileVisto(tx, ty) !== TILE_CHECK) continue;
         if (this.checkOn && this.checkX === tx && this.checkY === ty) return;
         this.checkOn = 1;
         this.checkX = tx;
@@ -1695,7 +1858,11 @@
         if (e.kind === KIND_BREAKABLE) continue; /* hay que pegarle */
         if (e.kind === KIND_ENEMY_SHOT) continue;   /* se mira en su update */
         if (e.kind === KIND_PRISONER) { this.prisonerFree(e, p); continue; }
-        if (e.kind === KIND_ITEM) { this.collect(quien, e); continue; }
+        /* lo que acabas de soltar no se recoge solo */
+        if (e.kind === KIND_ITEM) {
+          if (!e.timer) this.collect(quien, e);
+          continue;
+        }
         var d = this.data.enemies[e.def];
         /* Misma ventana de pisado que np_world.c: cayendo y con los pies por
            encima de la mitad del enemigo antes de moverse. */

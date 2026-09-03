@@ -239,6 +239,7 @@
   <span id="teclas-mover-8" hidden><kbd>&larr;</kbd><kbd>&rarr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd> moverse en 8 direcciones</span>
   <span id="teclas-saltar"><kbd>Z</kbd> / <kbd>espacio</kbd> saltar</span>
   <span id="teclas-atacar"><kbd>X</kbd> atacar</span>
+  <span id="teclas-soltar" hidden><kbd>X</kbd> soltar lo que llevas</span>
   <span id="teclas-disparar" hidden><kbd>X</kbd> disparar hacia donde miras</span>
   <span id="teclas-secundaria" hidden><kbd>&uarr;</kbd>+<kbd>X</kbd> arma secundaria</span>
   <span id="teclas-granada" hidden><kbd>Z</kbd> / <kbd>espacio</kbd> <span id="teclas-granada-que">lanzar granada</span></span>
@@ -611,7 +612,11 @@
   verTecla("teclas-mover", !CENITAL && !CINTA);
   verTecla("teclas-mover-8", CENITAL || CINTA);
   verTecla("teclas-saltar", !CENITAL);
-  verTecla("teclas-atacar", !CENITAL || CINTA);
+  /* En una aventura el boton no pega: suelta lo primero de la bolsa. Poner
+     "atacar" ahi seria mentirle a quien lo prueba. */
+  var BOLSA = !!DATA.bolsa_activa;
+  verTecla("teclas-atacar", (!CENITAL || CINTA) && !BOLSA);
+  verTecla("teclas-soltar", BOLSA);
   verTecla("teclas-disparar", CENITAL && !CINTA);
   verTecla("teclas-agachar", !CENITAL && !CINTA && !!DATA.player.crouch_drop);
   if ((DATA.player.subs || []).length) {
@@ -1026,7 +1031,7 @@
       for (var r = 0; r <= 14; r++) {
         var tx = col0 + c, ty = row0 + r;
         if (tx < 0 || tx >= level.width || ty < 0 || ty >= level.height) continue;
-        var tile = DATA.tiles.gfx[level.cells[ty * level.width + tx]];
+        var tile = world.tileGfxAt(tx, ty);
         drawFrame("__tiles__", tile, c * 16 - offX, r * 16 - offY, false);
       }
     }
@@ -1111,6 +1116,18 @@
     if (DATA.player.subs && DATA.player.subs.length) {
       var arma = (DATA.player.subs[world.sub] || DATA.player.subs[0]).label;
       text(31, 2, arma + " " + pad(Math.min(world.hearts, 99), 2));
+    }
+    /* Y en una aventura, lo que llevas encima. Ocupa la linea entera porque en
+       estos juegos es **la** informacion: sin mirar la bolsa no se sabe si la
+       puerta de delante se abre o hay que dar media vuelta. Igual que
+       np_extras_bar en C. */
+    if (DATA.bolsa_activa) {
+      var bolsa = "", n;
+      for (n = 0; n < world.bolsa.length; n++) {
+        if (!world.bolsa[n]) continue;
+        bolsa += (bolsa ? " " : "") + (DATA.items[world.bolsa[n] - 1].label || "");
+      }
+      text(20, 2, bolsa);
     }
     /* La vida, igual que np_life_bar en C: los llenos son los golpes que
        quedan y los puntos los perdidos. Con `vida: 1` no sale (no hay nada que

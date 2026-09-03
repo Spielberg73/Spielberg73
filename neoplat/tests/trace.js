@@ -35,6 +35,13 @@ function entityHash(w) {
   return hash >>> 0;
 }
 
+/* Lo que lleva la bolsa en un solo numero, igual que np_bolsa_firma en C. */
+function bolsaFirma(world) {
+  var firma = 0, i;
+  for (i = 0; i < world.bolsa.length; i++) firma = (firma * 256) + world.bolsa[i];
+  return firma;
+}
+
 function hex8(v) {
   var s = v.toString(16);
   while (s.length < 8) s = "0" + s;
@@ -57,7 +64,9 @@ inputs.forEach(function (par) {
     /* el dibujo del latigo: 0 = no hay ninguno en la lista */
     p0.whip ? 1 : 0,
     p0.crouch,
-    world.sub                    /* el arma secundaria que se lleva */
+    world.sub,                   /* el arma secundaria que se lleva */
+    /* y la aventura: lo que llevas encima y cuantas casillas has abierto */
+    bolsaFirma(world), world.abiertos.length
   ].join(" "));
 });
 process.stdout.write(out.join("\n") + "\n");

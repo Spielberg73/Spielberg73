@@ -2,8 +2,66 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.22.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.23.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.23
+
+**Sexto género: una aventura, al estilo Dizzy.**
+
+```bash
+ngplat nuevo miaventura --genero aventura
+```
+
+Se ve de lado, como el de plataformas, pero no va de saltar bien: va de
+**llevar la cosa correcta al sitio correcto**. Tres piezas nuevas del motor, y
+las tres se pueden usar sueltas en cualquier juego:
+
+- **La bolsa** (`efecto: llevar`). Un objeto así **no se gasta al tocarlo**: se
+  guarda, y caben tres. Con que haya uno en el juego, el botón de acción deja
+  de atacar y pasa a **soltar** lo primero de la bolsa a tus pies, y el
+  marcador enseña lo que llevas por su `marcador:`. Si la bolsa está llena, el
+  objeto se queda donde estaba: esa es la decisión que hace el juego.
+- **Los cerrojos** (`tipo: cerrojo` + `abre_con:`). Una casilla que frena como
+  una pared hasta que apareces con lo que pide; al abrirla se gasta el objeto y
+  el paso se queda abierto para siempre. Una puerta de varias casillas seguidas
+  es **una** puerta: se abre entera y cuesta un solo objeto. Y lo que pide
+  tiene que existir y tiene que ser de los que se llevan, o `ngplat` no
+  compila.
+- **El salto fijo** (`salto_fijo: si`). En el aire no se manda: al despegar
+  decides hacia dónde vas y con cuánto impulso, y ni soltar el botón acorta el
+  salto. Suena incómodo y es justo lo que hace que cada salto sea una decisión;
+  para subir un escalón hay que despegar **antes** de llegar a él.
+
+El proyecto de partida son dos niveles de **cuatro pantallas** cada uno, con la
+cámara de `pantallas` (sin scroll, un cuadro por sitio) y la misma cadena de
+tres contada de dos maneras: EL VALLE en orden —la llave abre la puerta, detrás
+el cubo apaga la hoguera, detrás el pico tira la pared— y LA CUEVA desordenada,
+donde el pico y la llave se cogen juntos y hacen falta en pantallas distintas.
+Y sus dibujos: el huevo, la araña, el murciélago, los tres objetos del puzle y
+diez tiles de valle y de cueva, en los dos estilos.
+
+**Lo que encontró la prueba de paridad.** El cerrojo frenaba en el preview y
+**no** en el motor en C: `np_blocks` no lo contaba, así que en las siete
+máquinas se podía atravesar una puerta cerrada. No lo vio nadie jugando —lo
+vio la traza, al primer género que usa cerrojos—. De paso, la traza ahora lleva
+la bolsa y las casillas abiertas, para que la próxima vez se vea antes.
+
+**Y lo que encontró la de direcciones impares.** La bolsa son tres huecos
+seguidos que se recorren en bucle, y gcc junta dos lecturas de byte pegadas en
+una sola de palabra: con la bolsa en una dirección impar, esa palabra es un
+*address error* y el 68000 **se para en seco** —la Mega Drive, el Amiga y el
+Atari ST se quedaban con la imagen congelada al arrancar—. Los huecos pasan a
+ser palabras, que caen siempre en par y no hay nada que juntar mal. La
+comprobación estática, además, ahora sigue la paridad del registro base: gcc
+coge a veces una base impar a propósito (`lea %a2@(27),%a3`) para llegar a un
+grupo de campos con desplazamientos cortos, y eso daba 27 falsos positivos.
+
+También: el marcador de las siete máquinas repinta la línea de "lo que llevas"
+cuando cambia **la bolsa** (antes solo miraba llaves y munición, así que cogías
+una llave y seguía enseñando lo de tres pantallas atrás), el editor llama a
+cada cerrojo por lo que pide en vez de "tile" a secas, y el bot sabe que con el
+salto fijo hay que despegar antes de llegar a la pared.
 
 ## 1.22
 

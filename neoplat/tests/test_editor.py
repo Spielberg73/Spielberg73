@@ -231,5 +231,37 @@ class TestEditorConGeneradores(unittest.TestCase):
         self.assertEqual(resultado.returncode, 0, resultado.stdout + resultado.stderr)
 
 
+class TestEditorConCerrojos(unittest.TestCase):
+    """El editor con el juego de aventura, que trae cerrojos: tiles de un tipo
+    nuevo y con un objeto detras. En la paleta salian como "tile" a secas y las
+    tres puertas se veian iguales."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not shutil.which("node"):
+            raise unittest.SkipTest("node no esta instalado")
+        from ngplat.scaffold import crear_proyecto
+        cls.tmp = tempfile.mkdtemp(prefix="neoplat-editor-aventura-")
+        proyecto = os.path.join(cls.tmp, "aventura")
+        crear_proyecto(proyecto, "AVENTURA", "TEST", genero="aventura")
+        datos = build_data(build_project(load_project(proyecto)))
+        for hoja in datos["sheets"].values():
+            hoja["url"] = ""
+        cls.datos = os.path.join(cls.tmp, "datos.json")
+        with open(cls.datos, "w", encoding="utf-8") as fh:
+            json.dump(datos, fh)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(getattr(cls, "tmp", ""), ignore_errors=True)
+
+    def test_el_editor_conoce_los_cerrojos(self):
+        resultado = subprocess.run(
+            ["node", os.path.join(KIT, "tests", "editor_aventura.js"), self.datos],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(resultado.returncode, 0, resultado.stdout + resultado.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -211,6 +211,7 @@ jugador:
   gravedad: 0.28
   max_caida: 6.0
   doble_salto: no
+  salto_fijo: no       # si (aventuras): en el aire no se manda
   coyote: 6            # frames de margen para saltar tras salir de un borde
   buffer_salto: 6      # frames de margen para saltar antes de aterrizar
   pisar_enemigos: si
@@ -256,6 +257,22 @@ y sin `bucle: no` volvería al primero a mitad del latigazo.
 
 **La caja de colisión** se centra horizontalmente en el fotograma y se apoya en
 su borde inferior. Hazla algo más estrecha que el dibujo: se juega mejor.
+
+### `salto_fijo`: el salto que no se manda
+
+Lo normal es el salto de toda la vida: se corrige en el aire con
+`control_aire:` y soltar el botón lo acorta con `corte_salto:`. Con
+**`salto_fijo: si`** eso desaparece:
+
+- al despegar se decide **hacia dónde vas y con cuánto impulso** —lo que
+  estuvieras pulsando en ese frame— y hasta caer no se cambia;
+- soltar el botón **no** acorta el salto: el arco es siempre el mismo;
+- y si chocas de lado contra una pared, te quedas sin impulso para el resto del
+  salto.
+
+Es el salto de las aventuras clásicas. Suena incómodo y es justo lo que hace
+que cada salto sea una decisión y no un trámite: para subir un escalón hay que
+despegar **antes** de llegar a él, no pegado a la pared.
 
 ### `desgaste`: la vida que se gasta sola
 
@@ -724,6 +741,7 @@ Tipos:
 | `escalera` | escalera que **sube hacia la derecha** |
 | `escalera_izquierda` | escalera que **sube hacia la izquierda** |
 | `control` | punto de control: no estorba, pero apunta dónde reapareces |
+| `cerrojo` | frena como una pared hasta que llegas con el objeto que pide |
 | `decor` | se dibuja, no estorba |
 
 Atajos: `'#': 3` equivale a `{tile: 3, tipo: solido}`, y `'#': [3, plataforma]`
@@ -731,6 +749,32 @@ también vale.
 
 Si no pones `leyenda`, se usa la de por defecto (`.` vacío, `#` sólido, `=`
 plataforma, `^` peligro, `G` meta).
+
+### `cerrojo`: la puerta que pide algo
+
+Un cerrojo es una casilla que **no se pasa** hasta que apareces con lo que
+pide. Al abrirla se gasta el objeto, suena, y el paso se queda abierto **para
+siempre** (hasta que se reinicie el nivel). Es la otra mitad de una aventura
+—la primera es [cargar con las cosas](#objetos)— y lo que convierte un mapa
+pequeño en un puzle.
+
+```yaml
+tiles:
+  leyenda:
+    'D': {tile: 7, tipo: cerrojo, abre_con: llave}
+    'F': {tile: 8, tipo: cerrojo, abre_con: cubo}
+```
+
+- `abre_con:` nombra un objeto de `objetos:` que tenga **`efecto: llevar`**. Si
+  no existe, o si no es de los que se llevan, `ngplat` no compila: una puerta
+  que pide algo que no se puede coger no se abre nunca, y eso no es un puzle
+  difícil, es un juego roto.
+- Se abre **poniéndote delante**, no metiéndote dentro (dentro no se puede
+  estar: frena como una pared).
+- Una puerta de **varias casillas seguidas** —una columna de dos, una fila de
+  tres— es **una** puerta: se abre entera y cuesta **un solo objeto**. Dos
+  casillas del mismo tipo con un hueco en medio son dos puertas y cuestan dos.
+- Cada nivel puede llevar hasta doce casillas abiertas a la vez.
 
 ## `enemigos`
 
@@ -820,7 +864,7 @@ objetos:
     caja: [10, 10]
     puntos: 10
     efecto: puntos       # puntos | vida | salud | llave | municion | mejora
-                         # | subarma | bomba
+                         # | subarma | bomba | llevar
     cantidad: 1
     animaciones:
       quieto: {frames: [0, 1, 2, 3], velocidad: 7}
@@ -858,6 +902,30 @@ cambia el arma secundaria que se lleva por la que diga (ver
 [`secundarias`](#varias-armas-y-el-objeto-que-las-cambia)). El arma tiene que
 existir en `secundarias:` o `ngplat` no compila: si no, se cogería y no pasaría
 nada.
+
+**Lo que se lleva encima (`efecto: llevar`).** Un objeto con `efecto: llevar`
+**no se gasta al tocarlo**: se guarda en la **bolsa**, que tiene tres huecos.
+Es la mitad de una aventura tipo Dizzy —la otra son los
+[cerrojos](#cerrojos-la-puerta-que-pide-algo)—, y con que haya uno solo en el
+juego cambian dos cosas más:
+
+- el **botón de acción** deja de atacar y pasa a **soltar** lo primero de la
+  bolsa, a tus pies (con unos frames de gracia para que no lo vuelvas a coger
+  en el sitio donde lo acabas de dejar);
+- el **marcador** enseña lo que llevas, por su `marcador:`.
+
+```yaml
+objetos:
+  llave:
+    sprite: graficos/llave.png
+    caja: [10, 12]
+    efecto: llevar
+    marcador: LLAVE      # cinco letras; sin esto, las del nombre
+```
+
+Si la bolsa está llena, el objeto **se queda donde estaba**: no se pierde, pero
+tampoco te lo llevas, y esa es la decisión que hace el juego. La bolsa se vacía
+al empezar cada nivel.
 
 ## `generadores`
 

@@ -189,7 +189,19 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("const uint16_t np_tile_gfx[] = {")
     src.append(_array(graphics))
     src.append("};")
+    # Que objeto abre cada cerrojo (el objeto mas uno; 0 = no es cerrojo).
+    indice_objetos = {o.name: i for i, o in enumerate(build.items)}
+    necesita = [indice_objetos.get(t.needs, -1) + 1 if t.kind == "lock" else 0
+                for t in build.tiles]
+    src.append("const uint8_t np_tile_need[] = {")
+    src.append(_array(necesita))
+    src.append("};")
     src.append("const uint16_t np_tile_count = %d;" % len(kinds))
+    # El dibujo que se ve por el hueco de una puerta abierta: el del primer
+    # tile vacio de la leyenda (que es el cielo o el suelo de fondo). Sin esto
+    # una puerta abierta se seguiria viendo cerrada.
+    vacio = next((graphics[i] for i, k in enumerate(kinds) if k == 0), 0)
+    src.append("const uint16_t np_tile_gfx_vacio = %d;" % vacio)
     src.append("")
 
     # --- jugador
@@ -211,9 +223,12 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
                % (pv["grab_time"], pv["throw_speed"]))
     src.append("    %d, %d,   /* rodillazo y estrellon */"
                % (pv["grab_damage"], pv["throw_damage"]))
-    src.append("    %d, %d, %d, %d, %d, %d," % (pv["coyote"], pv["jump_buffer"],
-                                                pv["double_jump"], pv["stomp"],
-                                                pv["health"], pv["crouch_drop"]))
+    src.append("    %d, %d, %d, %d, %d," % (pv["coyote"], pv["jump_buffer"],
+                                            pv["double_jump"], pv["stomp"],
+                                            pv["health"]))
+    src.append("    %d,   /* si se manda en el aire */" % pv["air_control"])
+    src.append("    %d,   /* cuanto baja el techo al agacharse */"
+               % pv["crouch_drop"])
     # el ataque: su dibujo es el ultimo de la lista de actores, si lo hay
     av = attack_values(project)
     src.append("    /* ataque */")
@@ -359,6 +374,19 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
         src.append("    }," if i + 1 < len(build.items) else "    }")
     src.append("};")
     src.append("const uint16_t np_item_count = %d;" % len(build.items))
+    # Como sale cada objeto en la bolsa del marcador. Cinco letras, como las
+    # armas secundarias: es lo que cabe en la linea de "lo que llevas".
+    src.append("const char np_item_names[][6] = {")
+    if not build.items:
+        src.append('    ""')
+    for i, item in enumerate(build.items):
+        src.append('    "%s"%s' % (item.actor.label,
+                                   "," if i + 1 < len(build.items) else ""))
+    src.append("};")
+    # 1 = el juego lleva bolsa. Con esto a cero el boton de accion hace lo de
+    # siempre y el marcador no ensena nada de esto.
+    lleva_bolsa = any(item.actor.effect == "carry" for item in build.items)
+    src.append("const uint8_t np_bolsa_activa = %d;" % (1 if lleva_bolsa else 0))
     src.append("")
 
     # --- plataformas moviles

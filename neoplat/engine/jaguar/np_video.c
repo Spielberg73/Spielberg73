@@ -32,6 +32,9 @@ static int32_t np_base_tile;                    /* primera columna dibujada    *
    corriendo. */
 static uint8_t np_mapa_fijo;
 static const NpLevel *np_nivel_actual;
+/* Cuantas puertas habia abiertas al pintar el escenario: al abrirse una hay
+   que repintar, que la casilla pasa a ser aire. */
+static uint8_t np_abiertos_pintados;
 
 /* --- la lista de objetos ------------------------------------------------ */
 
@@ -180,7 +183,7 @@ static void np_columna(const NpWorld *w, int32_t tile_x)
     uint16_t tiles[NP_MAPA_ALTO / NP_TILE];
     int32_t fila;
     if (columna < 0 || columna >= NP_MAPA_ANCHO / NP_TILE) return;
-    np_tile_gfx_column(w->level, tile_x, 0, NP_MAPA_ALTO / NP_TILE, tiles);
+    np_tile_gfx_column(w, tile_x, 0, NP_MAPA_ALTO / NP_TILE, tiles);
     for (fila = 0; fila < NP_MAPA_ALTO / NP_TILE; fila++)
         np_pegar_tile(tiles[fila], columna * NP_TILE, fila * NP_TILE);
 }
@@ -293,8 +296,9 @@ void np_video_frame(const NpWorld *w)
     uint32_t datos;
     uint8_t i;
 
-    if (w->level != np_nivel_actual) {
+    if (w->level != np_nivel_actual || w->abiertos_n != np_abiertos_pintados) {
         np_nivel_actual = w->level;
+        np_abiertos_pintados = w->abiertos_n;
 #if NP_LAYER_COUNT > 0
         np_pintar_fondo(w);          /* el parallax se pinta una vez por nivel */
 #endif

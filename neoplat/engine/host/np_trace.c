@@ -62,7 +62,8 @@ int main(int argc, char **argv)
         const NpPlayer *p1 = &world.players[1];
         np_world_step(&world, (uint16_t)input, (uint16_t)input2);
         printf("%lu %ld %ld %ld %ld %u %u %u %lu %ld %ld %u %u %u %08x"
-               " %ld %ld %ld %ld %u %u %u %u %u %u %u %u %u %d %d %u %u %u %u\n",
+               " %ld %ld %ld %ld %u %u %u %u %u %u %u %u %u %d %d %u %u %u %u"
+               " %lu %u\n",
                (unsigned long)world.frame,
                (long)p0->x, (long)p0->y, (long)p0->vx, (long)p0->vy,
                (unsigned)world.state, (unsigned)p0->health,
@@ -81,7 +82,13 @@ int main(int argc, char **argv)
                /* el dibujo del latigo: 0 = no hay ninguno en la lista */
                (unsigned)(p0->whip ? 1 : 0),
                (unsigned)p0->crouch,
-               (unsigned)world.sub);    /* el arma secundaria que se lleva */
+               (unsigned)world.sub,     /* el arma secundaria que se lleva */
+               /* y la aventura: lo que llevas encima y cuantas casillas has
+                  abierto. Sin esto la traza no miraria la bolsa y una de las
+                  dos implementaciones podria guardar lo que le diera la gana
+                  mientras el jugador acabara en el mismo sitio. */
+               (unsigned long)np_bolsa_firma(&world),
+               (unsigned)world.abiertos_n);
     }
     fclose(fh);
     return 0;

@@ -160,6 +160,43 @@ class TestNivelesJugables(unittest.TestCase):
         # el primer grupo o muerto de tanto cobrar sin poder responder
         self.assertNotIn("ok   nivel", resultado.stdout, resultado.stdout)
 
+    def test_el_proyecto_de_aventura_tambien_se_termina(self):
+        """El genero de aventura no se pasa andando: cada pantalla acaba en un
+        cerrojo y lo que lo abre esta en la anterior. Sus dos niveles tienen
+        que poder resolverse."""
+        destino = os.path.join(self.tmp, "aventura")
+        crear_proyecto(destino, "AVENTURA", "TEST", genero="aventura")
+        resultado = self._jugar(destino)
+        self.assertEqual(resultado.returncode, 0,
+                         "el bot no puede terminar el proyecto de aventura:\n"
+                         + resultado.stdout)
+
+    def test_en_la_aventura_sin_los_objetos_no_se_pasa(self):
+        """Y que lo que le hace terminar son los objetos: al mismo juego sin la
+        llave, el cubo y el pico del primer nivel no le queda forma de abrir
+        nada, asi que el bot se queda plantado delante de la primera puerta. Si
+        tambien pasara, es que los cerrojos no frenaban y la prueba de arriba no
+        probaba nada."""
+        destino = os.path.join(self.tmp, "aventura-sin-nada")
+        crear_proyecto(destino, "SINNADA", "TEST", genero="aventura")
+        ruta = os.path.join(destino, "game.yaml")
+        with open(ruta, encoding="utf-8") as fh:
+            texto = fh.read()
+        # se quitan del mapa los tres objetos del primer nivel -la llave, el
+        # cubo y el pico-; el mapa, las puertas y el camino se quedan igual
+        antes = ("      ..P......k................D....c...a...o......F...x..."
+                 "^..m........W...o.tttttttt")
+        self.assertEqual(texto.count(antes), 1,
+                         "el primer nivel ya no tiene la fila de los objetos")
+        despues = antes.replace("k", ".", 1).replace("c", ".", 1).replace("x", ".", 1)
+        texto = texto.replace(antes, despues)
+        with open(ruta, "w", encoding="utf-8") as fh:
+            fh.write(texto)
+        resultado = self._jugar(destino)
+        self.assertNotEqual(resultado.returncode, 0,
+                            "sin los objetos tambien se pasan las puertas")
+        self.assertNotIn("ok   nivel 1", resultado.stdout, resultado.stdout)
+
     def _mazmorra_con(self, nombre, parches):
         """Un proyecto de mazmorra con el game.yaml retocado."""
         destino = os.path.join(self.tmp, nombre)

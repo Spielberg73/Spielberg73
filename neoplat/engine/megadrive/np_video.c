@@ -105,7 +105,7 @@ static void np_columna_escenario(const NpWorld *w, int32_t tile_x)
     int32_t alto = (int32_t)nivel->height;
     int32_t fila;
     if (alto > MD_PLANE_H / 2) alto = MD_PLANE_H / 2;
-    np_tile_gfx_column(nivel, tile_x, 0, (uint16_t)alto, tiles);
+    np_tile_gfx_column(w, tile_x, 0, (uint16_t)alto, tiles);
     for (fila = 0; fila < alto; fila++) {
         uint16_t base = tiles[fila];
         uint16_t paleta = np_tileset_palette;
@@ -221,12 +221,15 @@ void np_video_frame(const NpWorld *w)
     uint8_t cuantas;
     static int32_t ultima_columna = -9999;
     static const NpLevel *ultimo_nivel = 0;
+    /* al abrirse una puerta la casilla pasa a ser aire: hay que repintar */
+    static uint8_t ultimos_abiertos = 0;
     int32_t columna = w->cam_x >> 4;
     uint8_t i;
 
-    if (w->level != ultimo_nivel) {
+    if (w->level != ultimo_nivel || w->abiertos_n != ultimos_abiertos) {
         int32_t c;
         ultimo_nivel = w->level;
+        ultimos_abiertos = w->abiertos_n;
         ultima_columna = columna;
         np_color_de_fondo(w->level->background);
         np_pintar_parallax(w);

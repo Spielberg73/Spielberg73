@@ -35,7 +35,17 @@
     var pa = data.player.actor;
     var limite = opciones.frames || 6000;
     var maxMuertes = opciones.muertes === undefined ? 6 : opciones.muertes;
+    /* Cuanto mira hacia delante antes de saltar. Con el salto de siempre basta
+       con mirarse los pies: se corrige en el aire. Con el salto de las
+       aventuras **no**, y ademas chocar de lado contra la pared te deja el
+       impulso a cero, asi que hay que saltar bastante antes de llegar: mirando
+       solo seis pixeles el bot se estampaba contra el primer escalon y volvia
+       a caer en el mismo sitio, una y otra vez. */
     var vista = opciones.vista === undefined ? 6 : opciones.vista;
+    /* Y lo que mira para las paredes, que es otra cosa: ver un escalon a seis
+       pixeles con el salto de las aventuras es estamparse contra el, porque
+       chocar de lado deja el impulso a cero y se cae en el mismo sitio. */
+    var vistaPared = data.player.air_control ? vista : vista + 20;
     var maxX = 0, sinAvanzar = 0, muertes = 0, saltando = 0;
     /* Si el juego lleva ataque, el bot pega a lo que se le pone delante. Sin
        esto, en un juego de latigo -donde no se pisa a los enemigos- se metia
@@ -70,8 +80,14 @@
       var medio = NPCore.F2I(p.y) + Math.floor(pa.box_h / 2);
       var input = NPCore.IN.RIGHT;
 
-      var pared = w.tileKindAt(frente >> 4, medio >> 4) === TILE_SOLID ||
-                  w.tileKindAt(frente >> 4, (pies - 2) >> 4) === TILE_SOLID;
+      /* La pared se mira mas lejos que el suelo **a proposito**: para subir un
+         escalon hay que despegar antes de llegar, pero para saltar un hueco o
+         unos pinchos hay que despegar en el borde, no dos pasos antes, o se
+         cae justo encima. Con el salto de siempre da igual -se corrige en el
+         aire-; con el de las aventuras es la diferencia entre pasar y morir. */
+      var delante = NPCore.F2I(p.x) + pa.box_w + vistaPared;
+      var pared = w.tileKindAt(delante >> 4, medio >> 4) === TILE_SOLID ||
+                  w.tileKindAt(delante >> 4, (pies - 2) >> 4) === TILE_SOLID;
       var sueloDelante = w.tileKindAt(frente >> 4, (pies + 2) >> 4);
       var hueco = sueloDelante !== TILE_SOLID && sueloDelante !== TILE_PLATFORM;
       var peligro = w.tileKindAt(frente >> 4, medio >> 4) === TILE_HAZARD ||

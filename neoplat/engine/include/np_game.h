@@ -120,6 +120,12 @@ typedef struct {
     uint8_t grab_damage;     /* lo que hace cada rodillazo */
     uint8_t throw_damage;    /* lo que duele estrellarse contra el suelo */
     uint8_t coyote, jump_buffer, double_jump, stomp, health;
+    /* Si se manda en el aire. Lo normal es que si -uno es el salto de toda la
+     * vida-. A cero es el salto de las aventuras clasicas: al despegar se
+     * decide hacia donde vas y con que impulso, y hasta caer no se cambia; ni
+     * siquiera soltar el boton acorta el salto. Suena a incomodo y es justo lo
+     * que hace que cada salto sea una decision y no un tramite. */
+    uint8_t air_control;
     /* Cuanto baja el techo de la caja al agacharse, en pixeles. Cero quiere
      * decir que el juego no lleva agacharse, y el boton de abajo solo sirve
      * para bajarse de las plataformas y de las escaleras.
@@ -259,6 +265,9 @@ extern const NpBreakableDef np_breakables[];
 extern const NpLevel np_levels[];
 extern const NpLayer np_layers[];
 extern const uint8_t np_tile_kind[];     /* tipo de cada tile del proyecto */
+/* Que objeto abre cada tile de cerrojo: el objeto **mas uno**, o cero si esa
+   casilla no es un cerrojo. */
+extern const uint8_t np_tile_need[];
 extern const uint16_t np_tile_gfx[];     /* tile grafico dentro de la ROM C */
 extern const np_fix np_sin_table[64];    /* seno en 24.8, un ciclo completo */
 /* Orden que hay que mandar al Z80 por cada evento de sonido (0 = sin sonido).
@@ -282,9 +291,18 @@ extern const uint8_t np_sub_count;       /* 0 = el juego no lleva secundaria */
    que deja libre la cuenta de llaves. Con una sola arma pone "AMMO", que es
    lo de siempre; con varias hace falta saber cual llevas. */
 extern const char np_sub_names[][6];
+/* Y como se llama cada objeto en el marcador: cinco letras, para la bolsa de
+   las aventuras. Sale del `marcador:` del objeto, o de su nombre recortado. */
+extern const char np_item_names[][6];
+/* 1 = el juego lleva bolsa (hay algun objeto de `efecto: llevar`). Con esto a
+   cero el boton de accion hace lo de siempre y el marcador no ensena nada. */
+extern const uint8_t np_bolsa_activa;
 extern const uint16_t np_platform_count;
 extern const uint16_t np_breakable_count;
 extern const uint16_t np_tile_count;
+/* El dibujo que se ve por el hueco de una puerta abierta: el del primer tile
+   vacio de la leyenda. */
+extern const uint16_t np_tile_gfx_vacio;
 extern const uint16_t np_tileset_first_tile;
 extern const uint8_t np_tileset_palette;
 extern const uint8_t np_start_lives;
