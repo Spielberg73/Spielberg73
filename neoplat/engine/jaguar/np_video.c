@@ -286,6 +286,8 @@ static void np_actor(const NpActorDef *def, int32_t x, int32_t y,
 
 void np_video_frame(const NpWorld *w)
 {
+    const uint8_t *orden;
+    uint8_t cuantas;
     int32_t columna = w->cam_x / NP_TILE;
     static int32_t ultima_columna = -9999;
     uint32_t datos;
@@ -334,8 +336,12 @@ void np_video_frame(const NpWorld *w)
                   NP_SCREEN_W / 8 + 1, NP_SCREEN_H, NP_MAPA_ANCHO / 8, 1);
     }
 
-    for (i = 0; i < w->entity_count; i++) {
-        const NpEntity *e = &w->entities[i];
+    /* De mas lejos a mas cerca: en la vista de cinta los actores se pisan a
+       cada rato y hay que pintarlos por la linea del suelo. En las demas
+       vistas np_orden_dibujo devuelve el orden de la lista tal cual. */
+    orden = np_orden_dibujo(w, &cuantas);
+    for (i = 0; i < cuantas; i++) {
+        const NpEntity *e = &w->entities[NP_DIBUJO(orden, i)];
         const NpActorDef *def;
         int32_t sx, sy;
         if (!e->active) continue;

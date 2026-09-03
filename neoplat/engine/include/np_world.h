@@ -47,6 +47,10 @@ typedef struct {
     /* La serie de golpes: por cual va y cuanto queda para que se corte. */
     uint16_t combo_timer;
     uint8_t combo_link;
+    /* A quien tienes agarrado: su sitio en la lista **mas uno** (0 = a nadie),
+       y lo que le queda de agarre antes de soltarse. */
+    uint16_t grab_timer;
+    uint8_t grab;
     uint8_t lives;           /* las vidas son de cada uno */
     uint8_t playing;         /* 0 = fuera (segundo jugador de una partida a uno,
                                 o el que se ha quedado sin vidas) */
@@ -65,6 +69,10 @@ typedef struct {
        del ultimo golpe de una serie. Mientras dura no decide nada ni hace dano
        al tocarte, que es lo que hace que rematar sirva de algo. */
     uint8_t knock;
+    /* Lo alto que esta sobre el suelo, para el que sale volando de un
+       lanzamiento. Vale lo mismo que en el jugador: `y` es donde se dibuja y
+       la linea del suelo es y + altura. Fuera de la vista de cinta es cero. */
+    np_fix altura, valtura;
     /* A quien ya ha tocado **este** golpe: un bit por jugador. La caja del
        cuerpo a cuerpo se queda puesta varios frames y acertaria en todos, asi
        que se marca al tocar y se limpia al empezar el golpe siguiente. Antes
@@ -115,6 +123,39 @@ uint16_t np_tile_gfx_at(const NpLevel *level, int32_t tx, int32_t ty);
 void np_tile_gfx_column(const NpLevel *level, int32_t tx, int32_t ty,
                         uint16_t count, uint16_t *out);
 const NpActorDef *np_entity_def(const NpEntity *e);
+
+/* En que orden se dibujan las entidades. Rellena `orden` con sus sitios en la
+ * lista y devuelve cuantas hay que pintar.
+ *
+ * Fuera de la vista de cinta es el orden de siempre (0, 1, 2...) y no cuesta
+ * nada. En la de cinta van **de mas lejos a mas cerca**, o sea por la linea del
+ * suelo: en un juego de tortas los actores se pisan todo el rato y, sin esto,
+ * el que esta detras se dibuja delante y no se entiende quien esta donde.
+ *
+ * Lo usan los seis dibujantes de maquina (y el preview hace lo mismo), asi que
+ * el reparto es identico en todas.
+ *
+ * La lista la pone el motor y se devuelve prestada: asi ninguna maquina tiene
+ * que reservar sesenta y cuatro bytes de pila en mitad del frame, que en el ST
+ * -donde la pila vive apretada- se lleva por delante otras cosas. Vale hasta
+ * la siguiente llamada, que es justo lo que dura el dibujado. */
+const uint8_t *np_orden_dibujo(const NpWorld *w, uint8_t *cuantas);
+
+/* Y como lo usan los dibujantes:
+ *
+ *     orden = np_orden_dibujo(w, &cuantas);
+ *     for (i = 0; i < cuantas; i++) {
+ *         const NpEntity *e = &w->entities[NP_DIBUJO(orden, i)];
+ *
+ * En un juego de cinta NP_DIBUJO mira la lista; en cualquier otro se resuelve
+ * en `i` al compilar, asi que el bucle queda **exactamente** el de siempre: ni
+ * una indireccion de mas. No es purismo: en el Atari ST esa indireccion, en el
+ * bucle que dibuja a todos los actores, cuesta lo bastante como para que el
+ * juego pierda el vblank y la musica suene lenta.
+ *
+ * NP_DIBUJO lo escribe el compilador en gamedata.h, que es donde se sabe que
+ * vista lleva el juego. */
+
 uint8_t np_actor_frame(const NpActorDef *def, uint8_t anim, uint8_t anim_frame);
 /* Si hay que dibujar al jugador `quien` (0 o 1): fuera de juego, en el titulo o
    en mitad del parpadeo de invulnerabilidad, no. */

@@ -25,7 +25,9 @@
   function jugar(NPCore, data, nivel, opciones) {
     opciones = opciones || {};
     /* Un juego de comando no se juega andando hacia la derecha: se sube. Ese
-       bot tiene su propia cabeza. */
+       bot tiene su propia cabeza. Y uno de tortas tampoco: ahi no se avanza
+       hasta limpiar la pantalla, asi que hay que pelear. */
+    if (data.view === "cinta") return jugarCinta(NPCore, data, nivel, opciones);
     if (data.view === "cenital") return jugarCenital(NPCore, data, nivel, opciones);
     var w = NPCore.create(data);
     w.step(NPCore.IN.START);
@@ -259,6 +261,127 @@
       lista.push({ nombre: "la meta", quiere: null });
     }
     return { lista: lista };
+  }
+
+  /* ------------------------------------------------------------------ *
+   * El bot de la vista de cinta (yo contra el barrio).
+   *
+   * Aqui no vale andar hacia la derecha: la camara no pasa de pantalla
+   * mientras quede alguien vivo, asi que el nivel **se pelea**. El bot hace lo
+   * que haria cualquiera: si tiene a alguien delante, se cuadra en su misma
+   * profundidad y le pega; si no queda nadie a la vista, tira hacia la salida.
+   *
+   * Cuadrarse antes de pegar no es un detalle: en esta vista dos que no estan
+   * a la misma profundidad no se tocan, asi que un bot que solo anduviera
+   * hacia la derecha se pasaria el nivel entero dando punetazos al aire.
+   * ------------------------------------------------------------------ */
+  function jugarCinta(NPCore, data, nivel, opciones) {
+    var w = NPCore.create(data);
+    w.step(NPCore.IN.START);
+    if (nivel) w.loadLevel(nivel);
+    var pa = data.player.actor;
+    var limite = opciones.frames || 12000;
+    var maxMuertes = opciones.muertes === undefined ? 6 : opciones.muertes;
+    var ataque = data.player.attack && data.player.attack.kind ? data.player.attack : null;
+    var alcance = ataque ? (ataque.range || 16) : 0;
+    var muertes = 0, maxX = 0, sinAvanzar = 0, boton = 0;
+    /* frames seguidos empujando contra algo sin avanzar: es lo que dice que
+       hay que rodear en vez de seguir insistiendo */
+    var rozando = 0, antesX = -1;
+
+    for (var i = 0; i < limite; i++) {
+      var p = w.players[0];
+      var cx = NPCore.F2I(p.x), cy = NPCore.F2I(p.y);
+      var input = 0;
+
+      /* Con alguien agarrado no hay nada que decidir: se le lanza. Es el golpe
+         mas fuerte del genero y ademas te lo quita de encima, que es de lo que
+         va agarrar a alguien. */
+      if (p.grab) {
+        boton = !boton;
+        w.step(boton ? NPCore.IN.JUMP : 0);
+        continue;
+      }
+
+      /* A quien pegarle: el enemigo vivo mas cercano que este en pantalla. */
+      var objetivo = null, cerca = 99999;
+      for (var k = 0; k < w.entityCount; k++) {
+        var e = w.entities[k];
+        if (!e.active || e.kind !== KIND_ENEMY || e.knock) continue;
+        var ex = NPCore.F2I(e.x) - w.camX;
+        if (ex < -16 || ex > 320) continue;          /* fuera de la pantalla */
+        var d = Math.abs(NPCore.F2I(e.x) - cx) + Math.abs(NPCore.F2I(e.y) - cy);
+        if (d < cerca) { cerca = d; objetivo = e; }
+      }
+
+      if (objetivo) {
+        var ex2 = NPCore.F2I(objetivo.x), ey2 = NPCore.F2I(objetivo.y);
+        /* Lo primero, si llevamos un rato sin avanzar: hay algo por medio -una
+           valla, un contenedor- y se rodea cambiando de profundidad. Va antes
+           que cuadrarse a proposito: con un maton al otro lado de la valla,
+           cuadrarse con el es justo lo que deja al bot dando vueltas contra la
+           valla para siempre. */
+        if (rozando > 20) {
+          input |= (rozando & 64) ? NPCore.IN.UP : NPCore.IN.DOWN;
+          input |= (ex2 > cx) ? NPCore.IN.RIGHT : NPCore.IN.LEFT;
+        }
+        /* y si no, la profundidad: sin cuadrarse, el punetazo pasa de largo */
+        else if (ey2 - cy > 2) input |= NPCore.IN.DOWN;
+        else if (cy - ey2 > 2) input |= NPCore.IN.UP;
+        else {
+          var hueco = ex2 - cx;
+          if (hueco > alcance - 2) input |= NPCore.IN.RIGHT;
+          else if (hueco < -(alcance - 2)) input |= NPCore.IN.LEFT;
+          else if (ataque) {
+            /* a tiro: se pega, soltando el boton entre golpe y golpe porque el
+               ataque va por flanco */
+            boton = !boton;
+            if (boton) input |= NPCore.IN.ACTION;
+          }
+        }
+      } else {
+        /* Pantalla limpia: a por la salida. Y si algo se pone por medio -una
+           valla, un contenedor-, se prueba a rodearlo por arriba y por abajo,
+           que es lo que haria cualquiera: en esta vista casi todo se rodea
+           cambiando de profundidad. */
+        input |= NPCore.IN.RIGHT;
+        if (rozando > 20) input |= (rozando & 64) ? NPCore.IN.UP : NPCore.IN.DOWN;
+      }
+
+      w.step(input);
+
+      if (w.state === NPCore.STATE.LEVEL_END || w.state === NPCore.STATE.FINISHED)
+        return { ok: true, frames: i, muertes: muertes, avance: maxX };
+      if (w.state === NPCore.STATE.DYING) {
+        muertes++;
+        if (muertes > maxMuertes) {
+          return { ok: false, motivo: "el bot muere una y otra vez",
+                   muertes: muertes, avance: maxX, x: maxX };
+        }
+        while (w.state !== NPCore.STATE.PLAY && w.state !== NPCore.STATE.GAME_OVER &&
+               w.state !== NPCore.STATE.TITLE) w.step(0);
+        if (w.state !== NPCore.STATE.PLAY) {
+          return { ok: false, motivo: "se queda sin vidas", muertes: muertes,
+                   avance: maxX, x: maxX };
+        }
+        w.players[0].lives = data.lives;
+        sinAvanzar = 0;
+        continue;
+      }
+
+      /* "Ir bien" es avanzar por la calle: si no se avanza en mucho rato, o el
+         nivel no se puede limpiar o el bot no llega a la salida. */
+      var ahora = NPCore.F2I(w.players[0].x);
+      rozando = (ahora === antesX) ? rozando + 1 : 0;
+      antesX = ahora;
+      if (ahora > maxX) { maxX = ahora; sinAvanzar = 0; }
+      else if (++sinAvanzar > 900) {
+        return { ok: false, motivo: "se queda atascado en la calle",
+                 muertes: muertes, avance: maxX, x: ahora };
+      }
+    }
+    return { ok: false, motivo: "no llega a la meta a tiempo",
+             muertes: muertes, avance: maxX, x: maxX };
   }
 
   function jugarCenital(NPCore, data, nivel, opciones) {

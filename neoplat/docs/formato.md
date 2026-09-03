@@ -170,6 +170,31 @@ jugador:
     correr: {frames: [4, 5], velocidad: 8}   # de lado
 ```
 
+**`cinta`** es la vista de los juegos de tortas (Double Dragon, Final Fight,
+Streets of Rage): se ve de lado, pero se anda por una **franja de suelo** con
+profundidad. Es la cenital **más una tercera coordenada**, la altura sobre el
+suelo, que es la que sube el salto:
+
+| | cenital | cinta |
+|---|---|---|
+| movimiento | las ocho direcciones | igual |
+| el botón de saltar | tira el arma secundaria | **salta**, y en el aire no se cambia de idea |
+| el de acción | dispara a donde miras | **pega** de cerca, al lado que miras |
+| dos que se tocan | basta con estar encima | tienen que coincidir **en profundidad y en altura** |
+
+De esa tercera coordenada sale la regla del género: al saltar, tu caja sube con
+el dibujo, así que el puñetazo de abajo te pasa por debajo; y dos que no están
+a la misma profundidad no se tocan aunque en pantalla parezca que sí. Por eso
+antes de pegar hay que **cuadrarse**.
+
+Lo que se dibuja es lo de siempre —de lado, mirando a la derecha, y el motor lo
+espeja— más dos ranuras que aquí se notan: `saltar` y `remate`.
+
+**Y la cámara lleva cerrojo**: en `cinta`, mientras quede un enemigo vivo en
+pantalla, la vista no avanza. Hacia atrás sí se mueve, porque lo que se cierra
+es el paso y no la vista. Eso no se configura: es lo que convierte un pasillo
+en una pelea, y sin ello el juego se pasa andando.
+
 ## `jugador`
 
 ```yaml
@@ -381,6 +406,66 @@ Las mejoras **se pierden al morir** y al empezar un nivel nuevo: reapareces
 siempre con el arma de serie. Es lo que hace que una vida valga algo. Con
 `mejoras: 0` (lo de por defecto) el objeto no hace nada y el arma es siempre la
 misma.
+
+### `combo`: la serie de golpes
+
+Un juego de tortas no va de apretar el botón, va de encadenar. Con `combo: N`
+el ataque cuerpo a cuerpo se convierte en una serie de N golpes: apretar otra
+vez antes de que se acabe `ventana:` encadena el siguiente, y el **último es el
+que tumba**.
+
+```yaml
+  ataque:
+    tipo: golpe
+    alcance: 14
+    espera: 12           # frames entre golpe y golpe
+    dano: 1              # lo que hacen los de en medio
+    combo: 3             # puño, puño y remate
+    ventana: 26          # frames para encadenar el siguiente
+    dano_remate: 3       # lo que hace el último
+    derribo: 45          # frames que se queda en el suelo el que lo cobra
+    empujon_remate: 3.0  # con cuánta fuerza sale despedido
+```
+
+Al que cobra el remate **lo tumba**: sale despedido hacia donde miras y se
+queda `derribo:` frames en el suelo, y mientras está ahí **ni decide nada ni te
+hace daño**. Eso es lo que hace que encadenar sirva de algo: unos frames sin
+tenerlo encima.
+
+La cadencia manda sobre la ventana: si `espera:` es mayor que `ventana:`, no da
+tiempo a encadenar nunca y la serie no existe. Con `combo: 1` —lo normal fuera
+de este género— no hay serie y los cuatro números de abajo no pintan nada.
+
+Para que el remate se vea distinto hay una ranura de animación propia,
+`remate:`. Quien no la traiga se queda con la de `atacar`.
+
+### `agarre`: coger, zarandear y lanzar
+
+Lo que hace de un juego de tortas un juego de tortas y no un pasillo de
+puñetazos. Al que se **tambalea** de un golpe (o sea, al que acabas de tocar)
+se le agarra tocándolo, y ahí se decide:
+
+```yaml
+jugador:
+  agarre:
+    tiempo: 100          # frames que aguanta agarrado antes de soltarse
+    rodillazo: 1         # el daño de cada rodillazo (botón de acción)
+    lanzamiento: 3       # lo que duele estrellarse (botón de saltar)
+    fuerza: 4.0          # a qué velocidad sale despedido
+```
+
+- **Acción**: rodillazo. Hace daño y reengancha el agarre, así que se puede
+  encadenar.
+- **Saltar**: lo lanzas por encima del hombro. Sale volando —con su altura y su
+  arco, la misma tercera coordenada del salto—, se estrella al caer y aterriza
+  derribado.
+- Se suelta solo al acabarse `tiempo:`, si te pegan, o si se muere en tus
+  manos.
+
+Sin el bloque `agarre:` el juego no lleva agarre y tocar a un enemigo cuesta un
+golpe, como en cualquier otro género. Y en `vista: cinta` hay una regla más que
+no se configura: **el que te pega se aparta**, para que tres a la vez no te
+maten en dos segundos.
 
 ### `secundaria` / `secundarias` (las armas que gastan munición)
 

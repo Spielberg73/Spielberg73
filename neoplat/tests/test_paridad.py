@@ -102,6 +102,11 @@ class TestParidad(unittest.TestCase):
         # el mismo juego sin serie, para ver que la serie hace algo
         cls.variantes["sin-combo"] = cls._preparar("scroll", cinta=True,
                                                    golpe=True)
+        # y con agarre: coger al que se tambalea, zarandearlo y lanzarlo. El
+        # que sale lanzado vuela con su propia altura, que es la unica vez que
+        # una entidad -y no el jugador- usa la tercera coordenada.
+        cls.variantes["agarre"] = cls._preparar("scroll", cinta=True, golpe=True,
+                                                combo=True, agarre=True)
         # La mazmorra: la vida que se gasta sola, los generadores que sacan
         # bichos y la pocima que limpia la pantalla. Son tres cosas que corren
         # **cada frame** en los dos motores, asi que van a la traza.
@@ -116,7 +121,7 @@ class TestParidad(unittest.TestCase):
     def _preparar(cls, camara, jefe=False, dos=False, golpe=False, llave=False,
                   tablon=False, genero="plataformas", sin_dibujo=False,
                   cenital=False, nidos_dormidos=False, cinta=False,
-                  combo=False):
+                  combo=False, agarre=False):
         proyecto_dir = os.path.join(
             cls.tmp, "juego-" + camara + ("-jefe" if jefe else "")
             + ("-dos" if dos else "") + ("-golpe" if golpe else "")
@@ -125,6 +130,7 @@ class TestParidad(unittest.TestCase):
             + ("-cenital" if cenital else "")
             + ("-cinta" if cinta else "")
             + ("-combo" if combo else "")
+            + ("-agarre" if agarre else "")
             + ("-dormidos" if nidos_dormidos else "")
             + ("-" + genero if genero != "plataformas" else ""))
         crear_proyecto(proyecto_dir, "PARIDAD", "TEST", genero=genero)
@@ -164,6 +170,14 @@ class TestParidad(unittest.TestCase):
                 marca,
                 "    tipo: golpe\n    combo: 3\n    ventana: 24\n"
                 "    dano_remate: 3\n    derribo: 40\n    empujon_remate: 2.5", 1)
+        if agarre:
+            # el bloque `agarre:` del jugador, con sus cuatro numeros
+            marca = "  pisar_enemigos:"
+            assert marca in texto, "el jugador ya no trae 'pisar_enemigos:'"
+            texto = texto.replace(
+                marca,
+                "  agarre:\n    tiempo: 90\n    rodillazo: 2\n"
+                "    lanzamiento: 4\n    fuerza: 4.0\n" + marca, 1)
         if sin_dibujo:
             # sin dibujo el golpe es invisible, que es como estaba el kit
             marca = "    sprite: graficos/bala.png\n"
@@ -487,6 +501,29 @@ class TestParidad(unittest.TestCase):
         # en los puntos, no en un frame suelto de mas
         self.assertGreater(len(distintos), 10,
                            "solo cambia un frame: no parece un remate")
+
+    def test_misma_traza_con_el_agarre(self):
+        """Coger al que se tambalea, zarandearlo y lanzarlo. El que sale
+        lanzado vuela con su propia altura -es la unica vez que una entidad y
+        no el jugador usa la tercera coordenada-, asi que si las dos no
+        calcularan igual el arco, la traza se separaria al primer lanzamiento.
+        """
+        for semilla in (1, 7, 99):
+            self._comparar("agarre", semilla)
+
+    def test_el_agarre_cambia_la_partida(self):
+        """Y que el agarre hace algo: el mismo juego sin el bloque `agarre:`
+        tiene que dar otra traza. Se pega y se anda hacia el bicho, que es lo
+        que hace falta para agarrarlo."""
+        entradas = ([(IN_START, 0)] * 3 + [(IN_RIGHT, 0)] * 80
+                    + [(IN_ACTION, 0), (IN_RIGHT, 0), (IN_RIGHT, 0),
+                       (IN_RIGHT, 0)] * 60)
+        con, _ = self._trazas_de("agarre", entradas, "agarre")
+        sin, _ = self._trazas_de("combo", entradas, "combo-mismo")
+        self.assertEqual(con[0], sin[0],
+                         "los dos juegos ya empiezan distintos")
+        distintos = [i for i, (a, b) in enumerate(zip(con, sin)) if a != b]
+        self.assertTrue(distintos, "con agarre y sin agarre pasa lo mismo")
 
     def test_misma_traza_con_el_genero_de_latigo(self):
         """El ataque con preparacion y clavado, y el empujon con aturdimiento:

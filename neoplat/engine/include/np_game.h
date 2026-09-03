@@ -111,6 +111,14 @@ typedef struct {
      * buscando comida: es la mecanica de Gauntlet, y cambia el juego entero
      * -ya no se puede esperar a que pase el bicho-. */
     uint16_t wear;
+    /* El agarre de los juegos de tortas: al que se tambalea de un golpe se le
+     * puede coger, zarandear a rodillazos y lanzar por encima del hombro. Con
+     * `grab_time` a cero -lo normal- el juego no lleva agarre y nada de esto
+     * pasa. Lanzar usa el `jump` del jugador como impulso hacia arriba. */
+    uint16_t grab_time;      /* frames que aguanta agarrado antes de soltarse */
+    np_fix throw_speed;      /* a que velocidad sale despedido */
+    uint8_t grab_damage;     /* lo que hace cada rodillazo */
+    uint8_t throw_damage;    /* lo que duele estrellarse contra el suelo */
     uint8_t coyote, jump_buffer, double_jump, stomp, health;
     /* Cuanto baja el techo de la caja al agacharse, en pixeles. Cero quiere
      * decir que el juego no lleva agacharse, y el boton de abajo solo sirve

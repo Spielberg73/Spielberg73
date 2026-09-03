@@ -489,6 +489,9 @@ def player_values(project: Project) -> Dict[str, object]:
         "knockback": to_fixed(p.knockback), "stun": p.stun,
         "stair_speed": to_fixed(p.stair_speed),
         "coyote": p.coyote, "jump_buffer": p.jump_buffer, "wear": p.wear,
+        # el agarre: con `grab_time` a 0 el motor ni lo mira
+        "grab_time": p.grab_time, "grab_damage": p.grab_damage,
+        "throw_damage": p.throw_damage, "throw_speed": to_fixed(p.throw_speed),
         "double_jump": 1 if p.double_jump else 0, "stomp": 1 if p.stomp else 0,
         "health": p.health,
         # cuanto baja el techo de la caja al agacharse; 0 = no se puede

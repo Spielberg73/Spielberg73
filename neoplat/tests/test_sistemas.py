@@ -1002,6 +1002,53 @@ class TestNivelesAltos(unittest.TestCase):
                 self.assertIn("np_generator_count = %d"
                               % len(build.generators), texto)
 
+    def test_el_proyecto_de_tortas_compila_para_las_siete(self):
+        """Y el de tortas: trae una vista nueva -la de cinta, con su tercera
+        coordenada- y un orden de dibujo por profundidad que tocan los seis
+        dibujantes de maquina. Se genera entero para las siete y se mira que
+        ninguna se queje."""
+        from ngplat.scaffold import crear_proyecto
+        raiz = os.path.join(self.tmp, "barrio")
+        if not os.path.isdir(raiz):
+            crear_proyecto(raiz, "BARRIO", "TEST", genero="barrio")
+        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "jaguar",
+                       "atarist", "x68000"):
+            with self.subTest(sistema=nombre):
+                build = cargar_demo(raiz, nombre)
+                sistema = sistemas.obtener(nombre)
+                sistema.comprobar(build)
+                salida = os.path.join(self.tmp, "barrio-" + nombre)
+                generar_para_sistema(build, salida, sistema, "202")
+                with open(os.path.join(salida, "src", "gamedata.c"),
+                          encoding="utf-8") as fh:
+                    texto = fh.read()
+                # la vista de cinta tiene que llegar al C de la maquina
+                self.assertIn("np_vista_cinta = 1", texto)
+                self.assertIn("np_vista_cenital = 1", texto)
+
+    def test_las_seis_maquinas_dibujan_en_el_orden_del_motor(self):
+        """El orden de dibujo por profundidad lo decide el motor -una sola
+        funcion, np_orden_dibujo- y lo siguen los seis dibujantes. Es
+        justamente el tipo de cosa que se queda a medias: se cambia uno y los
+        otros cinco siguen pintando por el orden de la lista, y en un juego de
+        tortas eso se ve. Aqui se comprueba que ninguno se ha quedado atras."""
+        import glob
+        motor = os.path.join(KIT, "engine")
+        dibujantes = sorted(glob.glob(os.path.join(motor, "*", "np_video.c")))
+        self.assertEqual(len(dibujantes), 6,
+                         "ya no son seis dibujantes: %s" % dibujantes)
+        for ruta in dibujantes:
+            with self.subTest(maquina=os.path.basename(os.path.dirname(ruta))):
+                with open(ruta, encoding="utf-8") as fh:
+                    texto = fh.read()
+                self.assertIn("np_orden_dibujo(w, &cuantas)", texto,
+                              "no pide el orden al motor")
+                self.assertIn("NP_DIBUJO(orden, i)", texto,
+                              "no recorre la lista por el orden del motor")
+                self.assertNotIn("for (i = 0; i < w->entity_count; i++) {\n"
+                                 "        const NpEntity *e = &w->entities[i];",
+                                 texto, "sigue recorriendo la lista a pelo")
+
     def test_el_mapa_de_bits_cambia_de_forma_solo(self):
         """Nadie elige la forma: la decide el nivel mas alto. Se mira en el
         gamedata.h, que es lo que de verdad compila la maquina."""

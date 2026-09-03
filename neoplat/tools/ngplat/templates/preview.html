@@ -601,19 +601,22 @@
   }
   /* la fila de teclas se adapta a la vista y a las armas que lleve el juego */
   var CENITAL = DATA.view === "cenital";
+  /* La cinta se anda como la cenital -en ocho direcciones- pero salta y pega
+     de cerca, asi que las teclas son otras. */
+  var CINTA = DATA.view === "cinta";
   function verTecla(id, visible) {
     var el = document.getElementById(id);
     if (el) el.hidden = !visible;
   }
-  verTecla("teclas-mover", !CENITAL);
-  verTecla("teclas-mover-8", CENITAL);
+  verTecla("teclas-mover", !CENITAL && !CINTA);
+  verTecla("teclas-mover-8", CENITAL || CINTA);
   verTecla("teclas-saltar", !CENITAL);
-  verTecla("teclas-atacar", !CENITAL);
-  verTecla("teclas-disparar", CENITAL);
-  verTecla("teclas-agachar", !CENITAL);
+  verTecla("teclas-atacar", !CENITAL || CINTA);
+  verTecla("teclas-disparar", CENITAL && !CINTA);
+  verTecla("teclas-agachar", !CENITAL && !CINTA && !!DATA.player.crouch_drop);
   if ((DATA.player.subs || []).length) {
     verTecla("teclas-secundaria", !CENITAL);
-    verTecla("teclas-granada", CENITAL);
+    verTecla("teclas-granada", CENITAL && !CINTA);
     /* De arriba el boton de saltar tira el arma secundaria, y esa no siempre
        es una granada: en una mazmorra es una pocima. Se dice la que sea, con
        el nombre que el juego le pone en el marcador. */
@@ -1034,8 +1037,10 @@
   }
 
   function drawEntities() {
-    for (var i = 0; i < world.entityCount; i++) {
-      var e = world.entities[i];
+    /* de mas lejos a mas cerca, como hacen las siete maquinas */
+    var orden = world.ordenDibujo();
+    for (var k = 0; k < orden.length; k++) {
+      var e = world.entities[orden[k]];
       if (!e.active) continue;
       if (e.hurt && (world.frame & 1)) continue;
       var def = world.entityDef(e).actor;

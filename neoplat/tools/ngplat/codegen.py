@@ -91,6 +91,24 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     header.append("#define NP_HUD_PALETTE %d" % build.hud_palette)
     header.append("#define NP_MAX_LEVEL_TILES_W %d" % max(l.width for l in build.levels))
     header.append("#define NP_HUD_ENABLED %d" % (1 if project.hud else 0))
+    # La vista de cinta, tambien como macro: los dibujantes deciden **al
+    # compilar** si tienen que pintar por profundidad. En el Atari ST la
+    # indireccion del orden dentro del bucle que dibuja a todos los actores se
+    # nota -tanto que la musica empieza a sonar lenta-, y un juego que no es de
+    # cinta no tiene por que pagarla.
+    header.append("#define NP_VISTA_CINTA %d"
+                  % (1 if project.view == "cinta" else 0))
+    header.append("/* Como recorren los dibujantes la lista de entidades: por "
+                  "profundidad en un")
+    header.append(" * juego de cinta y en el orden de siempre en los demas. "
+                  "Ver np_orden_dibujo. */")
+    header.append("#if NP_VISTA_CINTA")
+    header.append("#define NP_DIBUJO(orden, i) ((orden)[(i)])")
+    header.append("#else")
+    # el (void) es para que `orden` cuente como usada: sin el, un juego que no
+    # es de cinta no compila con -Werror por una variable "asignada y no usada"
+    header.append("#define NP_DIBUJO(orden, i) ((void)(orden), (i))")
+    header.append("#endif")
     header.append("#define NP_LAYER_COUNT %d" % len(build.layers))
     header.append("#define NP_MUSIC_COUNT %d" % len(build.music_order))
     header.append("#define NP_SOUND_ENABLED %d"
@@ -189,6 +207,10 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("    %d, %d," % (pv["knockback"], pv["stair_speed"]))
     src.append("    %d, %d," % (pv["invuln"], pv["stun"]))
     src.append("    %d,   /* desgaste */" % pv["wear"])
+    src.append("    %d, %d,   /* el agarre: cuanto dura y con cuanta fuerza lanza */"
+               % (pv["grab_time"], pv["throw_speed"]))
+    src.append("    %d, %d,   /* rodillazo y estrellon */"
+               % (pv["grab_damage"], pv["throw_damage"]))
     src.append("    %d, %d, %d, %d, %d, %d," % (pv["coyote"], pv["jump_buffer"],
                                                 pv["double_jump"], pv["stomp"],
                                                 pv["health"], pv["crouch_drop"]))

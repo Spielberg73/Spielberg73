@@ -408,6 +408,8 @@ static void np_player_reset(NpWorld *w, uint8_t quien)
     p->valtura = 0;
     p->combo_link = 0;          /* la serie de golpes, desde el primero */
     p->combo_timer = 0;
+    p->grab = 0;                /* y sin nadie agarrado */
+    p->grab_timer = 0;
     p->invuln = 0;
     p->coyote = 0;
     p->buffer = 0;
@@ -1375,6 +1377,112 @@ static void np_player_update_cenital(NpWorld *w, uint8_t quien, uint16_t input)
     np_anim_tick(a, p->anim, &p->anim_frame, &p->anim_timer);
 }
 
+/* Lo que se aparta un maton despues de pegarte, en frames. No es una opcion
+   del game.yaml a proposito: es la regla del genero, no un ajuste. */
+#define NP_RECULA 26
+
+/* ------------------------------------------------------------ el agarre */
+/*
+ * Lo que hace que un juego de tortas sea un juego de tortas y no un pasillo de
+ * punetazos: al que se tambalea de un golpe se le coge, se le zarandea a
+ * rodillazos y se le lanza por encima del hombro.
+ *
+ * Se agarra **al que esta parpadeando**, o sea al que acabas de tocar: es la
+ * regla de los recreativos y ademas se explica sola -pegar, coger, rematar-.
+ * `p->grab` guarda su sitio en la lista mas uno, y mientras dure no se mueve ni
+ * decide nada: lo lleva el jugador pegado al costado.
+ */
+static NpEntity *np_agarrado(NpWorld *w, NpPlayer *p)
+{
+    NpEntity *e;
+    if (!p->grab || p->grab > w->entity_count) return 0;
+    e = &w->entities[p->grab - 1];
+    if (!e->active || e->kind != NP_KIND_ENEMY) {
+        p->grab = 0;
+        return 0;
+    }
+    return e;
+}
+
+static void np_soltar(NpPlayer *p)
+{
+    p->grab = 0;
+    p->grab_timer = 0;
+}
+
+/* Lanzarlo: sale despedido hacia donde miras, subiendo, y cae derribado al
+   otro lado. Es el golpe mas fuerte del genero y el que despeja la pantalla. */
+static void np_lanzar(NpWorld *w, uint8_t quien, NpEntity *e)
+{
+    const NpPlayerDef *d = &np_player_def;
+    NpPlayer *p = &w->players[quien];
+    e->vx = p->facing ? d->throw_speed : (np_fix)(-d->throw_speed);
+    e->vy = 0;
+    e->valtura = d->jump;             /* el mismo impulso con el que saltas */
+    e->knock = (uint8_t)(d->grab_time ? 60 : 30);
+    e->golpeado = 0;
+    w->sfx |= NP_SFX_STOMP;
+    np_hit_entity(w, e, d->throw_damage);
+    np_soltar(p);
+}
+
+/* El rodillazo: le hace dano sin soltarlo, y reengancha el agarre. */
+static void np_rodillazo(NpWorld *w, uint8_t quien, NpEntity *e)
+{
+    const NpPlayerDef *d = &np_player_def;
+    NpPlayer *p = &w->players[quien];
+    p->attack_timer = np_player_def.attack.duration;
+    p->grab_timer = d->grab_time;
+    w->sfx |= NP_SFX_SHOOT;
+    np_hit_entity(w, e, d->grab_damage);
+    if (!e->active) np_soltar(p);
+}
+
+/* Lo que hace el agarre cada frame: llevarlo pegado al costado, gastar su
+   cuenta atras y leer los dos botones. Devuelve 1 si el frame se lo queda el
+   agarre, o sea que ni se anda ni se pega de lo normal. */
+static int np_grab_update(NpWorld *w, uint8_t quien, uint16_t input)
+{
+    const NpPlayerDef *d = &np_player_def;
+    NpPlayer *p = &w->players[quien];
+    NpEntity *e = np_agarrado(w, p);
+    const NpActorDef *pa = &d->actor;
+    const NpActorDef *ea;
+
+    if (!e) return 0;
+    if (p->stun || p->dying) { np_soltar(p); return 0; }
+    if (!p->grab_timer) { np_soltar(p); return 0; }
+    p->grab_timer--;
+
+    /* Se lleva pegado al costado por el que miras y a tu misma profundidad:
+       asi lo que le pase le pasa donde se ve que le pasa. */
+    ea = np_entity_def(e);
+    e->x = p->facing ? p->x + NP_I2F(pa->box_w - 2)
+                     : p->x - NP_I2F(ea->box_w - 2);
+    e->y = p->y + NP_I2F(pa->box_h - ea->box_h);
+    e->vx = 0;
+    e->vy = 0;
+    e->knock = 0;
+    e->facing = (uint8_t)!p->facing;      /* le tienes de frente */
+    np_anim_set(&e->anim, &e->anim_frame, &e->anim_timer, NP_ANIM_HURT);
+    np_anim_tick(ea, e->anim, &e->anim_frame, &e->anim_timer);
+
+    if ((input & NP_IN_JUMP) && !(w->prev_input[quien] & NP_IN_JUMP)) {
+        np_lanzar(w, quien, e);
+        return 1;
+    }
+    if ((input & NP_IN_ACTION) && !(w->prev_input[quien] & NP_IN_ACTION)
+        && !p->attack_cd) {
+        p->attack_cd = np_player_def.attack.cooldown;
+        np_rodillazo(w, quien, e);
+    }
+    if (p->attack_timer) p->attack_timer--;
+    np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer,
+                p->attack_timer ? NP_ANIM_ATTACK : NP_ANIM_IDLE);
+    np_anim_tick(pa, p->anim, &p->anim_frame, &p->anim_timer);
+    return 1;
+}
+
 /* ---------------------------------------------------- la vista de cinta */
 /*
  * El "yo contra el barrio": Double Dragon, Final Fight, Streets of Rage.
@@ -1408,6 +1516,9 @@ static void np_player_update_cinta(NpWorld *w, uint8_t quien, uint16_t input)
     int hit_x = 0, hit_down = 0, hit_up = 0;
     np_fix suelo;
     uint8_t pose;
+
+    /* Con alguien agarrado el frame es otro: no se anda, se le zarandea. */
+    if (np_player_def.grab_time && np_grab_update(w, quien, input)) return;
 
     /* Aqui no se cae de ningun sitio: si no estas por el aire, estas de pie.
        Lo primero es cuadrar eso, porque un jugador recien colocado viene con
@@ -1911,10 +2022,21 @@ static void np_enemy_update(NpWorld *w, NpEntity *e)
        se llevo hasta que se le acaba y se levanta. Es lo que hace que encadenar
        sirva de algo: unos frames sin el encima. */
     if (e->knock) {
+        np_fix suelo = e->y + e->altura;
         e->knock--;
-        e->x = np_move_x(w->level, e->x, e->y, a->box_w, a->box_h, e->vx, &hit_x);
+        /* Si viene de un lanzamiento, ademas vuela: la altura sube y baja con
+           la misma gravedad del jugador, y `y` -que es donde se dibuja- es el
+           suelo menos la altura, igual que en np_player_update_cinta. */
+        if (e->altura > 0 || e->valtura) {
+            e->altura += e->valtura;
+            e->valtura -= np_player_def.gravity;
+            if (e->altura <= 0) { e->altura = 0; e->valtura = 0; }
+        }
+        e->x = np_move_x(w->level, e->x, suelo, a->box_w, a->box_h, e->vx, &hit_x);
         if (hit_x) e->vx = 0;
-        e->vx = np_approach(e->vx, 0, np_player_def.friction);
+        e->y = suelo - e->altura;
+        /* por el aire no se frena: se frena al tocar el suelo */
+        if (!e->altura) e->vx = np_approach(e->vx, 0, np_player_def.friction);
         np_anim_set(&e->anim, &e->anim_frame, &e->anim_timer, NP_ANIM_HURT);
         np_anim_tick(a, e->anim, &e->anim_frame, &e->anim_timer);
         return;
@@ -2172,6 +2294,18 @@ static void np_touch_entities(NpWorld *w)
             if (e->kind == NP_KIND_GENERATOR) continue;  /* tambien: y no hace dano */
             /* uno en el suelo no hace dano: por eso se remata */
             if (e->kind == NP_KIND_ENEMY && e->knock) continue;
+            /* Y al que se tambalea de un golpe se le coge: pegar, coger y
+               rematar es la escalera entera de un juego de tortas. Se mira el
+               parpadeo -o sea, que acabas de tocarle- porque asi el agarre es
+               algo que te ganas y no algo que pasa al rozar a nadie. */
+            if (np_player_def.grab_time && e->kind == NP_KIND_ENEMY
+                && e->hurt && !p->grab && !p->dying) {
+                p->grab = (uint8_t)(i + 1);
+                p->grab_timer = np_player_def.grab_time;
+                e->knock = 0;
+                w->sfx |= NP_SFX_STOMP;
+                continue;
+            }
             if (e->kind == NP_KIND_ENEMY_SHOT) continue; /* se mira en su update */
             if (e->kind == NP_KIND_PRISONER) {
                 np_prisoner_free(w, e, p);               /* tocarlo lo suelta */
@@ -2203,7 +2337,22 @@ static void np_touch_entities(NpWorld *w)
                     p->vy = -np_player_def.bounce;
                     p->on_ground = 0;
                 } else {
+                    /* si estaba parpadeando, el golpe no entra: entonces
+                       tampoco hay por que apartarse */
+                    int cobrado = !p->invuln && !p->dying;
                     np_player_hurt(w, quien, d->damage);
+                    /* En un juego de tortas, el que te acaba de pegar **se
+                       aparta**: pega y recula, como en los recreativos. Sin
+                       esto se te queda encima y te vuelve a dar en cuanto se
+                       acaba el parpadeo, y tres a la vez no hay quien los
+                       aguante. Fuera de la cinta no pasa nada de esto: los
+                       demas generos siguen exactamente igual. */
+                    if (np_vista_cinta && cobrado) {
+                        e->knock = NP_RECULA;
+                        e->vx = (e->x < p->x) ? -np_player_def.knockback
+                                              : np_player_def.knockback;
+                        e->vy = 0;
+                    }
                 }
             }
         }
@@ -2223,6 +2372,81 @@ static void np_touch_entities(NpWorld *w)
  * La ultima pantalla puede quedarse corta si el nivel no mide un numero exacto
  * de pantallas: entonces se recorta contra el final del nivel y se solapa un
  * poco con la anterior. El compilador avisa cuando pasa. */
+/* El orden en que se dibujan las entidades: de mas lejos a mas cerca.
+ *
+ * Solo hace algo en la vista de cinta, que es donde dos actores se pisan a
+ * cada rato y hay un "detras" de verdad: la linea del suelo (y + altura). En
+ * las demas vistas devuelve el orden de la lista tal cual, asi que no cambia
+ * nada de lo que ya funcionaba ni cuesta un ciclo.
+ *
+ * Es una ordenacion por insercion porque la lista viene casi ordenada de un
+ * frame al siguiente -nadie se teletransporta- y ahi la insercion es lineal.
+ */
+/* La lista de siempre: 0, 1, 2... Va en ROM y no se toca, asi que fuera de la
+   vista de cinta pedir el orden no cuesta **nada**: ni una vuelta de bucle.
+   Se noto en el Atari ST, que es la maquina mas justa de las siete: montar la
+   lista cada frame le comia los ciclos que necesita para ir a su ritmo, y la
+   musica -que va por frames- empezo a sonar lenta. */
+static const uint8_t np_identidad[NP_MAX_ENTITIES] = {
+    0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,
+   16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+   32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
+   48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63
+};
+
+static uint8_t np_orden[NP_MAX_ENTITIES];
+
+const uint8_t *np_orden_dibujo(const NpWorld *w, uint8_t *cuantas)
+{
+    uint8_t *orden = np_orden;
+    uint8_t n = 0, i;
+
+    if (!np_vista_cinta) {
+        *cuantas = w->entity_count;
+        return np_identidad;
+    }
+    for (i = 0; i < w->entity_count; i++) {
+        if (!w->entities[i].active) continue;
+        orden[n++] = i;
+    }
+    *cuantas = n;
+    for (i = 1; i < n; i++) {
+        uint8_t sitio = orden[i];
+        np_fix suelo = w->entities[sitio].y + w->entities[sitio].altura;
+        int j = (int)i - 1;
+        while (j >= 0) {
+            const NpEntity *otra = &w->entities[orden[j]];
+            if (otra->y + otra->altura <= suelo) break;
+            orden[j + 1] = orden[j];
+            j--;
+        }
+        orden[j + 1] = sitio;
+    }
+    return orden;
+}
+
+/* Queda alguien vivo en la pantalla?
+ *
+ * Es la pregunta de la que vive el genero de tortas: mientras la respuesta sea
+ * que si, la camara no pasa de ahi. Un pasillo por el que se puede seguir
+ * andando no es una pelea; una pantalla de la que no se sale hasta limpiarla,
+ * si. Se mira la pantalla de ahora -y no el nivel entero- para que la pelea sea
+ * la que se ve. */
+static int np_alguien_en_pantalla(const NpWorld *w)
+{
+    uint8_t i;
+    for (i = 0; i < w->entity_count; i++) {
+        const NpEntity *e = &w->entities[i];
+        const NpActorDef *ea;
+        if (!e->active || e->kind != NP_KIND_ENEMY) continue;
+        ea = np_entity_def(e);
+        if (NP_F2I(e->x) + (int32_t)ea->box_w <= w->cam_x) continue;
+        if (NP_F2I(e->x) >= w->cam_x + NP_SCREEN_W) continue;
+        return 1;
+    }
+    return 0;
+}
+
 static void np_camera_update(NpWorld *w)
 {
     const NpActorDef *a = &np_player_def.actor;
@@ -2261,6 +2485,11 @@ static void np_camera_update(NpWorld *w)
         target_x = centro_x - NP_SCREEN_W / 2;
         target_y = centro_y - NP_SCREEN_H / 2;
     }
+    /* El cerrojo del genero de tortas: con alguien vivo en pantalla la camara
+       no avanza. Hacia atras si se mueve -si el jugador retrocede, se le
+       sigue-, porque lo que se cierra es el paso, no la vista. */
+    if (np_vista_cinta && target_x > w->cam_x && np_alguien_en_pantalla(w))
+        target_x = w->cam_x;
     w->cam_x = NP_CLAMP(target_x, 0, max_x);
     w->cam_y = NP_CLAMP(target_y, 0, max_y);
 }

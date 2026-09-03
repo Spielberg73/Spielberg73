@@ -6,7 +6,8 @@ import os
 from dataclasses import dataclass, replace
 from typing import Dict, List
 
-from . import art, art_comando, art_hierro, art_mazmorra, art_sonido
+from . import (art, art_barrio, art_comando, art_hierro, art_mazmorra,
+               art_sonido)
 from .errors import ProjectError
 from .png import write_png
 from .wav import escribir as escribir_wav
@@ -1098,6 +1099,86 @@ def _nivel_yaml(nombre: str, filas: List[str], fondo: str, capas: str = "",
         % (nombre, fondo, linea_capas, linea_musica, linea_llaves, cuerpo)
     )
 
+# --------------------------------------------------------- el barrio
+#
+# Un juego de tortas no es un laberinto ni un pasillo de saltos: es una calle
+# larga, ancha de suelo, por la que se avanza limpiando pantallas. El escenario
+# no se cruza esquivando sino peleando, asi que lo que importa del mapa no son
+# los obstaculos sino **donde se planta cada grupo**.
+#
+# 48 de ancho por 14 de alto -tres pantallas y media, una sola de alto-, con la
+# franja por la que se anda en el medio: arriba los edificios y abajo el borde
+# de la acera. Son siete casillas de suelo, lo justo para rodear a alguien sin
+# que la pantalla parezca vacia.
+
+BARRIO_ANCHO = 48
+BARRIO_ALTO = 14
+
+
+def _fila_barrio(mapa: str) -> str:
+    """Completa una fila a lo ancho del nivel, con asfalto."""
+    fila = mapa[:BARRIO_ANCHO]
+    return fila + "." * (BARRIO_ANCHO - len(fila))
+
+
+def _calle(altas: List[str], suelo: List[str], bajo: str) -> List[str]:
+    """Monta una calle: los edificios arriba, la franja de suelo en medio y el
+    bordillo de abajo. Va por trozos porque es lo que se toca por trozos: el
+    fondo se dibuja una vez y el suelo es lo que cambia de un nivel a otro."""
+    filas = [_fila_barrio(f) for f in altas]
+    filas += [_fila_barrio(f) for f in suelo]
+    filas.append(_fila_barrio(bajo))
+    assert len(filas) == BARRIO_ALTO, len(filas)
+    return filas
+
+
+def _nivel_barrio_1() -> List[str]:
+    """La calle: se empieza a la izquierda y se sale por la derecha. Tres
+    grupos, cada uno en su pantalla, y la camara no pasa de ninguno hasta que
+    no queda nadie: por eso los matones van repartidos y no en fila."""
+    altas = [
+        "################################################",
+        "#####L######L#######L#####L#########L###########",
+        "################################################",
+        "###########################################F####",
+        "cccccccccccccccccccccccccccccccccccccccccccccccc",
+        "------------------------------------------------",
+    ]
+    suelo = [
+        "..........B..............B.....................G",
+        "....m...........m.............m....m...........G",
+        "P.......................b......................G",
+        ".......p........m..........B......p............G",
+        "......................m........................G",
+        "...B.................B.........................G",
+        "................................................",
+    ]
+    return _calle(altas, suelo, "c" * BARRIO_ANCHO)
+
+
+def _nivel_barrio_2() -> List[str]:
+    """El descampado: mas gente y el jefe al final. Aqui hay vallas en medio,
+    que no dejan pasar pero si ver: rodearlas es parte de la pelea."""
+    altas = [
+        "VVVVVVVVVVVVVV####################VVVVVVVVVVVVVV",
+        "..............#####L########L#####..............",
+        "..............####################..............",
+        "..............####################......F.......",
+        "--------------cccccccccccccccccccc--------------",
+        "................................................",
+    ]
+    suelo = [
+        ".......B..............B................B.......G",
+        "...m.......m.....VVV......m....m.....m.........G",
+        "P........b.......VVV........b.........J........G",
+        "....p......m.....VVV....B.......p..............G",
+        "........B..........................B...........G",
+        "...................VVV.........................G",
+        "................................................",
+    ]
+    return _calle(altas, suelo, "c" * BARRIO_ANCHO)
+
+
 # ------------------------------------------------------------------ musica
 #
 # Cada genero trae la suya: la de plataformas cambia con el estilo del dibujo,
@@ -1489,6 +1570,273 @@ _MUSICA_MAZMORRA = """  musica:
 """
 
 
+_MUSICA_BARRIO = """  musica:
+    # Un juego de tortas suena a calle: bajo andando, sincopa y un riff corto
+    # que se repite, que es lo que hace que pegues al ritmo sin darte cuenta.
+    calle:
+      velocidad: 6
+      pistas:
+        - |
+          la4 - do5 la4 - re5 do5 -
+          la4 - do5 la4 - sol4 la4 -
+          la4 - do5 la4 - re5 mi5 -
+          re5 do5 la4 - sol4 - la4 -
+          la4 - do5 la4 - re5 do5 -
+          mi5 - re5 do5 - la4 do5 -
+          re5 mi5 sol5 mi5 re5 do5 la4 -
+          la4:2 - - mi4:2 - -
+        - |
+          la2 la2 - la2 mi2 - mi2 -
+          la2 la2 - la2 sol2 - sol2 -
+          la2 la2 - la2 mi2 - mi2 -
+          re2 re2 - re2 mi2 - mi2 -
+          la2 la2 - la2 mi2 - mi2 -
+          do3 do3 - do3 sol2 - sol2 -
+          re2 re2 mi2 mi2 fa2 fa2 sol2 sol2
+          la2:2 - - mi2:2 - -
+    descampado:
+      velocidad: 7
+      pistas:
+        - |
+          mi4 sol4 la4 - la4 do5 si4 -
+          mi4 sol4 la4 - do5 - la4 -
+          re4 fa4 sol4 - sol4 la4 sol4 -
+          mi4 - re4 - mi4 - - -
+          mi4 sol4 la4 - la4 do5 si4 -
+          la4 do5 mi5 - re5 - do5 -
+          si4 - la4 sol4 mi4 - re4 -
+          mi4:2 - - la4:2 - -
+        - |
+          mi2 - mi3 - mi2 - mi3 -
+          la2 - la3 - la2 - la3 -
+          re2 - re3 - re2 - re3 -
+          mi2 - mi3 - mi2 - mi3 -
+          mi2 - mi3 - mi2 - mi3 -
+          la2 - la3 - do3 - do4 -
+          si2 - si3 - mi2 - mi3 -
+          mi2:2 - - la2:2 - -
+    presentacion:
+      velocidad: 8
+      pistas:
+        - |
+          la4 - do5 mi5 la5 - mi5 -
+          fa5 - mi5 do5 la4 - - -
+        - |
+          la2 - la3 - la2 - la3 -
+          fa2 - fa3 - la2 - - -
+    jefazo:
+      velocidad: 5
+      pistas:
+        - |
+          la4 la4 do5 la4 re5 do5 la4 -
+          la4 la4 do5 re5 mi5 re5 do5 -
+          fa5 mi5 re5 do5 la4 - do5 -
+          mi5 - re5 - do5 - la4 -
+        - |
+          la2 la2 la2 la2 mi2 mi2 mi2 mi2
+          la2 la2 la2 la2 sol2 sol2 sol2 sol2
+          fa2 fa2 fa2 fa2 do3 do3 do3 do3
+          la2 la2 mi2 mi2 la2 la2 - -
+  # Las dos canciones que no son de ningun nivel se dicen aqui por su nombre.
+  titulo: presentacion
+  jefe: jefazo
+"""
+
+
+GAME_YAML_BARRIO = """# Proyecto NeoPlat de tortas: un juego al estilo Double Dragon.
+#
+#   ngplat probar     -> abre el preview jugable en el navegador
+#   ngplat compilar   -> genera el proyecto en C y las ROMs graficas
+#
+# Se ve de lado, como el de plataformas, pero se anda por una **franja de
+# suelo** con profundidad: arriba y abajo te mueves por la calle, y el salto es
+# una tercera coordenada aparte. De ahi salen las tres reglas del genero:
+#
+#   1. dos que no estan a la misma profundidad **no se tocan**, asi que antes
+#      de pegar hay que cuadrarse;
+#   2. los golpes se **encadenan**: puno, puno y remate. El remate tumba, y
+#      mientras uno esta en el suelo ni decide ni te hace dano;
+#   3. al que se tambalea de un golpe se le **agarra**: con accion, rodillazo;
+#      con salto, por encima del hombro.
+#
+# Y la camara no pasa de pantalla mientras quede alguien vivo, que es lo que
+# convierte un pasillo en una pelea.
+
+juego:
+  titulo: "{titulo}"
+  autor: "{autor}"
+  vista: cinta         # de lado, pero con profundidad y con salto
+  # Este es **el** genero de jugar acompanado: ponlo a 2 y el segundo mando
+  # entra en la pelea. Sale a 1 porque a dos la camara va al punto medio, y si
+  # el segundo se queda quieto, al primero no le deja avanzar.
+  jugadores: 1
+  vidas: 3
+  tiempo: 0            # segundos por nivel (0 = sin limite)
+  camara: scroll
+  amiga: 32colores
+  fondo: "#14141c"
+
+jugador:
+  sprite: graficos/heroe.png
+  frame: [16, 16]
+  caja: [10, 10]       # la caja es baja: de alto mide la **profundidad**
+  velocidad: 1.5
+  friccion: 0.35
+  salto: 4.0           # aqui el salto sube en la tercera coordenada
+  gravedad: 0.30
+  vida: 6
+  invulnerable: 40     # menos que en otros generos: aqui se cobra mucho
+  retroceso: 2.0
+  aturdido: 10
+  animaciones:
+    quieto: {{frames: [0], velocidad: 30}}
+    correr: {{frames: [1, 2], velocidad: 8}}
+    saltar: {{frames: [5]}}
+    caer:   {{frames: [5]}}
+    atacar: {{frames: [3], velocidad: 6}}
+    remate: {{frames: [4], velocidad: 6}}
+    dano:   {{frames: [6]}}
+  # El punetazo. `combo: 3` es lo que lo convierte en un juego de tortas: dos
+  # golpes normales y un remate que tumba.
+  ataque:
+    tipo: golpe
+    alcance: 14
+    espera: 12         # frames entre golpe y golpe
+    duracion: 8
+    dano: 1
+    combo: 3           # puno, puno y remate
+    ventana: 26        # frames para encadenar el siguiente
+    dano_remate: 3     # lo que hace el ultimo
+    derribo: 45        # frames que se queda en el suelo el que lo cobra
+    empujon_remate: 3.0
+    mejoras: 2         # el bate alarga el brazo
+    alcance_mejora: 6
+  # El agarre: coger al que se tambalea y decidir que hacer con el.
+  agarre:
+    tiempo: 100        # frames que aguanta agarrado
+    rodillazo: 1       # el dano de cada rodillazo
+    lanzamiento: 3     # lo que duele estrellarse contra el suelo
+    fuerza: 4.0        # a que velocidad sale despedido
+
+tiles:
+  imagen: graficos/tiles.png
+  leyenda:
+    '.': {{tile: 0, tipo: vacio}}      # asfalto
+    'c': {{tile: 1, tipo: solido}}     # acera: no se pisa, marca el borde
+    '-': {{tile: 2, tipo: solido}}     # el bordillo
+    '#': {{tile: 3, tipo: solido}}     # muro de ladrillo
+    'V': {{tile: 4, tipo: solido}}     # valla
+    'o': {{tile: 5, tipo: peligro}}    # alcantarilla abierta
+    'G': {{tile: 6, tipo: meta}}       # la salida
+    'F': {{tile: 7, tipo: solido}}     # farola
+    'L': {{tile: 3, tipo: solido}}     # ladrillo con ventana
+
+enemigos:
+  # El maton de siempre: viene a por ti y pega al tocarte.
+  maton:
+    sprite: graficos/maton.png
+    caja: [10, 10]
+    comportamiento: perseguidor
+    velocidad: 0.8
+    rango: 200
+    vida: 3
+    dano: 1
+    puntos: 200
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 16}}
+      correr: {{frames: [1, 2], velocidad: 8}}
+      dano:   {{frames: [3]}}
+  # El grande: mas lento, mas vida y mas dano. A este hay que agarrarlo.
+  bruto:
+    sprite: graficos/bruto.png
+    caja: [12, 10]
+    comportamiento: perseguidor
+    velocidad: 0.55
+    rango: 220
+    vida: 6
+    dano: 2
+    puntos: 400
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 18}}
+      correr: {{frames: [1, 2], velocidad: 10}}
+      dano:   {{frames: [3]}}
+  # Un jefe es un enemigo con 'jefe: si': el marcador ensena lo que le queda y
+  # al matarlo se acaba el nivel.
+  jefazo:
+    sprite: graficos/jefe.png
+    caja: [12, 10]
+    comportamiento: perseguidor
+    velocidad: 0.7
+    rango: 260
+    vida: 20
+    dano: 2
+    puntos: 3000
+    jefe: si
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 14}}
+      correr: {{frames: [1, 2], velocidad: 8}}
+      dano:   {{frames: [3]}}
+
+objetos:
+  # El pollo, que es lo que hay dentro de los barriles de todo el genero.
+  pollo:
+    sprite: graficos/pollo.png
+    frame: [16, 16]
+    caja: [10, 8]
+    puntos: 100
+    efecto: salud
+    cantidad: 2
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 16}}
+  # El bate alarga el brazo: es una mejora del arma, no otra arma.
+  bate:
+    sprite: graficos/bate.png
+    frame: [16, 16]
+    caja: [12, 8]
+    puntos: 300
+    efecto: mejora
+    cantidad: 1
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 10}}
+
+rompibles:
+  barril:
+    sprite: graficos/barril.png
+    frame: [16, 16]
+    caja: [12, 12]
+    vida: 2
+    puntos: 50
+    suelta: pollo      # lo que aparece al romperlo
+    animaciones:
+      quieto: {{frames: [0]}}
+
+# Sonido. En un juego de tortas lo que hace falta es que el golpe suene seco:
+# por eso el golpe y el romper son ruido y no notas.
+sonido:
+  efectos:
+    empezar: {{notas: "la4 do5 mi5 la5", velocidad: 5}}
+    disparo: {{tipo: ruido, duracion: 4, tono: 6}}
+    golpe:   {{tipo: ruido, duracion: 10}}
+    romper:  {{tipo: ruido, duracion: 14, tono: 24}}
+    pisar:   {{tipo: ruido, duracion: 8, tono: 10}}
+    moneda:  {{notas: "mi6 la6", velocidad: 4}}
+    vida:    {{notas: "do5 mi5 la5", velocidad: 5}}
+    salto:   {{tipo: barrido, desde: 280, hasta: 900, duracion: 5}}
+    muerte:  {{notas: "la4 fa4 re4 la3", velocidad: 7}}
+    meta:    {{notas: "la4 do5 mi5 la5", velocidad: 6}}
+{musica}
+# Simbolos del mapa que colocan matones, objetos y barriles.
+spawns:
+  m: maton
+  b: bruto
+  J: jefazo
+  p: pollo
+  B: barril
+
+niveles:
+{niveles}"""
+
+
 # --------------------------------------------------------------- generos
 #
 # El **genero** decide como se juega y el **estilo** como se ve: son dos ejes
@@ -1800,7 +2148,8 @@ def _genero_castlevania(nombres: Dict[str, str]) -> Genero:
     )
 
 
-GENEROS = ("plataformas", "castlevania", "comando", "mazmorra")
+GENEROS = ("plataformas", "castlevania", "comando", "mazmorra",
+           "barrio")
 
 # Como se llama cada cosa en cada estilo de dibujo.
 _NOMBRES = {
@@ -1843,6 +2192,21 @@ def _genero_mazmorra(nombres: Dict[str, str], estilo: str) -> Genero:
     )
 
 
+def _genero_barrio(nombres: Dict[str, str], estilo: str) -> Genero:
+    """El de Double Dragon: yo contra el barrio.
+
+    Como el de comando y el de mazmorra, trae su plantilla entera en vez de
+    armarse a trozos. De este objeto solo se usa como se llama y que promete.
+    """
+    return replace(
+        _genero_plataformas(nombres, estilo),
+        nombre="barrio",
+        titulo="barrio",
+        resumen=("yo contra el barrio: una calle con profundidad, golpes "
+                 "encadenados y agarrar al que se tambalea."),
+    )
+
+
 def genero_de(nombre: str, estilo: str) -> Genero:
     nombres = _NOMBRES[estilo]
     if nombre == "castlevania":
@@ -1851,6 +2215,8 @@ def genero_de(nombre: str, estilo: str) -> Genero:
         return _genero_comando(nombres, estilo)
     if nombre == "mazmorra":
         return _genero_mazmorra(nombres, estilo)
+    if nombre == "barrio":
+        return _genero_barrio(nombres, estilo)
     return _genero_plataformas(nombres, estilo)
 
 
@@ -1930,6 +2296,9 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
     elif genero == "mazmorra":
         dibujos = dict(dibujos)
         dibujos.update(art_mazmorra.todos(estilo))
+    elif genero == "barrio":
+        dibujos = dict(dibujos)
+        dibujos.update(art_barrio.todos(estilo))
     for relativo, imagen in dibujos.items():
         ruta = os.path.join(destino, relativo)
         write_png(ruta, imagen)
@@ -1952,6 +2321,28 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
         contenido = GAME_YAML_COMANDO.format(
             titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles,
             musica=_MUSICA_COMANDO)
+        with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
+                  newline="\n") as fh:
+            fh.write(contenido)
+        creados.append("game.yaml")
+        with open(os.path.join(destino, ".gitignore"), "w", encoding="utf-8",
+                  newline="\n") as fh:
+            fh.write("build/\npreview.html\n.neoplat/\n")
+        creados.append(".gitignore")
+        return creados
+
+    if genero == "barrio":
+        # Una calle larga: se entra por la izquierda y se sale por la derecha,
+        # limpiando pantallas. Del resto se encarga el cerrojo de la camara.
+        niveles = (
+            _nivel_yaml("LA CALLE", _nivel_barrio_1(), "#14141c",
+                        musica="calle")
+            + _nivel_yaml("EL DESCAMPADO", _nivel_barrio_2(), "#181420",
+                          musica="descampado")
+        )
+        contenido = GAME_YAML_BARRIO.format(
+            titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles,
+            musica=_MUSICA_BARRIO)
         with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
                   newline="\n") as fh:
             fh.write(contenido)

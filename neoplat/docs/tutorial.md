@@ -16,6 +16,7 @@ que tipo de juego quieres hacer?
   2) castlevania   salto sin control, latigo, escaleras y arma secundaria
   3) comando       visto desde arriba: ocho direcciones, granadas y prisioneros
   4) mazmorra      laberinto: la vida se gasta sola y los nidos sacan bichos
+  5) barrio        yo contra el barrio: calle con profundidad y tortas
 
 elige [1]:
 ```
@@ -397,6 +398,67 @@ Todo lo demás es igual que siempre: los mismos PNG, el mismo editor y el mismo
 `ngplat compilar` para las siete máquinas. Están explicados al detalle en
 [formato.md](formato.md#generadores) (`generadores`, `desgaste` y
 `efecto: bomba`).
+
+## Yo contra el barrio
+
+```bash
+./ngplat nuevo micalle --genero barrio
+```
+
+Un juego de tortas, de los de Double Dragon. Se ve **de lado**, como el de
+plataformas, pero no se anda por una línea: se anda por una **franja de suelo**
+con profundidad, arriba y abajo. Y el salto es una tercera coordenada aparte:
+la altura sobre el suelo.
+
+Esas tres coordenadas son el género entero:
+
+- **Dos que no están a la misma profundidad no se tocan.** Aunque en la
+  pantalla parezca que sí. Por eso lo primero de cada pelea es cuadrarse, y por
+  eso moverte arriba y abajo es esquivar.
+- **Al saltar, tu caja sube con el dibujo**, así que un puñetazo a ras de suelo
+  te pasa por debajo.
+
+Los mandos:
+
+- **Flechas**: te mueves en las ocho direcciones, por el ancho de la calle.
+- <kbd>X</kbd>: puñetazo. Y aquí viene lo bueno: si vuelves a apretar antes de
+  que se acabe la ventana, **encadenas** —puño, puño y **remate**—. El remate
+  hace más daño y **tumba**: el que lo cobra sale despedido y se queda unos
+  frames en el suelo, sin decidir nada y sin hacerte daño.
+- <kbd>Z</kbd> / <kbd>espacio</kbd>: salta.
+- Y al que se **tambalea** de un golpe se le **agarra** tocándolo: con
+  <kbd>X</kbd> le das rodillazos y con <kbd>Z</kbd> lo lanzas por encima del
+  hombro. Lanzarlo es el golpe más fuerte del juego y además te lo quita de
+  encima, que cuando son tres es media pelea.
+
+**La cámara lleva cerrojo**: mientras quede alguien vivo en pantalla, la vista
+no avanza. Eso no se configura y no se puede quitar: es lo que convierte un
+pasillo en una pelea. Si te vas hacia la derecha sin pegar a nadie, te quedas
+en el sitio.
+
+El mapa es una calle de 48 × 14 casillas: arriba los edificios, abajo el
+bordillo y en medio las siete filas por las que se anda.
+
+```yaml
+  - nombre: "LA CALLE"
+    mapa: |
+      ################################################
+      cccccccccccccccccccccccccccccccccccccccccccccccc
+      ------------------------------------------------
+      ..........B..............B.....................G
+      ....m...........m.............m....m...........G
+      P.......................b......................G
+      ...
+```
+
+`P` a la izquierda, `G` a la derecha, `m` matones, `b` los grandes, `B`
+barriles (que se rompen y sueltan un pollo) y `J` el jefe. Lo que hace que se
+juegue no es el dibujo del suelo, es **dónde se planta cada grupo**: como la
+cámara no pasa, cada grupo es una pantalla.
+
+Y una cosa que se nota al jugar: los actores se pintan **de más lejos a más
+cerca**. En un juego donde todo el mundo se pisa, si no, no se entiende quién
+está delante de quién. De eso se encarga el motor en las siete máquinas.
 
 ## Cuando algo falla
 

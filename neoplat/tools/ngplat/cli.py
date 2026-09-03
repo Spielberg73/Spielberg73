@@ -526,9 +526,11 @@ def build_parser() -> argparse.ArgumentParser:
                          help="como se juega: 'plataformas' (saltar, pisar y "
                               "disparar), 'castlevania' (latigo, escaleras y "
                               "municion), 'comando' (visto desde arriba, ocho "
-                              "direcciones y prisioneros) o 'mazmorra' (un "
+                              "direcciones y prisioneros), 'mazmorra' (un "
                               "laberinto: la vida se gasta sola y los nidos "
-                              "sacan bichos). Sin esto, se pregunta")
+                              "sacan bichos) o 'barrio' (tortas: una calle con "
+                              "profundidad, golpes encadenados y agarres). "
+                              "Sin esto, se pregunta")
     p_nuevo.set_defaults(func=cmd_nuevo)
 
     p_check = sub.add_parser("comprobar", aliases=["check"],

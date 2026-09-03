@@ -94,6 +94,12 @@ function datos(filas, opciones) {
       health: opciones.health || 1,
       /* `desgaste:` frames por punto de vida; 0 = la vida solo se pierde a golpes */
       wear: opciones.desgaste || 0,
+      /* el agarre de los juegos de tortas; 0 = el juego no lleva agarre */
+      grab_time: opciones.agarre || 0,
+      grab_damage: opciones.rodillazo === undefined ? 1 : opciones.rodillazo,
+      throw_damage: opciones.danoLanzar === undefined ? 2 : opciones.danoLanzar,
+      throw_speed: fx(opciones.fuerzaLanzar === undefined
+                      ? 3.5 : opciones.fuerzaLanzar),
       /* cuanto baja el techo de la caja al agacharse; 0 = no se puede */
       crouch_drop: opciones.agachado || 0,
       /* el ataque: por defecto ninguno, como un proyecto sin `ataque:` */
@@ -2194,6 +2200,161 @@ prueba("uno tumbado no hace dano al tocarlo", function () {
   correr(w, 60, NP.IN.RIGHT);         // se le anda por encima
   assert.strictEqual(p.health, salud,
                      "el que esta en el suelo sigue haciendo dano");
+});
+
+/* ------------------------------------------- el agarre (Double Dragon) */
+/*
+ * Pegar, coger y rematar: la escalera entera de un juego de tortas. Al que se
+ * tambalea de un golpe se le agarra tocandolo, y ahi se decide entre
+ * zarandearlo a rodillazos o lanzarlo por encima del hombro.
+ */
+
+/** Un mundo de tortas con un matón quieto al lado, ya agarrado. */
+function conAgarre(opciones) {
+  var base = { cinta: true, ataque: "golpe", espera: 6, alcance: 24, dano: 1,
+               vidaEnemigo: 20, velocidadEnemigo: 0, agarre: 90,
+               health: 9, aturdido: 0 };
+  for (var k in (opciones || {})) base[k] = opciones[k];
+  var w = mundo(suelo([[8, 6, "P"], [8, 8, "e"]]), base);
+  w.step(NP.IN.ACTION);          // un golpe: se queda tambaleando
+  /* y se le va a tocar: son dos casillas, o sea unos catorce frames andando,
+     y el tambaleo dura veinte */
+  for (var i = 0; i < 20 && !w.players[0].grab; i++) w.step(NP.IN.RIGHT);
+  return w;
+}
+
+prueba("al que se tambalea se le agarra tocandolo", function () {
+  var w = conAgarre();
+  assert.ok(w.players[0].grab > 0, "no lo ha agarrado");
+  assert.strictEqual(w.players[0].grab - 1, 0, "ha agarrado a otro");
+});
+
+prueba("agarrado no se anda ni se va solo", function () {
+  var w = conAgarre();
+  var e = w.entities[0], p = w.players[0];
+  var x0 = NP.F2I(p.x);
+  correr(w, 20, NP.IN.RIGHT);
+  assert.ok(w.players[0].grab > 0, "se ha soltado antes de tiempo");
+  assert.strictEqual(NP.F2I(p.x), x0, "el jugador anda con uno agarrado");
+  /* y lo lleva pegado al costado por el que mira */
+  assert.ok(NP.F2I(e.x) > NP.F2I(p.x), "no lo lleva por delante");
+  assert.ok(NP.F2I(e.x) - NP.F2I(p.x) < 20, "lo lleva demasiado lejos");
+});
+
+prueba("el rodillazo hace dano sin soltarlo", function () {
+  var w = conAgarre({ rodillazo: 3 });
+  var e = w.entities[0];
+  var antes = e.health;
+  w.step(NP.IN.ACTION);
+  correr(w, 8);
+  assert.strictEqual(antes - e.health, 3, "el rodillazo no hace 3 de dano");
+  assert.ok(w.players[0].grab > 0, "el rodillazo lo suelta");
+});
+
+prueba("agarrado se le acaba soltando", function () {
+  var w = conAgarre({ agarre: 20 });
+  assert.ok(w.players[0].grab > 0, "no lo ha agarrado");
+  correr(w, 40);
+  assert.strictEqual(w.players[0].grab, 0, "no se suelta nunca");
+});
+
+prueba("lanzarlo lo manda por el aire y cae derribado", function () {
+  var w = conAgarre({ danoLanzar: 4, fuerzaLanzar: 4 });
+  var e = w.entities[0], p = w.players[0];
+  var antes = e.health, x0 = NP.F2I(e.x), mirando = p.facing;
+  w.step(NP.IN.JUMP);
+  assert.strictEqual(p.grab, 0, "sigue agarrado despues de lanzarlo");
+  assert.strictEqual(antes - e.health, 4, "el estrellon no hace 4 de dano");
+  assert.ok(e.knock > 0, "no cae derribado");
+  /* vuela: sube y vuelve a bajar */
+  var arriba = 0;
+  for (var i = 0; i < 60; i++) {
+    correr(w, 1);
+    if (e.altura > arriba) arriba = e.altura;
+  }
+  assert.ok(NP.F2I(arriba) > 8, "no ha volado: subio " + NP.F2I(arriba));
+  assert.strictEqual(e.altura, 0, "no ha vuelto al suelo");
+  assert.ok(mirando ? NP.F2I(e.x) > x0 + 16 : NP.F2I(e.x) < x0 - 16,
+            "no ha salido despedido: de " + x0 + " a " + NP.F2I(e.x));
+});
+
+prueba("sin `agarre:` se cobra al tocarlo, como en cualquier otro juego",
+       function () {
+  /* El control de todo lo de arriba: el mismo acercamiento sin el bloque de
+     agarre no agarra a nadie y cuesta un golpe, que es lo de siempre. */
+  var con = conAgarre();
+  var sin = conAgarre({ agarre: 0 });
+  assert.ok(con.players[0].grab > 0, "con agarre no ha agarrado");
+  assert.strictEqual(sin.players[0].grab, 0, "agarra sin llevar agarre");
+  assert.strictEqual(con.players[0].health, 9,
+                     "agarrando tambien se cobra el golpe");
+  assert.ok(sin.players[0].health < 9,
+            "sin agarre el enemigo no hace dano al tocarlo");
+});
+
+/* ------------------------------------ el orden de dibujo por profundidad */
+
+prueba("en la cinta se dibuja de mas lejos a mas cerca", function () {
+  /* En un juego donde todo el mundo se pisa, el que esta detras tiene que
+     pintarse antes. El motor da el orden y las siete maquinas lo siguen. */
+  var w = mundo(suelo([[7, 6, "e"], [10, 8, "e"], [8, 12, "e"], [9, 4, "P"]]),
+                { cinta: true, velocidadEnemigo: 0 });
+  var orden = w.ordenDibujo();
+  var suelos = orden.map(function (i) {
+    var e = w.entities[i];
+    return e.y + e.altura;
+  });
+  for (var i = 1; i < suelos.length; i++)
+    assert.ok(suelos[i] >= suelos[i - 1],
+              "el de la fila " + suelos[i] + " se pinta despues del "
+              + suelos[i - 1]);
+  assert.strictEqual(orden.length, 3, "no salen las tres entidades");
+});
+
+prueba("fuera de la cinta el orden es el de la lista", function () {
+  /* Ordenar en los demas generos costaria ciclos en la consola sin arreglar
+     nada: alli no hay un "detras". */
+  var w = mundo(suelo([[7, 6, "e"], [10, 8, "e"], [8, 12, "e"], [12, 4, "P"]]));
+  assert.deepStrictEqual(w.ordenDibujo(), [0, 1, 2]);
+});
+
+/* --------------------------- el cerrojo de la camara (Final Fight) */
+/*
+ * Lo que convierte un pasillo en una pelea: mientras quede alguien vivo en la
+ * pantalla, la camara no pasa de ahi. Sin esto, un juego de tortas se termina
+ * andando hacia la derecha sin pegar a nadie.
+ */
+
+prueba("con alguien en pantalla la camara no avanza", function () {
+  var filas = [];
+  for (var y = 0; y < 14; y++) filas.push(".".repeat(60));
+  filas.push("#".repeat(60));
+  filas[8] = filas[8].substring(0, 2) + "P" + filas[8].substring(3);
+  filas[8] = filas[8].substring(0, 12) + "e" + filas[8].substring(13);
+  var w = mundo(filas, { cinta: true, velocidadEnemigo: 0, health: 99,
+                         aturdido: 0 });
+  correr(w, 200, NP.IN.RIGHT);
+  var conBicho = w.camX;
+  assert.strictEqual(conBicho, 0, "la camara ha avanzado con el bicho vivo");
+  /* se lo quita de en medio y entonces si */
+  w.entities[0].active = 0;
+  correr(w, 200, NP.IN.RIGHT);
+  assert.ok(w.camX > conBicho,
+            "sin nadie en pantalla la camara sigue clavada");
+});
+
+prueba("el cerrojo es solo de la vista de cinta", function () {
+  /* En los otros generos la camara sigue al jugador pase lo que pase: si el
+     cerrojo se colara ahi, un enemigo cualquiera pararia el scroll. */
+  var filas = [];
+  for (var y = 0; y < 14; y++) filas.push(".".repeat(60));
+  filas.push("#".repeat(60));
+  filas[8] = filas[8].substring(0, 2) + "P" + filas[8].substring(3);
+  filas[8] = filas[8].substring(0, 12) + "e" + filas[8].substring(13);
+  var w = mundo(filas, { cenital: true, velocidadEnemigo: 0, health: 99,
+                         aturdido: 0 });
+  correr(w, 200, NP.IN.RIGHT);
+  assert.ok(w.camX > 0, "la camara no avanza en un juego cenital");
 });
 
 /* ----------------------------------------------------------------- camara */

@@ -262,6 +262,11 @@ class Player(Actor):
     health: int = 1
     # Frames que tarda en irse un punto de vida sola. 0 = no se va nunca.
     wear: int = 0
+    # El agarre de los juegos de tortas. 0 = el juego no lleva agarre.
+    grab_time: int = 0             # frames que aguanta agarrado
+    grab_damage: int = 1           # lo que hace cada rodillazo
+    throw_damage: int = 2          # lo que duele estrellarse
+    throw_speed: float = 3.5       # a que velocidad sale despedido
     invuln: int = 90
     knockback: float = 0.0        # 0 = tanto como la velocidad de andar
     stun: int = 0                 # frames sin control tras un golpe
@@ -928,6 +933,21 @@ def _read_generator(name: str, data: Any, root: str) -> "Generator":
     return generador
 
 
+def _read_grab(node: Node) -> Dict[str, object]:
+    """El bloque `agarre:` del jugador. Sin el, el juego no lleva agarre y los
+    demas numeros no pintan nada."""
+    if not node.data:
+        return {"grab_time": 0}
+    return {
+        "grab_time": node.int_(["time", "tiempo", "duracion", "duración"],
+                               90, 8, 600),
+        "grab_damage": node.int_(["knee", "rodillazo", "dano", "daño"], 1, 0, 99),
+        "throw_damage": node.int_(["throw", "lanzamiento", "dano_caida"],
+                                  2, 0, 99),
+        "throw_speed": node.num(["speed", "fuerza", "velocidad"], 3.5, 0.5, 12.0),
+    }
+
+
 def _read_player(node: Node, root: str) -> Player:
     where = "jugador"
     sprite = node.str_(["sprite", "imagen", "image"], required=True)
@@ -955,6 +975,10 @@ def _read_player(node: Node, root: str) -> Player:
         # tantos frames se va un punto de vida sin que nadie te toque, y hay
         # que ir buscando comida. Es la mecanica de Gauntlet.
         wear=node.int_(["wear", "desgaste", "hambre"], 0, 0, 3600),
+        # `agarre:` es lo que hace de un juego de tortas un juego de tortas:
+        # al que se tambalea de un golpe se le coge, se le zarandea a
+        # rodillazos y se le lanza por encima del hombro.
+        **_read_grab(node.child("grab", "agarre")),
         invuln=node.int_(["invuln", "invulnerable", "invulnerabilidad"], 90, 0, 600),
         knockback=node.num(["knockback", "retroceso", "empujon", "empujón"], 0.0,
                            0.0, 12.0),
@@ -1000,7 +1024,7 @@ def _read_player(node: Node, root: str) -> Player:
         "double_jump", "doble_salto", "coyote", "coyote_time", "margen_salto",
         "jump_buffer", "buffer_salto", "stomp", "pisar", "pisar_enemigos",
         "bounce", "rebote", "health", "salud", "vida", "invuln", "invulnerable",
-        "wear", "desgaste", "hambre",
+        "wear", "desgaste", "hambre", "grab", "agarre",
         "invulnerabilidad", "attack", "ataque",
         "knockback", "retroceso", "empujon", "empujón",
         "stun", "aturdido", "aturdimiento",
@@ -1694,8 +1718,10 @@ def load_project(path: str) -> Project:
                      (top.child("spawns", "simbolos", "símbolos").data or {}).items()}
     # Los enemigos con gravedad necesitan suelo debajo; los voladores no. Y
     # mirando desde arriba no lo necesita ninguno: ahi no hay de donde caerse.
+    # Mirando desde arriba -y en la cinta, que es la misma manera de andar- no
+    # hay de donde caerse: el suelo es toda la franja.
     necesitan_suelo = {
-        name: (view != "cenital" and enemy.gravity > 0
+        name: (view not in ("cenital", "cinta") and enemy.gravity > 0
                and enemy.behavior != "flyer")
         for name, enemy in enemies.items()
     }

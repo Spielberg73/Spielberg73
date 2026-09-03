@@ -40,6 +40,8 @@
   var KIND_GENERATOR = 9;       /* el nido: saca bichos hasta que lo rompes */
   /* el arma secundaria: 0 ninguna, 1 recta, 2 en arco */
   var SUB_NONE = 0, SUB_LINE = 1, SUB_ARC = 2;
+  /* lo que se aparta un maton despues de pegarte, en frames (np_world.c) */
+  var RECULA = 26;
   /* por donde va y viene una plataforma movil */
   var PLAT_X = 0, PLAT_Y = 1;
   var ATTACK_NONE = 0, ATTACK_SHOT = 1, ATTACK_MELEE = 2;
@@ -81,6 +83,8 @@
         altura: 0, valtura: 0,
         /* la serie de golpes: por cual va y cuanto queda de ventana */
         comboLink: 0, comboTimer: 0,
+        /* a quien tienes agarrado: su sitio en la lista mas uno (0 = a nadie) */
+        grab: 0, grabTimer: 0,
         attackTimer: 0, attackCd: 0, riding: 0, whip: 0, crouch: 0,
         stun: 0, power: 0,
         stairs: 0, stairDir: 1
@@ -306,6 +310,7 @@
         anim: ANIM_IDLE,
         animFrame: 0, animTimer: 0, hurt: 0, timer: 0, health: 1, vida: 0,
         knock: 0,    /* derribado: frames que se queda en el suelo */
+        altura: 0, valtura: 0,   /* lo alto que va el que sale lanzado */
         golpeado: 0  /* a quien ya ha tocado este golpe: un bit por jugador */
       };
       if (e.kind === KIND_ENEMY) {
@@ -341,6 +346,7 @@
     p.wearTimer = 0;            /* la cuenta atras de `desgaste:` de cero */
     p.altura = 0; p.valtura = 0;   /* con los pies en el suelo */
     p.comboLink = 0; p.comboTimer = 0;   /* la serie, desde el primero */
+    p.grab = 0; p.grabTimer = 0;         /* y sin nadie agarrado */
     p.dying = 0; p.attackTimer = 0; p.attackCd = 0; p.riding = 0; p.stun = 0;
     p.power = 0;                /* el arma vuelve a la de serie */
     p.crouch = 0;
@@ -452,7 +458,8 @@
       active: 0, kind: KIND_SHOT, def: 0, x: 0, y: 0, homeX: 0, homeY: 0,
       vx: 0, vy: 0,
       facing: 0, anim: ANIM_IDLE, animFrame: 0, animTimer: 0, hurt: 0,
-      timer: 0, health: 1, vida: 0, knock: 0, golpeado: 0
+      timer: 0, health: 1, vida: 0, knock: 0, golpeado: 0,
+      altura: 0, valtura: 0
     });
     i = this.entities.length - 1;
     if (i >= this.entityCount) this.entityCount = i + 1;
@@ -497,7 +504,7 @@
     e.homeX = e.x; e.homeY = e.y;
     e.vx = 0; e.vy = 0;
     e.health = 1; e.hurt = 0; e.timer = 0; e.vida = 0; e.knock = 0;
-    e.golpeado = 0;
+    e.golpeado = 0; e.altura = 0; e.valtura = 0;
     e.anim = ANIM_IDLE; e.animFrame = 0; e.animTimer = 0;
   };
 
@@ -1036,6 +1043,76 @@
     animTick(a, p);
   };
 
+  /* ------------------------------------------------------- el agarre
+   *
+   * Al que se tambalea de un golpe se le coge, se le zarandea a rodillazos y
+   * se le lanza por encima del hombro. Traduccion literal de np_grab_update,
+   * np_rodillazo y np_lanzar. */
+  World.prototype.agarrado = function (quien) {
+    var p = this.players[quien];
+    if (!p.grab || p.grab > this.entityCount) return null;
+    var e = this.entities[p.grab - 1];
+    if (!e.active || e.kind !== KIND_ENEMY) { p.grab = 0; return null; }
+    return e;
+  };
+
+  World.prototype.soltar = function (quien) {
+    var p = this.players[quien];
+    p.grab = 0; p.grabTimer = 0;
+  };
+
+  World.prototype.lanzar = function (quien, e) {
+    var d = this.data.player, p = this.players[quien];
+    e.vx = p.facing ? d.throw_speed : -d.throw_speed;
+    e.vy = 0;
+    e.valtura = d.jump;
+    e.knock = d.grab_time ? 60 : 30;
+    e.golpeado = 0;
+    this.sfx |= SFX.STOMP;
+    this.hitEntity(e, d.throw_damage);
+    this.soltar(quien);
+  };
+
+  World.prototype.rodillazo = function (quien, e) {
+    var d = this.data.player, p = this.players[quien];
+    p.attackTimer = d.attack.duration;
+    p.grabTimer = d.grab_time;
+    this.sfx |= SFX.SHOOT;
+    this.hitEntity(e, d.grab_damage);
+    if (!e.active) this.soltar(quien);
+  };
+
+  World.prototype.grabUpdate = function (quien, input) {
+    var d = this.data.player, p = this.players[quien], pa = d.actor;
+    var e = this.agarrado(quien), ea;
+    if (!e) return 0;
+    if (p.stun || p.dying) { this.soltar(quien); return 0; }
+    if (!p.grabTimer) { this.soltar(quien); return 0; }
+    p.grabTimer--;
+
+    ea = this.entityDef(e).actor;
+    e.x = p.facing ? p.x + I2F(pa.box_w - 2) : p.x - I2F(ea.box_w - 2);
+    e.y = p.y + I2F(pa.box_h - ea.box_h);
+    e.vx = 0; e.vy = 0; e.knock = 0;
+    e.facing = p.facing ? 0 : 1;
+    animSet(e, ANIM_HURT);
+    animTick(ea, e);
+
+    if ((input & IN.JUMP) && !(this.prevInput[quien] & IN.JUMP)) {
+      this.lanzar(quien, e);
+      return 1;
+    }
+    if ((input & IN.ACTION) && !(this.prevInput[quien] & IN.ACTION)
+        && !p.attackCd) {
+      p.attackCd = d.attack.cooldown;
+      this.rodillazo(quien, e);
+    }
+    if (p.attackTimer) p.attackTimer--;
+    animSet(p, p.attackTimer ? ANIM_ATTACK : ANIM_IDLE);
+    animTick(pa, p);
+    return 1;
+  };
+
   /* El jugador en la vista de cinta: el "yo contra el barrio". Se anda en
      ocho direcciones como desde arriba, pero se salta, porque hay una tercera
      coordenada -la altura sobre el suelo- con su gravedad. `y` sigue siendo
@@ -1044,6 +1121,9 @@
   World.prototype.playerUpdateCinta = function (quien, input) {
     var d = this.data.player, a = d.actor, p = this.players[quien];
     var dx = 0, dy = 0, suelo, pose;
+
+    /* Con alguien agarrado el frame es otro: no se anda, se le zarandea. */
+    if (d.grab_time && this.grabUpdate(quien, input)) return;
 
     /* Aqui no se cae de ningun sitio: si no estas por el aire, estas de pie.
        Igual que np_player_update_cinta, y por el mismo motivo: recien colocado
@@ -1407,10 +1487,19 @@
     /* Derribado por un remate: no decide nada, solo resbala con el empujon que
        se llevo. Igual que np_enemy_update. */
     if (e.knock) {
+      var suelo = e.y + e.altura;
       e.knock--;
-      e.x = this.moveX(e.x, e.y, a.box_w, a.box_h, e.vx, moveOut);
+      /* Si viene de un lanzamiento, ademas vuela. Igual que np_enemy_update. */
+      if (e.altura > 0 || e.valtura) {
+        e.altura += e.valtura;
+        e.valtura -= this.data.player.gravity;
+        if (e.altura <= 0) { e.altura = 0; e.valtura = 0; }
+      }
+      e.x = this.moveX(e.x, suelo, a.box_w, a.box_h, e.vx, moveOut);
       if (moveOut.hit) e.vx = 0;
-      e.vx = approach(e.vx, 0, this.data.player.friction);
+      e.y = suelo - e.altura;
+      /* por el aire no se frena: se frena al tocar el suelo */
+      if (!e.altura) e.vx = approach(e.vx, 0, this.data.player.friction);
       animSet(e, ANIM_HURT);
       animTick(a, e);
       return;
@@ -1592,6 +1681,17 @@
         if (e.kind === KIND_GENERATOR) continue; /* hay que pegarle, y no hace dano */
         /* uno en el suelo no hace dano: por eso se remata */
         if (e.kind === KIND_ENEMY && e.knock) continue;
+        /* Y al que se tambalea de un golpe se le coge. Igual que
+           np_touch_entities: se mira el parpadeo, o sea que acabas de
+           tocarle, para que el agarre sea algo que te ganas. */
+        if (this.data.player.grab_time && e.kind === KIND_ENEMY
+            && e.hurt && !p.grab && !p.dying) {
+          p.grab = i + 1;
+          p.grabTimer = this.data.player.grab_time;
+          e.knock = 0;
+          this.sfx |= SFX.STOMP;
+          continue;
+        }
         if (e.kind === KIND_BREAKABLE) continue; /* hay que pegarle */
         if (e.kind === KIND_ENEMY_SHOT) continue;   /* se mira en su update */
         if (e.kind === KIND_PRISONER) { this.prisonerFree(e, p); continue; }
@@ -1613,7 +1713,16 @@
           p.vy = -this.data.player.bounce;
           p.onGround = 0;
         } else {
+          /* En un juego de tortas el que te acaba de pegar se aparta: pega y
+             recula, como en los recreativos. Igual que np_touch_entities. */
+          var cobrado = !p.invuln && !p.dying;
           this.playerHurt(quien, d.damage);
+          if (this.cinta() && cobrado) {
+            e.knock = RECULA;
+            e.vx = e.x < p.x ? -this.data.player.knockback
+                             : this.data.player.knockback;
+            e.vy = 0;
+          }
         }
       }
     }
@@ -1621,6 +1730,44 @@
 
   /* Dos modos de camara, igual que np_world.c: 'scroll' desliza el escenario y
      'pantallas' salta de una pantalla fija a la siguiente. */
+  /* En que orden se dibujan las entidades: de mas lejos a mas cerca en la
+     vista de cinta -donde los actores se pisan a cada rato y hay un "detras"
+     de verdad- y en el orden de la lista en las demas. Gemelo de
+     np_orden_dibujo, para que el preview reparta como las siete maquinas. */
+  World.prototype.ordenDibujo = function () {
+    var orden = [], i;
+    for (i = 0; i < this.entityCount; i++)
+      if (this.entities[i].active) orden.push(i);
+    if (!this.cinta()) return orden;
+    var ents = this.entities;
+    for (i = 1; i < orden.length; i++) {
+      var sitio = orden[i];
+      var suelo = ents[sitio].y + ents[sitio].altura;
+      var j = i - 1;
+      while (j >= 0 && ents[orden[j]].y + ents[orden[j]].altura > suelo) {
+        orden[j + 1] = orden[j];
+        j--;
+      }
+      orden[j + 1] = sitio;
+    }
+    return orden;
+  };
+
+  /* Queda alguien vivo en la pantalla? Es de lo que vive el genero de tortas:
+     mientras la respuesta sea que si, la camara no pasa de ahi. Igual que
+     np_alguien_en_pantalla. */
+  World.prototype.alguienEnPantalla = function () {
+    for (var i = 0; i < this.entityCount; i++) {
+      var e = this.entities[i];
+      if (!e.active || e.kind !== KIND_ENEMY) continue;
+      var ea = this.entityDef(e).actor;
+      if (F2I(e.x) + ea.box_w <= this.camX) continue;
+      if (F2I(e.x) >= this.camX + SCREEN_W) continue;
+      return true;
+    }
+    return false;
+  };
+
   World.prototype.cameraUpdate = function () {
     var a = this.data.player.actor;
     var maxX = this.level.width * TILE - SCREEN_W;
@@ -1654,6 +1801,10 @@
       tx = cx - idiv(SCREEN_W, 2);
       ty = cy - idiv(SCREEN_H, 2);
     }
+    /* El cerrojo del genero de tortas: con alguien vivo en pantalla la camara
+       no avanza. Igual que np_camera_update. */
+    if (this.cinta() && tx > this.camX && this.alguienEnPantalla())
+      tx = this.camX;
     this.camX = clamp(tx, 0, maxX);
     this.camY = clamp(ty, 0, maxY);
   };

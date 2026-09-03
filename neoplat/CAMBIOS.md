@@ -2,8 +2,91 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.21.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.22.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.22
+
+**Quinto género: yo contra el barrio, al estilo Double Dragon.**
+
+```bash
+ngplat nuevo micalle --genero barrio
+```
+
+Se ve de lado, como el de plataformas, pero no se anda por una línea: se anda
+por una **franja de suelo con profundidad**, y el salto es una tercera
+coordenada aparte. Eso es una vista nueva del motor, `vista: cinta`, y de ella
+sale el género entero: dos que no están a la misma profundidad **no se tocan**,
+y al saltar tu caja sube con el dibujo, así que el puñetazo de abajo te pasa
+por debajo.
+
+El truco para que la tercera coordenada no costara una línea de código en las
+siete máquinas: **`y` sigue siendo dónde se dibuja** y la altura se guarda
+aparte. Así los siete dibujantes no se enteran de nada, dos cajas se tocan solo
+si coinciden en profundidad **y** en altura —que es justo la regla del
+género—, y quien necesita saber por dónde se anda (los choques y la cámara)
+suma la altura y tiene la línea del suelo.
+
+Lo que trae el género:
+
+- **La serie de golpes** (`combo:`). Puño, puño y remate: apretar otra vez
+  antes de que se acabe `ventana:` encadena el siguiente, y el último hace
+  `dano_remate:`, **tumba** al que lo cobra (`derribo:`) y lo manda deslizando.
+  Uno tumbado ni decide nada ni te hace daño, que es lo que hace que rematar
+  sirva de algo. Con `combo: 1` no hay serie y el motor ni lo mira.
+- **El agarre** (`agarre:`). Al que se tambalea de un golpe se le coge
+  tocándolo: con acción, rodillazos; con salto, **por encima del hombro**. El
+  que sale lanzado vuela con su propia altura y su arco, se estrella al caer y
+  aterriza derribado. Es la única vez que una entidad —y no el jugador— usa la
+  tercera coordenada.
+- **La cámara con cerrojo.** Mientras quede alguien vivo en pantalla, la vista
+  no avanza. No se configura: es lo que convierte un pasillo en una pelea, y
+  sin ello el juego se pasa andando. Hacia atrás sí se mueve, porque lo que se
+  cierra es el paso y no la vista.
+- **El que te pega se aparta.** Sin eso, tres matones a la vez te matan en dos
+  segundos: en cuanto se acaba el parpadeo vuelven a darte. Ahora pegan y
+  reculan, como en los recreativos. Solo en esta vista; los demás géneros
+  siguen exactamente igual.
+- **Los actores se pintan de más lejos a más cerca**, en las siete máquinas y
+  en el preview. En un juego donde todo el mundo se pisa, sin eso no se
+  entiende quién está delante de quién. Fuera de esta vista el orden es el de
+  siempre y no cuesta un ciclo.
+
+El proyecto que sale trae dos calles (LA CALLE y EL DESCAMPADO) con sus dibujos
+propios —el héroe con su chaqueta, dos clases de matón, el jefe, los barriles,
+el bate y el pollo—, cuatro canciones y una calle de 48 × 14 donde lo que
+importa no es el dibujo del suelo sino dónde se planta cada grupo.
+
+**El bot también aprendió a pelear.** El que comprueba que un nivel se puede
+terminar andaba hacia la derecha; en un juego con cerrojo eso no lleva a
+ninguna parte. Ahora hace lo que haría cualquiera: se cuadra en la profundidad
+del que tiene delante, le pega, y si lo agarra **lo lanza**; y si algo se le
+pone por medio —una valla—, lo rodea cambiando de profundidad en vez de
+insistir contra ella.
+
+**Arreglado de paso**: el cuerpo a cuerpo solo existía en vista lateral
+(`np_melee_update` no se llamaba desde ningún otro sitio), y el guardia de «no
+toques dos veces con el mismo golpe» miraba el parpadeo del enemigo en vez del
+golpe, así que una serie de tres solo acertaba el primero.
+
+**Y una cosa que enseñó el Atari ST**, que es la máquina más justa de las
+siete. Pedir el orden de dibujo estaba bien; **leerlo** dentro del bucle que
+pinta a todos los actores le costaba lo bastante como para perder el vblank, y
+la música —que va por frames— empezaba a sonar lenta. El índice se resuelve
+ahora al compilar (`NP_DIBUJO`, en el `gamedata.h` de cada juego): en uno de
+cinta mira la lista y en cualquier otro es `i`, así que el bucle de siempre
+queda exactamente como estaba. Lo pilló la prueba que arranca el disquete del
+ST en un emulador de verdad, que es justo para lo que está.
+
+Pruebas nuevas: la vista de cinta entera (que se salta y se vuelve al mismo
+sitio, que el salto sube el dibujo y no la fila por la que se anda, que
+saltando no se atraviesan las paredes y que el daño se cobra con los pies en el
+suelo), la serie de golpes, el agarre con su lanzamiento, el cerrojo de la
+cámara con su control de que es solo de esta vista, la paridad C/JS de todo
+ello —con sus mutantes: cambiando la gravedad del salto en el C la traza se
+separa, y el mismo juego sin serie o sin agarre da otra traza—, que las dos
+calles se pueden limpiar con el bot y que sin puños no se pasa de la primera, y
+que el proyecto se genera para las siete máquinas.
 
 ## 1.21
 

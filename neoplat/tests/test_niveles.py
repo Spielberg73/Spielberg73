@@ -124,6 +124,42 @@ class TestNivelesJugables(unittest.TestCase):
                             "el bot dice que abre una meta sin coger la llave")
         self.assertIn("la llave", resultado.stdout, resultado.stdout)
 
+    def test_el_proyecto_de_tortas_tambien_se_termina(self):
+        """El genero de tortas no se pasa andando: la camara no avanza mientras
+        quede alguien vivo en pantalla, asi que el bot tiene que pelear. Sus
+        dos calles tienen que poder limpiarse."""
+        destino = os.path.join(self.tmp, "barrio")
+        crear_proyecto(destino, "BARRIO", "TEST", genero="barrio")
+        resultado = self._jugar(destino)
+        self.assertEqual(resultado.returncode, 0,
+                         "el bot no puede terminar el proyecto de tortas:\n"
+                         + resultado.stdout)
+
+    def test_en_las_tortas_hay_que_pelear_para_avanzar(self):
+        """Y que lo que le hace terminar es pelear: al mismo juego sin ataque
+        no le queda forma de limpiar la pantalla, asi que el bot se queda
+        parado donde el primer grupo. Si tambien pasara, es que la camara no
+        estaba cerrando el paso y la prueba de arriba no probaba nada."""
+        destino = os.path.join(self.tmp, "barrio-sin-punos")
+        crear_proyecto(destino, "SINPUNOS", "TEST", genero="barrio")
+        ruta = os.path.join(destino, "game.yaml")
+        with open(ruta, encoding="utf-8") as fh:
+            texto = fh.read()
+        marca = "  ataque:\n    tipo: golpe\n"
+        self.assertIn(marca, texto, "el ataque del barrio ya no se escribe asi")
+        # sin alcance el puno no llega a nadie: el resto se queda igual
+        texto = texto.replace("    alcance: 14", "    alcance: 4", 1)
+        # y los matones aguantan lo que sea
+        texto = texto.replace("    vida: 3\n    dano: 1", "    vida: 99\n    dano: 1", 1)
+        with open(ruta, "w", encoding="utf-8") as fh:
+            fh.write(texto)
+        resultado = self._jugar(destino)
+        self.assertNotEqual(resultado.returncode, 0,
+                            "sin punos tambien se pasa la calle")
+        # se queda a medias, se llame como se llame el fallo: o clavado donde
+        # el primer grupo o muerto de tanto cobrar sin poder responder
+        self.assertNotIn("ok   nivel", resultado.stdout, resultado.stdout)
+
     def _mazmorra_con(self, nombre, parches):
         """Un proyecto de mazmorra con el game.yaml retocado."""
         destino = os.path.join(self.tmp, nombre)

@@ -124,6 +124,7 @@ el nivel de partida.
 | `castlevania` | pegas con **látigo** (que se ve, y se alarga con cada mejora), te agachas, subes escaleras y tiras cuchillos o el hacha gastando munición. El salto **no** se corrige, un golpe te tira al vacío y hay puntos de control. Trae sus propios bichos: esqueleto, murciélago y un encapuchado de jefe |
 | `comando` | **se ve desde arriba**: andas en ocho direcciones, disparas hacia donde miras, tiras granadas con el botón de saltar y subes la pantalla rescatando prisioneros. Los soldados y las torretas **te disparan**; a los presos atados, no: si les das, los pierdes |
 | `mazmorra` | un **laberinto** visto desde arriba, al estilo Gauntlet. La vida **se gasta sola**, así que la partida es una cuenta atrás y hay que ir buscando comida; los **generadores** sueltan bichos sin parar hasta que los revientas, y la poción del botón de saltar se lleva por delante todo lo que se ve. La meta pide una llave que está al otro lado del laberinto |
+| `barrio` | **yo contra el barrio**, al estilo Double Dragon: se anda por una calle **con profundidad** —arriba y abajo te mueves por el ancho de la calle— y se pelea. Los golpes se **encadenan** (puño, puño y remate, que tumba), al que se tambalea se le **agarra** para darle rodillazos o lanzarlo por encima del hombro, y la cámara **no pasa de pantalla** mientras quede alguien vivo |
 
 Si prefieres decirlo de una:
 
@@ -354,9 +355,9 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.21.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
-| `neoplat-kit-1.21.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.21.zip` | el `ngplat.exe` y su LEEME |
+| `neoplat-docs-1.22.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
+| `neoplat-kit-1.22.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.22.zip` | el `ngplat.exe` y su LEEME |
 
 El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
 plantillas; no necesita Python ni nada instalado. Con **doble clic** —sin
@@ -393,6 +394,7 @@ archivo nuevo y que el `.exe` se quede sin él; así salta antes de repartirlo.
 | `ngplat nuevo <carpeta> --genero castlevania` | Lo mismo, con látigo, escaleras, munición y puntos de control en vez de saltar y pisar |
 | `ngplat nuevo <carpeta> --genero comando` | Lo mismo, pero visto desde arriba: ocho direcciones, granadas, enemigos que disparan y prisioneros que rescatar |
 | `ngplat nuevo <carpeta> --genero mazmorra` | Un laberinto tipo Gauntlet: la vida se gasta sola, hay generadores de bichos y una poción que limpia la pantalla |
+| `ngplat nuevo <carpeta> --genero barrio` | Un juego de tortas tipo Double Dragon: calle con profundidad, golpes encadenados, agarres y la cámara con cerrojo |
 | `ngplat nuevo <carpeta> --estilo hierro` | Lo mismo, pero dibujado con seis colores y listo para el doble plano del Amiga |
 | `ngplat comprobar [proyecto]` | Valida el `game.yaml` y dice cuánto ocupa el juego |
 | `ngplat probar [proyecto]` | Abre el preview y el editor, y se queda sirviéndolo |
