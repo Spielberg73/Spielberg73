@@ -115,6 +115,17 @@ class TestParidad(unittest.TestCase):
         # que la puerta se abre **con la llave** y no sola.
         cls.variantes["sin-llave"] = cls._preparar("pantallas", genero="aventura",
                                                    sin_llave=True)
+        # El barrio entero, tal y como sale de `ngplat nuevo --genero barrio`:
+        # la IA de pelea (colocarse, esperar turno, avisar, pegar y replegarse),
+        # el tambaleo, la parada del impacto, la sacudida y el repertorio del
+        # jugador. Es el genero que mas cosas mueve **cada frame** de todos, y
+        # ademas la mitad son decisiones de la maquina: si las dos no decidieran
+        # igual, se separarian al primer golpe.
+        cls.variantes["barrio"] = cls._preparar("scroll", genero="barrio")
+        # el mismo barrio con los enemigos sin golpe: vuelven a ser bichos que
+        # hacen dano al tocarte, que es lo que eran antes. Sirve de control.
+        cls.variantes["barrio-sin-golpe"] = cls._preparar("scroll", genero="barrio",
+                                                          sin_golpe=True)
         # La mazmorra: la vida que se gasta sola, los generadores que sacan
         # bichos y la pocima que limpia la pantalla. Son tres cosas que corren
         # **cada frame** en los dos motores, asi que van a la traza.
@@ -129,7 +140,8 @@ class TestParidad(unittest.TestCase):
     def _preparar(cls, camara, jefe=False, dos=False, golpe=False, llave=False,
                   tablon=False, genero="plataformas", sin_dibujo=False,
                   cenital=False, nidos_dormidos=False, cinta=False,
-                  combo=False, agarre=False, sin_llave=False):
+                  combo=False, agarre=False, sin_llave=False,
+                  sin_golpe=False):
         proyecto_dir = os.path.join(
             cls.tmp, "juego-" + camara + ("-jefe" if jefe else "")
             + ("-dos" if dos else "") + ("-golpe" if golpe else "")
@@ -141,6 +153,7 @@ class TestParidad(unittest.TestCase):
             + ("-agarre" if agarre else "")
             + ("-dormidos" if nidos_dormidos else "")
             + ("-sinllave" if sin_llave else "")
+            + ("-singolpe" if sin_golpe else "")
             + ("-" + genero if genero != "plataformas" else ""))
         crear_proyecto(proyecto_dir, "PARIDAD", "TEST", genero=genero)
         yaml = os.path.join(proyecto_dir, "game.yaml")
@@ -246,6 +259,13 @@ class TestParidad(unittest.TestCase):
                                    ("    cada: 150", "    cada: 3600")):
                 assert antes in texto, "el generador ya no se escribe asi"
                 texto = texto.replace(antes, despues, 1)
+        if sin_golpe:
+            # se les quita el bloque `golpe:` entero -renombrandolo, para que
+            # el mapa y todo lo demas se queden igual- y vuelven a ser bichos
+            # que hacen dano al tocarte
+            marca = "    golpe:\n"
+            assert texto.count(marca) == 3, "el barrio ya no trae tres golpes"
+            texto = texto.replace(marca, "    sin_golpe:\n")
         if sin_llave:
             # se quita la llave del primer nivel dejando el mapa igual: la
             # puerta sigue ahi y el camino tambien, lo unico que falta es con
@@ -468,6 +488,60 @@ class TestParidad(unittest.TestCase):
         self.assertGreaterEqual(
             puntos, pocima + 3 * bicho,
             "con %d puntos no ha reventado a los tres bichos" % puntos)
+
+    def test_misma_traza_en_el_barrio(self):
+        """El genero de tortas entero: la IA de pelea decide cada frame -a que
+        distancia se pone cada uno, quien tiene turno, cuando avisa y cuando
+        suelta- y ademas estan el tambaleo, la parada del impacto y la sacudida
+        de la camara. Media docena de decisiones por bicho y por frame: si las
+        dos implementaciones no las tomaran igual, se separarian enseguida."""
+        for semilla in (1, 7, 99):
+            self._comparar("barrio", semilla)
+
+    def test_en_el_barrio_los_enemigos_pelean_de_verdad(self):
+        """Y que lo que hacen es pelear y no rozarte.
+
+        Con golpe, un enemigo se coloca a su distancia y no se te mete dentro:
+        lo que te quita vida es su golpe. Sin golpe -el mismo mapa, los mismos
+        bichos, la misma traza de mando- vuelven a hacer dano al tocarte, y eso
+        se ve en la traza: te alcanzan antes y te cuesta mas vida."""
+        con, _ = self._trazas(1, "barrio")
+        sin, _ = self._trazas(1, "barrio-sin-golpe")
+        self.assertNotEqual(con, sin, "con golpe y sin golpe pasa lo mismo: el "
+                                      "bloque `golpe:` no esta haciendo nada")
+        # Lo que se mide es **cuantas veces cobra** en la misma partida. Uno
+        # que pelea tiene que colocarse, avisar, soltar y recuperarse, y entre
+        # golpe y golpe te deja en paz; uno que hace dano al rozarte te va
+        # quitando vida cada vez que se le acaba el parpadeo. La vida del
+        # jugador va en la columna 6.
+        def veces_que_cobra(traza):
+            vida = [int(l.split()[6]) for l in traza]
+            return sum(1 for i in range(1, len(vida)) if vida[i] < vida[i - 1])
+        peleando = veces_que_cobra(con)
+        rozando = veces_que_cobra(sin)
+        self.assertGreater(rozando, peleando,
+                           "rozando se cobra lo mismo que peleando (%d y %d): "
+                           "el bloque `golpe:` no cambia como hacen dano"
+                           % (rozando, peleando))
+
+    def test_la_parada_del_impacto_pasa_de_verdad(self):
+        """El congelado: al acertar, el mundo se para unos frames. Se ve en la
+        traza porque el numero de frame sigue subiendo y **nada mas cambia**:
+        misma posicion, misma camara, mismo hash de entidades. Si no existiera,
+        no habria dos frames seguidos identicos en toda la partida."""
+        traza, _ = self._trazas(7, "barrio")
+        columnas = [linea.split() for linea in traza]
+        parados = 0
+        for i in range(1, len(columnas)):
+            a, b = columnas[i - 1], columnas[i]
+            if a[5] != str(ESTADO_JUEGO) or b[5] != str(ESTADO_JUEGO):
+                continue
+            # todo igual menos el frame (columna 0) y los eventos de sonido (12)
+            if a[1:12] == b[1:12] and a[14] == b[14]:
+                parados += 1
+        self.assertGreater(parados, 20,
+                           "solo %d frames parados: el impacto no congela nada"
+                           % parados)
 
     def test_misma_traza_en_la_aventura(self):
         """El genero de aventura mete tres cosas en el bucle del jugador: la

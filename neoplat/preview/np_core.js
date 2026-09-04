@@ -29,6 +29,15 @@
   /* cerrojo: frena como una pared hasta que llegas con el objeto que pide */
   var TILE_LOCK = 9;
   var AI_PATROL = 0, AI_FLYER = 1, AI_CHASER = 2, AI_JUMPER = 3;
+  /* Las fases del luchador, igual que NP_LUCHA_* en C. */
+  var LUCHA_IR = 0, LUCHA_RONDAR = 1, LUCHA_PREPARAR = 2, LUCHA_GOLPEAR = 3,
+      LUCHA_RECUPERAR = 4, LUCHA_REPLEGAR = 5;
+  /* Lo que se para el mundo al acertar, y lo que tiembla la camara al tumbar. */
+  var CONGELADO = 4, CONGELADO_REMATE = 9, SACUDIDA = 10;
+  /* Lo que se tambalea el que cobra un golpe. Igual que NP_ATURDE en C. */
+  var ATURDE = 16;
+  /* La carrera de doble toque. Igual que NP_TOQUE_* y NP_CARRERA_* en C. */
+  var TOQUE_VENTANA = 12, CARRERA = 80, CARRERA_X2 = 12;
   var ANIM_IDLE = 0, ANIM_RUN = 1, ANIM_JUMP = 2, ANIM_FALL = 3, ANIM_HURT = 4,
       ANIM_ATTACK = 5, ANIM_STAIR = 6, ANIM_CROUCH = 7,
       /* solo en vista cenital: de espaldas y de frente */
@@ -92,6 +101,9 @@
         grab: 0, grabTimer: 0,
         attackTimer: 0, attackCd: 0, riding: 0, whip: 0, crouch: 0,
         stun: 0, power: 0,
+        /* el repertorio de tortas: el golpe fuerte (patada o hombro), la
+           carrera y el doble toque que la enciende */
+        fuerte: 0, carrera: 0, toque: 0, toqueDir: 0,
         stairs: 0, stairDir: 1
       });
     }
@@ -108,6 +120,9 @@
     this.timeLeft = 0; this.prevInput = [0, 0];
     this.sfx = 0;                 /* eventos de sonido de este frame */
     this.keys = 0; this.hearts = 0; this.entityCount = 0;
+    /* Cuantos enemigos pegan ahora mismo, los frames de parada al acertar y
+       los que tiembla la camara. Igual que en NpWorld. */
+    this.atacando = 0; this.congelado = 0; this.sacudida = 0;
     this.sub = 0;                 /* el arma secundaria que se lleva */
     this.bossHealth = 0; this.bossMax = 0;
     /* El punto de control tocado en este nivel, en casillas. `checkOn` a cero
@@ -339,7 +354,9 @@
         animFrame: 0, animTimer: 0, hurt: 0, timer: 0, health: 1, vida: 0,
         knock: 0,    /* derribado: frames que se queda en el suelo */
         altura: 0, valtura: 0,   /* lo alto que va el que sale lanzado */
-        golpeado: 0  /* a quien ya ha tocado este golpe: un bit por jugador */
+        golpeado: 0, /* a quien ya ha tocado este golpe: un bit por jugador */
+        /* el luchador: en que fase va y a quien ha tocado **su** golpe */
+        fase: LUCHA_IR, tocado: 0, aturdido: 0
       };
       if (e.kind === KIND_ENEMY) {
         var ed = this.data.enemies[e.def];
@@ -375,6 +392,8 @@
     p.altura = 0; p.valtura = 0;   /* con los pies en el suelo */
     p.comboLink = 0; p.comboTimer = 0;   /* la serie, desde el primero */
     p.grab = 0; p.grabTimer = 0;         /* y sin nadie agarrado */
+    /* y sin carrera ni golpe fuerte a medias */
+    p.fuerte = 0; p.carrera = 0; p.toque = 0; p.toqueDir = 0;
     p.dying = 0; p.attackTimer = 0; p.attackCd = 0; p.riding = 0; p.stun = 0;
     p.power = 0;                /* el arma vuelve a la de serie */
     p.crouch = 0;
@@ -490,7 +509,7 @@
       vx: 0, vy: 0,
       facing: 0, anim: ANIM_IDLE, animFrame: 0, animTimer: 0, hurt: 0,
       timer: 0, health: 1, vida: 0, knock: 0, golpeado: 0,
-      altura: 0, valtura: 0
+      altura: 0, valtura: 0, fase: LUCHA_IR, tocado: 0, aturdido: 0
     });
     i = this.entities.length - 1;
     if (i >= this.entityCount) this.entityCount = i + 1;
@@ -499,9 +518,15 @@
 
   World.prototype.hitEnemy = function (e, damage) {
     var d = this.data.enemies[e.def];
+    /* Le has pegado tu primero: se le corta el golpe y pierde el turno. Igual
+       que np_hit_enemy en C. */
+    e.fase = LUCHA_IR;
     if (e.health > damage) {
       e.health -= damage;
       e.hurt = 20;
+      /* Y se tambalea: el hueco por el que entra el golpe siguiente. Igual
+         que np_hit_enemy. */
+      if (this.cinta()) e.aturdido = ATURDE;
       this.sfx |= SFX.STOMP;
       return;
     }
@@ -536,6 +561,7 @@
     e.vx = 0; e.vy = 0;
     e.health = 1; e.hurt = 0; e.timer = 0; e.vida = 0; e.knock = 0;
     e.golpeado = 0; e.altura = 0; e.valtura = 0;
+    e.fase = LUCHA_IR; e.tocado = 0; e.aturdido = 0;
     e.anim = ANIM_IDLE; e.animFrame = 0; e.animTimer = 0;
   };
 
@@ -714,7 +740,7 @@
   World.prototype.meleeUpdate = function (quien) {
     var at = this.data.player.attack, p = this.players[quien];
     var pa = this.data.player.actor, i;
-    if (!p.attackTimer) { this.whipOff(quien); return; }
+    if (!p.attackTimer) { p.fuerte = 0; this.whipOff(quien); return; }
     p.attackTimer--;
     if (at.kind !== ATTACK_MELEE) return;     /* un disparo no pega de cerca */
     /* Los primeros `preparacion:` frames el golpe se ve pero no toca. El
@@ -724,6 +750,10 @@
     var alcance = this.attackRange(quien);
     var gx = p.facing ? p.x + I2F(pa.box_w) : p.x - I2F(alcance);
     var gy = this.playerTop(quien);
+    var alto = this.playerHeight(quien);
+    /* La patada en salto llega al suelo: la caja se estira desde donde estas
+       hasta la linea del suelo. Igual que np_melee_update. */
+    if (this.cinta() && p.altura > 0) alto += F2I(p.altura);
     for (i = 0; i < this.entityCount; i++) {
       var e = this.entities[i];
       if (!e.active) continue;
@@ -735,26 +765,65 @@
          parpadea del primero. Igual que np_melee_update. */
       if (e.golpeado & (1 << quien)) continue;
       var ea = this.entityDef(e).actor;
-      if (!overlap(gx, gy, alcance, this.playerHeight(quien),
+      if (!overlap(gx, gy, alcance, alto,
                         e.x, e.y, ea.box_w, ea.box_h)) continue;
       e.golpeado |= (1 << quien);
+      var faseAntes = e.fase;
       this.hitEntity(e, this.golpeDano(quien));
+      /* El que ya ha empezado a soltar el golpe no se para con un puno
+         normal. Igual que np_melee_update. */
+      if (this.cinta() && e.active && faseAntes === LUCHA_PREPARAR
+          && !this.esRemate(quien)) {
+        e.fase = LUCHA_PREPARAR;
+        e.aturdido = 0;
+      }
+      /* La parada del impacto, solo en la cinta. Igual que np_melee_update. */
+      if (this.cinta()) {
+        this.congelado = this.esRemate(quien) ? CONGELADO_REMATE : CONGELADO;
+        /* y con el remate la pantalla tiembla, muera o no el que lo cobra.
+           Igual que np_melee_update. */
+        if (this.esRemate(quien) && e.kind === KIND_ENEMY)
+          this.sacudida = SACUDIDA;
+      }
+      /* y el empujon del tambaleo, hacia donde miras. Igual que en C. */
+      if (this.cinta() && e.active && e.aturdido) {
+        e.vx = this.players[quien].facing ? I2F(1) : -I2F(1);
+        e.vy = 0;
+      }
       if (e.active) this.derribar(quien, e);
     }
   };
 
-  /* Lo que hace el golpe que se esta dando ahora: el ultimo de una serie pega
-     mas fuerte. Igual que np_golpe_dano. */
-  World.prototype.golpeDano = function (quien) {
-    var at = this.data.player.attack, p = this.players[quien];
-    if (at.combo > 1 && at.finish_damage && p.comboLink + 1 >= at.combo)
-      return at.finish_damage;
-    return at.damage;
+  /* ¿Hay alguien a tiro a ese lado? Es la pregunta del codazo. Igual que
+     np_hay_a_ese_lado en C. */
+  World.prototype.hayALado = function (quien, derecha) {
+    var p = this.players[quien], pa = this.data.player.actor;
+    var alcance = this.attackRange(quien);
+    var gx = derecha ? p.x + I2F(pa.box_w) : p.x - I2F(alcance);
+    for (var i = 0; i < this.entityCount; i++) {
+      var e = this.entities[i];
+      if (!e.active || e.kind !== KIND_ENEMY || e.knock) continue;
+      var ea = this.entityDef(e).actor;
+      if (overlap(gx, this.playerTop(quien), alcance, this.playerHeight(quien),
+                  e.x, e.y, ea.box_w, ea.box_h))
+        return true;
+    }
+    return false;
   };
 
+  /* La patada en salto y el hombro en carrera valen por un remate. Igual que
+     np_es_remate. */
   World.prototype.esRemate = function (quien) {
     var at = this.data.player.attack, p = this.players[quien];
+    if (this.cinta() && p.fuerte) return true;
     return !!(at && at.combo > 1 && p.comboLink + 1 >= at.combo);
+  };
+
+  /* Lo que hace el golpe que se esta dando ahora. Igual que np_golpe_dano. */
+  World.prototype.golpeDano = function (quien) {
+    var at = this.data.player.attack;
+    if (this.esRemate(quien) && at.finish_damage) return at.finish_damage;
+    return at.damage;
   };
 
   /* Al que cobra el remate lo tumba. Igual que np_derribar. */
@@ -1178,13 +1247,26 @@
       if (input & IN.UP) dy -= 1;
     }
 
+    /* La carrera: dos toques seguidos en la misma direccion. Igual que
+       np_player_update_cinta. */
+    if (p.toque) p.toque--;
+    if (!p.stun && dx && !(this.prevInput[quien] & (IN.LEFT | IN.RIGHT))) {
+      if (p.toque && p.toqueDir === dx) { p.carrera = CARRERA; p.toque = 0; }
+      else { p.toque = TOQUE_VENTANA; p.toqueDir = dx; }
+    }
+    if (p.carrera) {
+      if (p.stun || !dx || dx !== p.toqueDir) p.carrera = 0;
+      else p.carrera--;
+    }
+
     /* Andar: solo con los pies en el suelo. En el aire manda el impulso. */
     if (p.onGround) {
       if (dx || dy) {
+        var paso = p.carrera ? (d.speed * CARRERA_X2) >> 3 : d.speed;
         p.aim = aimDe(dx, dy);
         if (dx) p.facing = dx > 0 ? 1 : 0;
-        p.vx = pasoCenital(d.speed, dx, dx && dy);
-        p.vy = pasoCenital(d.speed, dy, dx && dy);
+        p.vx = pasoCenital(paso, dx, dx && dy);
+        p.vy = pasoCenital(paso, dy, dx && dy);
       } else if (p.stun) {
         p.vx = approach(p.vx, 0, d.friction);
         p.vy = approach(p.vy, 0, d.friction);
@@ -1225,8 +1307,15 @@
     p.crouch = 0;
 
     if (p.attackCd) p.attackCd--;
-    if ((input & IN.ACTION) && !(this.prevInput[quien] & IN.ACTION))
+    if ((input & IN.ACTION) && !(this.prevInput[quien] & IN.ACTION)) {
+      /* El codazo hacia atras y la patada en salto. Igual que
+         np_player_update_cinta. */
+      if (!this.hayALado(quien, p.facing) && this.hayALado(quien, !p.facing))
+        p.facing = p.facing ? 0 : 1;
+      p.fuerte = (!p.onGround || p.carrera) ? 1 : 0;
+      p.carrera = 0;
       this.playerAttack(quien);
+    }
 
     if (p.invuln) p.invuln--;
     /* La caja del punetazo, que ademas lleva el reloj del golpe. Igual que
@@ -1527,6 +1616,122 @@
     animTick(a, e);
   };
 
+  /* ----------------------------------------------------- el luchador */
+  /*
+   * Un enemigo que anda en linea recta hacia ti y te hace dano al rozarte no da
+   * una pelea: da un enjambre. Estas cuatro cosas son las que la convierten en
+   * una pelea, y son las mismas que hace np_lucha_update en C:
+   *
+   *   1. se coloca a la distancia de su golpe y no se te mete dentro;
+   *   2. espera turno: solo `agresivos` pegan a la vez;
+   *   3. se le ve venir (`preparacion:`);
+   *   4. despues del golpe se queda plantado: esa es tu ventana.
+   */
+
+  /* La distancia a la que se pelea: lo justo para que su golpe llegue. */
+  function luchaCerca(d, a) { return I2F(a.box_w + d.reach - 8); }
+
+  /* Su golpe: una caja delante, mientras dura la fase de pegar. */
+  World.prototype.luchaPegar = function (e, d, a) {
+    var pa = this.data.player.actor, quien;
+    var gx = e.facing ? e.x + I2F(a.box_w) : e.x - I2F(d.reach);
+    for (quien = 0; quien < MAX_PLAYERS; quien++) {
+      var p = this.players[quien];
+      if (!p.playing || p.dying) continue;
+      if (e.tocado & (1 << quien)) continue;
+      if (!overlap(gx, e.y, d.reach, a.box_h,
+                   p.x, this.playerTop(quien), pa.box_w, this.playerHeight(quien)))
+        continue;
+      e.tocado |= (1 << quien);
+      if (p.invuln) continue;
+      this.playerHurt(quien, d.punch ? d.punch : d.damage);
+      this.congelado = CONGELADO;
+    }
+  };
+
+  /* Que no se amontonen: si esta encima de otro se aparta por profundidad, que
+     es por donde hay sitio en una calle. Igual que np_lucha_separar. */
+  World.prototype.luchaSeparar = function (e, a) {
+    for (var i = 0; i < this.entityCount; i++) {
+      var o = this.entities[i];
+      if (o === e || !o.active || o.kind !== KIND_ENEMY) continue;
+      var oa = this.entityDef(o).actor;
+      if (!overlap(e.x, e.y, a.box_w, a.box_h, o.x, o.y, oa.box_w, oa.box_h))
+        continue;
+      e.y += (e.y <= o.y) ? -I2F(1) : I2F(1);
+      return;
+    }
+  };
+
+  World.prototype.luchaUpdate = function (e, d, a, p) {
+    var dx = p.x - e.x;
+    var dy = (p.y + p.altura) - e.y;
+    var lejos = abs(dx);
+    var cerca = luchaCerca(d, a);
+    var anillo = cerca + I2F(22);
+    var ranura = (this.entities.indexOf(e) % 3 - 1) * 14;
+    var haciaY, ex = 0, ey = 0, puede;
+
+    this.luchaSeparar(e, a);
+    if (e.timer) e.timer--;
+    if (dx) e.facing = dx > 0 ? 1 : 0;
+
+    switch (e.fase) {
+      case LUCHA_PREPARAR:
+        e.vx = 0; e.vy = 0;
+        if (!e.timer) { e.fase = LUCHA_GOLPEAR; e.timer = d.active; e.tocado = 0; }
+        animSet(e, ANIM_ATTACK);
+        return;
+      case LUCHA_GOLPEAR:
+        e.vx = 0; e.vy = 0;
+        this.luchaPegar(e, d, a);
+        if (!e.timer) { e.fase = LUCHA_RECUPERAR; e.timer = d.recover; }
+        animSet(e, ANIM_ATTACK);
+        return;
+      case LUCHA_RECUPERAR:
+        e.vx = 0; e.vy = 0;
+        if (!e.timer) { e.fase = LUCHA_REPLEGAR; e.timer = d.wait; }
+        animSet(e, ANIM_IDLE);
+        return;
+      case LUCHA_REPLEGAR:
+        ex = dx > 0 ? -1 : 1;
+        if (abs(dy) > I2F(2)) ey = dy > 0 ? -1 : 1;
+        if (lejos > anillo + I2F(16)) { ex = 0; ey = 0; }
+        if (!e.timer) e.fase = LUCHA_IR;
+        break;
+      default: {
+        /* Te rodean -cada uno por su lado- y el que tiene turno se pone en tu
+           linea mientras los demas se apartan a la suya. Igual que
+           np_lucha_update. */
+        puede = this.atacando < this.data.agresivos;
+        var lado = (this.entities.indexOf(e) & 1) ? -1 : 1;
+        var quiero = puede ? cerca : anillo;
+        var destino = p.x + lado * quiero;
+        var huecoX = destino - e.x;
+        /* "Estar en su sitio" es la misma medida que decide si puede pegar,
+           y no dos parecidas. Igual que np_lucha_update. */
+        var enSuSitio = abs(huecoX) <= I2F(6);
+        if (!enSuSitio) ex = huecoX > 0 ? 1 : -1;
+        haciaY = (p.y + p.altura) + I2F((puede && enSuSitio) ? 0 : ranura);
+        var hueco = haciaY - e.y;
+        if (abs(hueco) > I2F(2)) ey = hueco > 0 ? 1 : -1;
+        e.fase = (lejos <= anillo + I2F(8)) ? LUCHA_RONDAR : LUCHA_IR;
+        if (puede && !e.timer && enSuSitio && abs(dy) <= I2F(7)) {
+          e.fase = LUCHA_PREPARAR;
+          e.timer = d.windup;
+          e.vx = 0; e.vy = 0;
+          this.atacando++;
+          animSet(e, ANIM_ATTACK);
+          return;
+        }
+        break;
+      }
+    }
+    e.vx = pasoCenital(d.speed, ex, ex && ey);
+    e.vy = pasoCenital(d.speed, ey, ex && ey);
+    animSet(e, (ex || ey) ? ANIM_RUN : ANIM_IDLE);
+  };
+
   World.prototype.enemyUpdate = function (e) {
     var d = this.data.enemies[e.def], a = d.actor, p = this.nearestPlayer(e.x);
     /* Derribado por un remate: no decide nada, solo resbala con el empujon que
@@ -1534,6 +1739,8 @@
     if (e.knock) {
       var suelo = e.y + e.altura;
       e.knock--;
+      /* tumbado se pierde el turno. Igual que np_enemy_update. */
+      e.fase = LUCHA_IR;
       /* Si viene de un lanzamiento, ademas vuela. Igual que np_enemy_update. */
       if (e.altura > 0 || e.valtura) {
         e.altura += e.valtura;
@@ -1549,6 +1756,19 @@
       animTick(a, e);
       return;
     }
+    /* Tambaleandose de un golpe: ni decide ni anda. Igual que
+       np_enemy_update: va antes que la IA y despues del derribo. */
+    if (e.aturdido) {
+      e.aturdido--;
+      e.vx = approach(e.vx, 0, this.data.player.friction);
+      e.vy = approach(e.vy, 0, this.data.player.friction);
+      e.x = this.moveX(e.x, e.y, a.box_w, a.box_h, e.vx, moveOut);
+      if (moveOut.hit) e.vx = 0;
+      animSet(e, ANIM_HURT);
+      animTick(a, e);
+      return;
+    }
+
     switch (d.behavior) {
       case AI_PATROL:
         e.vx = e.facing ? d.speed : -d.speed;
@@ -1563,6 +1783,9 @@
       }
       case AI_CHASER: {
         var dx = p.x - e.x;
+        /* En la vista de cinta un perseguidor no persigue: pelea. Igual que
+           np_enemy_update en C. */
+        if (this.cinta() && d.reach) { this.luchaUpdate(e, d, a, p); break; }
         if (this.cenital()) {
           /* desde arriba se persigue en los dos ejes: igual que en C */
           var dyc = p.y - e.y;
@@ -1715,6 +1938,7 @@
     e.vx = 0; e.vy = 0;
     e.health = 1; e.hurt = 0; e.knock = 0; e.golpeado = 0;
     e.altura = 0; e.valtura = 0; e.vida = 0;
+    e.fase = LUCHA_IR; e.tocado = 0; e.aturdido = 0;
     e.timer = GRACIA_SOLTAR;
     e.anim = ANIM_IDLE; e.animFrame = 0; e.animTimer = 0;
     this.sfx |= SFX.COIN;
@@ -1864,6 +2088,9 @@
           continue;
         }
         var d = this.data.enemies[e.def];
+        /* En una pelea, rozar a alguien no hace dano: hace dano su golpe.
+           Igual que np_touch_entities en C. */
+        if (this.cinta() && d.reach) continue;
         /* Misma ventana de pisado que np_world.c: cayendo y con los pies por
            encima de la mitad del enemigo antes de moverse. */
         var fromAbove = p.vy > 0 &&
@@ -1974,6 +2201,15 @@
       tx = this.camX;
     this.camX = clamp(tx, 0, maxX);
     this.camY = clamp(ty, 0, maxY);
+    /* La sacudida, hacia dentro del nivel y recortada otra vez para no verse
+       nunca fuera del mapa. Igual que np_camera_update. */
+    if (this.sacudida) {
+      this.sacudida--;
+      if (this.sacudida & 2) {
+        this.camX += 3;
+        if (this.camX > maxX) this.camX = maxX;
+      }
+    }
   };
 
   /* A dos jugadores, el que se queda atras se para en el borde de la pantalla.
@@ -2022,6 +2258,19 @@
   World.prototype.playStep = function (input, input2) {
     var pa = this.data.player.actor, quien, i;
     var mandos = [input, input2 | 0];
+
+    /* Cuantos estan pegando ahora mismo: de ahi salen las fichas de ataque.
+       Igual que en np_play_step. */
+    this.atacando = 0;
+    if (this.cinta()) {
+      for (i = 0; i < this.entityCount; i++) {
+        var luchador = this.entities[i];
+        if (!luchador.active || luchador.kind !== KIND_ENEMY) continue;
+        if (luchador.knock || luchador.fase < LUCHA_PREPARAR
+            || luchador.fase > LUCHA_RECUPERAR) continue;
+        this.atacando++;
+      }
+    }
 
     /* Las plataformas moviles se mueven antes que nadie, y no se pausan fuera
        de pantalla: igual que en np_play_step. */
@@ -2161,6 +2410,10 @@
         }
         break;
       case STATE.PLAY:
+        /* El congelado. El mando no se apunta: lo que se pulse durante la
+           parada sigue contando como recien pulsado. Igual que
+           np_world_step. */
+        if (this.congelado) { this.congelado--; return; }
         this.playStep(input, input2);
         break;
       case STATE.DYING: {

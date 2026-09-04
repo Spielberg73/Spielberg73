@@ -332,28 +332,41 @@
 
       if (objetivo) {
         var ex2 = NPCore.F2I(objetivo.x), ey2 = NPCore.F2I(objetivo.y);
-        /* Lo primero, si llevamos un rato sin avanzar: hay algo por medio -una
-           valla, un contenedor- y se rodea cambiando de profundidad. Va antes
-           que cuadrarse a proposito: con un maton al otro lado de la valla,
-           cuadrarse con el es justo lo que deja al bot dando vueltas contra la
-           valla para siempre. */
+        var hueco = ex2 - cx;
+        /* Lo que hay que hacer para que el punetazo entre: el golpe sale de tu
+           borde y mide `alcance`, asi que el otro tiene que estar dentro de esa
+           franja. Ni pegado -ahi el puno le pasa por encima- ni a dos pasos. */
+        var oa = (data.enemies[objetivo.def] || {}).actor || pa;
+        var minimo = 4, maximo = pa.box_w + alcance - 4;
+        var aTiro = Math.abs(hueco) >= minimo && Math.abs(hueco) <= maximo;
+        /* Y lo que hay que hacer para no cobrar: si el que tienes delante
+           **esta preparando** su golpe y estas dentro de su alcance, no se
+           cambia el golpe, se sale. Esquivar el aviso es de lo que va este
+           genero, y un bot que no lo hiciera diria que la calle es imposible
+           cuando lo unico que pasa es que no sabe jugar. */
+        var ed = data.enemies[objetivo.def] || {};
+        var avisando = objetivo.fase === 2 &&
+            Math.abs(hueco) <= oa.box_w + (ed.reach || 0) + 4;
         if (rozando > 20) {
           input |= (rozando & 64) ? NPCore.IN.UP : NPCore.IN.DOWN;
           input |= (ex2 > cx) ? NPCore.IN.RIGHT : NPCore.IN.LEFT;
+        } else if (avisando) {
+          /* Apartarse **en profundidad** y nada mas: su golpe no llega a otra
+             linea, y quedandose al lado se le castiga en cuanto se le acabe.
+             Retroceder ademas seria perder el turno: se pasaria la
+             recuperacion volviendo a acercarse y no pegaria nunca nadie. */
+          input |= (ey2 >= cy) ? NPCore.IN.UP : NPCore.IN.DOWN;
         }
         /* y si no, la profundidad: sin cuadrarse, el punetazo pasa de largo */
         else if (ey2 - cy > 2) input |= NPCore.IN.DOWN;
         else if (cy - ey2 > 2) input |= NPCore.IN.UP;
-        else {
-          var hueco = ex2 - cx;
-          if (hueco > alcance - 2) input |= NPCore.IN.RIGHT;
-          else if (hueco < -(alcance - 2)) input |= NPCore.IN.LEFT;
-          else if (ataque) {
-            /* a tiro: se pega, soltando el boton entre golpe y golpe porque el
-               ataque va por flanco */
-            boton = !boton;
-            if (boton) input |= NPCore.IN.ACTION;
-          }
+        else if (!aTiro) {
+          input |= (hueco > 0) ? NPCore.IN.RIGHT : NPCore.IN.LEFT;
+        } else if (ataque) {
+          /* a tiro: se pega, soltando el boton entre golpe y golpe porque el
+             ataque va por flanco */
+          boton = !boton;
+          if (boton) input |= NPCore.IN.ACTION;
         }
       } else {
         /* Pantalla limpia: a por la salida. Y si algo se pone por medio -una

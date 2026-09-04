@@ -16,7 +16,7 @@ que tipo de juego quieres hacer?
   2) castlevania   salto sin control, latigo, escaleras y arma secundaria
   3) comando       visto desde arriba: ocho direcciones, granadas y prisioneros
   4) mazmorra      laberinto: la vida se gasta sola y los nidos sacan bichos
-  5) barrio        yo contra el barrio: calle con profundidad y tortas
+  5) barrio        yo contra el barrio: se colocan, avisan y esperan turno
   6) aventura      cargar con las cosas y abrir con ellas lo que no se pasa
 
 elige [1]:
@@ -419,18 +419,58 @@ Esas tres coordenadas son el género entero:
 - **Al saltar, tu caja sube con el dibujo**, así que un puñetazo a ras de suelo
   te pasa por debajo.
 
+### Los que tienes enfrente
+
+Y lo que hace que esto sea una pelea y no un enjambre: **los enemigos no van a
+rozarte, van a pegarte**. Cada uno con `golpe:` hace cuatro cosas, y las cuatro
+se notan al mando:
+
+1. **Se coloca y no se te mete dentro.** Se acerca hasta donde le llega el
+   brazo y ahí se para. Nunca acabas con tres encima empujándote.
+2. **Espera su turno.** `agresivos:` dice cuántos pueden estar pegando **a la
+   vez** —dos, como en los recreativos—; el resto rondan. Es el número más
+   importante del género y el que menos se ve: sin él no hay hueco entre golpe
+   y golpe.
+3. **Se le ve venir.** Antes de soltarlo hay `preparacion:` frames de aviso.
+   Sin eso no se puede esquivar y el juego es injusto; con eso, cada golpe que
+   cobras es culpa tuya.
+4. **Deja una ventana.** Después de pegar se queda `recuperar:` frames
+   plantado. Ese hueco es tu turno, y de ahí sale el ritmo de la pelea.
+
+Y **te rodean**: la mitad viene por el otro lado, así que girarse importa.
+
+Cuando aciertas, el mundo **se para** cuatro frames (nueve en el remate) y al
+tumbar a alguien la pantalla **tiembla**. No es adorno: sin esa parada el puño
+atraviesa al otro y no se siente nada.
+
 Los mandos:
 
-- **Flechas**: te mueves en las ocho direcciones, por el ancho de la calle.
+- **Flechas**: te mueves en las ocho direcciones, por el ancho de la calle. Y
+  **dos toques seguidos** en la misma dirección: **corres**. Correr es la
+  respuesta a que te rodeen.
 - <kbd>X</kbd>: puñetazo. Y aquí viene lo bueno: si vuelves a apretar antes de
   que se acabe la ventana, **encadenas** —puño, puño y **remate**—. El remate
   hace más daño y **tumba**: el que lo cobra sale despedido y se queda unos
   frames en el suelo, sin decidir nada y sin hacerte daño.
+- <kbd>X</kbd> **con alguien detrás**: **codazo**. Si el que te tienes encima
+  está a tu espalda y delante no hay nadie, te giras solo. Girarse a mano con
+  tres alrededor es imposible, así que lo hace el juego.
+- <kbd>X</kbd> **en el aire**: **patada en salto**. Pega como un remate y
+  tumba. Es la forma de meterse en un grupo sin comerse los tres golpes de
+  camino, y cuesta algo: en el aire no se corrige.
+- <kbd>X</kbd> **corriendo**: **hombro**. También vale por un remate, y **gasta
+  la carrera**: uno por esprint, no un botón de tumbar.
 - <kbd>Z</kbd> / <kbd>espacio</kbd>: salta.
 - Y al que se **tambalea** de un golpe se le **agarra** tocándolo: con
   <kbd>X</kbd> le das rodillazos y con <kbd>Z</kbd> lo lanzas por encima del
   hombro. Lanzarlo es el golpe más fuerte del juego y además te lo quita de
   encima, que cuando son tres es media pelea.
+
+Una cosa más, y es la que cambia cómo se juega: **al que ya ha empezado a
+soltar el golpe no lo paras con un puñetazo normal**. Hay que apartarse
+—moverte en profundidad, que es donde su golpe no llega—, saltarle por encima
+o gastarle algo fuerte. Si un puño cualquiera lo cortara, bastaría con pegar
+sin parar y volveríamos a machacar el botón.
 
 **La cámara lleva cerrojo**: mientras quede alguien vivo en pantalla, la vista
 no avanza. Eso no se configura y no se puede quitar: es lo que convierte un
@@ -446,9 +486,9 @@ bordillo y en medio las siete filas por las que se anda.
       ################################################
       cccccccccccccccccccccccccccccccccccccccccccccccc
       ------------------------------------------------
-      ..........B..............B.....................G
-      ....m...........m.............m....m...........G
-      P.......................b......................G
+      ..........B.............B......................G
+      ..........................m....................G
+      P.....m..........b.............................G
       ...
 ```
 
@@ -456,6 +496,10 @@ bordillo y en medio las siete filas por las que se anda.
 barriles (que se rompen y sueltan un pollo) y `J` el jefe. Lo que hace que se
 juegue no es el dibujo del suelo, es **dónde se planta cada grupo**: como la
 cámara no pasa, cada grupo es una pantalla.
+
+Y los grupos son de **dos y de tres**, no de siete: como solo pegan dos a la
+vez, lo que hace la dificultad no es cuántos hay sino **quiénes** —el grande
+avisa más pero pega el doble— y cuánto sitio te dejan.
 
 Y una cosa que se nota al jugar: los actores se pintan **de más lejos a más
 cerca**. En un juego donde todo el mundo se pisa, si no, no se entiende quién

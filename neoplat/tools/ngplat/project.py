@@ -345,6 +345,14 @@ class Enemy(Actor):
     jump: float = 3.5
     interval: int = 90
     shot: Optional["EnemyShot"] = None   # con `dispara:`, lo que te tira
+    # El golpe cuerpo a cuerpo, para los juegos de tortas. Con `reach` a cero
+    # el enemigo no pega: hace dano al tocarte, como en el resto de generos.
+    reach: int = 0                       # alcance del golpe, en px
+    windup: int = 16                     # preparacion: el aviso
+    active: int = 6                      # frames que hace dano
+    recover: int = 20                    # plantado despues: tu ventana
+    wait: int = 40                       # espera antes de volver a intentarlo
+    punch: int = 0                       # dano del golpe; 0 = el de `dano:`
 
 
 @dataclass
@@ -469,6 +477,10 @@ class Project:
     time_limit: int
     hud: bool
     camera: str            # "scroll" o "pantallas"
+    # Cuantos enemigos pegan a la vez en un juego de tortas. Es el numero que
+    # decide si una pelea se juega o se sufre: con todos a la vez no hay hueco
+    # entre golpe y golpe. Dos es lo de los recreativos.
+    aggressive: int
     view: str              # "lateral" (con gravedad) o "cenital" (desde arriba)
     amiga_modo: str        # "32colores" o "8colores"
     player: Player
@@ -1090,6 +1102,35 @@ def _read_enemy(name: str, data: Any, root: str) -> Enemy:
         jump=node.num(["jump", "salto"], 3.5, 0.0, 12.0),
         interval=node.int_(["interval", "intervalo"], 90, 8, 1200),
         shot=_read_enemy_shot(node.child("shot", "dispara", "disparo"), root, where),
+        # `golpe:` convierte a un enemigo en un rival: se coloca, se prepara
+        # -y se le ve venir- y suelta un golpe que deja hueco para responder.
+        **_read_enemy_hit(node.child("hit", "golpe", "ataque")),
+    )
+
+
+def _read_enemy_hit(node: Node) -> Dict[str, int]:
+    """`golpe:` en un enemigo: su ataque cuerpo a cuerpo.
+
+    Sin este bloque el enemigo hace dano al tocarte, que es lo de siempre en un
+    plataformas. Con el deja de ser un obstaculo y pasa a ser alguien con quien
+    se pelea: se pone a distancia, avisa, pega y se queda vendido un momento.
+
+    Los cuatro tiempos son los de cualquier juego de pelea y los cuatro se
+    notan al mando: `preparacion:` es el aviso -sin el no hay forma de
+    esquivar-, `duracion:` lo que la caja hace dano, `recuperar:` lo que se
+    queda plantado despues -esa es tu ventana- y `espera:` lo que tarda en
+    volver a intentarlo."""
+    if not node.data:
+        return {}
+    return dict(
+        reach=node.int_(["reach", "alcance"], 14, 4, 96),
+        windup=node.int_(["windup", "preparacion", "preparación", "aviso"],
+                         16, 0, 120),
+        active=node.int_(["active", "duracion", "duración"], 6, 1, 60),
+        recover=node.int_(["recover", "recuperar", "recuperacion",
+                           "recuperación"], 20, 0, 120),
+        wait=node.int_(["wait", "espera", "cadencia"], 40, 0, 600),
+        punch=node.int_(["damage", "dano", "daño"], 0, 0, 99),
     )
 
 
@@ -1665,6 +1706,9 @@ def load_project(path: str) -> Project:
     time_limit = game.int_(["time", "tiempo", "tiempo_limite"], 0, 0, 999)
     hud = game.bool_(["hud", "marcador"], True)
     camera = _leer_camara(game)
+    # `agresivos:` es el numero de enemigos que pueden estar pegando a la vez.
+    # Solo lo miran los juegos de tortas; en el resto no hay a quien repartir.
+    aggressive = game.int_(["aggressive", "agresivos", "a_la_vez"], 2, 1, 8)
     view = _leer_vista(game)
     amiga_modo = _leer_modo_amiga(game)
     sistema = (game.str_(["system", "sistema", "maquina", "máquina"], "neogeo") or "neogeo")
@@ -1837,6 +1881,7 @@ def load_project(path: str) -> Project:
     return Project(
         root=root, title=title.upper()[:24], author=author[:24], system=sistema,
         lives=lives, players=players, camera=camera, view=view,
+        aggressive=aggressive,
         amiga_modo=amiga_modo,
         time_limit=time_limit, hud=hud, player=player, tileset=tileset, tiles=tiles,
         enemies=enemies, items=items, platforms=platforms,

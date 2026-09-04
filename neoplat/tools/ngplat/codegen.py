@@ -139,6 +139,9 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("/* Y si ademas se salta (el 'yo contra el barrio'). */")
     src.append("const uint8_t np_vista_cinta = %d;"
                % (1 if project.view == "cinta" else 0))
+    src.append("/* Cuantos enemigos pegan a la vez: el numero que hace que una")
+    src.append("   pelea se juegue en vez de sufrirse. */")
+    src.append("const uint8_t np_agresivos = %d;" % project.aggressive)
     src.append("const uint8_t np_camara_pantallas = %d;"
                % (1 if project.camera == "pantallas" else 0))
     src.append("const uint16_t np_tileset_first_tile = %d;" % build.tileset.first_tile)
@@ -285,7 +288,8 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
         src.append(_anim_arrays("np_enemy%d" % i, enemy))
     src.append("const NpEnemyDef np_enemies[] = {")
     if not build.enemies:
-        src.append("    { %s, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 0 }" % _actor_vacio())
+        src.append("    { %s, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 0,"
+                   "      0, 0, 0, 0, 0, 0 }" % _actor_vacio())
     for i, enemy in enumerate(build.enemies):
         ev = enemy_values(enemy)
         src.append("    {")
@@ -296,7 +300,11 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
         src.append("        %d, %d, %d, %d, %d," % (ev["behavior"], ev["health"],
                                                     ev["damage"], ev["stompable"],
                                                     ev["edge_turn"]))
-        src.append("        %d, %d" % (ev["boss"], ev["shot"]))
+        src.append("        %d, %d," % (ev["boss"], ev["shot"]))
+        src.append("        /* el golpe: alcance, aviso, dano, recuperar, espera */")
+        src.append("        %d, %d, %d, %d, %d, %d"
+                   % (ev["reach"], ev["windup"], ev["active"], ev["recover"],
+                      ev["wait"], ev["punch"]))
         src.append("    }," if i + 1 < len(build.enemies) else "    }")
     src.append("};")
     src.append("const uint16_t np_enemy_count = %d;" % len(build.enemies))

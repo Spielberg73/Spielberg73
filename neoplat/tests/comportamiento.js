@@ -81,6 +81,8 @@ function datos(filas, opciones) {
     title: "TEST", author: "", lives: opciones.lives || 3, time_limit: opciones.time || 0,
     players: opciones.jugadores || 1,
     hud: true, camara_pantallas: opciones.pantallas ? 1 : 0,
+    /* cuantos enemigos pegan a la vez en un juego de tortas */
+    agresivos: opciones.agresivos === undefined ? 2 : opciones.agresivos,
     /* 1 = el juego lleva bolsa (objetos de `efecto: llevar`) */
     bolsa_activa: opciones.bolsa ? 1 : 0,
     /* desde donde se mira: con "cenital" no hay gravedad y se anda en
@@ -171,11 +173,13 @@ function datos(filas, opciones) {
         amplitude: fx(24), period: 120, interval: 90, score: 100, behavior: 0,
         health: opciones.vidaEnemigo || 1,
         damage: 1, stompable: 1, edge_turn: 1, name: "patrulla",
+        reach: 0, windup: 16, active: 6, recover: 20, wait: 40, punch: 0,
         /* con `dispara:` este mismo enemigo te tirotea */
         shot: opciones.dispara ? 1 : 0 },
       { actor: enemigo, speed: fx(0.5), gravity: 0, jump: 0, range: fx(96),
         amplitude: fx(24), period: 64, interval: 90, score: 200, behavior: 1,
-        health: 1, damage: 1, stompable: 1, edge_turn: 0, name: "volador" },
+        health: 1, damage: 1, stompable: 1, edge_turn: 0, name: "volador",
+        reach: 0, windup: 16, active: 6, recover: 20, wait: 40, punch: 0 },
       /* el jefe esta quieto salvo que la prueba lo mande perseguir: es la
          forma de probar al perseguidor sin montar otro enemigo */
       { actor: enemigo, speed: opciones.jefePersigue ? fx(0.5) : 0,
@@ -184,7 +188,15 @@ function datos(filas, opciones) {
         behavior: opciones.jefePersigue ? 2 : 4,
         health: opciones.bossHealth || 3, damage: 1, stompable: 1,
         edge_turn: opciones.jefeBorde === undefined ? 1 : opciones.jefeBorde,
-        boss: 1, name: "jefe" }
+        boss: 1, name: "jefe",
+        /* El golpe cuerpo a cuerpo del genero de tortas. Con `alcanceEnemigo`
+           a cero -lo normal- no pega: hace dano al tocarte, como siempre. */
+        reach: opciones.alcanceEnemigo || 0,
+        windup: opciones.avisoEnemigo === undefined ? 16 : opciones.avisoEnemigo,
+        active: opciones.duracionEnemigo || 6,
+        recover: opciones.recuperaEnemigo === undefined ? 20 : opciones.recuperaEnemigo,
+        wait: opciones.esperaEnemigo === undefined ? 40 : opciones.esperaEnemigo,
+        punch: opciones.punoEnemigo || 0 }
     ],
     /* los prisioneros: tocarlos los suelta, dispararles los pierde */
     prisoners: [
@@ -2193,9 +2205,17 @@ prueba("el dano se recibe con los pies en el suelo, no por el aire", function ()
 /** Pega `cuantos` golpes seguidos, soltando el boton entre uno y otro (el
     ataque va por flanco) y esperando la cadencia. */
 function pegar(w, cuantos, espera) {
+  var quedan = espera === undefined ? 10 : espera;
   for (var i = 0; i < cuantos; i++) {
     w.step(NP.IN.ACTION);
-    correr(w, espera === undefined ? 10 : espera);
+    /* Los frames de la **parada del impacto** no cuentan: lo que se mide aqui
+       es el ritmo del juego, y durante la parada el juego no corre. Sin esto,
+       cada golpe que acierta se comeria cuatro frames de la espera y la serie
+       se cortaria sola aunque el mando fuera perfecto. */
+    for (var f = 0; f < quedan; f++) {
+      w.step(0);
+      if (w.congelado) f--;
+    }
   }
   return w;
 }
@@ -2598,6 +2618,225 @@ prueba("al cambiar de nivel la bolsa se vacia y las puertas se cierran",
   w.loadLevel(0);                   // volver a empezar el nivel
   assert.strictEqual(w.abiertos.length, 0, "la puerta sigue abierta");
   assert.strictEqual(w.bolsaCuantos(), 0, "la bolsa no se ha vaciado");
+});
+
+/* ------------------------------------ la pelea (yo contra el barrio) */
+/*
+ * Lo que separa una pelea de un enjambre. Un enemigo con `golpe:` no anda
+ * hacia ti para rozarte: se coloca a su distancia, espera turno, avisa y
+ * suelta. Cada una de esas cuatro cosas se mide aqui por separado, porque
+ * cada una se puede romper sola y el juego se queda en lo de antes.
+ */
+
+/* Un enemigo perseguidor con golpe, plantado a la derecha del jugador. */
+function calle(opciones) {
+  var o = { cinta: true, jefePersigue: true, jefeRango: 400,
+            ataque: "golpe", alcance: 20, dano: 1, health: 9,
+            velocidad: 1.5, alcanceEnemigo: 14, avisoEnemigo: 20,
+            duracionEnemigo: 6, recuperaEnemigo: 24, esperaEnemigo: 40,
+            bossHealth: 40, vidaEnemigo: 40 };
+  for (var k in opciones) if (opciones.hasOwnProperty(k)) o[k] = opciones[k];
+  /* "J" es el jefe, que es el enemigo perseguidor de estas pruebas */
+  return mundo(suelo([[8, 4, "P"], [8, 10, "J"]]), o);
+}
+
+function jefeDe(w) {
+  for (var i = 0; i < w.entityCount; i++)
+    if (w.entities[i].active && w.entities[i].kind === 0) return w.entities[i];
+  return null;
+}
+
+prueba("el que pelea no se te mete dentro", function () {
+  var w = calle({});
+  var p = w.players[0], e = jefeDe(w);
+  var minimo = 9999;
+  for (var i = 0; i < 300; i++) {
+    w.step(0);
+    var hueco = Math.abs(NP.F2I(e.x) - NP.F2I(p.x));
+    if (hueco < minimo) minimo = hueco;
+  }
+  assert.ok(minimo >= 8, "se ha puesto a " + minimo + " px: eso es encima");
+});
+
+prueba("sin golpe si se te mete dentro", function () {
+  /* El control: el mismo enemigo sin `golpe:` vuelve a ser un bicho que anda
+     hacia ti hasta tocarte, que es lo que hace en el resto de generos. */
+  var w = calle({ alcanceEnemigo: 0 });
+  var p = w.players[0], e = jefeDe(w);
+  var minimo = 9999;
+  for (var i = 0; i < 300; i++) {
+    w.step(0);
+    var hueco = Math.abs(NP.F2I(e.x) - NP.F2I(p.x));
+    if (hueco < minimo) minimo = hueco;
+  }
+  assert.ok(minimo < 8, "se ha quedado a " + minimo + " px sin tener golpe");
+});
+
+prueba("el golpe se ve venir antes de hacer dano", function () {
+  /* La preparacion es el aviso: durante esos frames el enemigo ya esta en la
+     pose de atacar pero **todavia no toca**. Sin ese hueco no hay forma de
+     esquivar y el juego seria injusto. */
+  var w = calle({ avisoEnemigo: 30 });
+  var p = w.players[0];
+  var avisando = 0, vidaAlEmpezar = p.health, cobradoEn = -1;
+  for (var i = 0; i < 400 && cobradoEn < 0; i++) {
+    w.step(0);
+    var e = jefeDe(w);
+    if (e && e.fase === 2) avisando++;
+    if (p.health < vidaAlEmpezar) cobradoEn = i;
+  }
+  assert.ok(avisando >= 30,
+            "solo ha avisado " + avisando + " frames de los 30 que pide");
+  assert.ok(cobradoEn > 0, "no ha llegado a pegar en 400 frames");
+});
+
+prueba("despues de pegar se queda vendido", function () {
+  /* La recuperacion es tu turno: durante esos frames no decide nada. Si no
+     existiera, la pelea no tendria ritmo -no habria hueco para responder- y
+     seria otra vez cuestion de machacar el boton. */
+  var w = calle({ recuperaEnemigo: 40 });
+  var recuperando = 0;
+  for (var i = 0; i < 400; i++) {
+    w.step(0);
+    var e = jefeDe(w);
+    if (e && e.fase === 4) recuperando++;
+  }
+  assert.ok(recuperando >= 30,
+            "solo se ha quedado vendido " + recuperando + " frames");
+});
+
+prueba("solo pegan los que dice `agresivos:`", function () {
+  /* La ficha de ataque: con `agresivos: 1` no puede haber dos preparando o
+     pegando a la vez, por muchos que haya alrededor. Es la regla que hace que
+     una pelea se juegue en vez de sufrirse. */
+  function aLaVez(cuantos) {
+    var filas = suelo([[8, 4, "P"], [8, 10, "J"], [7, 10, "J"], [9, 10, "J"]]);
+    var w = mundo(filas, { cinta: true, jefePersigue: true, jefeRango: 400,
+                           ataque: "golpe", alcance: 20, health: 20,
+                           alcanceEnemigo: 14, avisoEnemigo: 20,
+                           bossHealth: 40, agresivos: cuantos });
+    var maximo = 0;
+    for (var i = 0; i < 400; i++) {
+      w.step(0);
+      var n = 0;
+      for (var k = 0; k < w.entityCount; k++) {
+        var e = w.entities[k];
+        if (e.active && e.kind === 0 && e.fase >= 2 && e.fase <= 4) n++;
+      }
+      if (n > maximo) maximo = n;
+    }
+    return maximo;
+  }
+  assert.strictEqual(aLaVez(1), 1, "con `agresivos: 1` pega mas de uno");
+  assert.ok(aLaVez(3) > 1, "con `agresivos: 3` sigue pegando uno solo");
+});
+
+prueba("al acertar, el mundo se para unos frames", function () {
+  /* La parada del impacto: sin ella el puno atraviesa al otro y no se siente
+     nada. Se mide en que, mientras dura, el mundo **no corre**: el reloj del
+     golpe se queda quieto aunque se sigan pidiendo frames. */
+  var w = calle({ velocidad: 0.1 });
+  var p = w.players[0];
+  var parados = 0;
+  for (var i = 0; i < 200; i++) {
+    var antesX = p.x, antesAt = p.attackTimer;
+    w.step(i % 12 < 2 ? NP.IN.ACTION : 0);
+    if (w.congelado && p.x === antesX && p.attackTimer === antesAt) parados++;
+  }
+  /* Cada acierto para cuatro frames, y en doscientos frames caben un par de
+     aciertos: con que haya una parada entera ya esta demostrado que existe. */
+  assert.ok(parados >= 4, "solo " + parados + " frames parados: no congela");
+});
+
+prueba("el que cobra se tambalea y por ahi entra el siguiente", function () {
+  /* El tambaleo es lo que hace que una serie sea una serie: mientras dura, el
+     que la cobra no decide nada y el golpe siguiente le alcanza. */
+  var w = calle({ velocidad: 0.1 });
+  var e = jefeDe(w);
+  var tambaleando = 0;
+  for (var i = 0; i < 200; i++) {
+    w.step(i % 12 < 2 ? NP.IN.ACTION : 0);
+    if (e.aturdido) tambaleando++;
+  }
+  assert.ok(tambaleando > 20,
+            "solo " + tambaleando + " frames tambaleandose: no hay hueco para "
+            + "encadenar");
+});
+
+prueba("el que ya esta soltando el golpe no se para con un puno", function () {
+  /* La armadura del aviso: quien ya se ha comprometido llega a soltarlo. Es
+     lo que hace que prepararse sea una amenaza y no un adorno; si un puno
+     cualquiera lo cortara, bastaria con pegar sin parar. */
+  var w = calle({ avisoEnemigo: 40 });
+  var e = jefeDe(w);
+  /* esperar a que empiece a preparar */
+  for (var i = 0; i < 400 && e.fase !== 2; i++) w.step(0);
+  assert.strictEqual(e.fase, 2, "no ha llegado a preparar el golpe");
+  /* pegarle mientras prepara: tiene que seguir preparando */
+  w.step(NP.IN.ACTION);
+  correr(w, 6);
+  assert.ok(e.fase === 2 || e.fase === 3,
+            "un puno normal le ha cortado el golpe (fase " + e.fase + ")");
+});
+
+prueba("la patada en salto pega mas que un punetazo", function () {
+  /* Saltar y pegar es el golpe que rompe un grupo, y cuesta algo: en el aire
+     no se corrige. Por eso vale por un remate. */
+  function dano(saltando) {
+    var w = calle({ velocidad: 0.1, danoRemate: 4, combo: 3, ventana: 30 });
+    var e = jefeDe(w);
+    /* clavar al enemigo delante para medir solo el golpe */
+    var p = w.players[0];
+    var antes = e.health;
+    if (saltando) { w.step(NP.IN.JUMP); correr(w, 4); }
+    e.x = p.x + NP.I2F(16); e.y = p.y + p.altura;
+    w.step(NP.IN.ACTION);
+    for (var i = 0; i < 10; i++) {
+      w.step(0);
+      e.x = p.x + NP.I2F(16); e.y = p.y + p.altura;
+    }
+    return antes - e.health;
+  }
+  var suelo_ = dano(false), aire = dano(true);
+  assert.ok(aire > suelo_,
+            "la patada hace " + aire + " y el puno " + suelo_);
+});
+
+prueba("el codazo le da al que se te cuela por detras", function () {
+  /* Te rodean: la mitad viene por el otro lado. Girarse a mano con tres
+     encima es imposible, asi que el golpe se va solo hacia atras cuando ahi
+     hay alguien y delante no. */
+  var w = calle({ velocidad: 0.1 });
+  var p = w.players[0], e = jefeDe(w);
+  p.facing = 1;                       /* mirando a la derecha */
+  e.x = p.x - NP.I2F(16);             /* y el otro, a la izquierda */
+  e.y = p.y;
+  var antes = e.health;
+  w.step(NP.IN.ACTION);
+  for (var i = 0; i < 10; i++) {
+    w.step(0);
+    e.x = p.x - NP.I2F(16); e.y = p.y;
+  }
+  assert.ok(e.health < antes, "el de atras no ha cobrado nada");
+  assert.strictEqual(p.facing, 0, "no se ha girado hacia el");
+});
+
+prueba("con doble toque se corre", function () {
+  /* Correr es la respuesta a que te rodeen, y se enciende con el mando: en un
+     recreativo no habia botones de sobra. */
+  function avance(dobleToque) {
+    var w = calle({ velocidad: 1.5, alcanceEnemigo: 0 });
+    var p = w.players[0];
+    /* el enemigo no pinta nada aqui */
+    var e = jefeDe(w); e.active = 0;
+    var x0 = NP.F2I(p.x);
+    if (dobleToque) { w.step(NP.IN.RIGHT); w.step(0); }
+    for (var i = 0; i < 40; i++) w.step(NP.IN.RIGHT);
+    return NP.F2I(p.x) - x0;
+  }
+  var corriendo = avance(true), andando = avance(false);
+  assert.ok(corriendo > andando + 10,
+            "corriendo avanza " + corriendo + " y andando " + andando);
 });
 
 /* ----------------------------------------------------------------- camara */

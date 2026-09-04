@@ -404,6 +404,9 @@ def enemy_values(build: ActorBuild) -> Dict[str, object]:
         "boss": 1 if e.boss else 0,
         # el numero de su disparo **mas uno**; cero = este no dispara
         "shot": getattr(build, "shot_index", 0),
+        # el golpe cuerpo a cuerpo; alcance 0 = este no pega, hace dano al tocarte
+        "reach": e.reach, "windup": e.windup, "active": e.active,
+        "recover": e.recover, "wait": e.wait, "punch": e.punch,
     }
 
 

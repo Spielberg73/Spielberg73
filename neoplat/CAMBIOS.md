@@ -2,8 +2,74 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.23.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.24.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.24
+
+**El genero de tortas, rehecho: ahora es una pelea.**
+
+Lo que habia era un enjambre. Siete matones andaban en linea recta hacia ti,
+te hacian dano **al rozarte** y acababan literalmente encima -medido: cero
+pixeles de distancia-, asi que lo unico que se podia hacer era machacar el
+boton y perder. Eso no es Double Dragon, es un empujon.
+
+Ahora un enemigo con `golpe:` hace las cuatro cosas que hace un luchador, y
+las cuatro se notan al mando:
+
+1. **Se coloca y no se te mete dentro.** Se acerca hasta donde le llega el
+   brazo y ahi se para. Y **te rodean**: cada uno tiene su lado, asi que no se
+   hace una fila delante de ti.
+2. **Espera su turno.** `agresivos:` dice cuantos pueden estar pegando a la
+   vez -dos, como en los recreativos-; el resto rondan repartidos a lo ancho
+   de la calle. Es el numero mas importante del genero y el que menos se ve.
+3. **Se le ve venir.** `preparacion:` frames de aviso antes de soltarlo. Sin
+   eso no se puede esquivar y el juego es injusto.
+4. **Deja una ventana.** `recuperar:` frames plantado despues. Ese hueco es tu
+   turno, y de ahi sale el ritmo de la pelea.
+
+Y en la vista de cinta **rozar ya no hace dano**: lo que te lo hace es su
+golpe. Es la diferencia entre un obstaculo y un rival.
+
+**El impacto.** Al acertar, el mundo se para cuatro frames -nueve en el
+remate- y al tumbar a alguien la pantalla tiembla. Es el truco mas viejo del
+genero y el que mas se nota: sin esa parada el puno atraviesa al otro y no se
+siente nada. El mando **no se apunta** durante la parada, asi que lo que se
+pulse dentro sigue contando: encadenar es un ritmo, no un examen de reflejos.
+Y el que cobra **se tambalea** unos frames, que es el hueco por el que entra
+el golpe siguiente.
+
+**Tres golpes nuevos**, que son los tres verbos que le faltaban:
+
+- **Codazo hacia atras**: si el que tienes encima esta detras y delante no hay
+  nadie, te giras solo al pegar. Girarse a mano con tres alrededor es
+  imposible.
+- **Patada en salto**: pegar por el aire vale por un remate y tumba. Es la
+  forma de meterse en un grupo, y cuesta algo -en el aire no se corrige-. Su
+  caja se estira hasta el suelo, que si no la patada no le daria a nadie.
+- **Carrera con doble toque** y **hombro**: dos toques seguidos en la misma
+  direccion y corres vez y media mas rapido; pegar en carrera tumba y **gasta
+  el esprint**, asi que es uno por carrera y no un boton de tumbar.
+
+Y una regla que cambia como se juega: **al que ya ha empezado a soltar el
+golpe no lo para un puno normal**. Hay que apartarse en profundidad, saltarle
+por encima o gastarle algo fuerte. Si un puno cualquiera lo cortara, bastaria
+con pegar sin parar y volveriamos a lo de antes.
+
+Las dos calles del proyecto de partida estan rehechas para esto: grupos de dos
+y de tres en vez de siete, repartidos a lo ancho. Con el sistema de fichas, la
+dificultad no la hace cuantos hay sino **quienes** -el grande avisa mas pero
+pega el doble- y cuanto sitio te dejan.
+
+Medido antes y despues, con el mismo jugador automatico: antes acababa con los
+enemigos a cero pixeles y perdia; ahora limpia las dos calles con tres golpes
+recibidos de seis de vida, y el aviso de los enemigos pasa de 9 frames a 140.
+
+Tambien: la prueba de paridad compara el genero entero (la IA decide media
+docena de cosas por bicho y por frame), y de paso caza un fallo que ya estaba:
+al volver a empezar un nivel, el motor en C conservaba la fase del luchador
+que hubiera ocupado antes ese hueco de la lista, asi que un maton podia
+aparecer ya pegando. El preview creaba las entidades nuevas y no lo hacia.
 
 ## 1.23
 

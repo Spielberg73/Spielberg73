@@ -1134,9 +1134,14 @@ def _calle(altas: List[str], suelo: List[str], bajo: str) -> List[str]:
 
 
 def _nivel_barrio_1() -> List[str]:
-    """La calle: se empieza a la izquierda y se sale por la derecha. Tres
-    grupos, cada uno en su pantalla, y la camara no pasa de ninguno hasta que
-    no queda nadie: por eso los matones van repartidos y no en fila."""
+    """La calle: se empieza a la izquierda y se sale por la derecha.
+
+    Tres grupos, uno por pantalla, y la camara no pasa de ninguno hasta que no
+    queda nadie. Los grupos son **de dos y de tres**, no de siete: con el
+    sistema de fichas solo pegan dos a la vez, asi que lo que hace la
+    dificultad no es cuantos hay sino quienes son -el grande avisa mas pero
+    pega el doble- y cuanto sitio te dejan. Y se reparten a lo ancho de la
+    calle, no en fila, porque la mitad viene a rodearte por el otro lado."""
     altas = [
         "################################################",
         "#####L######L#######L#####L#########L###########",
@@ -1146,12 +1151,12 @@ def _nivel_barrio_1() -> List[str]:
         "------------------------------------------------",
     ]
     suelo = [
-        "..........B..............B.....................G",
-        "....m...........m.............m....m...........G",
-        "P.......................b......................G",
-        ".......p........m..........B......p............G",
-        "......................m........................G",
-        "...B.................B.........................G",
+        "..........B.............B......................G",
+        "..........................m....................G",
+        "P.....m..........b.............................G",
+        ".......p.................m.........b...........G",
+        "..........m....................m...............G",
+        "...B..................B........................G",
         "................................................",
     ]
     return _calle(altas, suelo, "c" * BARRIO_ANCHO)
@@ -1169,12 +1174,12 @@ def _nivel_barrio_2() -> List[str]:
         "................................................",
     ]
     suelo = [
-        ".......B..............B................B.......G",
-        "...m.......m.....VVV......m....m.....m.........G",
-        "P........b.......VVV........b.........J........G",
-        "....p......m.....VVV....B.......p..............G",
-        "........B..........................B...........G",
-        "...................VVV.........................G",
+        ".......B..............................B........G",
+        "...m.............VVV......m....................G",
+        "P........b.......VVV..........m.......J........G",
+        "....p............VVV....B..........b...........G",
+        "........m..........................m...........G",
+        "...B...............VVV.........................G",
         "................................................",
     ]
     return _calle(altas, suelo, "c" * BARRIO_ANCHO)
@@ -1925,6 +1930,11 @@ juego:
   jugadores: 1
   vidas: 3
   tiempo: 0            # segundos por nivel (0 = sin limite)
+  # Cuantos enemigos pueden estar pegando **a la vez**. Es el numero mas
+  # importante del genero y el que menos se ve: con todos a la vez no hay hueco
+  # entre golpe y golpe y la pelea es un enjambre; con uno solo la calle esta
+  # vacia. Dos es lo de los recreativos.
+  agresivos: 2
   camara: scroll
   amiga: 32colores
   fondo: "#14141c"
@@ -1995,9 +2005,20 @@ enemigos:
     vida: 3
     dano: 1
     puntos: 200
+    # `golpe:` es lo que convierte a un bicho en un rival: se coloca a su
+    # distancia, avisa, pega y se queda vendido un momento. Sin este bloque
+    # haria dano al rozarte, que es lo de un plataformas y no lo de una pelea.
+    golpe:
+      alcance: 14
+      preparacion: 18   # el aviso: lo que tardas en verlo venir
+      duracion: 6       # los frames en que la caja hace dano
+      recuperar: 22     # plantado despues: **esa** es tu ventana
+      espera: 46        # lo que tarda en volver a intentarlo
+      dano: 1
     animaciones:
       quieto: {{frames: [0, 1], velocidad: 16}}
       correr: {{frames: [1, 2], velocidad: 8}}
+      atacar: {{frames: [2]}}
       dano:   {{frames: [3]}}
   # El grande: mas lento, mas vida y mas dano. A este hay que agarrarlo.
   bruto:
@@ -2009,9 +2030,20 @@ enemigos:
     vida: 6
     dano: 2
     puntos: 400
+    # El grande pega mas y mas lejos, pero **se ve venir de lejos**: ese es el
+    # trato. Un enemigo dificil no es uno que pega mucho, es uno que te obliga
+    # a decidir, y para decidir hace falta tiempo.
+    golpe:
+      alcance: 18
+      preparacion: 30
+      duracion: 8
+      recuperar: 30
+      espera: 60
+      dano: 2
     animaciones:
       quieto: {{frames: [0, 1], velocidad: 18}}
       correr: {{frames: [1, 2], velocidad: 10}}
+      atacar: {{frames: [2]}}
       dano:   {{frames: [3]}}
   # Un jefe es un enemigo con 'jefe: si': el marcador ensena lo que le queda y
   # al matarlo se acaba el nivel.
@@ -2025,9 +2057,19 @@ enemigos:
     dano: 2
     puntos: 3000
     jefe: si
+    # El jefe avisa poco y se recupera rapido: no aguanta mas golpes porque si,
+    # es que **su turno vale mas**.
+    golpe:
+      alcance: 20
+      preparacion: 14
+      duracion: 8
+      recuperar: 16
+      espera: 34
+      dano: 2
     animaciones:
       quieto: {{frames: [0, 1], velocidad: 14}}
       correr: {{frames: [1, 2], velocidad: 8}}
+      atacar: {{frames: [2]}}
       dano:   {{frames: [3]}}
 
 objetos:
@@ -2631,8 +2673,8 @@ def _genero_barrio(nombres: Dict[str, str], estilo: str) -> Genero:
         _genero_plataformas(nombres, estilo),
         nombre="barrio",
         titulo="barrio",
-        resumen=("yo contra el barrio: una calle con profundidad, golpes "
-                 "encadenados y agarrar al que se tambalea."),
+        resumen=("yo contra el barrio: se colocan, avisan y esperan turno; "
+                 "codazo, patada en salto y carrera."),
     )
 
 

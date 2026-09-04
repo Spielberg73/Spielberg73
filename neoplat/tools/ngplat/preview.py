@@ -272,6 +272,8 @@ def build_data(build: Build) -> Dict[str, object]:
         "author": project.author,
         "lives": project.lives,
         "players": project.players,
+        # cuantos enemigos pegan a la vez: las fichas de ataque
+        "agresivos": project.aggressive,
         "time_limit": project.time_limit,
         "hud": project.hud,
         "player": player,

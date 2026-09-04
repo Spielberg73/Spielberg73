@@ -191,6 +191,25 @@ typedef struct {
     uint8_t behavior, health, damage, stompable, edge_turn;
     uint8_t boss;            /* 1 = matarlo termina el nivel */
     uint8_t shot;            /* su disparo + 1 en np_enemy_shots; 0 = no tira */
+    /* --- el golpe del enemigo, para los juegos de tortas -----------------
+     *
+     * Con `reach` a cero el enemigo no pega: hace dano **al tocarte**, que es
+     * como funciona en el resto de generos. Con alcance, el enemigo deja de
+     * ser un obstaculo que te roza y pasa a ser alguien que se coloca, se
+     * prepara y suelta un golpe que se ve venir. Esa diferencia es el genero
+     * entero: contra lo primero se machaca el boton, contra lo segundo se
+     * juega.
+     *
+     * Los cuatro tiempos son los de cualquier juego de pelea:
+     *   windup   lo que tarda en soltarlo. Es el aviso: sin esto no hay
+     *            forma de esquivar y el juego es injusto.
+     *   active   los frames en que la caja hace dano.
+     *   recover  plantado despues, sin poder hacer nada. Es tu ventana.
+     *   wait     lo que espera antes de volver a intentarlo.
+     */
+    uint16_t reach;          /* alcance del golpe, en px; 0 = no pega */
+    uint16_t windup, active, recover, wait;
+    uint8_t punch;           /* dano del golpe; 0 = el mismo que `damage` */
 } NpEnemyDef;
 
 typedef struct {
@@ -320,6 +339,10 @@ extern const uint8_t np_vista_cenital;
    np_vista_cenital tambien lo esta: el movimiento, la punteria y el empujon de
    los golpes son los mismos; lo que cambia es el salto. */
 extern const uint8_t np_vista_cinta;
+/* Cuantos enemigos pueden estar pegando a la vez. Es el numero que decide si
+   una pelea se juega o se sufre: con todos a la vez no hay hueco entre golpe y
+   golpe, y con uno solo la calle esta vacia. Dos es lo de los recreativos. */
+extern const uint8_t np_agresivos;
 extern const uint8_t np_camara_pantallas; /* 1 = pantalla a pantalla, 0 = scroll */
 extern const char np_game_title[];
 extern const char np_game_author[];

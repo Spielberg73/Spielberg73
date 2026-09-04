@@ -117,6 +117,44 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
    puzle y con cinco te llevas media pantalla encima y ya no eliges. */
 #define NP_BOLSA 3
 
+/* --- las fases del luchador (juegos de tortas) ---------------------------
+ *
+ * Un enemigo que anda hacia ti y te roza no es una pelea: es un obstaculo. Lo
+ * que hace una pelea es que se **coloque**, espere su turno, se prepare -y se
+ * le vea venir- y suelte el golpe dejando una ventana para responder. Estas
+ * seis fases son eso, y son las mismas que usa cualquier juego del genero. */
+#define NP_LUCHA_IR        0     /* acercarse hasta la distancia de pelea */
+#define NP_LUCHA_RONDAR    1     /* a distancia, esperando turno y moviendose */
+#define NP_LUCHA_PREPARAR  2     /* el aviso: levanta el brazo y no se mueve */
+#define NP_LUCHA_GOLPEAR   3     /* la caja hace dano */
+#define NP_LUCHA_RECUPERAR 4     /* plantado despues: tu ventana */
+#define NP_LUCHA_REPLEGAR  5     /* se aparta antes de volver a intentarlo */
+
+/* Lo que se tambalea el que cobra un golpe: unos frames sin decidir nada, con
+ * el empujon del golpe y la pose de dolor. Es lo que hace que una serie sea una
+ * serie: sin ese hueco, el segundo puno llega cuando el otro ya se ha apartado
+ * y encadenar es imposible. No lo tumba -para eso esta el remate-, lo deja
+ * vendido, que es distinto y se ve distinto. */
+#define NP_ATURDE 16
+
+/* La carrera: cuanto dura un esprint y cuanto se espera al segundo toque.
+ * Doce frames de ventana es lo que da un doble toque comodo sin que salte
+ * corriendo cada vez que corriges el paso; ochenta de carrera son poco mas de
+ * un segundo, lo justo para cruzar la pantalla y meterle un hombro a alguien.
+ * Y `NP_CARRERA_X2` es lo que multiplica la velocidad, en octavos: 12/8 = una
+ * vez y media, que se nota sin volverse ingobernable. */
+#define NP_TOQUE_VENTANA 12
+#define NP_CARRERA       80
+#define NP_CARRERA_X2    12
+
+/* Cuantos frames se para el mundo al acertar un golpe. Es el truco mas viejo
+ * del genero: sin esa parada, el puno atraviesa al otro y no se siente nada;
+ * con ella, pega. El remate para mas, porque es el golpe que cuenta. */
+#define NP_CONGELADO      4
+#define NP_CONGELADO_REMATE 9
+/* Y lo que tiembla la camara al tumbar a alguien. */
+#define NP_SACUDIDA       10
+
 /* Ranuras de animacion (las que genera el compilador para cada actor). */
 #define NP_ANIM_IDLE 0
 #define NP_ANIM_RUN  1

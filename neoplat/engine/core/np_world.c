@@ -379,6 +379,18 @@ static void np_spawn_entities(NpWorld *w)
         e->anim_timer = 0;
         e->hurt = 0;
         e->timer = 0;
+        e->knock = 0;
+        e->golpeado = 0;
+        e->altura = 0;
+        e->valtura = 0;
+        /* El luchador empieza de cero: sin fase, sin tambaleo y sin haber
+           tocado a nadie. Sin esto, al volver a empezar el nivel un hueco de
+           la lista conservaria la fase del que estaba antes -y saldria
+           pegando, o tumbado- que es justo lo que caza la prueba de paridad:
+           el preview crea las entidades nuevas y no arrastraria nada. */
+        e->fase = NP_LUCHA_IR;
+        e->tocado = 0;
+        e->aturdido = 0;
         def = np_entity_def(e);
         (void)def;
         e->vida = 0;
@@ -454,6 +466,11 @@ static void np_player_reset(NpWorld *w, uint8_t quien)
     p->combo_timer = 0;
     p->grab = 0;                /* y sin nadie agarrado */
     p->grab_timer = 0;
+    /* y sin carrera ni golpe fuerte a medias */
+    p->fuerte = 0;
+    p->carrera = 0;
+    p->toque = 0;
+    p->toque_dir = 0;
     p->invuln = 0;
     p->coyote = 0;
     p->buffer = 0;
@@ -651,9 +668,16 @@ static int np_hueco_libre(NpWorld *w)
 static int np_hit_enemy(NpWorld *w, NpEntity *e, uint8_t damage)
 {
     const NpEnemyDef *d = &np_enemies[e->def];
+    /* Le has pegado tu primero: se le corta el golpe y pierde el turno. Es la
+       otra mitad de que la pelea tenga ritmo -la primera es que se le vea
+       venir-: quien se adelanta manda. */
+    e->fase = NP_LUCHA_IR;
     if (e->health > damage) {
         e->health = (uint8_t)(e->health - damage);
         e->hurt = 20;
+        /* Y se tambalea: unos frames sin decidir nada. Es el hueco por el que
+           entra el golpe siguiente, o sea lo que hace que una serie exista. */
+        if (np_vista_cinta) e->aturdido = NP_ATURDE;
         w->sfx |= NP_SFX_STOMP;
         return 1;
     }
@@ -1077,18 +1101,60 @@ static void np_whip_on(NpWorld *w, uint8_t quien)
  * se corte. Con `combo: 1` -lo normal fuera de este genero- no hay serie y
  * estas dos funciones devuelven lo de siempre.
  */
-static uint8_t np_golpe_dano(const NpPlayer *p)
+/* ¿Hay alguien a tiro por delante? ¿Y por detras? Son las dos preguntas del
+ * codazo: en un juego de tortas te rodean, y girarse a mano mientras tres te
+ * pegan es imposible. El codo lo resuelve solo, y solo cuando hace falta: si
+ * hay alguien delante, el golpe va delante, como siempre.
+ *
+ * Se mira una franja del ancho del golpe a cada lado y a la altura de la caja,
+ * asi que uno que este en otra profundidad no cuenta -no le llegarias-. */
+static int np_hay_a_ese_lado(const NpWorld *w, uint8_t quien, int derecha)
 {
-    const NpAttackDef *at = &np_player_def.attack;
-    if (at->combo > 1 && at->finish_damage && p->combo_link + 1 >= at->combo)
-        return at->finish_damage;
-    return at->damage;
+    const NpPlayer *p = &w->players[quien];
+    const NpActorDef *pa = &np_player_def.actor;
+    uint16_t alcance = np_attack_range(p);
+    np_fix gx = derecha ? p->x + NP_I2F(pa->box_w) : p->x - NP_I2F(alcance);
+    uint8_t i;
+    for (i = 0; i < w->entity_count; i++) {
+        const NpEntity *e = &w->entities[i];
+        const NpActorDef *ea;
+        if (!e->active || e->kind != NP_KIND_ENEMY || e->knock) continue;
+        ea = np_entity_def(e);
+        if (np_boxes_overlap(gx, np_player_top(p), alcance,
+                             np_player_height(p), e->x, e->y,
+                             ea->box_w, ea->box_h))
+            return 1;
+    }
+    return 0;
 }
 
+static int np_hay_delante(const NpWorld *w, uint8_t quien)
+{
+    return np_hay_a_ese_lado(w, quien, w->players[quien].facing);
+}
+
+static int np_hay_detras(const NpWorld *w, uint8_t quien)
+{
+    return np_hay_a_ese_lado(w, quien, !w->players[quien].facing);
+}
+
+/* Los dos golpes que valen por un remate: la patada en salto y el hombro en
+ * carrera. Los dos cuestan algo -uno te deja en el aire sin poder corregir, el
+ * otro te obliga a cruzar la calle en linea recta-, y por eso pagan como el
+ * ultimo de la serie: pegan mas y tumban. Es lo que convierte un grupo de tres
+ * en algo que se puede romper por un lado en vez de aguantar de frente. */
 static int np_es_remate(const NpPlayer *p)
 {
     const NpAttackDef *at = &np_player_def.attack;
+    if (np_vista_cinta && p->fuerte) return 1;
     return at->combo > 1 && p->combo_link + 1 >= at->combo;
+}
+
+static uint8_t np_golpe_dano(const NpPlayer *p)
+{
+    const NpAttackDef *at = &np_player_def.attack;
+    if (np_es_remate(p) && at->finish_damage) return at->finish_damage;
+    return at->damage;
 }
 
 /* Al que cobra el remate lo tumba: sale despedido hacia donde miras y se queda
@@ -1109,10 +1175,14 @@ static void np_melee_update(NpWorld *w, uint8_t quien)
     const NpActorDef *pa = &np_player_def.actor;
     NpPlayer *p = &w->players[quien];
     np_fix gx, gy;
-    uint16_t alcance;
-    uint8_t i;
+    uint16_t alcance, alto;
+    uint8_t i, fase_antes;
 
-    if (!p->attack_timer) { np_whip_off(w, quien); return; }
+    if (!p->attack_timer) {
+        p->fuerte = 0;          /* el golpe fuerte vale para su golpe y ya */
+        np_whip_off(w, quien);
+        return;
+    }
     p->attack_timer--;
     if (at->kind != NP_ATTACK_MELEE) return;   /* un disparo no pega de cerca */
     /* Los primeros `preparacion:` frames el golpe se ve pero no toca: el brazo
@@ -1127,6 +1197,13 @@ static void np_melee_update(NpWorld *w, uint8_t quien)
     alcance = np_attack_range(p);
     gx = p->facing ? p->x + NP_I2F(pa->box_w) : p->x - NP_I2F(alcance);
     gy = np_player_top(p);
+    alto = np_player_height(p);
+    /* La patada en salto **llega al suelo**: la caja se estira desde donde
+       estas hasta la linea del suelo. Sin esto saltar seria la forma de no
+       pegarle a nadie -el dibujo sube y la caja con el- y la patada, que es la
+       manera de meterse en un grupo, no existiria. */
+    if (np_vista_cinta && p->altura > 0)
+        alto = (uint16_t)(alto + NP_F2I(p->altura));
     for (i = 0; i < w->entity_count; i++) {
         NpEntity *e = &w->entities[i];
         const NpActorDef *ea;
@@ -1140,11 +1217,41 @@ static void np_melee_update(NpWorld *w, uint8_t quien)
            una serie pueda acertar al que aun parpadea del primero. */
         if (e->golpeado & (1u << quien)) continue;
         ea = np_entity_def(e);
-        if (!np_boxes_overlap(gx, gy, alcance, np_player_height(p),
+        if (!np_boxes_overlap(gx, gy, alcance, alto,
                               e->x, e->y, ea->box_w, ea->box_h))
             continue;
         e->golpeado |= (uint8_t)(1u << quien);
+        fase_antes = e->fase;
         np_hit_entity(w, e, np_golpe_dano(p));
+        /* El que **ya ha empezado a soltar el golpe** no se para con un puno
+           normal: hay que apartarse, saltarle por encima o gastarle algo
+           fuerte. Sin esto, prepararse seria un adorno -bastaria con pegar sin
+           parar para que nadie llegara a soltar nada- y la pelea volveria a
+           ser machacar el boton. */
+        if (np_vista_cinta && e->active && fase_antes == NP_LUCHA_PREPARAR
+            && !np_es_remate(p)) {
+            e->fase = NP_LUCHA_PREPARAR;
+            e->aturdido = 0;
+        }
+        /* La parada del impacto. El remate para mas: es el golpe que cuenta y
+           tiene que notarse en la mano. Solo en la vista de cinta, que es
+           donde el genero vive de esto; en un plataformas parar el mundo cada
+           vez que pisas a una seta seria un juego a tirones. */
+        if (np_vista_cinta) {
+            w->congelado = np_es_remate(p) ? NP_CONGELADO_REMATE : NP_CONGELADO;
+            /* Y con el remate, la pantalla tiembla. Va aqui y no en
+               np_derribar a proposito: si colgara del derribo, el remate que
+               **mata** -que es el que mas se celebra- no sacudiria nada,
+               porque a un muerto ya no hay a quien tumbar. */
+            if (np_es_remate(p) && e->kind == NP_KIND_ENEMY)
+                w->sacudida = NP_SACUDIDA;
+        }
+        /* y el empujon del tambaleo, hacia donde miras: un golpe mueve al que
+           lo cobra, aunque sea un paso */
+        if (np_vista_cinta && e->active && e->aturdido) {
+            e->vx = p->facing ? NP_I2F(1) : -NP_I2F(1);
+            e->vy = 0;
+        }
         if (e->active) np_derribar(p, e);
     }
 }
@@ -1698,13 +1805,37 @@ static void np_player_update_cinta(NpWorld *w, uint8_t quien, uint16_t input)
         if (input & NP_IN_UP) dy -= 1;
     }
 
+    /* La carrera: dos toques seguidos en la misma direccion. Es la respuesta a
+       que te rodeen -y la unica forma de cruzar la calle sin comerse tres
+       golpes-, asi que se enciende con el mando y no con un boton: en un
+       recreativo no habia botones de sobra.
+
+       La ventana del segundo toque corre siempre; el esprint se apaga al
+       soltar la direccion, al cambiar de sentido o al acabarse su tiempo. */
+    if (p->toque) p->toque--;
+    if (!p->stun && dx && !(w->prev_input[quien] & (NP_IN_LEFT | NP_IN_RIGHT))) {
+        if (p->toque && p->toque_dir == (int8_t)dx) {
+            p->carrera = NP_CARRERA;
+            p->toque = 0;
+        } else {
+            p->toque = NP_TOQUE_VENTANA;
+            p->toque_dir = (int8_t)dx;
+        }
+    }
+    if (p->carrera) {
+        if (p->stun || !dx || (int8_t)dx != p->toque_dir) p->carrera = 0;
+        else p->carrera--;
+    }
+
     /* Andar: solo con los pies en el suelo. En el aire manda el impulso. */
     if (p->on_ground) {
         if (dx || dy) {
+            np_fix paso = p->carrera
+                ? (np_fix)((d->speed * NP_CARRERA_X2) >> 3) : d->speed;
             p->aim = np_aim_de(dx, dy);
             if (dx) p->facing = (uint8_t)(dx > 0);
-            p->vx = np_paso_cenital(d->speed, dx, dx && dy);
-            p->vy = np_paso_cenital(d->speed, dy, dx && dy);
+            p->vx = np_paso_cenital(paso, dx, dx && dy);
+            p->vy = np_paso_cenital(paso, dy, dx && dy);
         } else if (p->stun) {
             p->vx = np_approach(p->vx, 0, d->friction);  /* el empujon se apaga */
             p->vy = np_approach(p->vy, 0, d->friction);
@@ -1755,8 +1886,20 @@ static void np_player_update_cinta(NpWorld *w, uint8_t quien, uint16_t input)
        arma secundaria en el salto como en el comando: en un juego de tortas,
        saltar **es** media pelea. */
     if (p->attack_cd) p->attack_cd--;
-    if ((input & NP_IN_ACTION) && !(w->prev_input[quien] & NP_IN_ACTION))
+    if ((input & NP_IN_ACTION) && !(w->prev_input[quien] & NP_IN_ACTION)) {
+        /* El codazo hacia atras: si el que tienes encima esta **detras** y
+           delante no hay nadie, te giras al soltar el golpe. Es el codo de
+           toda la vida de los juegos de tortas, y es lo que hace que te
+           rodeen sin que rodearte sea gratis. */
+        if (!np_hay_delante(w, quien) && np_hay_detras(w, quien))
+            p->facing = (uint8_t)!p->facing;
+        /* Y si sale por el aire es patada en salto, y en carrera es hombro:
+           los dos pegan como un remate y tumban. El hombro **gasta** la
+           carrera, asi que es uno por esprint y no un boton de tumbar. */
+        p->fuerte = (uint8_t)(!p->on_ground || p->carrera != 0);
+        p->carrera = 0;
         np_player_attack(w, quien);
+    }
 
     if (p->invuln) p->invuln--;
     /* La caja del punetazo, que ademas lleva el reloj del golpe. En vista
@@ -2179,6 +2322,199 @@ static void np_enemy_shot_update(NpWorld *w, NpEntity *e)
     np_anim_tick(a, e->anim, &e->anim_frame, &e->anim_timer);
 }
 
+/* ------------------------------------------------------- el luchador */
+/*
+ * Un enemigo que anda en linea recta hacia ti y te hace dano al rozarte no da
+ * una pelea: da un enjambre. Y con siete a la vez, lo unico que se puede hacer
+ * es machacar el boton y perder. Eso es exactamente lo que hacia este genero
+ * antes, y es lo que arregla este trozo.
+ *
+ * Un luchador de verdad hace cuatro cosas, y las cuatro se notan al mando:
+ *
+ *   1. **Se coloca y no se te mete dentro.** Se acerca hasta la distancia a la
+ *      que su golpe llega, y ahi se para. Nunca acaba encima de ti, que es lo
+ *      que convertia la pelea en un empujon.
+ *   2. **Espera su turno.** Solo `np_agresivos` pegan a la vez; los demas
+ *      rondan. Es la regla mas vieja del genero -y la menos conocida-: sin
+ *      ella no hay juego, porque no hay hueco entre golpe y golpe.
+ *   3. **Se le ve venir.** Antes de soltar el golpe hay `preparacion:` frames
+ *      de aviso. Sin eso no se puede esquivar y el juego es injusto; con eso,
+ *      cada golpe que cobras es culpa tuya, que es lo que hace que apetezca
+ *      volver a intentarlo.
+ *   4. **Deja una ventana.** Despues del golpe se queda plantado `recuperar:`
+ *      frames. Ese hueco es tu turno, y de ahi sale el ritmo de la pelea.
+ *
+ * Se reparten ademas por profundidad -cada uno tiene su ranura- para que no se
+ * amontonen los siete en la misma linea, que es lo que hace que una calle
+ * parezca ancha.
+ */
+
+/* La distancia a la que se pelea: lo justo para que su golpe llegue. */
+static np_fix np_lucha_cerca(const NpEnemyDef *d, const NpActorDef *a)
+{
+    return NP_I2F((int32_t)a->box_w + (int32_t)d->reach - 8);
+}
+
+/* Su golpe: una caja delante, mientras dura la fase de pegar. */
+static void np_lucha_pegar(NpWorld *w, NpEntity *e, const NpEnemyDef *d,
+                           const NpActorDef *a)
+{
+    const NpActorDef *pa = &np_player_def.actor;
+    np_fix gx = e->facing ? e->x + NP_I2F(a->box_w)
+                          : e->x - NP_I2F(d->reach);
+    uint8_t quien;
+    for (quien = 0; quien < NP_MAX_PLAYERS; quien++) {
+        NpPlayer *p = &w->players[quien];
+        if (!p->playing || p->dying) continue;
+        /* a quien ya ha tocado **este** golpe no se le toca otra vez */
+        if (e->tocado & (1u << quien)) continue;
+        if (!np_boxes_overlap(gx, e->y, d->reach, a->box_h,
+                              p->x, np_player_top(p), pa->box_w,
+                              np_player_height(p)))
+            continue;
+        e->tocado |= (uint8_t)(1u << quien);
+        if (p->invuln) continue;             /* parpadeando no entra */
+        np_player_hurt(w, quien, d->punch ? d->punch : d->damage);
+        w->congelado = NP_CONGELADO;
+    }
+}
+
+/* Que no se amontonen: si esta encima de otro, se aparta por profundidad, que
+   es por donde hay sitio en una calle. Se mueve **solo el de turno**, asi que
+   con que lo haga cada uno en su vuelta acaban repartidos solos. */
+static void np_lucha_separar(NpWorld *w, NpEntity *e, const NpActorDef *a)
+{
+    uint8_t i;
+    for (i = 0; i < w->entity_count; i++) {
+        NpEntity *o = &w->entities[i];
+        const NpActorDef *oa;
+        if (o == e || !o->active || o->kind != NP_KIND_ENEMY) continue;
+        oa = np_entity_def(o);
+        if (!np_boxes_overlap(e->x, e->y, a->box_w, a->box_h,
+                              o->x, o->y, oa->box_w, oa->box_h))
+            continue;
+        /* al que esta mas arriba se va arriba, y al de abajo, abajo: asi los
+           dos se separan aunque el otro no se mueva */
+        e->y += (e->y <= o->y) ? -NP_I2F(1) : NP_I2F(1);
+        return;                              /* con uno por frame basta */
+    }
+}
+
+/* Un frame de luchador. Devuelve 1 si se ha ocupado el del movimiento. */
+static void np_lucha_update(NpWorld *w, NpEntity *e, const NpEnemyDef *d,
+                            const NpActorDef *a, const NpPlayer *p)
+{
+    np_fix dx = p->x - e->x;
+    np_fix dy = (p->y + p->altura) - e->y;
+    np_fix lejos = NP_ABS(dx);
+    np_fix cerca = np_lucha_cerca(d, a);
+    np_fix anillo = cerca + NP_I2F(22);
+    /* Cada uno ronda por su profundidad: tres ranuras repartidas alrededor de
+       donde esta el jugador. Sale del sitio que ocupa en la lista, asi que es
+       el mismo en las dos implementaciones y no hace falta guardarlo. */
+    int32_t ranura = ((int32_t)(e - w->entities) % 3 - 1) * 14;
+    np_fix hacia_y;
+    int32_t ex = 0, ey = 0;
+    int puede, en_su_sitio = 0;
+
+    np_lucha_separar(w, e, a);
+    if (e->timer) e->timer--;
+    /* mirar siempre al que tienes delante: darte la espalda no es dificultad,
+       es un bicho tonto */
+    if (dx) e->facing = (uint8_t)(dx > 0);
+
+    switch (e->fase) {
+    case NP_LUCHA_PREPARAR:
+        e->vx = 0;
+        e->vy = 0;
+        if (!e->timer) {
+            e->fase = NP_LUCHA_GOLPEAR;
+            e->timer = d->active;
+            e->tocado = 0;
+        }
+        np_anim_set(&e->anim, &e->anim_frame, &e->anim_timer, NP_ANIM_ATTACK);
+        return;
+    case NP_LUCHA_GOLPEAR:
+        e->vx = 0;
+        e->vy = 0;
+        np_lucha_pegar(w, e, d, a);
+        if (!e->timer) {
+            e->fase = NP_LUCHA_RECUPERAR;
+            e->timer = d->recover;
+        }
+        np_anim_set(&e->anim, &e->anim_frame, &e->anim_timer, NP_ANIM_ATTACK);
+        return;
+    case NP_LUCHA_RECUPERAR:
+        e->vx = 0;
+        e->vy = 0;
+        if (!e->timer) {
+            e->fase = NP_LUCHA_REPLEGAR;
+            e->timer = d->wait;
+        }
+        np_anim_set(&e->anim, &e->anim_frame, &e->anim_timer, NP_ANIM_IDLE);
+        return;
+    case NP_LUCHA_REPLEGAR:
+        /* pega y se aparta, como en los recreativos: asi te da sitio para
+           responder y no se queda pegado a ti esperando el siguiente */
+        ex = dx > 0 ? -1 : 1;
+        if (NP_ABS(dy) > NP_I2F(2)) ey = dy > 0 ? -1 : 1;
+        if (lejos > anillo + NP_I2F(16)) { ex = 0; ey = 0; }
+        if (!e->timer) e->fase = NP_LUCHA_IR;
+        break;
+    default:
+        /* IR y RONDAR: ponerse en su sitio.
+         *
+         * Aqui estan las dos reglas que hacen que la pelea se lea:
+         *
+         *   **Te rodean.** Cada uno tiene su lado -unos por la derecha y
+         *   otros por la izquierda-, asi que no se hace una fila delante de
+         *   ti: se reparten. De ahi sale que girarse importe, y de ahi sale
+         *   el codazo.
+         *
+         *   **El que tiene turno se pone en tu linea y los demas se apartan a
+         *   la suya.** Si todos rondaran por su ranura no pegaria nadie; si
+         *   todos se pusieran en tu linea serian una fila de siete. Y
+         *   mientras cruza al otro lado se queda en su ranura, para rodearte
+         *   por delante o por detras en vez de atravesarte. */
+        puede = (w->atacando < np_agresivos);
+        {
+            int32_t lado = ((int32_t)(e - w->entities) & 1) ? -1 : 1;
+            np_fix quiero = puede ? cerca : anillo;
+            np_fix destino = p->x + (np_fix)(lado * (int32_t)quiero);
+            np_fix hueco_x = destino - e->x;
+            /* "Estar en su sitio" es la **misma** medida que decide si puede
+               pegar, y no dos parecidas: con dos, se paraba dentro de la
+               tolerancia de andar pero justo fuera de la de pegar, y se
+               quedaba mirando para siempre a un palmo del jugador. */
+            en_su_sitio = NP_ABS(hueco_x) <= NP_I2F(6);
+            if (!en_su_sitio) ex = hueco_x > 0 ? 1 : -1;
+            hacia_y = (p->y + p->altura)
+                    + NP_I2F((puede && en_su_sitio) ? 0 : ranura);
+            {
+                np_fix hueco = hacia_y - e->y;
+                if (NP_ABS(hueco) > NP_I2F(2)) ey = hueco > 0 ? 1 : -1;
+            }
+        }
+        e->fase = (lejos <= anillo + NP_I2F(8)) ? NP_LUCHA_RONDAR : NP_LUCHA_IR;
+        /* ¿le toca? Solo si hay ficha libre, ya ha esperado lo suyo, esta en
+           su sitio y en tu linea de profundidad. */
+        if (puede && !e->timer && en_su_sitio && NP_ABS(dy) <= NP_I2F(7)) {
+            e->fase = NP_LUCHA_PREPARAR;
+            e->timer = d->windup;
+            e->vx = 0;
+            e->vy = 0;
+            w->atacando++;
+            np_anim_set(&e->anim, &e->anim_frame, &e->anim_timer, NP_ANIM_ATTACK);
+            return;
+        }
+        break;
+    }
+    e->vx = np_paso_cenital(d->speed, ex, ex && ey);
+    e->vy = np_paso_cenital(d->speed, ey, ex && ey);
+    np_anim_set(&e->anim, &e->anim_frame, &e->anim_timer,
+                (ex || ey) ? NP_ANIM_RUN : NP_ANIM_IDLE);
+}
+
 static void np_enemy_update(NpWorld *w, NpEntity *e)
 {
     const NpEnemyDef *d = &np_enemies[e->def];
@@ -2192,6 +2528,9 @@ static void np_enemy_update(NpWorld *w, NpEntity *e)
     if (e->knock) {
         np_fix suelo = e->y + e->altura;
         e->knock--;
+        /* tumbado se pierde el turno: la ficha vuelve al monton y quien la
+           coja tendra que volver a colocarse */
+        e->fase = NP_LUCHA_IR;
         /* Si viene de un lanzamiento, ademas vuela: la altura sube y baja con
            la misma gravedad del jugador, y `y` -que es donde se dibuja- es el
            suelo menos la altura, igual que en np_player_update_cinta. */
@@ -2205,6 +2544,21 @@ static void np_enemy_update(NpWorld *w, NpEntity *e)
         e->y = suelo - e->altura;
         /* por el aire no se frena: se frena al tocar el suelo */
         if (!e->altura) e->vx = np_approach(e->vx, 0, np_player_def.friction);
+        np_anim_set(&e->anim, &e->anim_frame, &e->anim_timer, NP_ANIM_HURT);
+        np_anim_tick(a, e->anim, &e->anim_frame, &e->anim_timer);
+        return;
+    }
+
+    /* Tambaleandose de un golpe: ni decide ni anda, solo aguanta el empujon.
+       Va antes que la IA a proposito -mientras dura, no hay IA- y despues del
+       derribo, porque uno tumbado ya no se tambalea: esta en el suelo. */
+    if (e->aturdido) {
+        int golpe_x = 0;
+        e->aturdido--;
+        e->vx = np_approach(e->vx, 0, np_player_def.friction);
+        e->vy = np_approach(e->vy, 0, np_player_def.friction);
+        e->x = np_move_x(w, e->x, e->y, a->box_w, a->box_h, e->vx, &golpe_x);
+        if (golpe_x) e->vx = 0;
         np_anim_set(&e->anim, &e->anim_frame, &e->anim_timer, NP_ANIM_HURT);
         np_anim_tick(a, e->anim, &e->anim_frame, &e->anim_timer);
         return;
@@ -2224,6 +2578,14 @@ static void np_enemy_update(NpWorld *w, NpEntity *e)
     }
     case NP_AI_CHASER: {
         np_fix dx = p->x - e->x;
+        /* En la vista de cinta un perseguidor no persigue: **pelea**. Se
+           coloca, espera turno y suelta el golpe. Lo de andar en linea recta
+           hacia el jugador se queda para los otros generos, donde el enemigo
+           es un obstaculo y no un rival. */
+        if (np_vista_cinta && d->reach) {
+            np_lucha_update(w, e, d, a, p);
+            break;
+        }
         if (np_vista_cenital) {
             /* Desde arriba se persigue en los dos ejes: es el soldado que se
                te viene encima. `rango` sigue midiendo en horizontal, que es
@@ -2572,6 +2934,13 @@ static void np_touch_entities(NpWorld *w)
             }
             {
                 const NpEnemyDef *d = &np_enemies[e->def];
+                /* En una pelea, rozar a alguien no hace dano: hace dano su
+                   golpe. Es la diferencia entre un obstaculo y un rival, y sin
+                   ella no hay forma de acercarse a nadie. Solo vale para los
+                   que pegan (`golpe:` con alcance) y en la vista de cinta: en
+                   el resto de generos tocar a un bicho sigue costandote vida,
+                   como toda la vida. */
+                if (np_vista_cinta && d->reach) continue;
                 /* Se pisa al enemigo si vienes cayendo y, antes de moverte en
                  * este frame, tenias los pies por encima de su mitad. Con un
                  * tercio la ventana era tan estrecha que era casi imposible
@@ -2747,6 +3116,21 @@ static void np_camera_update(NpWorld *w)
         target_x = w->cam_x;
     w->cam_x = NP_CLAMP(target_x, 0, max_x);
     w->cam_y = NP_CLAMP(target_y, 0, max_y);
+    /* La sacudida: al tumbar a alguien la pantalla tiembla unos frames. Es
+     * decorado, pero es el decorado que hace que un derribo parezca un
+     * derribo, y sale gratis en las siete maquinas porque va en la camara y
+     * la camara la miran todas.
+     *
+     * Se mueve **hacia dentro del nivel** (siempre sumando) y se vuelve a
+     * recortar: asi no se ve nunca fuera del mapa, ni siquiera pegado al
+     * borde izquierdo, que es justo donde empieza una calle. */
+    if (w->sacudida) {
+        w->sacudida--;
+        if (w->sacudida & 2) {
+            w->cam_x += 3;
+            if (w->cam_x > max_x) w->cam_x = max_x;
+        }
+    }
 }
 
 /* A dos jugadores, el que se queda atras no puede salirse de la pantalla: la
@@ -2821,6 +3205,22 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
 
     mandos[0] = input;
     if (NP_MAX_PLAYERS > 1) mandos[1] = input2;
+
+    /* Cuantos estan pegando ahora mismo. Se cuenta **una vez** y de ahi salen
+       las fichas de ataque: mientras haya `np_agresivos` ocupados, el resto
+       ronda. Contarlo aqui y no llevar la cuenta a mano es lo que hace que no
+       se pierda una ficha cuando a uno lo tumban o se lo llevan por delante en
+       mitad del golpe. */
+    w->atacando = 0;
+    if (np_vista_cinta) {
+        for (i = 0; i < w->entity_count; i++) {
+            const NpEntity *e = &w->entities[i];
+            if (!e->active || e->kind != NP_KIND_ENEMY) continue;
+            if (e->knock || e->fase < NP_LUCHA_PREPARAR
+                || e->fase > NP_LUCHA_RECUPERAR) continue;
+            w->atacando++;
+        }
+    }
 
     /* Las plataformas moviles se mueven antes que nadie: el jugador que va
        encima se apunta al sitio donde han quedado. Tampoco se pausan fuera de
@@ -3125,6 +3525,22 @@ void np_world_step(NpWorld *w, uint16_t input, uint16_t input2)
         break;
 
     case NP_STATE_PLAY:
+        /* El congelado: al acertar un golpe el mundo se para unos frames. Es el
+         * truco mas viejo del genero y el que mas se nota: sin esa parada el
+         * puno atraviesa al otro y no se siente nada; con ella, **pega**.
+         *
+         * Se para todo menos el reloj de frames y el mando: las pulsaciones que
+         * caigan dentro se quedan guardadas y salen al frame siguiente, que es
+         * lo que hace que encadenar durante el impacto sea comodo en vez de un
+         * examen de reflejos. */
+        if (w->congelado) {
+            w->congelado--;
+            /* Y el mando **no se apunta**: lo que se pulse durante la parada
+               sigue contando como recien pulsado al frame siguiente. Sin esto,
+               el golpe que sale justo al acertar el anterior se perderia y
+               encadenar seria un examen de reflejos en vez de un ritmo. */
+            return;
+        }
         np_play_step(w, input, input2);
         break;
 

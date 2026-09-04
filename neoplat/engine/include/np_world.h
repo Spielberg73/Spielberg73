@@ -51,6 +51,22 @@ typedef struct {
        y lo que le queda de agarre antes de soltarse. */
     uint16_t grab_timer;
     uint8_t grab;
+    /* --- el repertorio de los juegos de tortas --------------------------
+     *
+     * `fuerte` marca que el golpe que esta saliendo vale por un remate: o se
+     * solto **por el aire** (la patada en salto) o **en carrera** (el hombro).
+     * Los dos cuestan algo -uno te deja en el aire sin corregir, el otro gasta
+     * el esprint- y por eso los dos pegan mas y tumban. Es lo que hace que un
+     * grupo de tres se pueda romper por un lado en vez de aguantarlo de
+     * frente.
+     *
+     * `carrera` es lo que queda de un esprint, y `toque`/`toque_dir` el doble
+     * toque que lo enciende: dos veces la misma direccion antes de que se
+     * acabe la ventana. */
+    uint8_t fuerte;
+    uint8_t carrera;
+    uint8_t toque;
+    int8_t toque_dir;
     uint8_t lives;           /* las vidas son de cada uno */
     uint8_t playing;         /* 0 = fuera (segundo jugador de una partida a uno,
                                 o el que se ha quedado sin vidas) */
@@ -79,6 +95,20 @@ typedef struct {
        esto lo hacia el parpadeo (`hurt`), y por eso una serie de tres solo
        acertaba el primero: el segundo llegaba con el enemigo aun parpadeando. */
     uint8_t golpeado;
+    /* --- el luchador de los juegos de tortas ----------------------------
+     *
+     * En que va: acercarse, rondar esperando turno, prepararse, pegar,
+     * recuperarse o replegarse (NP_LUCHA_*). Lo que queda de la fase va en
+     * `timer`, que en esta vista no lo usa nadie mas.
+     *
+     * `tocado` es a quien ya ha alcanzado **este** golpe, un bit por jugador:
+     * la caja se queda puesta varios frames y si no acertaria en todos. Es lo
+     * mismo que `golpeado` pero al reves -aquel es el golpe del jugador-. */
+    uint8_t fase;
+    uint8_t tocado;
+    /* Lo que le queda de tambaleo: mientras dura no decide nada y aguanta el
+       empujon del golpe. Es el hueco por el que entra el golpe siguiente. */
+    uint8_t aturdido;
 } NpEntity;
 
 typedef struct {
@@ -125,6 +155,16 @@ typedef struct {
     /* El jefe que hay en pantalla, para que el marcador pueda ensenarlo: los
        golpes que le quedan y los que aguantaba entero. 0 = no hay jefe. */
     uint8_t boss_health, boss_max;
+    /* --- lo que hace que una pelea sea una pelea ------------------------
+     *
+     * `atacando` es cuantos enemigos estan pegando **ahora mismo**: se cuenta
+     * una vez por frame y con eso se reparten las fichas, porque si pegaran
+     * todos a la vez no habria juego, habria un enjambre. `congelado` son los
+     * frames de parada al acertar un golpe -lo que hace que se sienta- y
+     * `sacudida` los que la camara tiembla despues de un derribo. */
+    uint8_t atacando;
+    uint8_t congelado;
+    uint8_t sacudida;
 } NpWorld;
 
 void np_world_init(NpWorld *w);

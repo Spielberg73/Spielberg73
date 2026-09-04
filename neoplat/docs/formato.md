@@ -135,6 +135,21 @@ Las seis se comprueban en emulador (`tests/test_sistemas.py`,
 otro y con los dos, y las tres tienen que acabar distintas. Si el segundo mando
 no llegara, o si los dos leyeran del mismo sitio, saldrían iguales.
 
+### `agresivos`: cuántos pegan a la vez
+
+```yaml
+juego:
+  agresivos: 2
+```
+
+Solo lo miran los juegos de tortas (`vista: cinta`) con enemigos que tengan
+[`golpe:`](#golpe-el-ataque-del-enemigo). Es **cuántos enemigos pueden estar
+pegando a la vez**: los demás rondan esperando turno.
+
+Es el número más importante del género y el que menos se ve. Con todos a la vez
+no hay hueco entre golpe y golpe y la pelea es un enjambre; con uno solo la
+calle está vacía. Dos es lo de los recreativos.
+
 ### La vista: de lado o desde arriba
 
 ```yaml
@@ -455,6 +470,27 @@ de este género— no hay serie y los cuatro números de abajo no pintan nada.
 
 Para que el remate se vea distinto hay una ranura de animación propia,
 `remate:`. Quien no la traiga se queda con la de `atacar`.
+
+### Los otros tres golpes (sólo en `vista: cinta`)
+
+No se configuran: salen del mando y del sitio donde estés, y los tres valen por
+un remate —pegan `dano_remate:` y **tumban**—. Son los que le faltaban al
+género para que una pelea contra tres se pueda ganar:
+
+| cómo | qué sale | qué cuesta |
+|---|---|---|
+| atacar **con alguien detrás** y nadie delante | **codazo**: te giras solo | nada, pero sólo cuando de verdad hace falta |
+| atacar **en el aire** | **patada en salto** | en el aire no se corrige el rumbo |
+| atacar **corriendo** (dos toques en la misma dirección) | **hombro** | gasta la carrera: uno por esprint |
+
+La patada en salto estira su caja **hasta el suelo**: si no, el dibujo sube y
+la caja con él, y la patada no le daría a nadie.
+
+Y al acertar, el mundo se **para** cuatro frames (nueve en el remate) y al
+tumbar a alguien la pantalla **tiembla**. No se configura y no se puede quitar:
+sin esa parada el puño atraviesa al otro y no se siente nada. El mando **no se
+apunta** durante la parada, así que lo que se pulse dentro sigue contando:
+encadenar es un ritmo, no un examen de reflejos.
 
 ### `agarre`: coger, zarandear y lanzar
 
@@ -854,6 +890,49 @@ enemigos:
     puntos: 1000
     jefe: si
 ```
+
+### `golpe`: el ataque del enemigo
+
+```yaml
+enemigos:
+  maton:
+    comportamiento: perseguidor
+    dano: 1
+    golpe:
+      alcance: 14         # px que llega su brazo
+      preparacion: 18     # el aviso: lo que tardas en verlo venir
+      duracion: 6         # los frames en que la caja hace daño
+      recuperar: 22       # plantado después: **esa** es tu ventana
+      espera: 46          # lo que tarda en volver a intentarlo
+      dano: 1             # sin esto, el mismo `dano:` de arriba
+```
+
+Sin este bloque un enemigo hace daño **al tocarte**, que es lo de siempre en un
+plataformas. Con él deja de ser un obstáculo y pasa a ser un rival: en la
+[vista de cinta](#la-vista-de-lado-o-desde-arriba) **rozarlo ya no te cuesta
+vida** —lo que te la cuesta es su golpe— y el enemigo pasa a comportarse como
+un luchador:
+
+- se acerca hasta la distancia a la que le llega el brazo y **ahí se para**;
+- espera a que haya una ficha libre (ver [`agresivos:`](#agresivos-cuántos-pegan-a-la-vez));
+- **avisa** `preparacion:` frames antes de soltarlo;
+- pega `duracion:` frames y se queda `recuperar:` frames vendido;
+- y se **repliega** `espera:` frames antes de volver a intentarlo.
+
+Los cuatro tiempos son los de cualquier juego de pelea y los cuatro se notan al
+mando. El aviso es lo que hace que el juego sea justo: sin él no hay forma de
+esquivar. La recuperación es lo que le da ritmo: sin ella no hay hueco para
+responder.
+
+**Al que ya ha empezado a soltar el golpe no lo para un puñetazo normal**: hay
+que apartarse en profundidad, saltarle por encima o gastarle un golpe fuerte
+(el remate de la serie, la patada en salto o el hombro). Es lo que hace que
+prepararse sea una amenaza de verdad; si un puño cualquiera lo cortara,
+bastaría con pegar sin parar.
+
+Y al cobrar un golpe, un enemigo **se tambalea** unos frames: no decide nada y
+aguanta el empujón. Ese hueco es por donde entra el golpe siguiente, o sea lo
+que hace que una serie sea una serie.
 
 ## `objetos`
 
