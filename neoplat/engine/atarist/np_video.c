@@ -47,6 +47,17 @@ typedef struct {
     uint8_t abiertos;
     NpRastro rastros[NP_MAX_RASTROS];
     uint8_t rastro_count;
+    /* Los cubos de la sala isometrica se pintan una vez, al entrar en la
+       habitacion, y se quedan dentro de la pantalla como el suelo: borrarlos y
+       volver a pintarlos en cada frame -ocho trozos por cubo- es lo que hacia
+       que el ST perdiera el frame y el juego se fuera a la mitad (medido: la
+       melodia pasaba de 16 notas de 16 a 8). Lo unico que hay que rehacer son
+       los que pisa un actor que si se mueve, y para eso se apunta que trozos
+       de suelo se han repintado. */
+    NpRastro borrados[NP_MAX_RASTROS];
+    uint8_t borrados_n;
+    uint16_t sala_x, sala_y;         /* la habitacion que hay pintada */
+    uint8_t sala_nueva;              /* 1 = se acaba de repintar entera */
     uint8_t hud;                     /* 1 = hay que copiar el marcador */
 } NpBuffer;
 
@@ -626,11 +637,34 @@ static void np_correr(uint8_t *pantalla, int32_t grupos)
 #define NP_TILES_TOTAL (NP_COLUMNAS * NP_FILAS)
 static uint8_t np_ya_repintado[(NP_TILES_TOTAL + 7) / 8];
 
+#if NP_VISTA_ISO
+/* Toca ese cuadro alguno de los trozos de suelo que se acaban de repintar? */
+static int np_pisa_lo_borrado(const NpBuffer *b, int32_t x, int32_t y,
+                              int32_t ancho, int32_t alto)
+{
+    uint8_t i;
+    for (i = 0; i < b->borrados_n; i++) {
+        const NpRastro *r = &b->borrados[i];
+        if (x >= r->x + r->ancho || x + ancho <= r->x) continue;
+        if (y >= r->y + r->alto || y + alto <= r->y) continue;
+        return 1;
+    }
+    return 0;
+}
+#endif
+
 static void np_repintar_rastros(NpBuffer *b, const NpWorld *w)
 {
     uint8_t i;
     uint16_t byte;
+#if NP_VISTA_ISO
+    b->borrados_n = 0;
+#endif
     if (!b->rastro_count) return;
+#if NP_VISTA_ISO
+    for (i = 0; i < b->rastro_count; i++) b->borrados[i] = b->rastros[i];
+    b->borrados_n = b->rastro_count;
+#endif
     for (byte = 0; byte < sizeof(np_ya_repintado); byte++) np_ya_repintado[byte] = 0;
 
     for (i = 0; i < b->rastro_count; i++) {
@@ -677,8 +711,11 @@ static void np_apuntar_rastro(NpBuffer *b, int32_t x, int32_t y,
     b->rastro_count++;
 }
 
-static void np_dibujar_actor(NpBuffer *b, const NpActorDef *def,
-                             int32_t mundo_x, int32_t mundo_y, uint8_t frame)
+/* `quieto` = este dibujo se queda en la pantalla y no hay que borrarlo el frame
+   que viene: son los cubos de una sala isometrica. */
+static void np_pintar_actor(NpBuffer *b, const NpActorDef *def,
+                            int32_t mundo_x, int32_t mundo_y, uint8_t frame,
+                            uint8_t quieto)
 {
     uint16_t base = (uint16_t)(def->first_tile + frame * def->cols * def->rows);
     uint8_t c, r;
@@ -689,8 +726,9 @@ static void np_dibujar_actor(NpBuffer *b, const NpActorDef *def,
         for (r = 0; r < def->rows; r++)
             np_sprite_en(b->pixeles, (uint16_t)(base + c * def->rows + r),
                          x + c * NP_TILE, y + r * NP_TILE);
-    np_apuntar_rastro(b, mundo_x, mundo_y, (int16_t)(def->cols * NP_TILE),
-                      (int16_t)(def->rows * NP_TILE));
+    if (!quieto)
+        np_apuntar_rastro(b, mundo_x, mundo_y, (int16_t)(def->cols * NP_TILE),
+                          (int16_t)(def->rows * NP_TILE));
 }
 
 /* --- un frame ------------------------------------------------------------ */
@@ -756,13 +794,21 @@ void np_video_escenario(const NpWorld *w)
     if (grupos) grupos = NP_COLUMNAS;
 #endif
 
+    b->sala_nueva = 0;
     if (w->level != b->nivel || vista_y != b->vista_y
         || w->abiertos_n != b->abiertos
-        || grupos <= -NP_COLUMNAS || grupos >= NP_COLUMNAS) {
+        || grupos <= -NP_COLUMNAS || grupos >= NP_COLUMNAS
+        /* al cambiar de habitacion: todas se dibujan en el mismo cuadro y lo
+           unico que cambia son sus cubos, que van dentro de la pantalla */
+        || (np_vista_iso && (w->sala_x != b->sala_x || w->sala_y != b->sala_y))) {
         b->nivel = w->level;
         b->abiertos = w->abiertos_n;
         b->vista_x = vista_x;
         b->vista_y = vista_y;
+        b->sala_x = w->sala_x;
+        b->sala_y = w->sala_y;
+        b->sala_nueva = 1;
+        b->borrados_n = 0;
         np_redibujar_todo(b, w);
     } else if (grupos) {
         int32_t primera = b->vista_x >> 4;
@@ -797,24 +843,54 @@ void np_video_actores(const NpWorld *w)
     /* De mas lejos a mas cerca: en la vista de cinta los actores se pisan a
        cada rato y hay que pintarlos por la linea del suelo. En las demas
        vistas np_orden_dibujo devuelve el orden de la lista tal cual. */
+    /* En la isometrica la fila lleva los cubos de la sala y ademas a los
+       jugadores -ahi hay un detras de verdad-, y donde cae cada uno lo decide
+       la proyeccion: por eso se pide todo a np_dibujo y el bucle es uno solo.
+       En las demas vistas se dibuja como siempre, y no por gusto: preguntarle
+       a np_dibujo por cada actor cuesta lo justo para que la Mega Drive pierda
+       el vblank y el juego entero se vaya a la mitad de velocidad. Medido: la
+       melodia pasa de 16 notas de 16 a 4. */
     orden = np_orden_dibujo(w, &cuantas);
+#if NP_VISTA_ISO
+    for (i = 0; i < cuantas; i++) {
+        const NpActorDef *def;
+        int32_t sx, sy;
+        uint8_t frame, flip;
+        uint8_t puesto = NP_DIBUJO(orden, i);
+        uint8_t cubo;
+        def = np_dibujo(w, puesto, &sx, &sy, &frame, &flip);
+        if (!def) continue;
+        (void)flip;                       /* el ST dibuja sin espejo */
+        /* Un cubo ya esta pintado en la pantalla desde que se monto la sala:
+           solo hay que volver a ponerlo si un actor que se mueve le ha
+           repintado el suelo por encima. */
+        cubo = (uint8_t)(puesto < NP_MAX_ENTITIES
+                         && puesto >= (uint8_t)(NP_MAX_ENTITIES - w->bloques_n));
+        if (cubo && !b->sala_nueva
+            && !np_pisa_lo_borrado(b, sx, sy, def->cols * NP_TILE,
+                                   def->rows * NP_TILE))
+            continue;
+        np_pintar_actor(b, def, sx, sy, frame, cubo);
+    }
+#else
     for (i = 0; i < cuantas; i++) {
         const NpEntity *e = &w->entities[NP_DIBUJO(orden, i)];
         const NpActorDef *def;
         if (!e->active) continue;
         if (e->hurt && (w->frame & 1)) continue;
         def = np_entity_def(e);
-        np_dibujar_actor(b, def, NP_F2I(e->x) - def->box_x, NP_F2I(e->y) - def->box_y,
-                         np_actor_frame(def, e->anim, e->anim_frame));
+        np_pintar_actor(b, def, NP_F2I(e->x) - def->box_x, NP_F2I(e->y) - def->box_y,
+                        np_actor_frame(def, e->anim, e->anim_frame), 0);
     }
     for (i = 0; i < NP_MAX_PLAYERS; i++) {
         const NpActorDef *def = &np_player_def.actor;
         const NpPlayer *p = &w->players[i];
         if (!np_player_visible(w, i)) continue;
-        np_dibujar_actor(b, def, NP_F2I(p->x) - def->box_x,
-                         NP_F2I(p->y) - def->box_y,
-                         np_actor_frame(def, p->anim, p->anim_frame));
+        np_pintar_actor(b, def, NP_F2I(p->x) - def->box_x,
+                        NP_F2I(p->y) - def->box_y,
+                        np_actor_frame(def, p->anim, p->anim_frame), 0);
     }
+#endif
 
     NP_MARCA(4, w->level->background);
 

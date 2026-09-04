@@ -37,14 +37,17 @@ static np_fix np_approach(np_fix value, np_fix target, np_fix delta)
 
 uint8_t np_tile_kind_at(const NpLevel *level, int32_t tx, int32_t ty)
 {
-    if (tx < 0 || tx >= (int32_t)level->width) return NP_TILE_SOLID;  /* paredes */
+    /* Ojo con las medidas: `cells_w` y `cells_h` son las del mapa que se pisa,
+       que en casi todos los juegos es el que se ve y en la vista isometrica no
+       -alli lo que se ve es el dibujo de las salas y esto es su planta-. */
+    if (tx < 0 || tx >= (int32_t)level->cells_w) return NP_TILE_SOLID;  /* paredes */
     /* De lado, por arriba hay cielo y por abajo un abismo donde caerse. Desde
        arriba no: ahi el mapa es una caja cerrada y sus cuatro lados son
        pared, que si no se saldria uno del escenario andando. */
     if (ty < 0) return np_vista_cenital ? NP_TILE_SOLID : NP_TILE_EMPTY;
-    if (ty >= (int32_t)level->height)
+    if (ty >= (int32_t)level->cells_h)
         return np_vista_cenital ? NP_TILE_SOLID : NP_TILE_EMPTY;
-    return np_tile_kind[level->cells[ty * level->width + tx]];
+    return np_tile_kind[level->cells[ty * level->cells_w + tx]];
 }
 
 /* Lo mismo, pero contando los cerrojos que ya se han abierto: una puerta
@@ -60,7 +63,7 @@ static uint8_t np_tile_visto(const NpWorld *w, int32_t tx, int32_t ty)
     uint16_t casilla;
     uint8_t i;
     if (kind != NP_TILE_LOCK) return kind;
-    casilla = (uint16_t)(ty * (int32_t)w->level->width + tx);
+    casilla = (uint16_t)(ty * (int32_t)w->level->cells_w + tx);
     for (i = 0; i < w->abiertos_n; i++)
         if (w->abiertos[i] == casilla) return NP_TILE_EMPTY;
     return kind;
@@ -71,13 +74,18 @@ uint16_t np_tile_gfx_at(const NpWorld *w, int32_t tx, int32_t ty)
     const NpLevel *level = w->level;
     if (tx < 0 || tx >= (int32_t)level->width) return 0;
     if (ty < 0 || ty >= (int32_t)level->height) return 0;
+    /* En la isometrica el escenario que se dibuja no es el mapa: es el suelo
+       de las salas, que ya viene en numeros de tile. Lo que levanta el relieve
+       -los cubos- no se pinta aqui, se dibuja como entidad para que entre en
+       su sitio en la fila de profundidad. */
+    if (np_vista_iso) return level->fondo[ty * level->width + tx];
     /* Una puerta abierta se ve por lo que hay detras: el aire. Solo se
        pregunta cuando hay alguna abierta, que en casi todos los juegos es
        nunca. */
     if (w->abiertos_n && np_tile_kind_at(level, tx, ty) == NP_TILE_LOCK
         && np_tile_visto(w, tx, ty) == NP_TILE_EMPTY)
         return np_tile_gfx_vacio;
-    return np_tile_gfx[level->cells[ty * level->width + tx]];
+    return np_tile_gfx[level->cells[ty * level->cells_w + tx]];
 }
 
 /* Los graficos de una columna entera de tiles, de arriba a abajo.
@@ -100,13 +108,19 @@ void np_tile_gfx_column(const NpWorld *w, int32_t tx, int32_t ty,
         for (; i < count; i++) out[i] = 0;
         return;
     }
+    if (np_vista_iso) {
+        for (; i < count; i++, ty++)
+            out[i] = (ty < 0 || ty >= (int32_t)level->height)
+                   ? 0 : level->fondo[ty * level->width + tx];
+        return;
+    }
     for (; i < count && ty < 0; i++, ty++)
         out[i] = 0;
     if (i < count && ty < (int32_t)level->height) {
-        cell = level->cells + (int32_t)ty * level->width + tx;
+        cell = level->cells + (int32_t)ty * level->cells_w + tx;
         for (; i < count && ty < (int32_t)level->height; i++, ty++) {
             out[i] = np_tile_gfx[*cell];
-            cell += level->width;
+            cell += level->cells_w;
         }
     }
     for (; i < count; i++)
@@ -151,6 +165,94 @@ static int np_boxes_overlap(np_fix ax, np_fix ay, int aw, int ah,
     if (ay + NP_I2F(ah) <= by) return 0;
     if (by + NP_I2F(bh) <= ay) return 0;
     return 1;
+}
+
+/* ------------------------------------------------------ la vista isometrica */
+/*
+ * En la vista de tipo filmation el mapa no es lo que se ve: es la **planta**
+ * de la sala, y cada casilla ademas levanta. Lo que te frena no es el tipo de
+ * la casilla de al lado sino lo alto que esta comparada con tus pies: seis
+ * pixeles se suben andando y dieciseis hay que saltarlos. Con un solo numero
+ * -el `alto:` de la leyenda- se escriben el suelo, el escalon, el cubo al que
+ * hay que subirse y la pared, y el nivel se dibuja escribiendo alturas.
+ */
+
+/* Lo alto que esta una casilla, en 24.8. Fuera del mapa es pared, como en la
+ * vista cenital: una sala es una caja cerrada. Un cerrojo ya abierto no
+ * levanta nada, que es lo que hace que una puerta abierta se pueda cruzar. */
+static np_fix np_celda_alto(const NpWorld *w, int32_t cx, int32_t cy)
+{
+    const NpLevel *lv = w->level;
+    if (cx < 0 || cx >= (int32_t)lv->cells_w) return NP_I2F(255);
+    if (cy < 0 || cy >= (int32_t)lv->cells_h) return NP_I2F(255);
+    if (w->abiertos_n && np_tile_visto(w, cx, cy) == NP_TILE_EMPTY
+        && np_tile_kind_at(lv, cx, cy) == NP_TILE_LOCK)
+        return 0;
+    return NP_I2F(np_tile_alto[lv->cells[cy * lv->cells_w + cx]]);
+}
+
+static int np_iso_choca(const NpWorld *w, int32_t cx, int32_t cy, np_fix pies)
+{
+    return np_celda_alto(w, cx, cy) > pies + NP_I2F(NP_ESCALON);
+}
+
+/* El suelo que hay debajo de una caja: la casilla mas alta que pisa. */
+static np_fix np_iso_suelo(const NpWorld *w, np_fix x, np_fix y, int bw, int bh)
+{
+    int32_t cx0 = NP_F2I(x) >> NP_TILE_SHIFT;
+    int32_t cx1 = NP_F2I(x + NP_I2F(bw) - 1) >> NP_TILE_SHIFT;
+    int32_t cy0 = NP_F2I(y) >> NP_TILE_SHIFT;
+    int32_t cy1 = NP_F2I(y + NP_I2F(bh) - 1) >> NP_TILE_SHIFT;
+    np_fix alto = 0;
+    int32_t cx, cy;
+    for (cy = cy0; cy <= cy1; cy++)
+        for (cx = cx0; cx <= cx1; cx++) {
+            np_fix h = np_celda_alto(w, cx, cy);
+            if (h > alto) alto = h;
+        }
+    return alto;
+}
+
+/* Andar por la planta, con el relieve delante.
+ *
+ * Es el np_move_x/np_move_y de siempre -a pasitos de medio tile, para no
+ * atravesar nada- pero preguntando por altura en vez de por tipo de casilla, y
+ * escrito una sola vez para los dos ejes: en la planta los dos ejes son
+ * iguales, no hay uno que sea "el del suelo". `eje` a cero mueve en x y a uno
+ * en y; `pies` es la altura a la que vas, que es lo que decide que te frena. */
+static np_fix np_iso_move(const NpWorld *w, np_fix x, np_fix y,
+                          int bw, int bh, np_fix paso, np_fix pies,
+                          int eje, int *hit)
+{
+    np_fix *movil = eje ? &y : &x;
+    int tam = eje ? bh : bw;
+    int otro_tam = eje ? bw : bh;
+    *hit = 0;
+    while (paso != 0) {
+        np_fix trozo = NP_CLAMP(paso, -NP_SUBSTEP, NP_SUBSTEP);
+        np_fix quieto;
+        int32_t a0, a1, c, borde;
+        int choca = 0;
+        paso -= trozo;
+        *movil += trozo;
+        quieto = eje ? x : y;
+        a0 = NP_F2I(quieto) >> NP_TILE_SHIFT;
+        a1 = NP_F2I(quieto + NP_I2F(otro_tam) - 1) >> NP_TILE_SHIFT;
+        borde = (trozo > 0) ? (NP_F2I(*movil + NP_I2F(tam) - 1) >> NP_TILE_SHIFT)
+                            : (NP_F2I(*movil) >> NP_TILE_SHIFT);
+        for (c = a0; c <= a1; c++) {
+            int32_t cx = eje ? c : borde;
+            int32_t cy = eje ? borde : c;
+            if (np_iso_choca(w, cx, cy, pies)) { choca = 1; break; }
+        }
+        if (choca) {
+            *movil = (trozo > 0) ? NP_I2F(borde * NP_TILE - tam)
+                                 : NP_I2F((borde + 1) * NP_TILE);
+            *hit = 1;
+            paso = 0;
+        }
+    }
+    return *movil;
 }
 
 /* ------------------------------------------------------- movimiento y tiles */
@@ -267,6 +369,7 @@ const NpActorDef *np_entity_def(const NpEntity *e)
     if (e->kind == NP_KIND_ENEMY_SHOT) return &np_enemy_shots[e->def].actor;
     if (e->kind == NP_KIND_PRISONER) return &np_prisoners[e->def].actor;
     if (e->kind == NP_KIND_GENERATOR) return &np_generators[e->def].actor;
+    if (e->kind == NP_KIND_BLOQUE) return &np_bloques[e->def].actor;
     return &np_items[e->def].actor;
 }
 
@@ -308,6 +411,7 @@ static void np_anim_tick(const NpActorDef *def, uint8_t anim,
 /* ------------------------------------------------------------- ciclo de vida */
 
 static void np_camera_update(NpWorld *w);
+static int np_en_la_sala(const NpWorld *w, const NpEntity *e);
 
 /* Donde sale cada jugador. A dos, el segundo aparece un poco a la derecha para
    que no empiecen uno dentro del otro. */
@@ -360,6 +464,9 @@ static void np_spawn_entities(NpWorld *w)
        preview hace lo mismo, y de eso vive la paridad. */
     for (i = 0; i < NP_MAX_ENTITIES; i++) w->entities[i].active = 0;
     w->entity_count = 0;
+    /* y con ellas se van los cubos de la sala, que se vuelven a montar en
+       cuanto la camara diga en cual estamos */
+    w->bloques_n = 0;
     for (i = 0; i < lv->spawn_count && w->entity_count < NP_MAX_ENTITIES; i++) {
         const NpSpawn *s = &lv->spawns[i];
         NpEntity *e = &w->entities[w->entity_count++];
@@ -392,6 +499,10 @@ static void np_spawn_entities(NpWorld *w)
         e->tocado = 0;
         e->aturdido = 0;
         def = np_entity_def(e);
+        /* En la isometrica todo se apoya en el relieve: una llave puesta encima
+           de un cubo sale encima del cubo y no flotando sobre su sombra. */
+        if (np_vista_iso)
+            e->altura = np_iso_suelo(w, e->x, e->y, def->box_w, def->box_h);
         (void)def;
         e->vida = 0;
         if (e->kind == NP_KIND_ENEMY) {
@@ -514,6 +625,11 @@ void np_world_load_level(NpWorld *w, uint16_t index)
     w->state = NP_STATE_PLAY;
     w->state_timer = 0;
     np_spawn_entities(w);
+    /* Nadie ha estado nunca en la sala 0xFFFF: con eso la camara ve un cambio
+       de sala en su primera vuelta y monta los cubos de la de verdad. */
+    w->sala_x = 0xFFFF;
+    w->sala_y = 0xFFFF;
+    np_camera_update(w);
 }
 
 /* Cuantos jugadores siguen en juego y no se estan muriendo. */
@@ -654,8 +770,11 @@ static void np_finish_level(NpWorld *w);
    hace el preview: el orden tiene que ser identico o la paridad falla. */
 static int np_hueco_libre(NpWorld *w)
 {
+    /* Los cubos de la sala ocupan el final de la lista y no son huecos libres
+       aunque lo parezcan: buscar aqui pararia justo antes de ellos. */
+    uint8_t tope = (uint8_t)(NP_MAX_ENTITIES - w->bloques_n);
     uint8_t i;
-    for (i = 0; i < NP_MAX_ENTITIES; i++) {
+    for (i = 0; i < tope; i++) {
         if (!w->entities[i].active) {
             if (i >= w->entity_count) w->entity_count = (uint8_t)(i + 1);
             return i;
@@ -1919,6 +2038,135 @@ static void np_player_update_cinta(NpWorld *w, uint8_t quien, uint16_t input)
     np_anim_tick(a, p->anim, &p->anim_frame, &p->anim_timer);
 }
 
+/* --------------------------------------------------- el jugador isometrico */
+/*
+ * Se anda por la **planta** de la sala en las cuatro direcciones del mapa, que
+ * en pantalla salen en diagonal -y eso es justo lo que hace que una sala
+ * parezca una habitacion y no un tablero-. Y se salta de verdad: la altura es
+ * la tercera coordenada, con la gravedad de siempre, y el suelo no es una
+ * linea sino el relieve de las casillas.
+ *
+ * El mando va directo a la planta: derecha es el eje x del mapa y abajo el eje
+ * y, asi que en pantalla la derecha del mando sale hacia abajo y a la derecha.
+ * Escrito suena raro y jugado no lo es: es lo que hacian todos los del genero,
+ * y ademas deja las cuatro diagonales del mando para los cuatro lados rectos
+ * de la pantalla, que es como se recorre un pasillo.
+ */
+static void np_player_update_iso(NpWorld *w, uint8_t quien, uint16_t input)
+{
+    const NpPlayerDef *d = &np_player_def;
+    const NpActorDef *a = &d->actor;
+    NpPlayer *p = &w->players[quien];
+    int dx = 0, dy = 0;
+    int hit_x = 0, hit_y = 0;
+    np_fix cota;
+    uint8_t pose;
+
+    /* Aqui no se cae de ningun sitio que no sea un cubo: si no estas por el
+       aire, estas de pie. Lo primero es cuadrar eso, porque un jugador recien
+       colocado viene con `on_ground` a cero -en vista lateral se cae hasta el
+       suelo- y sin esto no podria saltar en su primer frame. */
+    if (p->altura <= 0 && p->valtura <= 0) {
+        p->altura = 0;
+        p->valtura = 0;
+        p->on_ground = 1;
+    }
+
+    if (p->stun) {
+        p->stun--;
+        input = 0;
+    } else {
+        if (input & NP_IN_RIGHT) dx += 1;
+        if (input & NP_IN_LEFT) dx -= 1;
+        if (input & NP_IN_DOWN) dy += 1;
+        if (input & NP_IN_UP) dy -= 1;
+    }
+
+    /* Por el aire manda el impulso con el que despegaste: en un juego de estos
+       el salto es una decision y no un volante, y medio genero es medir. */
+    if (p->on_ground) {
+        if (dx || dy) {
+            p->aim = np_aim_de(dx, dy);
+            p->vx = np_paso_cenital(d->speed, dx, dx && dy);
+            p->vy = np_paso_cenital(d->speed, dy, dx && dy);
+            /* El espejo del dibujo se mira por donde cae en **la pantalla**
+               (x - y), no por el eje del mapa: hacia el este y hacia el norte
+               se ve el mismo costado. */
+            p->facing = (uint8_t)(dx - dy > 0);
+        } else if (p->stun) {
+            p->vx = np_approach(p->vx, 0, d->friction);
+            p->vy = np_approach(p->vy, 0, d->friction);
+        } else {
+            p->vx = 0;
+            p->vy = 0;
+        }
+    }
+
+    if (!p->stun && (input & NP_IN_JUMP) && !(w->prev_input[quien] & NP_IN_JUMP)
+        && p->on_ground) {
+        p->valtura = d->jump;
+        p->on_ground = 0;
+        w->sfx |= NP_SFX_JUMP;
+    }
+    if (!p->on_ground) {
+        p->altura += p->valtura;
+        p->valtura -= d->gravity;
+        if (p->valtura < -d->max_fall) p->valtura = -d->max_fall;
+    }
+
+    /* Andar con los pies donde estan: lo que esta mas alto que tu escalon te
+       para, y lo que no, se sube andando. Los dos ejes por separado, para que
+       rozar una pared en diagonal no te deje clavado. */
+    p->x = np_iso_move(w, p->x, p->y, a->box_w, a->box_h, p->vx, p->altura,
+                       0, &hit_x);
+    p->y = np_iso_move(w, p->x, p->y, a->box_w, a->box_h, p->vy, p->altura,
+                       1, &hit_y);
+    /* Chocar solo te para **de pie**. Por el aire el impulso se guarda aunque
+       de momento no quepas: es lo que hace que se pueda saltar a un cubo
+       estando pegado a el -sales rozandolo, subes por encima y en cuanto lo
+       pasas el impulso te mete arriba-. Si se anulara al chocar, el salto
+       desde al lado seria un salto en el sitio y para subirse a nada haria
+       falta carrerilla, que no es como se juega a esto. */
+    if (p->on_ground) {
+        if (hit_x) p->vx = 0;
+        if (hit_y) p->vy = 0;
+    }
+
+    /* Y el suelo que ha quedado debajo. Si estas por debajo de el -acabas de
+       subirte a un cubo, o vienes cayendo- te plantas encima; si esta mas
+       abajo que tu, te caes. Con eso solo, andar por una sala con relieve ya
+       funciona: no hay un caso "subir" y otro "bajar". */
+    cota = np_iso_suelo(w, p->x, p->y, a->box_w, a->box_h);
+    if (p->valtura <= 0 && p->altura <= cota) {
+        p->altura = cota;
+        p->valtura = 0;
+        p->on_ground = 1;
+    } else if (p->altura > cota) {
+        p->on_ground = 0;
+    }
+
+    p->jumps_left = 0;
+    p->stairs = 0;
+    p->crouch = 0;
+    p->riding = 0;
+
+    /* El boton: en un juego con bolsa suelta lo que llevas -que es lo unico
+       que se hace con las manos en el genero- y en uno con ataque, pega. */
+    np_player_action(w, quien, input);
+
+    if (p->invuln) p->invuln--;
+
+    /* La pose: de espaldas cuando el paso sube por la pantalla y de frente
+       cuando baja. Con los cuatro lados de la planta salen cuatro vistas del
+       heroe con solo dos dibujos, porque el espejo hace las otras dos. */
+    if (p->attack_timer) pose = NP_ANIM_ATTACK;
+    else if (!p->on_ground) pose = (p->valtura > 0) ? NP_ANIM_JUMP : NP_ANIM_FALL;
+    else if (!dx && !dy) pose = NP_ANIM_IDLE;
+    else pose = (dx + dy < 0) ? NP_ANIM_UP : NP_ANIM_DOWN;
+    np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer, pose);
+    np_anim_tick(a, p->anim, &p->anim_frame, &p->anim_timer);
+}
+
 static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
 {
     const NpPlayerDef *d = &np_player_def;
@@ -2573,7 +2821,14 @@ static void np_enemy_update(NpWorld *w, NpEntity *e)
         e->vx = e->facing ? d->speed : -d->speed;
         e->timer = (uint16_t)((e->timer + 1) % (d->period ? d->period : 1));
         phase = np_sin_table[(((int32_t)e->timer * 64) / (d->period ? d->period : 1)) & 63];
-        e->y = e->home_y + ((d->amplitude * phase) >> NP_FIX_SHIFT);
+        /* En la isometrica lo que sube y baja es la **altura**, no la fila del
+           mapa: un bicho que flota sobre los cubos y baja a por ti es medio
+           genero. `amplitud:` es lo mismo de siempre, solo que ahora se mide
+           hacia arriba y nunca baja del suelo. */
+        if (np_vista_iso)
+            e->altura = d->amplitude + ((d->amplitude * phase) >> NP_FIX_SHIFT);
+        else
+            e->y = e->home_y + ((d->amplitude * phase) >> NP_FIX_SHIFT);
         break;
     }
     case NP_AI_CHASER: {
@@ -2638,6 +2893,31 @@ static void np_enemy_update(NpWorld *w, NpEntity *e)
     if (d->behavior != NP_AI_FLYER && !np_vista_cenital) {
         e->vy += d->gravity;
         if (e->vy > NP_ENTITY_FALL) e->vy = NP_ENTITY_FALL;
+    }
+
+    if (np_vista_iso) {
+        /* Por la planta, con el relieve delante: un cubo frena a un bicho igual
+           que a ti, y andando se sube a lo que no llegue al escalon. */
+        int hit_y = 0;
+        e->x = np_iso_move(w, e->x, e->y, a->box_w, a->box_h, e->vx, e->altura,
+                           0, &hit_x);
+        if (hit_x) {
+            e->facing = (uint8_t)!e->facing;
+            e->vx = 0;
+        }
+        e->y = np_iso_move(w, e->x, e->y, a->box_w, a->box_h, e->vy, e->altura,
+                           1, &hit_y);
+        if (hit_y) e->vy = 0;
+        if (d->behavior != NP_AI_FLYER)
+            e->altura = np_iso_suelo(w, e->x, e->y, a->box_w, a->box_h);
+        np_anim_set(&e->anim, &e->anim_frame, &e->anim_timer,
+                    (e->vx || e->vy) ? NP_ANIM_RUN : NP_ANIM_IDLE);
+        np_anim_tick(a, e->anim, &e->anim_frame, &e->anim_timer);
+        if (d->shot) {
+            if (e->vida) e->vida--;
+            else np_enemy_shoot(w, e, d);
+        }
+        return;
     }
 
     e->x = np_move_x(w, e->x, e->y, a->box_w, a->box_h, e->vx, &hit_x);
@@ -2815,9 +3095,9 @@ static void np_abrir_vecinas(NpWorld *w, int32_t tx, int32_t ty, uint16_t tile)
             uint16_t casilla;
             x += pasos[d][0];
             y += pasos[d][1];
-            if (x < 0 || y < 0 || x >= (int32_t)w->level->width
-                || y >= (int32_t)w->level->height) break;
-            casilla = (uint16_t)(y * (int32_t)w->level->width + x);
+            if (x < 0 || y < 0 || x >= (int32_t)w->level->cells_w
+                || y >= (int32_t)w->level->cells_h) break;
+            casilla = (uint16_t)(y * (int32_t)w->level->cells_w + x);
             if (w->level->cells[casilla] != tile) break;
             if (np_tile_visto(w, x, y) != NP_TILE_LOCK) break;
             if (!np_apuntar_abierta(w, casilla)) return;
@@ -2834,10 +3114,10 @@ static void np_abrir_cerrojos(NpWorld *w, int32_t tx0, int32_t ty0,
         for (tx = tx0; tx <= tx1; tx++) {
             uint16_t casilla;
             uint8_t pide, hueco, i;
-            if (tx < 0 || ty < 0 || tx >= (int32_t)w->level->width
-                || ty >= (int32_t)w->level->height) continue;
+            if (tx < 0 || ty < 0 || tx >= (int32_t)w->level->cells_w
+                || ty >= (int32_t)w->level->cells_h) continue;
             if (np_tile_visto(w, tx, ty) != NP_TILE_LOCK) continue;
-            casilla = (uint16_t)(ty * (int32_t)w->level->width + tx);
+            casilla = (uint16_t)(ty * (int32_t)w->level->cells_w + tx);
             pide = np_tile_need[w->level->cells[casilla]];
             if (!pide) continue;                 /* un cerrojo sin llave: nunca */
             hueco = np_bolsa_busca(w, (uint8_t)(pide - 1));
@@ -2902,6 +3182,13 @@ static void np_touch_entities(NpWorld *w)
                                   np_player_height(p),
                                   e->x, e->y, ea->box_w, ea->box_h))
                 continue;
+            /* En la isometrica no basta con pisar la misma casilla: hay que
+               cruzarse **tambien en altura**. Es lo que convierte el salto en
+               una forma de esquivar, que es de lo que va el genero. */
+            if (np_vista_iso) {
+                np_fix hueco = p->altura - e->altura;
+                if (hueco > NP_I2F(12) || hueco < -NP_I2F(12)) continue;
+            }
             if (e->kind == NP_KIND_SHOT || e->kind == NP_KIND_SUBSHOT)
                 continue;                            /* es tuyo: no te toca */
             if (e->kind == NP_KIND_MELEE) continue;  /* es tu propio latigo */
@@ -3018,33 +3305,98 @@ static const uint8_t np_identidad[NP_MAX_ENTITIES] = {
    48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63
 };
 
-static uint8_t np_orden[NP_MAX_ENTITIES];
+/* En la isometrica la fila lleva ademas a los jugadores, asi que hacen falta
+   dos puestos mas: los cubos ya salen de la propia lista de entidades. */
+static uint8_t np_orden[NP_MAX_ENTITIES + NP_MAX_PLAYERS];
+
+/* La hondura de cada uno, apuntada una sola vez por frame.
+ *
+ * Ordenar preguntando la hondura en cada comparacion son cuatrocientas
+ * llamadas por frame en cuanto la sala tiene veinte cubos. Medido en la Mega
+ * Drive: 145 de las 262 lineas que dura un frame, o sea que el juego perdia el
+ * retrazo y se iba a la mitad de velocidad. Con los numeros ya sacados, catorce. */
+static np_fix np_hondo[NP_MAX_ENTITIES + NP_MAX_PLAYERS];
+
+/* Los cubos de la sala no se mueven ni se animan mientras no cambies de
+ * habitacion, asi que donde caen en la pantalla se saca al montarla y el
+ * dibujado solo lo lee. Otras 35 lineas de las 262. */
+static const NpActorDef *np_cubo_def[NP_MAX_ENTITIES];
+static int16_t np_cubo_px[NP_MAX_ENTITIES];
+static int16_t np_cubo_py[NP_MAX_ENTITIES];
+
+/* La hondura de un puesto de la lista: cuanto mas grande, mas cerca de quien
+ * mira, y por lo tanto mas tarde se dibuja.
+ *
+ * En la cinta es la linea del suelo. En la isometrica es la profundidad de la
+ * planta (x + y), y la altura entra como desempate pequeno: quien esta subido
+ * a un cubo va **despues** que el cubo, y como un octavo de la altura nunca
+ * llega a lo que mide una casilla, subirse a algo no adelanta a lo que hay una
+ * casilla mas cerca. */
+static np_fix np_hondura(const NpWorld *w, uint8_t puesto)
+{
+    if (puesto >= NP_MAX_ENTITIES) {
+        const NpPlayer *p = &w->players[puesto - NP_MAX_ENTITIES];
+        return np_vista_iso ? (p->x + p->y + (p->altura >> 3))
+                            : (p->y + p->altura);
+    }
+    {
+        const NpEntity *e = &w->entities[puesto];
+        return np_vista_iso ? (e->x + e->y + (e->altura >> 3))
+                            : (e->y + e->altura);
+    }
+}
 
 const uint8_t *np_orden_dibujo(const NpWorld *w, uint8_t *cuantas)
 {
     uint8_t *orden = np_orden;
+    np_fix *hondo = np_hondo;
     uint8_t n = 0, i;
 
-    if (!np_vista_cinta) {
+    if (!np_vista_cinta && !np_vista_iso) {
         *cuantas = w->entity_count;
         return np_identidad;
     }
     for (i = 0; i < w->entity_count; i++) {
         if (!w->entities[i].active) continue;
+        /* Lo que esta en otra habitacion no se dibuja, asi que tampoco entra
+           en la fila: ni se ordena ni se pregunta por el. */
+        if (np_vista_iso && !np_en_la_sala(w, &w->entities[i])) continue;
+        hondo[n] = np_hondura(w, i);
         orden[n++] = i;
+    }
+    if (np_vista_iso) {
+        /* Los cubos de la sala, que viven al final de la lista. Se recorren
+           del ultimo hacia atras porque asi salen en orden de profundidad -es
+           el orden en que los monto np_bloques_sala- y la ordenacion de abajo,
+           que es por insercion, casi no tiene que moverlos.
+
+           Y los jugadores, que en esta vista **entran en la fila**: aqui hay un
+           detras de verdad y uno se mete tras un cubo cada dos pasos. En las
+           demas vistas se siguen dibujando al final, encima de todo, como
+           siempre. */
+        for (i = 0; i < w->bloques_n; i++) {
+            uint8_t sitio = (uint8_t)(NP_MAX_ENTITIES - 1 - i);
+            hondo[n] = np_hondura(w, sitio);
+            orden[n++] = sitio;
+        }
+        for (i = 0; i < NP_MAX_PLAYERS; i++) {
+            uint8_t sitio = (uint8_t)(NP_MAX_ENTITIES + i);
+            hondo[n] = np_hondura(w, sitio);
+            orden[n++] = sitio;
+        }
     }
     *cuantas = n;
     for (i = 1; i < n; i++) {
         uint8_t sitio = orden[i];
-        np_fix suelo = w->entities[sitio].y + w->entities[sitio].altura;
+        np_fix h = hondo[i];
         int j = (int)i - 1;
-        while (j >= 0) {
-            const NpEntity *otra = &w->entities[orden[j]];
-            if (otra->y + otra->altura <= suelo) break;
+        while (j >= 0 && hondo[j] > h) {
             orden[j + 1] = orden[j];
+            hondo[j + 1] = hondo[j];
             j--;
         }
         orden[j + 1] = sitio;
+        hondo[j + 1] = h;
     }
     return orden;
 }
@@ -3071,6 +3423,175 @@ static int np_alguien_en_pantalla(const NpWorld *w)
     return 0;
 }
 
+/* ------------------------------------------------- la pantalla y las salas */
+
+void np_pantalla(const NpWorld *w, np_fix x, np_fix y, np_fix altura,
+                 const NpActorDef *def, int32_t *sx, int32_t *sy)
+{
+    if (!np_vista_iso) {
+        *sx = NP_F2I(x) - def->box_x;
+        *sy = NP_F2I(y) - def->box_y;
+        (void)w;
+        (void)altura;
+        return;
+    }
+    {
+        /* El punto que manda es donde apoya los pies: el centro de su caja en
+           la planta. Es lo unico que tiene sentido cuando el suelo son rombos
+           -una esquina de la caja caeria en otra casilla-. */
+        int32_t px = NP_F2I(x) + def->box_w / 2;
+        int32_t py = NP_F2I(y) + def->box_h / 2;
+        /* Solo cuenta el sitio **dentro de la sala**: todas las salas se
+           dibujan en el mismo cuadro de pantalla y la camara no se mueve
+           nunca. De eso vive el que un castillo de veinte habitaciones ocupe
+           lo que una pantalla -tanto de dibujo de fondo como de mapa de bits
+           en las maquinas que llevan uno-, y ademas es lo que hace que
+           cambiar de sala sea un corte y no un viaje. */
+        int32_t lx = px & (NP_SALA_PX - 1);
+        int32_t ly = py & (NP_SALA_PX - 1);
+        /* Y de ahi al dibujo: la esquina de arriba a la izquierda del
+           fotograma, sabiendo que los pies van en el centro de abajo de la
+           caja. Con las medidas de siempre -caja centrada y apoyada- eso es el
+           centro de abajo del cuadro, que es donde uno espera. */
+        *sx = NP_ISO_OX + (lx - ly) - (def->box_x + def->box_w / 2);
+        *sy = NP_ISO_OY + ((lx + ly) >> 1)
+              - NP_F2I(altura) - (def->box_y + def->box_h);
+    }
+}
+
+/* Montar los cubos de la sala que se esta viendo.
+ *
+ * Se recorre su planta y por cada casilla que levanta y trae dibujo se pone
+ * una entidad con su cubo. Van al **final** de la lista -de NP_MAX_ENTITIES
+ * hacia atras- para no pisar los huecos que buscan los disparos, y por
+ * diagonales, o sea en orden de profundidad, para que la fila del dibujado
+ * salga ya casi ordenada.
+ *
+ * Se rehace entera al cambiar de sala. Es lo que permite que un castillo de
+ * veinte habitaciones quepa en sesenta y cuatro huecos: solo existen los
+ * cubos de la habitacion en la que estas. */
+static void np_bloques_sala(NpWorld *w)
+{
+    const NpLevel *lv = w->level;
+    int32_t base_x = (int32_t)w->sala_x * NP_SALA;
+    int32_t base_y = (int32_t)w->sala_y * NP_SALA;
+    int32_t d;
+    uint8_t sitio;
+    uint8_t n = 0;
+    uint8_t tope = (uint8_t)(NP_MAX_ENTITIES - w->entity_count);
+
+    for (sitio = 0; sitio < w->bloques_n; sitio++)
+        w->entities[NP_MAX_ENTITIES - 1 - sitio].active = 0;
+    w->bloques_n = 0;
+    if (!np_vista_iso) return;
+
+    for (d = 0; d <= (NP_SALA - 1) * 2; d++) {
+        int32_t cy;
+        for (cy = 0; cy < NP_SALA; cy++) {
+            int32_t cx = d - cy;
+            int32_t mx, my;
+            uint8_t tile, cubo;
+            NpEntity *e;
+            if (cx < 0 || cx >= NP_SALA) continue;
+            /* Si la sala trae mas cubos de los que caben, se montan los que
+               quepan y se deja la cuenta bien puesta: salir de aqui sin
+               apuntar cuantos son dejaba la sala **sin un solo cubo**. */
+            if (n >= tope) goto fin;
+            mx = base_x + cx;
+            my = base_y + cy;
+            if (mx < 0 || mx >= (int32_t)lv->cells_w) continue;
+            if (my < 0 || my >= (int32_t)lv->cells_h) continue;
+            tile = lv->cells[my * lv->cells_w + mx];
+            cubo = np_tile_bloque[tile];
+            if (!cubo) continue;
+            /* una puerta ya abierta no se dibuja: es un hueco por el que pasar */
+            if (np_tile_kind[tile] == NP_TILE_LOCK
+                && np_tile_visto(w, mx, my) == NP_TILE_EMPTY) continue;
+            e = &w->entities[NP_MAX_ENTITIES - 1 - n];
+            n++;
+            e->active = 1;
+            e->kind = NP_KIND_BLOQUE;
+            e->def = (uint8_t)(cubo - 1);
+            e->x = NP_I2F(mx * NP_TILE);
+            e->y = NP_I2F(my * NP_TILE);
+            e->home_x = e->x;
+            e->home_y = e->y;
+            e->vx = 0;
+            e->vy = 0;
+            e->altura = 0;
+            e->valtura = 0;
+            e->vida = 0;
+            e->timer = 0;
+            e->anim = NP_ANIM_IDLE;
+            e->anim_frame = 0;
+            e->anim_timer = 0;
+            e->facing = 1;
+            e->health = 1;
+            e->hurt = 0;
+            e->knock = 0;
+            e->golpeado = 0;
+            e->fase = NP_LUCHA_IR;
+            e->tocado = 0;
+            e->aturdido = 0;
+            /* Donde cae en la pantalla, ahora y no en cada frame: un cubo no
+               se mueve mientras no cambies de habitacion. */
+            {
+                const NpActorDef *bd = &np_bloques[e->def].actor;
+                int32_t bx, by;
+                np_pantalla(w, e->x, e->y, e->altura, bd, &bx, &by);
+                np_cubo_def[n - 1] = bd;
+                np_cubo_px[n - 1] = (int16_t)bx;
+                np_cubo_py[n - 1] = (int16_t)by;
+            }
+        }
+    }
+fin:
+    w->bloques_n = n;
+    w->bloques_abiertos = w->abiertos_n;
+}
+
+/* La camara de la vista isometrica: no sigue a nadie, ensena **la sala**. Se
+ * mira en que habitacion esta el jugador y se salta ahi de golpe, que es como
+ * se cambiaba de cuarto en todos los juegos del genero -y ademas es lo que
+ * permite que solo existan los cubos de la sala de ahora-. */
+static void np_camara_iso(NpWorld *w)
+{
+    const NpActorDef *a = &np_player_def.actor;
+    const NpPlayer *p = &w->players[0];
+    int32_t px, py, sx, sy, salas_x, salas_y;
+    uint8_t i;
+    for (i = 0; i < NP_MAX_PLAYERS; i++) {
+        if (!w->players[i].playing) continue;
+        p = &w->players[i];
+        break;
+    }
+    px = NP_F2I(p->x) + a->box_w / 2;
+    py = NP_F2I(p->y) + a->box_h / 2;
+    if (px < 0) px = 0;
+    if (py < 0) py = 0;
+    sx = px >> NP_SALA_SHIFT;
+    sy = py >> NP_SALA_SHIFT;
+    salas_x = (int32_t)w->level->cells_w / NP_SALA;
+    salas_y = (int32_t)w->level->cells_h / NP_SALA;
+    if (salas_x < 1) salas_x = 1;
+    if (salas_y < 1) salas_y = 1;
+    sx = NP_CLAMP(sx, 0, salas_x - 1);
+    sy = NP_CLAMP(sy, 0, salas_y - 1);
+    /* Al abrir un cerrojo la puerta pasa a ser un hueco: hay que rehacer los
+       cubos de la sala o la puerta se quedaria dibujada hasta que salgas de la
+       habitacion. */
+    if ((uint16_t)sx != w->sala_x || (uint16_t)sy != w->sala_y
+        || w->bloques_abiertos != w->abiertos_n) {
+        w->sala_x = (uint16_t)sx;
+        w->sala_y = (uint16_t)sy;
+        np_bloques_sala(w);
+    }
+    /* La camara se queda quieta: la sala se dibuja siempre en el mismo sitio
+       y lo que cambia es lo que hay dentro. */
+    w->cam_x = 0;
+    w->cam_y = 0;
+}
+
 static void np_camera_update(NpWorld *w)
 {
     const NpActorDef *a = &np_player_def.actor;
@@ -3081,6 +3602,8 @@ static void np_camera_update(NpWorld *w)
     /* A dos jugadores la camara va al punto medio de los dos. Con uno sale la
        misma cuenta de siempre: la suma de uno dividida por uno. */
     uint8_t i, cuantos = 0;
+    /* La isometrica no sigue a nadie: ensena la sala en la que estas. */
+    if (np_vista_iso) { np_camara_iso(w); return; }
     for (i = 0; i < NP_MAX_PLAYERS; i++) {
         if (!w->players[i].playing) continue;
         centro_x += NP_F2I(w->players[i].x) + a->box_w / 2;
@@ -3143,12 +3666,74 @@ static void np_players_in_view(NpWorld *w)
     int32_t izquierda = w->cam_x;
     int32_t derecha = w->cam_x + NP_SCREEN_W - a->box_w;
     uint8_t i;
-    if (np_player_count < 2) return;
+    if (np_player_count < 2 || np_vista_iso) return;
     for (i = 0; i < NP_MAX_PLAYERS; i++) {
         NpPlayer *p = &w->players[i];
         if (!p->playing || p->dying) continue;
         if (NP_F2I(p->x) < izquierda) { p->x = NP_I2F(izquierda); if (p->vx < 0) p->vx = 0; }
         if (NP_F2I(p->x) > derecha) { p->x = NP_I2F(derecha); if (p->vx > 0) p->vx = 0; }
+    }
+}
+
+/* Que hay que dibujar en un puesto de la fila, y donde cae.
+ *
+ * Es el unico sitio donde se decide eso, y por eso los seis dibujantes de
+ * maquina tienen **un solo bucle**: piden el orden, y por cada puesto piden
+ * aqui el actor, su fotograma, si va del reves y en que pixel de la pantalla
+ * empieza (sin restar la camara: eso lo hace cada maquina a su manera). Un
+ * puesto por debajo de NP_MAX_ENTITIES es una entidad y de ahi para arriba es
+ * el jugador que diga la diferencia.
+ *
+ * Devuelve cero cuando en ese puesto no hay nada que pintar: una entidad
+ * apagada, una que esta en mitad del parpadeo de dano o un jugador que no
+ * esta en juego. */
+/* Esta esa entidad en la sala que se esta viendo? */
+static int np_en_la_sala(const NpWorld *w, const NpEntity *e)
+{
+    int32_t px = NP_F2I(e->x), py = NP_F2I(e->y);
+    if (px < 0) px = 0;
+    if (py < 0) py = 0;
+    return (px >> NP_SALA_SHIFT) == (int32_t)w->sala_x
+        && (py >> NP_SALA_SHIFT) == (int32_t)w->sala_y;
+}
+
+const NpActorDef *np_dibujo(const NpWorld *w, uint8_t puesto,
+                            int32_t *sx, int32_t *sy,
+                            uint8_t *frame, uint8_t *flip)
+{
+    const NpActorDef *def;
+    if (puesto >= NP_MAX_ENTITIES) {
+        uint8_t quien = (uint8_t)(puesto - NP_MAX_ENTITIES);
+        const NpPlayer *p = &w->players[quien];
+        if (!np_player_visible(w, quien)) return 0;
+        def = &np_player_def.actor;
+        np_pantalla(w, p->x, p->y, p->altura, def, sx, sy);
+        *frame = np_actor_frame(def, p->anim, p->anim_frame);
+        *flip = (uint8_t)!p->facing;
+        return def;
+    }
+    /* Un cubo de la sala: el sitio ya esta sacado y no se anima, asi que aqui
+       no hay nada que calcular. */
+    if (np_vista_iso && puesto >= (uint8_t)(NP_MAX_ENTITIES - w->bloques_n)) {
+        uint8_t cual = (uint8_t)(NP_MAX_ENTITIES - 1 - puesto);
+        *sx = np_cubo_px[cual];
+        *sy = np_cubo_py[cual];
+        *frame = 0;
+        *flip = 0;
+        return np_cubo_def[cual];
+    }
+    {
+        const NpEntity *e = &w->entities[puesto];
+        if (!e->active) return 0;
+        if (e->hurt && (w->frame & 1)) return 0;      /* parpadeo al recibir */
+        /* Todas las salas se dibujan en el mismo cuadro, asi que lo que esta
+           en otra habitacion caeria encima de esta: no se pinta. */
+        if (np_vista_iso && !np_en_la_sala(w, e)) return 0;
+        def = np_entity_def(e);
+        np_pantalla(w, e->x, e->y, e->altura, def, sx, sy);
+        *frame = np_actor_frame(def, e->anim, e->anim_frame);
+        *flip = (uint8_t)!e->facing;
+        return def;
     }
 }
 
@@ -3237,6 +3822,8 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
            en cada vista: asi la serie va igual se mire desde donde se mire. */
         if (p->combo_timer) p->combo_timer--;
         if (p->dying) np_player_falling(w, quien);
+        else if (np_vista_iso)
+            np_player_update_iso(w, quien, mandos[quien]);
         else if (np_vista_cinta)
             np_player_update_cinta(w, quien, mandos[quien]);
         else if (np_vista_cenital)
@@ -3247,9 +3834,18 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
     for (i = 0; i < w->entity_count; i++) {
         NpEntity *e = &w->entities[i];
         int32_t dx;
+        int fuera;
         if (!e->active) continue;
-        dx = NP_F2I(e->x) - (int32_t)w->cam_x;
-        if (dx < -NP_CULL_MARGIN || dx > NP_SCREEN_W + NP_CULL_MARGIN) {
+        if (e->kind == NP_KIND_BLOQUE) continue;   /* los cubos no hacen nada */
+        if (np_vista_iso) {
+            /* Aqui "fuera de la vista" es "en otra habitacion": lo que pasa en
+               el cuarto de al lado no se ve y no corre. */
+            fuera = !np_en_la_sala(w, e);
+        } else {
+            dx = NP_F2I(e->x) - (int32_t)w->cam_x;
+            fuera = (dx < -NP_CULL_MARGIN || dx > NP_SCREEN_W + NP_CULL_MARGIN);
+        }
+        if (fuera) {
             /* Lejos de la vista, los enemigos se quedan en pausa y los
                proyectiles se apagan: uno que sale de la pantalla ya no vuelve,
                y si no se ocuparia un hueco de la lista hasta agotar su
@@ -3295,7 +3891,10 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
     for (quien = 0; quien < NP_MAX_PLAYERS; quien++) {
         NpPlayer *p = &w->players[quien];
         if (!p->playing || p->dying) continue;
-        if (np_box_touches(w,
+        /* Saltando por encima de un pincho no pasa nada: en la isometrica la
+           altura es de verdad, y esquivar saltando es medio juego. */
+        if ((!np_vista_iso || p->altura <= NP_I2F(NP_ISO_PISA))
+            && np_box_touches(w,
                            p->x + NP_I2F(NP_HAZARD_INSET_X),
                            np_player_top(p) + NP_I2F(NP_HAZARD_INSET_Y),
                            pa->box_w - NP_HAZARD_INSET_X * 2,
@@ -3311,12 +3910,16 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
          * llaves son de la partida, no de cada jugador: a dos, las que coge
          * uno le valen al otro. */
         if (w->keys >= w->level->keys_needed &&
+            (!np_vista_iso || p->altura <= NP_I2F(NP_ISO_PISA)) &&
             np_box_touches(w, p->x, p->y, pa->box_w, pa->box_h,
                            NP_TILE_GOAL)) {
             np_finish_level(w);            /* llega uno, se acaba para los dos */
             return;
         }
-        if (NP_F2I(p->y) > (int32_t)(w->level->height + 2) * NP_TILE)
+        /* Caerse del mapa: en la isometrica no hay de donde caerse -la sala es
+           una caja- y ademas `height` mide el dibujo, no la planta. */
+        if (!np_vista_iso
+            && NP_F2I(p->y) > (int32_t)(w->level->height + 2) * NP_TILE)
             np_player_hurt(w, quien, 99);
     }
     if (w->state != NP_STATE_PLAY) return;

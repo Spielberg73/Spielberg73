@@ -166,6 +166,12 @@ def build_data(build: Build) -> Dict[str, object]:
         entry["name"] = rom.name
         breakables.append(entry)
 
+    # Los cubos de la vista isometrica: solo dibujo, no llevan nada mas.
+    bloques: List[Dict[str, object]] = []
+    for i, cubo in enumerate(build.blocks):
+        bloques.append({"actor": actor_json(cubo, "cubo%d" % i),
+                        "name": cubo.name})
+
     layers = []
     for i, layer in enumerate(build.layers):
         nombre = "layer%d" % i
@@ -208,6 +214,11 @@ def build_data(build: Build) -> Dict[str, object]:
             "layers": list(level.layers),
             "music": level.music,
             "keys_needed": level.keys_needed,
+            # la planta que se pisa y el dibujo del suelo de las salas (solo
+            # los usa la vista isometrica)
+            "cells_w": level.cells_w or level.width,
+            "cells_h": level.cells_h or level.height,
+            "fondo": level.fondo,
         })
     for salida, original in zip(levels, project.levels):
         salida["rows"] = list(original.rows)
@@ -284,6 +295,7 @@ def build_data(build: Build) -> Dict[str, object]:
         "items": items,
         "platforms": platforms,
         "breakables": breakables,
+        "bloques": bloques,
         # `gfx` aqui es el numero de tile dentro del tileset (en la ROM se
         # convierte al numero absoluto de la ROM C).
         "tiles": {
@@ -299,6 +311,20 @@ def build_data(build: Build) -> Dict[str, object]:
             # primer tile vacio de la leyenda. Igual que np_tile_gfx_vacio.
             "gfx_vacio": next((t.index for t in build.tiles
                                if t.kind == "empty"), 0),
+            # el relieve de la vista isometrica: lo que levanta cada casilla y
+            # con que cubo se dibuja (indice + 1, cero = no se dibuja)
+            "alto": [t.alto for t in build.tiles],
+            "bloque": [({c.name: i for i, c in enumerate(build.blocks)}
+                        .get(t.bloque, -1) + 1) for t in build.tiles],
+            # y donde esta el dibujo del suelo de una sala isometrica dentro
+            # del tileset, para que el editor pueda pintarlo igual que el juego
+            "sala": {
+                "tile": project.tileset.sala_tile,
+                "ancho": project.tileset.sala_w,
+                "alto": project.tileset.sala_h,
+                "x": project.tileset.sala_x,
+                "y": project.tileset.sala_y,
+            },
         },
         "levels": levels,
         "layers": layers,
@@ -313,6 +339,7 @@ def build_data(build: Build) -> Dict[str, object]:
             "rompibles": [b.name for b in build.breakables],
             "prisioneros": [b.name for b in build.prisoners],
             "generadores": [b.name for b in build.generators],
+            "cubos": [b.name for b in build.blocks],
         },
         "camara_pantallas": 1 if project.camera == "pantallas" else 0,
         # 1 = el juego lleva bolsa (algun objeto de `efecto: llevar`)

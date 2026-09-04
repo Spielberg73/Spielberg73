@@ -14,6 +14,7 @@
   "use strict";
 
   var TILE_SOLID = 1, TILE_PLATFORM = 2, TILE_HAZARD = 3, TILE_GOAL = 4;
+  var TILE_LOCK = 9;            /* la puerta que pide algo para abrirse */
   var KIND_ENEMY = 0, KIND_ITEM = 1, KIND_PRISONER = 8;
 
   /**
@@ -28,6 +29,7 @@
        bot tiene su propia cabeza. Y uno de tortas tampoco: ahi no se avanza
        hasta limpiar la pantalla, asi que hay que pelear. */
     if (data.view === "cinta") return jugarCinta(NPCore, data, nivel, opciones);
+    if (data.view === "iso") return jugarIso(NPCore, data, nivel, opciones);
     if (data.view === "cenital") return jugarCenital(NPCore, data, nivel, opciones);
     var w = NPCore.create(data);
     w.step(NPCore.IN.START);
@@ -554,6 +556,217 @@
     }
     return { ok: false, motivo: "no llega a la meta a tiempo",
              muertes: muertes, avance: mejorY, y: mejorY };
+  }
+
+  /* ------------------------------------------------------------------ *
+   * El bot de la vista isometrica.
+   *
+   * Es el de cenital con dos cosas mas, que son justo las dos que anade el
+   * genero: el suelo tiene **relieve** -asi que una casilla no es "libre" o
+   * "pared" sino que esta a una altura, y de una a otra se anda o se salta- y
+   * hay **puertas**, que estan cerradas hasta que apareces con lo suyo.
+   *
+   * Del resto no hay nada que inventar: el mando va a la planta igual que en
+   * cenital, asi que ir a una casilla es lo mismo de siempre.
+   * ------------------------------------------------------------------ */
+
+  var ESCALON = 6;              /* lo que se sube andando (np_types.h) */
+  var SALTABLE = 16;            /* y lo que se sube de un salto */
+
+  /** Lo que levanta una casilla, contando las puertas ya abiertas. */
+  function altoDe(w, cx, cy) {
+    var lv = w.level;
+    if (cx < 0 || cy < 0 || cx >= lv.cells_w || cy >= lv.cells_h) return 999;
+    var tile = lv.cells[cy * lv.cells_w + cx];
+    if (w.tileVisto(cx, cy) === 0 && w.data.tiles.kind[tile] === TILE_LOCK)
+      return 0;
+    return w.data.tiles.alto[tile];
+  }
+
+  /** Se puede pasar de una casilla a la de al lado? Y hace falta saltar? */
+  function pasoIso(w, llevaAlgo, cx, cy, nx, ny) {
+    var lv = w.level;
+    if (nx < 0 || ny < 0 || nx >= lv.cells_w || ny >= lv.cells_h) return null;
+    var tile = lv.cells[ny * lv.cells_w + nx];
+    var kind = w.data.tiles.kind[tile];
+    if (kind === TILE_HAZARD) return null;          /* los pinchos, ni de broma */
+    /* Una puerta cerrada solo se cruza si llevas algo con que abrirla: el
+       motor la abre al ponerte delante, asi que basta con contar con ella. */
+    if (kind === TILE_LOCK && w.tileVisto(nx, ny) === TILE_LOCK && !llevaAlgo)
+      return null;
+    var aqui = altoDe(w, cx, cy), alla = altoDe(w, nx, ny);
+    if (kind === TILE_LOCK && llevaAlgo) alla = 0;
+    var sube = alla - aqui;
+    if (sube <= ESCALON) return "anda";             /* bajar es gratis */
+    if (sube <= SALTABLE) return "salta";
+    return null;
+  }
+
+  /**
+   * Camino de una casilla a lo que se busque, por los cuatro lados. Devuelve
+   * una lista de [x, y, comoSeLlega] o null si no hay manera.
+   */
+  function caminoIso(w, llevaAlgo, desdeX, desdeY, quiere) {
+    if (!quiere)
+      quiere = function (x, y) { return w.tileKindAt(x, y) === TILE_GOAL; };
+    var an = w.level.cells_w, al = w.level.cells_h;
+    var previo = new Int32Array(an * al);
+    var salto = new Uint8Array(an * al);
+    var visto = new Uint8Array(an * al);
+    var cola = [desdeY * an + desdeX];
+    var meta = -1, cabeza = 0;
+    visto[cola[0]] = 1;
+    previo[cola[0]] = -1;
+    while (cabeza < cola.length) {
+      var c = cola[cabeza++];
+      var cx = c % an, cy = (c / an) | 0;
+      if (quiere(cx, cy)) { meta = c; break; }
+      var lados = [[cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1]];
+      for (var i = 0; i < 4; i++) {
+        var nx = lados[i][0], ny = lados[i][1];
+        var como = pasoIso(w, llevaAlgo, cx, cy, nx, ny);
+        if (!como) continue;
+        var nn = ny * an + nx;
+        if (visto[nn]) continue;
+        visto[nn] = 1;
+        previo[nn] = c;
+        salto[nn] = como === "salta" ? 1 : 0;
+        cola.push(nn);
+      }
+    }
+    if (meta < 0) return null;
+    var ruta = [];
+    for (var q = meta; q >= 0; q = previo[q])
+      ruta.push([q % an, (q / an) | 0, salto[q]]);
+    ruta.reverse();
+    return ruta;
+  }
+
+  /** Que buscar: primero lo que abre la puerta, luego las llaves, luego la
+      meta. Se prueba en ese orden y se coge el primero al que haya camino. */
+  function objetivosIso(w, data, F2I) {
+    var casillas = function (efecto) {
+      var sitios = {}, cuantos = 0;
+      for (var k = 0; k < w.entityCount; k++) {
+        var e = w.entities[k];
+        if (!e.active || e.kind !== KIND_ITEM) continue;
+        var d = data.items[e.def];
+        if (!d || d.effect !== efecto) continue;
+        sitios[(F2I(e.y) >> 4) * 1024 + (F2I(e.x) >> 4)] = 1;
+        cuantos++;
+      }
+      return cuantos ? sitios : null;
+    };
+    var hacia = function (nombre, sitios) {
+      return { nombre: nombre,
+               quiere: function (x, y) { return sitios[y * 1024 + x] === 1; } };
+    };
+    var lista = [];
+    var piden = w.level.keys_needed || 0;
+    if (piden && w.keys < piden) {
+      var llaves = casillas(3);              /* efecto llave */
+      if (llaves) lista.push(hacia("la llave", llaves));
+    } else {
+      lista.push({ nombre: "la meta", quiere: null });
+    }
+    /* Y lo que se lleva encima: si hay un objeto de esos suelto, se coge. Es
+       lo que abre las puertas, y sin el la meta puede no tener camino. */
+    var cosas = casillas(8);                 /* efecto llevar */
+    if (cosas) lista.unshift(hacia("el talisman", cosas));
+    return { lista: lista };
+  }
+
+  function jugarIso(NPCore, data, nivel, opciones) {
+    var w = NPCore.create(data);
+    w.step(NPCore.IN.START);
+    if (nivel) w.loadLevel(nivel);
+    var pa = data.player.actor;
+    var limite = opciones.frames || 12000;
+    var maxMuertes = opciones.muertes === undefined ? 6 : opciones.muertes;
+    var muertes = 0, ruta = null, paso = 0, recalcular = 0;
+    var voy = "", mejorFalta = 99999, sinAvanzar = 0;
+
+    function llevaAlgo() {
+      for (var i = 0; i < w.bolsa.length; i++) if (w.bolsa[i]) return 1;
+      return 0;
+    }
+
+    for (var i = 0; i < limite; i++) {
+      var p = w.players[0];
+      var cx = NPCore.F2I(p.x) + (pa.box_w >> 1);
+      var cy = NPCore.F2I(p.y) + (pa.box_h >> 1);
+      var tx = cx >> 4, ty = cy >> 4;
+
+      if (!ruta || recalcular <= 0) {
+        var busca = objetivosIso(w, data, NPCore.F2I);
+        ruta = null;
+        for (var o = 0; o < busca.lista.length && !ruta; o++) {
+          ruta = caminoIso(w, llevaAlgo(), tx, ty, busca.lista[o].quiere);
+          if (ruta && voy !== busca.lista[o].nombre) {
+            voy = busca.lista[o].nombre;
+            mejorFalta = 99999;
+          }
+        }
+        paso = 0;
+        recalcular = 45;
+        if (!ruta) {
+          return { ok: false, muertes: muertes, avance: 0, y: cy,
+                   motivo: "no hay camino hasta "
+                           + busca.lista[busca.lista.length - 1].nombre };
+        }
+      }
+      recalcular--;
+
+      while (paso < ruta.length - 1 &&
+             ruta[paso][0] === tx && ruta[paso][1] === ty) paso++;
+      var destino = ruta[Math.min(paso, ruta.length - 1)];
+      var dx = (destino[0] * 16 + 8) - cx;
+      var dy = (destino[1] * 16 + 8) - cy;
+
+      /* Un eje cada vez, como en cenital: la caja mide diez en casillas de
+         dieciseis y en diagonal se engancha en las esquinas de los cubos. */
+      var input = 0;
+      if (destino[0] !== tx) {
+        if (dy < -2) input |= NPCore.IN.UP;
+        else if (dy > 2) input |= NPCore.IN.DOWN;
+        else input |= dx < 0 ? NPCore.IN.LEFT : NPCore.IN.RIGHT;
+      } else if (dx < -2) input |= NPCore.IN.LEFT;
+      else if (dx > 2) input |= NPCore.IN.RIGHT;
+      else if (dy < -2) input |= NPCore.IN.UP;
+      else if (dy > 2) input |= NPCore.IN.DOWN;
+
+      /* Y si la casilla a la que se va esta mas alta, se salta: solo con los
+         pies en el suelo y solo yendo hacia ella, que es como se sube. */
+      if (destino[2] && p.onGround && input) input |= NPCore.IN.JUMP;
+
+      w.step(input);
+
+      if (w.state === NPCore.STATE.LEVEL_END || w.state === NPCore.STATE.FINISHED)
+        return { ok: true, frames: i, muertes: muertes, avance: cy };
+      if (w.state === NPCore.STATE.DYING) {
+        muertes++;
+        if (muertes > maxMuertes)
+          return { ok: false, motivo: "el bot muere una y otra vez",
+                   muertes: muertes, avance: cy, y: cy };
+        while (w.state !== NPCore.STATE.PLAY && w.state !== NPCore.STATE.GAME_OVER &&
+               w.state !== NPCore.STATE.TITLE) w.step(0);
+        if (w.state !== NPCore.STATE.PLAY)
+          return { ok: false, motivo: "se queda sin vidas", muertes: muertes,
+                   avance: cy, y: cy };
+        w.players[0].lives = data.lives;
+        ruta = null; mejorFalta = 99999; sinAvanzar = 0;
+        continue;
+      }
+
+      var falta = ruta.length - 1 - paso;
+      if (falta < mejorFalta) { mejorFalta = falta; sinAvanzar = 0; }
+      else if (++sinAvanzar > 700) {
+        return { ok: false, motivo: "se queda atascado yendo a " + voy,
+                 muertes: muertes, avance: cy, y: cy };
+      }
+    }
+    return { ok: false, motivo: "no llega a la meta a tiempo",
+             muertes: muertes, avance: 0, y: 0 };
   }
 
   var api = { jugar: jugar };

@@ -202,7 +202,8 @@ class Amiga(Sistema):
         # redondeada al formato del OCS. En AGA el bueno es el de graficos.c.
         ocs = unica.palabras_de(gfx_amiga.amiga_color, self.colores_totales)
         build.paletas = [ocs[i:i + 16] for i in range(0, self.colores_totales, 16)]
-        build.tile_gfx = [build.tileset.first_tile + t.index for t in build.tiles]
+        build.tile_gfx = [build.tileset.first_tile + build.tileset_remap[t.index]
+                          for t in build.tiles]
         # La forma del mapa de bits: la decide el nivel mas alto del juego. Un
         # juego de los de siempre no se entera; uno que se sube se lleva el
         # mapa estrecho y alto sin tener que pedirlo.

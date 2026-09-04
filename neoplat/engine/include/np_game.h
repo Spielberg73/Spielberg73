@@ -257,10 +257,28 @@ typedef struct {
     uint8_t axis;                    /* NP_PLAT_X o NP_PLAT_Y */
 } NpPlatformDef;
 
+/* Un cubo de la vista isometrica: el dibujo de una casilla levantada. No tiene
+ * nada mas -ni vida, ni velocidad, ni comportamiento- porque un cubo no hace
+ * nada: esta ahi, te subes encima y te tapa al que pasa por detras. */
+typedef struct {
+    NpActorDef actor;
+} NpBlockDef;
+
 typedef struct {
     const char *name;
-    uint16_t width, height;          /* en tiles */
-    const uint8_t *cells;            /* width * height indices de np_tile_* */
+    /* Lo que se ve, en tiles de pantalla: es lo que recorren los dibujantes y
+     * lo que limita la camara. En casi todos los juegos es el propio mapa; en
+     * la vista isometrica el mapa es la planta y lo que se ve es `fondo`, el
+     * dibujo de las salas, que mide 20x14 tiles por sala. */
+    uint16_t width, height;
+    const uint8_t *cells;            /* cells_w * cells_h indices de np_tile_* */
+    /* Lo que mide el mapa de verdad -el que se pisa- en casillas. Fuera de la
+     * isometrica vale lo mismo que width y height. */
+    uint16_t cells_w, cells_h;
+    /* Solo isometrica: el dibujo del suelo de las salas, ya en numeros de tile
+     * de la ROM grafica (no pasa por la leyenda: son 280 tiles por sala y no
+     * caben en un abecedario). Cero en las demas vistas. */
+    const uint16_t *fondo;
     const NpSpawn *spawns;
     uint16_t spawn_count;
     uint16_t start_x, start_y;       /* salida del jugador, en pixeles */
@@ -281,6 +299,7 @@ extern const NpItemDef np_items[];
 extern const NpSubDef np_subs[];         /* las armas secundarias del juego */
 extern const NpPlatformDef np_platforms[];
 extern const NpBreakableDef np_breakables[];
+extern const NpBlockDef np_bloques[];    /* los cubos de la vista isometrica */
 extern const NpLevel np_levels[];
 extern const NpLayer np_layers[];
 extern const uint8_t np_tile_kind[];     /* tipo de cada tile del proyecto */
@@ -288,6 +307,14 @@ extern const uint8_t np_tile_kind[];     /* tipo de cada tile del proyecto */
    casilla no es un cerrojo. */
 extern const uint8_t np_tile_need[];
 extern const uint16_t np_tile_gfx[];     /* tile grafico dentro de la ROM C */
+/* Lo alto que levanta cada tile de la leyenda, en pixeles. Solo lo mira la
+   vista isometrica: ahi el mapa es la planta de la sala y esto es el relieve.
+   En las demas vistas es todo ceros y no lo lee nadie. */
+extern const uint8_t np_tile_alto[];
+/* Y con que cubo se dibuja cada tile levantado: el indice en np_bloques mas
+   uno, o cero si esa casilla no se dibuja (el suelo, o una pared que ya viene
+   pintada en el fondo de la sala). */
+extern const uint8_t np_tile_bloque[];
 extern const np_fix np_sin_table[64];    /* seno en 24.8, un ciclo completo */
 /* Orden que hay que mandar al Z80 por cada evento de sonido (0 = sin sonido).
  * El indice es el numero de bit de NP_SFX_*. */
@@ -318,6 +345,7 @@ extern const char np_item_names[][6];
 extern const uint8_t np_bolsa_activa;
 extern const uint16_t np_platform_count;
 extern const uint16_t np_breakable_count;
+extern const uint8_t np_bloque_count;
 extern const uint16_t np_tile_count;
 /* El dibujo que se ve por el hueco de una puerta abierta: el del primer tile
    vacio de la leyenda. */
@@ -339,6 +367,14 @@ extern const uint8_t np_vista_cenital;
    np_vista_cenital tambien lo esta: el movimiento, la punteria y el empujon de
    los golpes son los mismos; lo que cambia es el salto. */
 extern const uint8_t np_vista_cinta;
+/* Y la isometrica, la de los juegos de tipo filmation: se anda por la planta
+   de una sala en las cuatro direcciones -que en pantalla salen en diagonal- y
+   se salta, como en la cinta, solo que aqui la altura es de verdad: el suelo
+   tiene relieve, hay cubos a los que subirse y lo que te frena es lo alto que
+   esta la casilla de al lado. Cuando esta a 1, np_vista_cenital tambien lo
+   esta -se anda por un plano, no de lado-, pero np_vista_cinta no: aquello es
+   una pelea y esto es una habitacion. */
+extern const uint8_t np_vista_iso;
 /* Cuantos enemigos pueden estar pegando a la vez. Es el numero que decide si
    una pelea se juega o se sufre: con todos a la vez no hay hueco entre golpe y
    golpe, y con uno solo la calle esta vacia. Dos es lo de los recreativos. */

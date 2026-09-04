@@ -19,7 +19,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from camara import Vigia, comprobar_salto  # noqa: E402
 import maquina_neogeo as ng  # noqa: E402
-from imagen import colores, distintos, franja, guardar_png  # noqa: E402
+from imagen import (colores, distintos, franja, guardar_png,  # noqa: E402
+                    minimo_de_colores, minimo_del_marcador)
 from sonido import (banda_del_efecto, comprobar_melodia, comprobar_titulo,  # noqa: E402
                     nivel, pico_por_frame)
 
@@ -27,7 +28,7 @@ FPS = 60
 
 
 def comprobar(carpeta, capturas="capturas", musica=None, salto=None,
-              sonido=True, pantallas=False, titulo_musica=""):
+              sonido=True, pantallas=False, titulo_musica="", iso=False):
     try:
         import machine68k  # noqa: F401
     except ImportError:
@@ -52,11 +53,12 @@ def comprobar(carpeta, capturas="capturas", musica=None, salto=None,
     titulo = maquina.dibujar()
     guardar_png(titulo, os.path.join(capturas, "ng_titulo.png"))
     tonos = colores(titulo)
-    exigir(len(tonos) > 8,
+    exigir(len(tonos) > minimo_de_colores(iso),
            "la pantalla de titulo solo tiene %d colores: no esta dibujando"
            % len(tonos))
     print("titulo: %dx%d con %d colores" % (titulo[0], titulo[1], len(tonos)))
-    exigir(len(set(franja(titulo, 24))) > 2, "no se ve el marcador arriba")
+    exigir(len(set(franja(titulo, 24))) > minimo_del_marcador(iso),
+           "no se ve el marcador arriba")
     if maquina.sonido:
         comprobar_titulo(exigir, nivel(maquina.escuchar(30)), titulo_musica)
 
@@ -81,7 +83,8 @@ def comprobar(carpeta, capturas="capturas", musica=None, salto=None,
     # YM2610, y de esos registros sale la onda que se analiza. Es lo unico que
     # comprueba de verdad que la Neo Geo toca lo que pone el game.yaml.
     if musica and maquina.sonido:
-        exigir(nivel(maquina.escuchar(10)) > 1.0, "la placa no saca ningun sonido")
+        exigir(nivel(maquina.escuchar(max(10, musica.velocidad))) > 1.0,
+               "la placa no saca ningun sonido")
         oido = maquina.escuchar(musica.velocidad * (len(musica.pistas[0]) + 1))
         aciertos, total, _, notas = comprobar_melodia(oido, maquina.ritmo, musica, FPS)
         exigir(total and aciertos >= total * 0.8,
@@ -130,7 +133,7 @@ def comprobar(carpeta, capturas="capturas", musica=None, salto=None,
     print("jugando: hasta un %.0f%% de la pantalla cambia entre tramos"
           % (movimiento * 100))
     if vigia:
-        comprobar_salto(vigia, exigir)
+        comprobar_salto(vigia, exigir, iso)
 
     # --- 5) el frame mas caro cabe en los 200.000 ciclos de la maquina ---
     print("frame mas caro: %d ciclos de los %d que da la consola (%.0f fps)"
@@ -174,4 +177,5 @@ if __name__ == "__main__":
                        musica_al_empezar(p) if p else None,
                        p.sound.efectos.get("salto") if p else None,
                        pantallas=bool(p and p.camera == "pantallas"),
+                       iso=bool(p and p.view == "iso"),
                        titulo_musica=p.sound.titulo if p else ""))

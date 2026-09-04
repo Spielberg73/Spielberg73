@@ -343,7 +343,24 @@ void np_video_frame(const NpWorld *w)
     /* De mas lejos a mas cerca: en la vista de cinta los actores se pisan a
        cada rato y hay que pintarlos por la linea del suelo. En las demas
        vistas np_orden_dibujo devuelve el orden de la lista tal cual. */
+    /* En la isometrica la fila lleva los cubos de la sala y ademas a los
+       jugadores -ahi hay un detras de verdad-, y donde cae cada uno lo decide
+       la proyeccion: por eso se pide todo a np_dibujo y el bucle es uno solo.
+       En las demas vistas se dibuja como siempre, y no por gusto: preguntarle
+       a np_dibujo por cada actor cuesta lo justo para que la Mega Drive pierda
+       el vblank y el juego entero se vaya a la mitad de velocidad. Medido: la
+       melodia pasa de 16 notas de 16 a 4. */
     orden = np_orden_dibujo(w, &cuantas);
+#if NP_VISTA_ISO
+    for (i = 0; i < cuantas; i++) {
+        const NpActorDef *def;
+        int32_t sx, sy;
+        uint8_t frame, flip;
+        def = np_dibujo(w, NP_DIBUJO(orden, i), &sx, &sy, &frame, &flip);
+        if (!def) continue;
+        np_actor(def, sx - w->cam_x, sy - w->cam_y, frame, flip);
+    }
+#else
     for (i = 0; i < cuantas; i++) {
         const NpEntity *e = &w->entities[NP_DIBUJO(orden, i)];
         const NpActorDef *def;
@@ -365,6 +382,7 @@ void np_video_frame(const NpWorld *w)
                  np_actor_frame(def, p->anim, p->anim_frame),
                  (uint8_t)!p->facing);
     }
+#endif
 
 #if NP_HUD_ENABLED
     np_hud_draw(w);

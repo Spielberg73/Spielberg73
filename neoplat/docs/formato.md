@@ -150,11 +150,11 @@ Es el número más importante del género y el que menos se ve. Con todos a la v
 no hay hueco entre golpe y golpe y la pelea es un enjambre; con uno solo la
 calle está vacía. Dos es lo de los recreativos.
 
-### La vista: de lado o desde arriba
+### La vista: de lado, desde arriba o desde una esquina
 
 ```yaml
 juego:
-  vista: cenital       # lateral (por defecto) o cenital
+  vista: cenital       # lateral (por defecto), cenital, cinta o isometrica
 ```
 
 **`lateral`** es lo de siempre: hay gravedad, se salta, se mira a un lado o a
@@ -209,6 +209,119 @@ espeja— más dos ranuras que aquí se notan: `saltar` y `remate`.
 pantalla, la vista no avanza. Hacia atrás sí se mueve, porque lo que se cierra
 es el paso y no la vista. Eso no se configura: es lo que convierte un pasillo
 en una pelea, y sin ello el juego se pasa andando.
+
+**`isometrica`** es la vista de los juegos de tipo *filmation* (Knight Lore,
+Alien 8, Head Over Heels): una **habitación vista desde una esquina**. Es la que
+más cosas cambia de todas, porque cambia hasta lo que significa el mapa:
+
+| | cinta | isométrica |
+|---|---|---|
+| el mapa | es lo que se ve | es la **planta** de la sala: lo que se ve son sus habitaciones |
+| las casillas | son de un tipo | son de un tipo **y de una altura** |
+| lo que te frena | una pared | lo alto que está la casilla de al lado comparado con tus pies |
+| el mando | las ocho direcciones de la pantalla | los **ejes del mapa**, que en pantalla salen en diagonal |
+| la cámara | sigue la calle | enseña **la sala en la que estás** y salta a la siguiente al cruzar |
+| saltar | pasa por encima de un puñetazo | pasa por encima de **un pincho, un bicho o un cubo** |
+
+#### El relieve
+
+Cada símbolo de la leyenda lleva un `alto:` en píxeles, y con ese número se
+escribe el escenario entero:
+
+| `alto:` | qué es |
+|---|---|
+| 0 | suelo raso, por el que se anda |
+| 4 o menos | un escalón: se sube **andando** |
+| 16 | un cubo: hay que **saltar** para subirse |
+| 32 | dos alturas: no se llega de un salto, hay que subir por el cubo de al lado |
+| 48 | una pared |
+
+Lo que decide todo eso es un solo número, `NP_ESCALON` (6 píxeles): lo que está
+más alto que tus pies más seis, te para; lo que no, se sube andando. Y el salto
+de serie llega a 23 píxeles, que es lo que separa un cubo de una pared.
+
+#### El dibujo: `cubos:` y `sala:`
+
+En esta vista el escenario **no sale del mapa**: sale de los cubos. Cada casilla
+levantada dice con cuál se dibuja, y un cubo es un actor normal y corriente:
+
+```yaml
+tiles:
+  imagen: graficos/tiles.png
+  # la habitación dibujada: 16x11 tiles del tileset (256x176 píxeles) pegados en
+  # cada sala a partir del tile (2, 2). Trae las dos paredes del fondo y el
+  # suelo de 8x8 casillas
+  sala: {tile: 16, ancho: 16, alto: 11, x: 2, y: 2}
+  leyenda:
+    '.': {tile: 0, tipo: vacio}
+    'o': {tile: 0, tipo: solido, alto: 16, cubo: losa}
+    '#': {tile: 0, tipo: solido, alto: 48, cubo: pintado}   # ya viene en `sala:`
+    'M': {tile: 0, tipo: solido, alto: 48, cubo: muro}      # y esto sí es un cubo
+
+cubos:
+  losa:
+    sprite: graficos/losa.png
+    frame: [32, 32]          # 32 x (alto + 16)
+    caja: [16, 16]           # la planta que ocupa: una casilla
+    desplazamiento: [8, 8]   # [8, alto - 8]
+```
+
+Un cubo de `alto` píxeles se dibuja en **32 x (alto + 16)**: el rombo de arriba,
+las dos caras de delante y el pico de abajo. Su caja es siempre `[16, 16]` —una
+casilla de planta— y el desplazamiento `[8, alto - 8]`. El compilador avisa si
+las medidas no cuadran.
+
+`sala:` es el dibujo de una habitación, un rectángulo del propio tileset que se
+pega en todas: las **dos paredes del fondo** y el suelo de 8x8 casillas.
+**Repintarlo cambia el castillo entero** sin tocar una línea de nada más. Es uno
+solo para todo el juego: lo que distingue una habitación de otra son sus cubos y
+sus bichos.
+
+#### `cubo: pintado`, o por qué las paredes no son cubos
+
+Las dos paredes del fondo de una habitación son quince casillas. Puestas como
+cubos, son quince sprites que hay que ordenar por profundidad y dibujar sesenta
+veces por segundo, y eso —medido en una Mega Drive de verdad— es 479 líneas de
+trabajo para las 262 que dura un frame: el juego entero a la mitad de
+velocidad.
+
+Y no hacen falta. Una pared del fondo está **detrás de todo** por definición:
+nunca tapa a nadie, así que no necesita entrar en la fila de profundidad. Por
+eso viene pintada en `sala:`, y en el mapa se escribe con un símbolo que lleva
+`cubo: pintado`: levanta 48 —o sea que para al que anda, exactamente igual que
+un muro— y no se dibuja nada encima.
+
+`sala:` deja una puerta en medio de cada pared (la casilla 4). Una habitación
+que ahí no tenga salida la tapia poniendo un cubo de muro de verdad —la `'M'`
+del ejemplo—, que es el único sitio de la pared donde hace falta uno. Con eso
+una habitación cuesta cuatro o cinco cubos en vez de veinte, y la Mega Drive va
+a 60.
+
+#### Las salas
+
+Una sala son **8x8 casillas**, y el mapa se reparte en salas enteras: un nivel
+de 24x16 son seis habitaciones, tres por dos. Cruzar el borde de una sala te
+mete en la de al lado y la cámara salta; lo que pasa en las demás habitaciones
+está en pausa. De eso vive el que un castillo entero quepa en una máquina de
+1985: solo existen los cubos de la sala que se está viendo.
+
+Como los cubos ocupan sitio en la lista de entidades, entre ellos y los bichos y
+objetos del nivel no pueden pasar de 64. El compilador lo dice con el número de
+la sala más cargada si te pasas.
+
+Ese es el límite de lo que **cabe**; el de lo que va **fino** es más bajo. En una
+Mega Drive cada cubo cuesta unas 8 de las 262 líneas de un frame, así que a
+partir de unos quince por habitación el juego empieza a perder el retrazo y se
+va a 30. Las paredes del fondo ya no cuentan —van pintadas en `sala:`—, y con
+eso una habitación normal se queda en cinco o seis cubos y sobra sitio.
+
+#### El salto
+
+No se manda en el aire: al despegar decides hacia dónde vas y con qué impulso, y
+hasta caer no se cambia —ni soltando el botón—. Suena incómodo y es justo lo que
+hace que cada salto sea una decisión. Lo que sí se guarda es el **impulso**: si
+saltas pegado a un cubo, subes rozándolo y en cuanto lo pasas te mete arriba,
+así que para subirse a algo no hace falta carrerilla.
 
 ## `jugador`
 

@@ -91,12 +91,37 @@ class MegaDrive(Sistema):
         build.tileset.first_tile = base_tileset or 0
         build.tileset.palette_index = reparto.asignacion[build.tileset.palette.name][0]
 
+        # Los actores se guardan **en trozos de 32x32**, que es lo mas grande
+        # que cabe en un sprite de esta maquina (4x4 celdas de 8x8), y dentro
+        # de cada trozo por columnas, que es como las lee el VDP. np_video.c
+        # dibuja exactamente en ese orden.
+        #
+        # Con dibujos de una sola fila de tiles -que era todo lo que habia en
+        # el kit antes de la vista isometrica- esto da byte por byte lo mismo
+        # que guardarlos de uno en uno: un tile de 16x16 ya son cuatro celdas
+        # en orden de columnas. Lo que arregla es lo alto, que antes salia
+        # entrelazado y el VDP pintaba tiras.
         for actor in build.actor_builds():
+            hoja = actor.sheet
+            nombre = hoja.palette.name
+            cols, filas = hoja.cols, hoja.rows
             primero = None
-            for tile in actor.sheet.tiles:
-                indice = vram.anadir_16(remapear(tile, actor.sheet.palette.name))
-                if primero is None:
-                    primero = indice
+            for cuadro in range(hoja.frames):
+                base = cuadro * cols * filas
+                for chy in range(0, filas, 2):
+                    alto = min(2, filas - chy)
+                    for chx in range(0, cols, 2):
+                        ancho = min(2, cols - chx)
+                        for c8 in range(ancho * 2):
+                            for r8 in range(alto * 2):
+                                tile = hoja.tiles[base
+                                                  + (chx + c8 // 2) * filas
+                                                  + chy + r8 // 2]
+                                celda = gfx_md.partir_16(
+                                    remapear(tile, nombre))[(c8 % 2) * 2 + r8 % 2]
+                                indice = vram.anadir(celda, compartir=False)
+                                if primero is None:
+                                    primero = indice
             actor.sheet.first_tile = primero or 0
             actor.sheet.palette_index = reparto.asignacion[actor.sheet.palette.name][0]
 
@@ -133,7 +158,10 @@ class MegaDrive(Sistema):
         build.font = indices_fuente
         build.hud_palette = fuente_paleta
         build.paletas = [gfx_md.palabras_de_paleta(p) for p in reparto.paletas]
-        build.tile_gfx = [build.tileset.first_tile + t.index * 4 for t in build.tiles]
+        build.tile_gfx = [build.tileset.first_tile
+                          + build.tileset_remap[t.index] * 4
+                          for t in build.tiles]
+        build.tile_gfx_paso = 4   # aqui un tile de 16x16 son cuatro celdas
         build.info = {
             "vram": vram,
             "font_first": primera_fuente,

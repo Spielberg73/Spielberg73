@@ -107,7 +107,8 @@ def _esperar_al_juego(emu) -> bool:
 
 
 def comprobar(disco: str, capturas: str = "capturas", musica=None,
-              salto=None, disparo=None, pantallas: bool = False) -> int:
+              salto=None, disparo=None, pantallas: bool = False,
+              iso: bool = False) -> int:
     core = buscar_core(CORE, "NEOPLAT_CORE_ST")
     if not core:
         print("el core de Hatari no esta instalado: se salta la prueba")
@@ -165,7 +166,8 @@ def comprobar(disco: str, capturas: str = "capturas", musica=None,
 
     # --- 3) y ademas suena: el YM2149 toca la melodia del game.yaml ------
     if musica:
-        exigir(nivel(emu.escuchar(10)) > 1.0, "el ST no saca ningun sonido")
+        exigir(nivel(emu.escuchar(max(10, musica.velocidad))) > 1.0,
+               "el ST no saca ningun sonido")
         oido = emu.escuchar(musica.velocidad * (len(musica.pistas[0]) + 1))
         aciertos, total, _, notas = comprobar_melodia(oido, emu.ritmo, musica, FPS)
         exigir(total and aciertos >= total * 0.8,
@@ -245,7 +247,7 @@ def comprobar(disco: str, capturas: str = "capturas", musica=None,
     print("jugando: hasta un %.0f%% de la pantalla cambia entre tramos"
           % (movimiento * 100))
     if vigia:
-        comprobar_salto(vigia, exigir)
+        comprobar_salto(vigia, exigir, iso)
 
     # --- 5) sigue vivo --------------------------------------------------
     #
@@ -296,5 +298,6 @@ if __name__ == "__main__":
                        musica_al_empezar(p) if p else None,
                        p.sound.efectos.get("salto") if p else None,
                        p.sound.efectos.get("disparo") if p else None,
+                       iso=bool(p and p.view == "iso"),
                        pantallas="--pantallas" in opciones
                                  or bool(p and p.camera == "pantallas")))

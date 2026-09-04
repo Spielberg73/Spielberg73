@@ -173,7 +173,8 @@ class AtariSt(Sistema):
         build.font = fuente
         build.hud_palette = 0
         build.paletas = [colores]
-        build.tile_gfx = [build.tileset.first_tile + t.index for t in build.tiles]
+        build.tile_gfx = [build.tileset.first_tile + build.tileset_remap[t.index]
+                          for t in build.tiles]
         build.info = {
             "banco": banco,
             "glifos": glifos,

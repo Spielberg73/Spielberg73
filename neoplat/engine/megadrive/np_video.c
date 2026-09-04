@@ -199,17 +199,38 @@ static void np_volcar_sprites(void)
     np_sprite_count = 0;
 }
 
+/* Un actor, en trozos de 32x32.
+ *
+ * Un sprite de la Mega Drive no pasa de 4x4 celdas de 8x8, o sea de 32x32
+ * pixeles, asi que un dibujo mas grande hay que repartirlo. Se reparte en
+ * trozos de dos por dos tiles de 16x16 -lo mas grande que cabe en un sprite- y
+ * los graficos vienen guardados en ese mismo orden (ver sistemas/megadrive.py):
+ * cada trozo, seguido, y dentro de el las celdas por columnas, que es como las
+ * lee el VDP.
+ *
+ * Con dibujos de una sola fila de tiles -que era todo lo que habia en el kit
+ * hasta la vista isometrica- esto sale exactamente igual que antes: un trozo
+ * por cada dos columnas y los mismos bytes en la ROM. Lo que arregla es lo
+ * alto: un cubo de 32x64 se pintaba con dos sprites de ocho celdas de alto,
+ * que el VDP recorta a cuatro, y salia una columna de tiras sin sentido. */
 static void np_dibujar_actor(const NpActorDef *def, int32_t x, int32_t y,
                              uint8_t frame, uint8_t flip)
 {
-    uint16_t base = (uint16_t)(def->first_tile + frame * def->cols * def->rows * 4);
-    uint8_t c;
-    for (c = 0; c < def->cols; c++) {
-        uint8_t origen = flip ? (uint8_t)(def->cols - 1 - c) : c;
-        int32_t px = x + c * 16;
-        if (px <= -16 || px >= NP_SCREEN_W) continue;
-        np_sprite((int16_t)px, (int16_t)y, 2, (uint8_t)(def->rows * 2),
-                  (uint16_t)(base + origen * def->rows * 4), def->palette, flip);
+    uint16_t sitio = (uint16_t)(def->first_tile
+                                + frame * def->cols * def->rows * 4);
+    uint8_t chx, chy;
+    for (chy = 0; chy < def->rows; chy = (uint8_t)(chy + 2)) {
+        uint8_t alto = (uint8_t)((def->rows - chy) >= 2 ? 2 : 1);
+        for (chx = 0; chx < def->cols; chx = (uint8_t)(chx + 2)) {
+            uint8_t ancho = (uint8_t)((def->cols - chx) >= 2 ? 2 : 1);
+            int32_t px = x + (flip ? (def->cols - chx - ancho) : chx) * 16;
+            int32_t py = y + chy * 16;
+            if (px > -(int32_t)(ancho * 16) && px < NP_SCREEN_W)
+                np_sprite((int16_t)px, (int16_t)py,
+                          (uint8_t)(ancho * 2), (uint8_t)(alto * 2),
+                          sitio, def->palette, flip);
+            sitio = (uint16_t)(sitio + ancho * alto * 4);
+        }
     }
 }
 
@@ -251,7 +272,28 @@ void np_video_frame(const NpWorld *w)
     /* De mas lejos a mas cerca: en la vista de cinta los actores se pisan a
        cada rato y hay que pintarlos por la linea del suelo. En las demas
        vistas np_orden_dibujo devuelve el orden de la lista tal cual. */
+    /* En la isometrica la fila lleva los cubos de la sala y ademas a los
+       jugadores -ahi hay un detras de verdad-, y donde cae cada uno lo decide
+       la proyeccion: por eso se pide todo a np_dibujo y el bucle es uno solo.
+       En las demas vistas se dibuja como siempre, y no por gusto: preguntarle
+       a np_dibujo por cada actor cuesta lo justo para que la Mega Drive pierda
+       el vblank y el juego entero se vaya a la mitad de velocidad. Medido: la
+       melodia pasa de 16 notas de 16 a 4. */
     orden = np_orden_dibujo(w, &cuantas);
+#if NP_VISTA_ISO
+    for (i = 0; i < cuantas; i++) {
+        const NpActorDef *def;
+        int32_t sx, sy;
+        uint8_t frame, flip;
+        def = np_dibujo(w, NP_DIBUJO(orden, i), &sx, &sy, &frame, &flip);
+        if (!def) continue;
+        sx -= w->cam_x;
+        sy -= w->cam_y;
+        if (sx <= -(def->cols * 16) || sx >= NP_SCREEN_W) continue;
+        if (sy <= -(def->rows * 16) || sy >= NP_SCREEN_H) continue;
+        np_dibujar_actor(def, sx, sy, frame, flip);
+    }
+#else
     for (i = 0; i < cuantas; i++) {
         const NpEntity *e = &w->entities[NP_DIBUJO(orden, i)];
         const NpActorDef *def;
@@ -276,6 +318,7 @@ void np_video_frame(const NpWorld *w)
                          np_actor_frame(def, p->anim, p->anim_frame),
                          (uint8_t)!p->facing);
     }
+#endif
 
     np_volcar_sprites();
 

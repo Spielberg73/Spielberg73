@@ -168,6 +168,13 @@ def parse_color(text: Any, where: str) -> Tuple[int, int, int]:
 
 # ------------------------------------------------------------------ modelos
 
+# `cubo: pintado` en un tile de la vista isometrica: la casilla levanta -y por
+# lo tanto para al que anda- pero **no se dibuja nada encima**, porque el
+# dibujo ya viene en la imagen de la sala. Es como se hacen las dos paredes del
+# fondo de una habitacion: pintadas una vez en `sala:` en vez de quince cubos
+# que hay que ordenar y dibujar en cada frame.
+PINTADO = ("pintado", "pintada", "sala", "ninguno", "nada", "painted", "none")
+
 TILE_KINDS = {
     "vacio": "empty", "vacío": "empty", "empty": "empty", "aire": "empty",
     "solido": "solid", "sólido": "solid", "solid": "solid", "bloque": "solid",
@@ -428,6 +435,16 @@ class Platform(Actor):
 
 
 @dataclass
+class Block(Actor):
+    """Un cubo de la vista isometrica: el dibujo de una casilla levantada.
+
+    No tiene nada mas -ni velocidad, ni vida, ni comportamiento- porque un cubo
+    no hace nada: esta ahi, te subes encima y te tapa al que pasa por detras.
+    Lo unico que se le pide es que el fotograma mida 32 de ancho por `alto` + 16
+    de alto, que es lo que ocupa un prisma de esa altura sobre un rombo."""
+
+
+@dataclass
 class TileDef:
     char: str
     index: int          # numero de tile dentro del tileset
@@ -435,6 +452,16 @@ class TileDef:
     # con `tipo: cerrojo`, que objeto lo abre. Vacio = ninguno (y entonces no
     # se abre nunca, que es un error del juego y se avisa).
     needs: str = ""
+    # Solo en la vista isometrica: lo que levanta la casilla, en pixeles, y con
+    # que cubo se dibuja. Cero es suelo raso; 16 es un cubo al que hay que
+    # subirse de un salto; 48 es una pared. Es lo unico que hace falta para
+    # escribir una habitacion entera.
+    alto: int = 0
+    bloque: str = ""
+    # `cubo: pintado` -la casilla levanta pero no se dibuja nada, porque ya
+    # viene en el dibujo de la sala-. Es lo que hace que las paredes del fondo
+    # de una habitacion no cuesten un sprite cada una.
+    pintado: bool = False
 
 
 @dataclass
@@ -464,6 +491,17 @@ class Level:
 class Tileset:
     image: str
     size: int = 16
+    # El dibujo de una sala isometrica: un rectangulo de tiles dentro del
+    # propio tileset que el compilador pega en cada sala. Trae el suelo -8x8
+    # casillas, siempre el mismo rombo de 256x128 pixeles- y las dos paredes
+    # del fondo por encima. Es un dibujo normal y corriente: se puede repintar
+    # entero.
+    # `sala_tile` a -1 quiere decir que el juego no lleva salas isometricas.
+    sala_tile: int = -1
+    sala_w: int = 16          # en tiles de 16x16
+    sala_h: int = 8
+    sala_x: int = 2           # donde se pega dentro de la pantalla, en tiles
+    sala_y: int = 5
 
 
 @dataclass
@@ -490,6 +528,7 @@ class Project:
     items: Dict[str, Item]
     platforms: Dict[str, "Platform"]
     breakables: Dict[str, "Breakable"]
+    blocks: Dict[str, "Block"]        # los cubos de la vista isometrica
     prisoners: Dict[str, "Prisoner"]
     generators: Dict[str, "Generator"]
     layers: Dict[str, Layer]
@@ -611,6 +650,12 @@ VISTAS = {
     "cinta": "cinta", "belt": "cinta", "cinta_transportadora": "cinta",
     "yo_contra_el_barrio": "cinta", "beat_em_up": "cinta", "brawler": "cinta",
     "tortas": "cinta",
+    # La isometrica: la sala se ve desde una esquina, se anda por su planta y
+    # se salta de cubo en cubo. Es la del Knight Lore y las suyas, que llamaban
+    # a esto "filmation".
+    "isometrica": "iso", "isométrica": "iso", "iso": "iso",
+    "filmation": "iso", "isometrico": "iso", "isométrico": "iso",
+    "tresd": "iso", "3d": "iso", "habitaciones": "iso",
 }
 
 
@@ -633,8 +678,9 @@ def _leer_vista(game: Node) -> str:
         raise ProjectError(
             "no entiendo la vista '%s'" % texto,
             hint="pon 'lateral' (de lado, con gravedad), 'cenital' "
-                 "(desde arriba, en ocho direcciones) o 'cinta' (desde arriba "
-                 "y saltando, como en los juegos de tortas)",
+                 "(desde arriba, en ocho direcciones), 'cinta' (desde arriba "
+                 "pero saltando) o 'isometrica' (una sala vista desde una "
+                 "esquina)",
             where="juego",
         )
     return VISTAS[clave]
@@ -1216,6 +1262,18 @@ def _read_platform(name: str, data: Any, root: str) -> Platform:
     )
 
 
+def _read_block(name: str, data: Any, root: str) -> Block:
+    """Un cubo de la vista isometrica: solo dibujo y caja."""
+    where = "bloques.%s" % name
+    node = Node(data, where)
+    sprite = node.str_(["sprite", "imagen", "image"], required=True)
+    _require_file(root, sprite, where)
+    fw, fh, bw, bh, bx, by = _actor_geometry(node, where, (32, 32))
+    anims = _read_animations(node.child("animations", "animaciones", "anims"), where)
+    return Block(name=name, sprite=sprite, frame_w=fw, frame_h=fh,
+                 box_w=bw, box_h=bh, box_x=bx, box_y=by, animations=anims)
+
+
 DEFAULT_LEGEND = {
     ".": TileDef(".", 0, "empty"),
     " ": TileDef(" ", 0, "empty"),
@@ -1237,6 +1295,14 @@ def _read_tiles(node: Node, root: str) -> Tuple[Tileset, Dict[str, TileDef]]:
             hint="deja 'tamano: 16' o quita la opcion",
             where=where,
         )
+    sala = node.child("sala", "room", "habitacion")
+    sala_tile, sala_w, sala_h, sala_x, sala_y = -1, 16, 8, 2, 5
+    if sala.data:
+        sala_tile = sala.int_(["tile", "indice", "índice", "id"], 0, minimum=0)
+        sala_w = sala.int_(["ancho", "width", "cols"], 16, 1, 40)
+        sala_h = sala.int_(["alto", "height", "filas"], 8, 1, 28)
+        sala_x = sala.int_(["x", "columna"], 2, 0, 39)
+        sala_y = sala.int_(["y", "fila"], 5, 0, 27)
     legend_node = node.child("legend", "leyenda", "mapa_tiles")
     tiles: Dict[str, TileDef] = {}
     if not legend_node.data:
@@ -1263,6 +1329,7 @@ def _read_tiles(node: Node, root: str) -> Tuple[Tileset, Dict[str, TileDef]]:
                         where=sub_where,
                     )
             needs = ""
+            alto, bloque, pintado = 0, "", False
             if isinstance(value, dict):
                 sub = Node(value, sub_where)
                 index = sub.int_(["tile", "indice", "índice", "id"], 0, minimum=0)
@@ -1270,16 +1337,23 @@ def _read_tiles(node: Node, root: str) -> Tuple[Tileset, Dict[str, TileDef]]:
                 # con `tipo: cerrojo`, que objeto lo abre
                 needs = sub.str_(["needs", "abre_con", "pide", "llave",
                                   "objeto"], "") or ""
+                # y en la vista isometrica, lo que levanta la casilla
+                alto = sub.int_(["alto", "altura", "height", "relieve"], 0, 0, 255)
+                bloque = sub.str_(["bloque", "cubo", "block"], "") or ""
+                if bloque.strip().lower() in PINTADO:
+                    bloque, pintado = "", True
             elif not isinstance(value, (int, float, list, tuple)):
                 sub = Node(value, sub_where)
                 index = sub.int_(["tile", "indice", "índice", "id"], 0, minimum=0)
                 kind = sub.choice(["type", "tipo", "clase"], TILE_KINDS, "solid")
             if index < 0:
                 raise ProjectError("el numero de tile no puede ser negativo", where=sub_where)
-            tiles[char] = TileDef(char, index, kind, needs)
+            tiles[char] = TileDef(char, index, kind, needs, alto, bloque, pintado)
         tiles.setdefault(".", TileDef(".", 0, "empty"))
         tiles.setdefault(" ", TileDef(" ", 0, "empty"))
-    return Tileset(image=image, size=size), tiles
+    return Tileset(image=image, size=size, sala_tile=sala_tile,
+                   sala_w=sala_w, sala_h=sala_h,
+                   sala_x=sala_x, sala_y=sala_y), tiles
 
 
 MUESTRA_MAX_SEGUNDOS = 4.0
@@ -1650,6 +1724,61 @@ def _validate_level(level: Level, tiles: Dict[str, TileDef], spawn_names: List[s
         )
 
 
+SALA = 8            # lo que mide una sala, en casillas (NP_SALA del motor)
+
+
+def _revisar_isometrica(levels, tiles, tileset, blocks, warnings) -> None:
+    """Lo que tiene que cuadrar en un juego de salas isometricas.
+
+    Son cuatro cosas, y las cuatro dan un error claro en vez de un juego raro:
+    el mapa se reparte en salas enteras de 8x8, cada casilla que levanta trae
+    su cubo, ese cubo mide lo que levanta y el tileset trae el dibujo del suelo
+    de la sala.
+    """
+    if tileset.sala_tile < 0:
+        raise ProjectError(
+            "un juego de vista isometrica necesita el dibujo del suelo de la sala",
+            hint="anade a 'tiles:' un bloque 'sala: {tile: N, ancho: 16, alto: 11}' "
+                 "que diga que trozo del tileset es el dibujo de una habitacion",
+            where="tiles")
+    for tile in tiles.values():
+        donde = "tiles.leyenda['%s']" % tile.char
+        if tile.alto and not tile.bloque and not tile.pintado:
+            raise ProjectError(
+                "el tile '%s' levanta %d pixeles pero no dice con que cubo se "
+                "dibuja" % (tile.char, tile.alto),
+                hint="anade 'cubo: <nombre>' con uno de los de 'cubos:', o "
+                     "'cubo: pintado' si ese trozo ya viene dibujado en 'sala:'",
+                where=donde)
+        if tile.bloque and tile.bloque not in blocks:
+            raise ProjectError(
+                "el tile '%s' se dibuja con el cubo '%s', que no existe"
+                % (tile.char, tile.bloque),
+                hint="los cubos que hay son: %s" % (", ".join(blocks) or "ninguno"),
+                where=donde)
+        if not tile.bloque:
+            continue
+        cubo = blocks[tile.bloque]
+        # Un prisma de `alto` pixeles sobre un rombo de 32x16 ocupa 32 de ancho
+        # y alto+16 de alto. Si el dibujo no mide eso, el cubo se vera flotando
+        # o hundido en el suelo, que es de esas cosas que uno mira diez minutos
+        # sin saber por que no encajan.
+        if cubo.frame_w != 32 or cubo.frame_h != tile.alto + 16:
+            warnings.append(
+                "el cubo '%s' mide %dx%d y para un alto de %d deberia medir 32x%d"
+                % (tile.bloque, cubo.frame_w, cubo.frame_h, tile.alto,
+                   tile.alto + 16))
+    for nivel in levels:
+        ancho, alto = len(nivel.rows[0]), len(nivel.rows)
+        if ancho % SALA or alto % SALA:
+            raise ProjectError(
+                "el nivel '%s' mide %dx%d casillas y las salas son de %dx%d"
+                % (nivel.name, ancho, alto, SALA, SALA),
+                hint="en la vista isometrica el mapa es la planta y se reparte "
+                     "en habitaciones enteras: pon medidas multiplos de %d" % SALA,
+                where="niveles")
+
+
 def _require_file(root: str, relative: str, where: str) -> str:
     path = os.path.join(root, relative)
     if not os.path.isfile(path):
@@ -1730,6 +1859,13 @@ def load_project(path: str) -> Project:
     breakables: Dict[str, Breakable] = {}
     for name, data_rom in (top.child("breakables", "rompibles").data or {}).items():
         breakables[str(name)] = _read_breakable(str(name), data_rom, root)
+
+    # Los cubos de la vista isometrica. La seccion se llama 'cubos:' y no
+    # 'bloques:' porque 'bloques' ya es un alias de la seccion de tiles desde la
+    # primera version del kit, y cambiarlo romperia los juegos de la gente.
+    blocks: Dict[str, Block] = {}
+    for name, data_blk in (top.child("blocks", "cubos").data or {}).items():
+        blocks[str(name)] = _read_block(str(name), data_blk, root)
 
     prisoners: Dict[str, Prisoner] = {}
     for name, data_pri in (top.child("prisoners", "prisioneros",
@@ -1831,7 +1967,7 @@ def load_project(path: str) -> Project:
     # Mirando desde arriba -y en la cinta, que es la misma manera de andar- no
     # hay de donde caerse: el suelo es toda la franja.
     necesitan_suelo = {
-        name: (view not in ("cenital", "cinta") and enemy.gravity > 0
+        name: (view not in ("cenital", "cinta", "iso") and enemy.gravity > 0
                and enemy.behavior != "flyer")
         for name, enemy in enemies.items()
     }
@@ -1856,7 +1992,7 @@ def load_project(path: str) -> Project:
         "prisoners", "prisioneros", "rehenes",
         "generators", "generadores", "nidos",
         "spawns", "simbolos", "símbolos", "backgrounds", "fondos", "capas",
-        "sound", "sonido", "audio",
+        "sound", "sonido", "audio", "blocks", "cubos",
     }
     extra_top = [key for key in data if key not in known_top]
     if extra_top:
@@ -1868,7 +2004,12 @@ def load_project(path: str) -> Project:
             where=os.path.basename(path),
         )
 
-    if camera == "pantallas":
+    if view == "iso":
+        _revisar_isometrica(levels, tiles, tileset, blocks, warnings)
+
+    # La isometrica no entra aqui: sus salas son pantallas por definicion -8x8
+    # casillas- y el mapa mide casillas, no pixeles de pantalla.
+    if camera == "pantallas" and view != "iso":
         for nivel in levels:
             ancho, alto = len(nivel.rows[0]) * 16, len(nivel.rows) * 16
             if ancho % 320 or (alto > 224 and alto % 224):
@@ -1885,7 +2026,8 @@ def load_project(path: str) -> Project:
         amiga_modo=amiga_modo,
         time_limit=time_limit, hud=hud, player=player, tileset=tileset, tiles=tiles,
         enemies=enemies, items=items, platforms=platforms,
-        breakables=breakables, prisoners=prisoners, generators=generators,
+        breakables=breakables, blocks=blocks,
+        prisoners=prisoners, generators=generators,
         layers=layers, sound=sound, levels=levels,
         warnings=warnings,
     )

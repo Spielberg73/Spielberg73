@@ -137,7 +137,8 @@ class Jaguar(Sistema):
         build.font = fuente
         build.hud_palette = 0
         build.paletas = [colores[i:i + 16] for i in range(0, 256, 16)]
-        build.tile_gfx = [build.tileset.first_tile + t.index for t in build.tiles]
+        build.tile_gfx = [build.tileset.first_tile + build.tileset_remap[t.index]
+                          for t in build.tiles]
         codigo_dsp, etiquetas_dsp = jerry.generar()
         build.info = {
             "banco": banco,

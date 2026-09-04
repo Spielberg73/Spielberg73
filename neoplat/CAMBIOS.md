@@ -2,8 +2,127 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.24.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.25.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.25
+
+**Un genero nuevo: juegos isometricos al estilo Knight Lore.**
+
+Es la vista que mas cosas cambia de todas las que trae el kit, porque cambia
+hasta lo que significa el mapa. Con `vista: isometrica`:
+
+1. **El mapa ya no es lo que se ve: es la planta de la sala.** Cada simbolo de
+   la leyenda lleva un `alto:` en pixeles y con ese numero se escribe el
+   escenario entero: 0 es suelo, 4 un escalon que se sube andando, 16 un cubo
+   al que hay que saltar, 32 dos alturas y 48 una pared. Lo que te frena no es
+   el tipo de la casilla de al lado sino lo alto que esta comparada con tus
+   pies, y ese solo numero hace de suelo, de escalon, de cubo y de muro.
+2. **Se salta de verdad, y saltar es la forma de esquivar.** La altura es la
+   tercera coordenada, con la gravedad de siempre. Por encima de un pincho no
+   pasa nada, y por encima de un bicho tampoco: en esta vista dos que no se
+   cruzan en altura no se tocan. El salto no se manda en el aire -al despegar
+   decides y hasta caer no se cambia- pero **el impulso se guarda**, asi que
+   para subirse a un cubo que tienes pegado no hace falta carrerilla.
+3. **El mando va a los ejes del mapa**, que en pantalla salen en diagonal. Las
+   diagonales del mando dan los cuatro lados rectos de la pantalla.
+4. **La camara ensena la sala en la que estas** y salta a la siguiente al
+   cruzar. Una sala son 8x8 casillas y el mapa se reparte en salas enteras. Lo
+   que pasa en las demas habitaciones esta en pausa, y **solo existen los cubos
+   de la que se ve**: de eso vive el que un castillo de seis habitaciones quepa
+   en las sesenta y cuatro entidades de una maquina de 1985.
+5. **Los jugadores entran en la fila de dibujado.** Aqui hay un detras de
+   verdad -uno se mete tras un cubo cada dos pasos-, asi que ya no se pintan al
+   final, encima de todo: van colocados por profundidad como cualquier otra
+   cosa. Los seis dibujantes de maquina pasan a tener **un solo bucle**.
+
+**El dibujo sale de dos sitios nuevos.** `cubos:` son los prismas con los que
+se pinta cada casilla levantada -un cubo de `alto` pixeles se dibuja en 32 x
+(alto + 16), con caja `[16, 16]` y desplazamiento `[8, alto - 8]`- y `sala:` es
+el dibujo de una habitacion, un rectangulo del propio tileset que se pega en
+todas: las dos paredes del fondo y el suelo de 8x8 casillas. Repintar ese
+rectangulo cambia el castillo entero sin tocar nada mas.
+
+**Las paredes del fondo no son cubos, y esa es la diferencia entre ir a 60 y a
+30.** Un cubo es un sprite que hay que ordenar por profundidad y volver a
+dibujar sesenta veces por segundo. Las dos paredes del fondo de una habitacion
+son quince casillas, y puestas como cubos la cuenta no sale: medido en una Mega
+Drive de verdad, 479 lineas de trabajo para las 262 que dura un frame, o sea el
+juego entero a la mitad de velocidad; en el Amiga y en el ST, la melodia pasaba
+de 16 notas de 16 a 8 y el jugador parpadeaba. Y no hacen falta: una pared del
+fondo esta **detras de todo** por definicion, nunca tapa a nadie. Asi que
+vienen pintadas en `sala:`, con una puerta en medio de cada una, y en el mapa
+se escriben con un simbolo que lleva `cubo: pintado`: para al que anda igual
+que un muro y no se dibuja nada encima. Donde esa puerta no lleva a ninguna
+parte se tapia con un cubo de muro de verdad, que es el unico de la pared. Con
+eso una habitacion cuesta cinco cubos en vez de veinte.
+
+**Y ademas se ha puesto barato lo que si es un cubo**, que es lo que deja sitio
+para amueblar una habitacion:
+
+- la fila de dibujado apunta la hondura de cada uno **una sola vez** por frame
+  en vez de preguntarla en cada comparacion (145 lineas de las 262 en la Mega
+  Drive, medidas), y lo que esta en otra habitacion ni entra en la fila;
+- donde cae cada cubo en la pantalla se saca **al montar la sala** y no en cada
+  frame: no se mueven mientras no cambies de habitacion (otras 35 lineas);
+- en el Amiga y en el ST los cubos se pintan **dentro del mapa de bits**, como
+  el suelo, y solo se vuelven a poner los que pisa un actor que se mueve. Un
+  cubo de 32x64 son ocho trozos que borrar y ocho que volver a pintar en cada
+  frame, y con cinco o seis por habitacion las dos maquinas perdian el frame.
+
+Medido en el juego de ejemplo, ahora: la Mega Drive, el Amiga, la Jaguar y la
+Neo Geo tocan las 16 notas de 16 de la melodia -o sea que van a 60- y el Atari
+ST, 13; la Neo Geo gasta 124.440 ciclos de los 200.000 que da un frame.
+
+**Y el editor edita habitaciones.** Al entrar no sale una cuadricula de tiles:
+salen las salas dibujadas en isometrica, con sus cubos y sus bichos puestos
+donde van a estar jugando, y el raton pincha en el rombo. La rejilla son los
+rombos de la planta y la paleta ensena cada casilla con su cubo y su altura
+-"solido: muro (alto 48)"-, que es lo que hace falta para no confundir una
+pared con un escalon. Todo lo demas del editor sigue igual, porque se sigue
+pintando sobre el mismo mapa de texto: mismo lapiz, mismo relleno, mismo
+deshacer.
+
+**El juego de ejemplo** es EL CASTILLO: dos niveles de seis habitaciones cada
+uno. El primero ensena el relieve -tres llaves repartidas y la salida al fondo-
+y el segundo anade el puzle: la salida esta detras de una puerta con un
+talisman grabado y el talisman esta en la otra punta del piso de arriba, asi
+que hay que cruzar el nivel entero, volver y bajar.
+
+**Dos cosas que estaban rotas y no se sabia:**
+
+- **La Mega Drive no sabia dibujar sprites de mas de una fila de tiles.** Un
+  actor de 16x32 o de 32x64 se pintaba con un sprite de mas de cuatro celdas de
+  alto, que el VDP recorta, y ademas con los datos entrelazados: salia una
+  columna de tiras sin sentido. No se habia notado porque hasta ahora todo lo
+  que traia el kit media una sola fila de tiles. Ahora los dibujos se guardan
+  en trozos de 32x32 -lo mas grande que cabe en un sprite- y se pintan uno por
+  trozo. Con dibujos de una fila el resultado es **byte por byte el mismo** que
+  antes y encima gasta menos sprites.
+- **Los tiles repetidos del tileset se guardaban tantas veces como aparecian.**
+  El suelo de una sala isometrica son 128 tiles del PNG y once distintos; ahora
+  se guarda uno de cada. Ahorra ROM en las siete maquinas -la Mega Drive baja
+  de 856 a 324 tiles de 8x8 en el juego de ejemplo- y es lo que hace que la
+  vista isometrica quepa en los 192 patrones de la PCG del X68000.
+
+**Y dos cosas mas que estaban mal:** al abrir un cerrojo su puerta se quedaba
+dibujada -y atravesable- hasta salir de la habitacion, porque los cubos de la
+sala se montaban una vez y no se volvian a mirar; y una sala con mas cubos de
+los que caben se quedaba **sin un solo cubo**, porque al llenarse la lista se
+salia sin apuntar cuantos habia.
+
+**Lo que se comprueba:** catorce pruebas de jugabilidad nuevas (el escalon que se
+sube andando, el cubo que hay que saltar, la pared que no, caerse al salir de
+un cubo, el impulso que se guarda, saltar por encima de un pincho y de un
+bicho, las salas que se montan y se desmontan, lo que no corre en la habitacion
+de al lado, la fila de dibujado, la pared pintada que para y no cuesta un cubo,
+lo que esta en otra sala y no entra en la fila, y la puerta que deja de
+dibujarse en cuanto se abre), tres de paridad C/JS -con un control que
+pone todo el relieve a cero y exige que entonces el jugador llegue mas lejos-,
+siete del editor isometrico, y el bot termina los dos castillos, con un control
+que quita el talisman del mapa y exige que entonces la puerta no se abra;
+ademas, una prueba de compilacion que exige que las paredes del castillo no
+cuesten un cubo y que ninguna habitacion pase de ocho.
 
 ## 1.24
 

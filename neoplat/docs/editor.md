@@ -51,6 +51,31 @@ dónde cae cada pantalla de 320×224, que es lo que se ve de golpe en la consola
 También puedes **alejar y acercar** (0,5× / 1:1 / 2×) y cambiar el tamaño del
 nivel con ± ancho y ± alto, que respetan la fila del suelo.
 
+### Un juego isométrico se edita por habitaciones
+
+Con `vista: isometrica` el mapa **no es lo que se ve**: es la planta de la sala,
+y lo que se dibuja son habitaciones. Así que el editor cambia dos cosas, y solo
+dos:
+
+- **dibuja lo mismo que el juego**: cada sala en isométrica, con su suelo, sus
+  cubos y sus bichos puestos donde van a estar jugando, y todas las salas del
+  nivel una al lado de otra. Las guías marcan dónde acaba cada habitación;
+- **traduce el ratón al revés**: pinchas en el rombo de una casilla y pinta esa
+  casilla. La rejilla (<kbd>G</kbd>) son los rombos de la planta, que es lo que
+  cuenta las casillas cuando el suelo va en diagonal.
+
+Todo lo demás sigue igual: el mismo lápiz, el mismo relleno, la misma selección,
+el mismo deshacer y el mismo `game.yaml`. Se está pintando sobre el mismo mapa
+de texto de siempre.
+
+En la **paleta**, cada casilla sale con **su cubo y su altura** —"sólido: muro
+(alto 48)", "sólido: losa (alto 16)"— y no con su `tile:`, que en esta vista es
+siempre el vacío y las dejaría todas en blanco. Es lo que hace falta para no
+confundir una pared con un escalón. Las que levantan y no traen cubo —las
+paredes del fondo, que ya vienen en el dibujo de la sala— salen en blanco a
+propósito y se llaman "sólido (alto 48) ya pintado": el dibujo de fondo ya las
+enseña puestas en su sitio.
+
 ## Nivel
 
 Nombre, color de fondo, música y qué capas de parallax usa. Y la gestión de

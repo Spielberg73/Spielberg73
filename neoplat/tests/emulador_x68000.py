@@ -150,7 +150,7 @@ def _esperar_al_juego(emu) -> bool:
 
 def comprobar(ejecutable: str, capturas: str = "capturas", musica=None,
               salto=None, pantallas: bool = False, parallax: bool = False,
-              titulo_musica: str = "") -> int:
+              titulo_musica: str = "", iso: bool = False) -> int:
     core = buscar_core(CORE, "NEOPLAT_CORE_X68000")
     if not core:
         print("el core de px68k no esta instalado: se salta la prueba")
@@ -194,7 +194,8 @@ def comprobar(ejecutable: str, capturas: str = "capturas", musica=None,
     if musica:
         comprobar_titulo(exigir, nivel(emu.escuchar(20)), titulo_musica)
     # el marcador va en el plano de texto, en las tres primeras filas de 8
-    exigir(len(set(franja(titulo, 8))) > 1, "no se ve el marcador arriba")
+    exigir(len(set(franja(titulo, 8))) > (0 if iso else 1),
+           "no se ve el marcador arriba")
     # Y el nombre del juego, que se escribe en la fila 2 y empieza siempre en
     # la columna 12 (o sea el pixel 96). Se mira donde empieza lo que se ve:
     # si empezara mas a la derecha es que le falta el principio, que es lo que
@@ -303,7 +304,7 @@ def comprobar(ejecutable: str, capturas: str = "capturas", musica=None,
     print("jugando: hasta un %.0f%% de la pantalla cambia entre tramos"
           % (movimiento * 100))
     if vigia:
-        comprobar_salto(vigia, exigir)
+        comprobar_salto(vigia, exigir, iso)
 
     # --- 5) sigue vivo ---------------------------------------------------
     ultimo = emu.frame
@@ -345,6 +346,7 @@ if __name__ == "__main__":
                        argumentos[1] if len(argumentos) > 1 else "capturas",
                        musica_al_empezar(p) if p else None,
                        p.sound.efectos.get("salto") if p else None,
+                       iso=bool(p and p.view == "iso"),
                        pantallas="--pantallas" in sys.argv[1:],
                        # el parallax solo se puede medir si el primer nivel
                        # lleva capa: la pantalla grafica dibuja una por nivel

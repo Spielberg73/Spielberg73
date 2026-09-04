@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, replace
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
-from . import (art, art_aventura, art_barrio, art_comando, art_hierro,
-               art_mazmorra,
+from . import (art, art_aventura, art_barrio, art_comando, art_filmation,
+               art_hierro, art_mazmorra,
                art_sonido)
 from .errors import ProjectError
 from .png import write_png
@@ -2308,6 +2308,411 @@ niveles:
 {niveles}"""
 
 
+
+# ------------------------------------------------------------- filmation
+#
+# Un juego isometrico no se dibuja: se **construye**. El mapa no es lo que se
+# ve, es la planta de la habitacion, y cada casilla ademas tiene una altura:
+# cero es suelo, 16 es un cubo al que se sube de un salto, 32 son dos alturas
+# -hay que subir por el cubo de al lado- y 48 es pared.
+#
+# Cada sala son 8x8 casillas y el nivel se reparte en salas enteras. La fila
+# de arriba y la columna de la izquierda son las **dos paredes del fondo**: en
+# pantalla caen detras de todo, y son las que hacen que una sala parezca una
+# habitacion y no un tablero flotando.
+#
+# Esas dos paredes vienen ya dibujadas en `sala:`, con una puerta en medio -la
+# casilla 4 de cada una-. Por eso el mapa las escribe con '#', que para pero no
+# dibuja nada, y solo pone un cubo de verdad ('M') donde esa puerta hay que
+# tapiarla. Es lo que hace que una habitacion cueste cuatro o cinco cubos en
+# vez de veinte, y con eso la Mega Drive va a 60.
+
+# Las salas se escriben de ocho en ocho lineas y luego se pegan: asi cada una
+# se lee entera de un vistazo, que es como se disena una habitacion. Escribir
+# el nivel como 16 filas de 24 caracteres seria lo mismo y no habria quien lo
+# mirara.
+def _salas(filas_de_salas: List[List[Tuple[str, ...]]]) -> List[str]:
+    filas: List[str] = []
+    for fila_de_salas in filas_de_salas:
+        for y in range(8):
+            filas.append("".join(sala[y] for sala in fila_de_salas))
+    return filas
+
+
+# --- nivel 1: el patio. Seis salas, tres llaves y la salida al fondo.
+_PATIO_A = (
+    "####M###",
+    "#.......",
+    "#..o....",
+    "#.......",
+    "M..P....",
+    "#....s..",
+    "#..o....",
+    "#..^....",
+)
+_PATIO_B = (
+    "####M###",
+    "#...A...",
+    "#..oO...",
+    "#.......",
+    "........",
+    "#....k..",
+    "#.......",
+    "#..^....",
+)
+_PATIO_C = (
+    "####M###",
+    "#.......",
+    "#...f...",
+    "#..OO...",
+    "........",
+    "#..oo...",
+    "#....k..",
+    "#.......",
+)
+_PATIO_D = (
+    "####.###",
+    "#.......",
+    "#.o.....",
+    "#.......",
+    "M....s..",
+    "#.......",
+    "#..A....",
+    "#.......",
+)
+_PATIO_E = (
+    "####.###",
+    "#.......",
+    "#.......",
+    "#....^^.",
+    "........",
+    "#.o.o...",
+    "#...k...",
+    "#.......",
+)
+_PATIO_F = (
+    "####M###",
+    "#.......",
+    "#...G...",
+    "#..ooo..",
+    "........",
+    "#.......",
+    "#...f...",
+    "#.......",
+)
+
+
+def _nivel_filmation_1() -> List[str]:
+    return _salas([[_PATIO_A, _PATIO_B, _PATIO_C],
+                   [_PATIO_D, _PATIO_E, _PATIO_F]])
+
+
+# --- nivel 2: las mazmorras. Aqui aparece el cerrojo, y con el la unica cosa
+# que un mapa de este genero puede pedir que no sea puntereia: **acordarse**.
+# La salida esta detras de una puerta con el talisman grabado, y el talisman
+# esta en la otra punta del piso de arriba, asi que hay que cruzar el nivel
+# entero, volver y bajar. Es el puzle mas viejo del genero y sigue funcionando.
+_MAZMORRA_A = (
+    "####M###",
+    "#.......",
+    "#..oo...",
+    "#..oO...",
+    "M..P....",
+    "#.......",
+    "#..s....",
+    "#.......",
+)
+_MAZMORRA_B = (
+    "####M###",
+    "#...A...",
+    "#.O...O.",
+    "#.......",
+    "....^...",
+    "#.O...O.",
+    "#....f..",
+    "#.......",
+)
+_MAZMORRA_C = (
+    "####M###",
+    "#.......",
+    "#..t....",
+    "#.......",
+    "........",
+    "#..oO...",
+    "#.......",
+    "#.......",
+)
+_MAZMORRA_D = (
+    "####.###",
+    "#.......",
+    "#..o....",
+    "#.......",
+    "M...s...",
+    "#.......",
+    "#.......",
+    "#.......",
+)
+_MAZMORRA_E = (
+    "####M###",
+    "#.......",
+    "#..oo...",
+    "#.......",
+    "....k...",
+    "#.......",
+    "#..A....",
+    "#.......",
+)
+# La sala de la salida: no se entra por arriba -su pared del fondo esta
+# entera- sino por el oeste, y ahi esta la puerta. Sin el talisman no hay
+# manera, y por eso el talisman esta donde esta.
+_MAZMORRA_F = (
+    "####M###",
+    "#.......",
+    "#...G...",
+    "#..ooo..",
+    "C.......",
+    "#.......",
+    "#..f....",
+    "#.......",
+)
+
+
+def _nivel_filmation_2() -> List[str]:
+    return _salas([[_MAZMORRA_A, _MAZMORRA_B, _MAZMORRA_C],
+                   [_MAZMORRA_D, _MAZMORRA_E, _MAZMORRA_F]])
+
+
+
+# La musica del genero: dos temas lentos, de castillo vacio. Aqui no hay
+# marcha ninguna -no se corre, se piensa-, asi que las dos van en notas largas
+# y con el bajo caminando por debajo.
+_MUSICA_FILMATION = """  musica:
+    castillo:
+      velocidad: 14
+      pistas:
+        - "la4 -  do5 -  mi5 -  do5 -  | si4 -  re5 -  fa5 -  re5 -"
+        - "la2 -  -   -  mi3 -  -   -  | si2 -  -   -  fa3 -  -   -"
+    cripta:
+      velocidad: 16
+      pistas:
+        - "re4 -  fa4 -  la4 -  fa4 -  | do4 -  mi4 -  sol4 - mi4 -"
+        - "re2 -  -   -  la2 -  -   -  | do3 -  -   -  sol2 - -   -"
+"""
+
+
+GAME_YAML_FILMATION = """# Proyecto NeoPlat isometrico: un juego al estilo Knight Lore.
+#
+#   ngplat probar     -> abre el preview jugable en el navegador
+#   ngplat compilar   -> genera el proyecto en C y las ROMs graficas
+#
+# Esto no se ve de lado ni desde arriba: se ve **una habitacion desde una
+# esquina**. Y de ahi salen las cuatro reglas del genero:
+#
+#   1. el mapa no es lo que se ve: es la **planta** de la sala. Cada casilla
+#      lleva un `alto:` y con ese numero se escribe todo -0 es suelo, 16 un
+#      cubo al que se sube de un salto, 32 dos alturas y 48 una pared-;
+#   2. el mando va a la planta y no a la pantalla: derecha es el eje x del
+#      mapa, que en pantalla sale hacia abajo y a la derecha. Las diagonales
+#      del mando dan los cuatro lados rectos de la pantalla;
+#   3. el salto **no se manda en el aire**. Al despegar se decide adonde vas y
+#      hasta caer no se cambia: cada salto es una decision;
+#   4. la camara ensena la sala en la que estas y salta a la siguiente cuando
+#      cruzas. Una sala son 8x8 casillas.
+#
+# Y lo que se dibuja de fondo no es el mapa: es `sala:`, un trozo del tileset
+# con el suelo de una habitacion que el compilador pega en cada una. Repintalo
+# y cambia el castillo entero.
+
+juego:
+  titulo: "{titulo}"
+  autor: "{autor}"
+  vidas: 3
+  tiempo: 0            # segundos por nivel (0 = sin limite)
+  vista: isometrica    # una sala vista desde una esquina
+  camara: pantallas    # sin scroll: cada sala es una pantalla
+  amiga: 32colores
+  fondo: "#101018"
+
+jugador:
+  sprite: graficos/heroe.png
+  frame: [16, 32]      # alto, para que quepa de pie sobre un cubo
+  # La caja aqui es la **planta**: lo que ocupa en el suelo, no lo que mide de
+  # alto. Diez por diez deja pasar por un hueco de una casilla sin rozarse.
+  caja: [10, 10]
+  velocidad: 1.0
+  aceleracion: 0.6
+  friccion: 0.6
+  # Estos tres numeros **son** el diseno del juego, asi que ojo al tocarlos:
+  #
+  #   * el salto llega a 23 pixeles, o sea que sube a un cubo de 16 y no a uno
+  #     de 32: para llegar arriba hay que buscar el escalon;
+  #   * dura 26 frames y en ellos se avanza vez y media una casilla, que es lo
+  #     justo para caer **encima** del cubo de al lado. Con un salto mas largo
+  #     te pasarias de largo y no habria forma de subirse a nada.
+  salto: 3.6
+  gravedad: 0.28
+  max_caida: 6.0
+  pisar_enemigos: no   # aqui no se mata nada: a los bichos se les esquiva
+  vida: 3
+  invulnerable: 90
+  retroceso: 1.0
+  aturdido: 14
+  animaciones:
+    # 'abajo' es de frente y 'arriba' de espaldas: con esos dos dibujos y el
+    # espejo del motor salen los cuatro lados de la planta.
+    quieto: {{frames: [0], velocidad: 30}}
+    abajo:  {{frames: [1, 0, 2, 0], velocidad: 8}}
+    arriba: {{frames: [4, 3, 5, 3], velocidad: 8}}
+    correr: {{frames: [1, 0, 2, 0], velocidad: 8}}
+    saltar: {{frames: [6]}}
+    caer:   {{frames: [6]}}
+    dano:   {{frames: [7]}}
+
+tiles:
+  imagen: graficos/tiles.png
+  # La habitacion dibujada: 16x11 tiles del tileset (256x176 pixeles) que el
+  # compilador pega en **todas** las salas a partir del tile de pantalla
+  # (2, 2). Trae las dos paredes del fondo y el suelo de 8x8 casillas. Sin esto
+  # un juego isometrico no compila: es lo unico que se dibuja de fondo, y
+  # repintarlo cambia el castillo entero.
+  sala: {{tile: 16, ancho: 16, alto: 11, x: 2, y: 2}}
+  leyenda:
+    # `alto:` es el relieve de la casilla y `cubo:` con que se dibuja. El
+    # numero de `tile:` no se usa en esta vista -el escenario no sale del
+    # mapa-, asi que van todos a 0.
+    '.': {{tile: 0, tipo: vacio}}
+    'o': {{tile: 0, tipo: solido, alto: 16, cubo: losa}}
+    'O': {{tile: 0, tipo: solido, alto: 32, cubo: pilar}}
+    # La pared del fondo: para, pero **no se dibuja**, porque ya viene en el
+    # dibujo de 'sala:'. Cada cubo cuesta ordenarlo y pintarlo en cada frame, y
+    # las quince casillas de pared de una habitacion son justo lo que separa a
+    # la Mega Drive de ir a 60 o a 30. Y ademas no hace falta: la pared del
+    # fondo esta detras de todo por definicion, nunca tapa a nadie.
+    '#': {{tile: 0, tipo: solido, alto: 48, cubo: pintado}}
+    # ...y este es el mismo muro pero de verdad: tapa el hueco que 'sala:'
+    # dibuja en medio de cada pared. Se pone donde no hay puerta a la sala de
+    # al lado. Vale igual para un muro suelto dentro de la habitacion.
+    'M': {{tile: 0, tipo: solido, alto: 48, cubo: muro}}
+    'A': {{tile: 0, tipo: solido, alto: 16, cubo: antorcha}}
+    '^': {{tile: 0, tipo: peligro, cubo: pinchos}}
+    'G': {{tile: 0, tipo: meta, cubo: salida}}
+    # El cerrojo: no se pasa hasta que llegas con el talisman. Al abrirlo se
+    # gasta y el hueco se queda abierto para siempre.
+    'C': {{tile: 0, tipo: cerrojo, alto: 48, cubo: puerta, abre_con: talisman}}
+
+# Los cubos: el dibujo de una casilla levantada. Un cubo de `alto` pixeles se
+# dibuja en 32 x (alto + 16) y se apoya en el centro de abajo del cuadro, asi
+# que la caja va siempre [16, 16] con desplazamiento [8, alto - 8].
+cubos:
+  losa:
+    sprite: graficos/losa.png
+    frame: [32, 32]
+    caja: [16, 16]
+    desplazamiento: [8, 8]
+  pilar:
+    sprite: graficos/pilar.png
+    frame: [32, 48]
+    caja: [16, 16]
+    desplazamiento: [8, 24]
+  muro:
+    sprite: graficos/muro.png
+    frame: [32, 64]
+    caja: [16, 16]
+    desplazamiento: [8, 40]
+  puerta:
+    sprite: graficos/puerta.png
+    frame: [32, 64]
+    caja: [16, 16]
+    desplazamiento: [8, 40]
+  antorcha:
+    sprite: graficos/antorcha.png
+    frame: [32, 32]
+    caja: [16, 16]
+    desplazamiento: [8, 8]
+  # Los dos rasos: no levantan nada, asi que su dibujo es el propio rombo del
+  # suelo. Van como cubo igual porque asi entran en la fila de profundidad y
+  # el heroe los pisa por delante.
+  pinchos:
+    sprite: graficos/pinchos.png
+    frame: [32, 16]
+    caja: [16, 16]
+    desplazamiento: [8, -8]
+  salida:
+    sprite: graficos/salida.png
+    frame: [32, 16]
+    caja: [16, 16]
+    desplazamiento: [8, -8]
+
+# Los bichos. Aqui no se les mata: se les esquiva, y por eso lo que importa de
+# cada uno es **como ocupa el sitio**. La arana anda por la planta y te obliga
+# a rodearla; el fantasma flota subiendo y bajando, asi que a veces se salta
+# por encima y a veces no.
+enemigos:
+  arana:
+    sprite: graficos/arana.png
+    caja: [12, 12]
+    comportamiento: patrulla
+    velocidad: 0.35
+    puntos: 100
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 14}}
+      correr: {{frames: [0, 1], velocidad: 8}}
+  fantasma:
+    sprite: graficos/fantasma.png
+    caja: [12, 12]
+    comportamiento: volador
+    velocidad: 0.45
+    # En esta vista `amplitud:` es lo que **flota**: sube y baja entre el suelo
+    # y el doble de ese numero. Con 12 pasa justo por encima de un cubo.
+    amplitud: 12
+    periodo: 120
+    puntos: 200
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 10}}
+
+objetos:
+  llave:
+    sprite: graficos/llave.png
+    caja: [12, 10]
+    puntos: 100
+    efecto: llave
+    cantidad: 1
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 12}}
+  # 'efecto: llevar' no hace nada al cogerlo: se guarda en la bolsa y sirve
+  # para abrir lo que lo pida. El boton de accion lo suelta.
+  talisman:
+    sprite: graficos/talisman.png
+    caja: [12, 10]
+    marcador: TALIS
+    puntos: 200
+    efecto: llevar
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 10}}
+
+# Sonido. En un castillo vacio lo que hay que oir son cuatro cosas: el salto,
+# coger, abrir y el golpe. Todo lo demas sobra.
+sonido:
+  efectos:
+    empezar: {{notas: "la4 do5 mi5 la5", velocidad: 6}}
+    salto:   {{tipo: barrido, desde: 220, hasta: 700, duracion: 6}}
+    moneda:  {{notas: "mi6 la6", velocidad: 4}}
+    control: {{notas: "do5 sol5 do6 mi6", velocidad: 5}}
+    golpe:   {{tipo: ruido, duracion: 12, tono: 12}}
+    muerte:  {{notas: "la4 fa4 re4 la3", velocidad: 8}}
+    meta:    {{notas: "la4 do5 mi5 la5 do6", velocidad: 6}}
+{musica}
+# Simbolos del mapa que colocan bichos y objetos.
+spawns:
+  s: arana
+  f: fantasma
+  k: llave
+  t: talisman
+
+niveles:
+{niveles}"""
+
+
 # --------------------------------------------------------------- generos
 #
 # El **genero** decide como se juega y el **estilo** como se ve: son dos ejes
@@ -2620,7 +3025,7 @@ def _genero_castlevania(nombres: Dict[str, str]) -> Genero:
 
 
 GENEROS = ("plataformas", "castlevania", "comando", "mazmorra",
-           "barrio", "aventura")
+           "barrio", "aventura", "filmation")
 
 # Como se llama cada cosa en cada estilo de dibujo.
 _NOMBRES = {
@@ -2694,6 +3099,21 @@ def _genero_aventura(nombres: Dict[str, str], estilo: str) -> Genero:
     )
 
 
+def _genero_filmation(nombres: Dict[str, str], estilo: str) -> Genero:
+    """El de Knight Lore: una habitacion vista desde una esquina.
+
+    Como los otros cuatro de vista propia, trae su plantilla entera en vez de
+    armarse a trozos. De este objeto solo se usa como se llama y que promete.
+    """
+    return replace(
+        _genero_plataformas(nombres, estilo),
+        nombre="filmation",
+        titulo="filmation",
+        resumen=("una habitacion vista desde una esquina: cubos a los que "
+                 "subirse, salas que se cruzan y un salto que no se manda."),
+    )
+
+
 def genero_de(nombre: str, estilo: str) -> Genero:
     nombres = _NOMBRES[estilo]
     if nombre == "castlevania":
@@ -2706,6 +3126,8 @@ def genero_de(nombre: str, estilo: str) -> Genero:
         return _genero_barrio(nombres, estilo)
     if nombre == "aventura":
         return _genero_aventura(nombres, estilo)
+    if nombre == "filmation":
+        return _genero_filmation(nombres, estilo)
     return _genero_plataformas(nombres, estilo)
 
 
@@ -2791,6 +3213,12 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
     elif genero == "aventura":
         dibujos = dict(dibujos)
         dibujos.update(art_aventura.todos(estilo))
+    elif genero == "filmation":
+        # Aqui no sirve **nada** del estilo: ni el heroe de perfil, ni los
+        # tiles de plataformas, ni los bichos. Un juego isometrico se dibuja
+        # entero de otra manera.
+        dibujos = dict(dibujos)
+        dibujos.update(art_filmation.todos(estilo))
     for relativo, imagen in dibujos.items():
         ruta = os.path.join(destino, relativo)
         write_png(ruta, imagen)
@@ -2858,6 +3286,29 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
         contenido = GAME_YAML_AVENTURA.format(
             titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles,
             musica=_MUSICA_AVENTURA)
+        with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
+                  newline="\n") as fh:
+            fh.write(contenido)
+        creados.append("game.yaml")
+        with open(os.path.join(destino, ".gitignore"), "w", encoding="utf-8",
+                  newline="\n") as fh:
+            fh.write("build/\npreview.html\n.neoplat/\n")
+        creados.append(".gitignore")
+        return creados
+
+    if genero == "filmation":
+        # Seis salas por nivel, en dos filas de tres. Se empieza en la de
+        # arriba a la izquierda y la salida esta en la de abajo a la derecha:
+        # hay que cruzar el castillo entero, y por el camino estan las llaves.
+        niveles = (
+            _nivel_yaml("EL PATIO", _nivel_filmation_1(), "#101018",
+                        musica="castillo", llaves=3)
+            + _nivel_yaml("LAS MAZMORRAS", _nivel_filmation_2(), "#0c0c14",
+                          musica="cripta", llaves=1)
+        )
+        contenido = GAME_YAML_FILMATION.format(
+            titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles,
+            musica=_MUSICA_FILMATION)
         with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
                   newline="\n") as fh:
             fh.write(contenido)

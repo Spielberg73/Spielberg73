@@ -51,3 +51,23 @@ def guardar_png(frame, ruta):
     imagen = Image(ancho, alto, [(r, g, b, 255) for (r, g, b) in pixeles])
     with open(ruta, "wb") as fh:
         fh.write(encode_png(imagen))
+
+
+# --- lo que la vista isometrica cambia de todo esto ------------------------
+#
+# Una habitacion vista desde una esquina es un suelo de losas, dos paredes y el
+# fondo: cuatro o cinco tonos, y encima el marcador en blanco sobre el fondo.
+# Los numeros de arriba estan puestos para un bosque o una calle, donde detras
+# del marcador hay escenario; aqui no lo hay, y exigirlos no comprobaria que el
+# juego dibuja sino que el juego es de otro genero. Estos son los mismos dos
+# limites medidos en un castillo: en las seis maquinas salen 7 u 8 colores de
+# titulo y 2 tonos en la franja del marcador.
+
+def minimo_de_colores(iso: bool) -> int:
+    """Cuantos colores prueban que la pantalla de titulo esta dibujando."""
+    return 4 if iso else 8
+
+
+def minimo_del_marcador(iso: bool) -> int:
+    """Cuantos tonos prueban que la franja de arriba lleva marcador."""
+    return 1 if iso else 2

@@ -263,5 +263,40 @@ class TestEditorConCerrojos(unittest.TestCase):
         self.assertEqual(resultado.returncode, 0, resultado.stdout + resultado.stderr)
 
 
+class TestEditorFilmation(unittest.TestCase):
+    """El editor con un juego isometrico.
+
+    Es el unico genero en el que el mapa **no es lo que se ve**: lo que se
+    escribe son alturas y lo que se dibuja son habitaciones en isometrica. El
+    editor tiene que traducir el raton al reves y ensenar en la paleta el cubo
+    de cada casilla, y las dos cosas se comprueban aparte."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not shutil.which("node"):
+            raise unittest.SkipTest("node no esta instalado")
+        from ngplat.scaffold import crear_proyecto
+        cls.tmp = tempfile.mkdtemp(prefix="neoplat-editor-filmation-")
+        proyecto = os.path.join(cls.tmp, "filmation")
+        crear_proyecto(proyecto, "CASTILLO", "TEST", genero="filmation")
+        datos = build_data(build_project(load_project(proyecto)))
+        for hoja in datos["sheets"].values():
+            hoja["url"] = ""
+        cls.datos = os.path.join(cls.tmp, "datos.json")
+        with open(cls.datos, "w", encoding="utf-8") as fh:
+            json.dump(datos, fh)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(getattr(cls, "tmp", ""), ignore_errors=True)
+
+    def test_el_editor_edita_salas_isometricas(self):
+        resultado = subprocess.run(
+            ["node", os.path.join(KIT, "tests", "editor_filmation.js"), self.datos],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(resultado.returncode, 0, resultado.stdout + resultado.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

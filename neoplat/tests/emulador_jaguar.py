@@ -22,6 +22,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from camara import Vigia, comprobar_salto  # noqa: E402
+from imagen import minimo_de_colores, minimo_del_marcador  # noqa: E402
 from sonido import (banda_del_efecto, comprobar_melodia, comprobar_titulo,  # noqa: E402
                     nivel, pico_por_frame)
 from libretro import (Emulador, buscar_core, colores, distintos,  # noqa: E402
@@ -37,7 +38,7 @@ FPS = 60
 
 def comprobar(rom: str, capturas: str = "capturas",
               pantallas: bool = False, musica=None, salto=None,
-              titulo_musica: str = "") -> int:
+              titulo_musica: str = "", iso: bool = False) -> int:
     core = buscar_core(CORE, "NEOPLAT_CORE_JAGUAR")
     if not core:
         print("el core de Virtual Jaguar no esta instalado: se salta la prueba")
@@ -59,11 +60,12 @@ def comprobar(rom: str, capturas: str = "capturas",
     exigir(titulo is not None, "el emulador no ha dibujado ningun frame")
     guardar_png(titulo, os.path.join(capturas, "jag_titulo.png"))
     tonos = colores(titulo)
-    exigir(len(tonos) > 6,
+    exigir(len(tonos) > minimo_de_colores(iso),
            "la pantalla de titulo solo tiene %d colores: no esta dibujando"
            % len(tonos))
     print("titulo: %dx%d con %d colores" % (titulo[0], titulo[1], len(tonos)))
-    exigir(len(set(franja(titulo, 32))) > 2, "no se ve el marcador arriba")
+    exigir(len(set(franja(titulo, 32))) > minimo_del_marcador(iso),
+           "no se ve el marcador arriba")
     if musica:
         comprobar_titulo(exigir, nivel(emu.escuchar(20)), titulo_musica)
 
@@ -125,7 +127,7 @@ def comprobar(rom: str, capturas: str = "capturas",
     print("jugando: hasta un %.0f%% de la pantalla cambia entre tramos"
           % (movimiento * 100))
     if vigia:
-        comprobar_salto(vigia, exigir)
+        comprobar_salto(vigia, exigir, iso)
 
     # --- 4) el marcador se ve una vez, no dos ---------------------------
     #
@@ -187,6 +189,7 @@ if __name__ == "__main__":
     from sonido import musica_al_empezar
     sys.exit(comprobar(rom, sys.argv[2] if len(sys.argv) > 2 else "capturas",
                        pantallas=bool(p and p.camera == "pantallas"),
+                       iso=bool(p and p.view == "iso"),
                        musica=musica_al_empezar(p) if p else None,
                        salto=p.sound.efectos.get("salto") if p else None,
                        titulo_musica=p.sound.titulo if p else ""))

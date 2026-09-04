@@ -126,7 +126,8 @@ class NeoGeo(Sistema):
         build.font = gfx.build_font(rom)
         build.hud_palette = rom.add_palette(gfx.hud_palette())
         build.paletas = [p.words() for p in rom.palettes]
-        build.tile_gfx = [build.tileset.first_tile + t.index for t in build.tiles]
+        build.tile_gfx = [build.tileset.first_tile + build.tileset_remap[t.index]
+                          for t in build.tiles]
         build.info = {
             "stats": {
                 "tiles_sprite": rom.sprite_tiles,

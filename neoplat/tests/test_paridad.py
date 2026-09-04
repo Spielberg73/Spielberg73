@@ -135,13 +135,25 @@ class TestParidad(unittest.TestCase):
         cls.variantes["nidos-dormidos"] = cls._preparar("scroll",
                                                         genero="mazmorra",
                                                         nidos_dormidos=True)
+        # La isometrica: la tercera coordenada es de verdad -el suelo tiene
+        # relieve-, el mapa que se pisa no es el que se dibuja, los cubos de la
+        # sala se montan y se desmontan al cruzar una puerta y hasta los
+        # jugadores entran en la fila de dibujado. Es la vista que mas cosas
+        # hace distintas de todas, asi que es la que mas falta hace comparar.
+        cls.variantes["iso"] = cls._preparar("pantallas", genero="filmation")
+        # La misma sala con todo el relieve a cero: sin cubos, sin escalones y
+        # sin nada a lo que subirse. Sirve de control -si las dos trazas de
+        # arriba fueran iguales a estas, el relieve no estaria haciendo nada-.
+        cls.variantes["iso-llano"] = cls._preparar("pantallas",
+                                                   genero="filmation",
+                                                   sin_relieve=True)
 
     @classmethod
     def _preparar(cls, camara, jefe=False, dos=False, golpe=False, llave=False,
                   tablon=False, genero="plataformas", sin_dibujo=False,
                   cenital=False, nidos_dormidos=False, cinta=False,
                   combo=False, agarre=False, sin_llave=False,
-                  sin_golpe=False):
+                  sin_golpe=False, sin_relieve=False):
         proyecto_dir = os.path.join(
             cls.tmp, "juego-" + camara + ("-jefe" if jefe else "")
             + ("-dos" if dos else "") + ("-golpe" if golpe else "")
@@ -154,6 +166,7 @@ class TestParidad(unittest.TestCase):
             + ("-dormidos" if nidos_dormidos else "")
             + ("-sinllave" if sin_llave else "")
             + ("-singolpe" if sin_golpe else "")
+            + ("-llano" if sin_relieve else "")
             + ("-" + genero if genero != "plataformas" else ""))
         crear_proyecto(proyecto_dir, "PARIDAD", "TEST", genero=genero)
         yaml = os.path.join(proyecto_dir, "game.yaml")
@@ -163,10 +176,10 @@ class TestParidad(unittest.TestCase):
         # anadir otra, o el lector se queda con la ultima
         # El genero de aventura sale ya con la camara de pantallas: es media
         # gracia del genero, asi que ahi no se cambia.
-        if genero == "aventura":
+        if genero in ("aventura", "filmation"):
             assert "  camara: pantallas" in texto, \
-                "el genero de aventura ya no trae la camara de pantallas"
-        else:
+                "el genero '%s' ya no trae la camara de pantallas" % genero
+        elif True:
             assert "  camara: scroll" in texto, "el andamiaje ya no trae la camara"
             texto = texto.replace("  camara: scroll", "  camara: " + camara, 1)
         if dos:
@@ -266,6 +279,19 @@ class TestParidad(unittest.TestCase):
             marca = "    golpe:\n"
             assert texto.count(marca) == 3, "el barrio ya no trae tres golpes"
             texto = texto.replace(marca, "    sin_golpe:\n")
+        if sin_relieve:
+            # el mismo castillo sin relieve: todo lo que levantaba se queda a
+            # ras de suelo y sin cubo, asi que no hay nada a lo que subirse ni
+            # nada que tape a nadie
+            for marca in ("'o': {tile: 0, tipo: solido, alto: 16, cubo: losa}",
+                          "'O': {tile: 0, tipo: solido, alto: 32, cubo: pilar}",
+                          "'#': {tile: 0, tipo: solido, alto: 48, cubo: pintado}",
+                          "'M': {tile: 0, tipo: solido, alto: 48, cubo: muro}",
+                          "'A': {tile: 0, tipo: solido, alto: 16, cubo: antorcha}"):
+                assert marca in texto, "la leyenda isometrica ya no dice: " + marca
+                simbolo = marca.split(":")[0]
+                texto = texto.replace(
+                    marca, "%s: {tile: 0, tipo: vacio}" % simbolo, 1)
         if sin_llave:
             # se quita la llave del primer nivel dejando el mapa igual: la
             # puerta sigue ahi y el camino tambien, lo unico que falta es con
@@ -542,6 +568,56 @@ class TestParidad(unittest.TestCase):
         self.assertGreater(parados, 20,
                            "solo %d frames parados: el impacto no congela nada"
                            % parados)
+
+    def test_misma_traza_en_la_isometrica(self):
+        """La vista isometrica mete cuatro cosas que no hay en ninguna otra: el
+        suelo con relieve -por el que se anda, se sube y se cae-, un mapa que
+        no es el que se dibuja, los cubos de la sala montandose y
+        desmontandose al cruzar una puerta, y una fila de dibujado en la que
+        entran hasta los jugadores. Las cuatro corren cada frame."""
+        for semilla in (1, 7, 99):
+            self._comparar("iso", semilla)
+
+    def test_el_relieve_frena(self):
+        """Control del anterior: el mismo castillo con todo a ras de suelo.
+
+        Se anda hacia el norte y nada mas. Con relieve, el cubo que hay dos
+        casillas mas arriba **para** al jugador; sin relieve no hay cubo, no
+        hay pared y no hay nada, asi que sigue hasta el borde del mapa. Si el
+        `alto:` de la leyenda no hiciera nada, las dos partidas acabarian en el
+        mismo sitio y las pruebas de paridad de arriba estarian comparando dos
+        motores que no hacen nada."""
+        entradas = [(IN_START, 0)] * 3 + [(IN_UP, 0)] * 240
+        con_c, con_js = self._trazas_de("iso", entradas, "relieve-si")
+        sin_c, sin_js = self._trazas_de("iso-llano", entradas, "relieve-no")
+        self.assertEqual(con_c, con_js)
+        self.assertEqual(sin_c, sin_js)
+        # la columna 2 es la y del jugador, y hacia el norte va bajando
+        con_y = min(int(l.split()[2]) for l in con_c)
+        sin_y = min(int(l.split()[2]) for l in sin_c)
+        self.assertGreater(
+            con_y, sin_y,
+            "con relieve y sin el se llega igual de lejos (y=%d y y=%d): el "
+            "`alto:` de la leyenda no esta frenando nada" % (con_y, sin_y))
+
+    def test_al_cambiar_de_sala_cambian_los_cubos(self):
+        """Cruzar una puerta desmonta los cubos de la sala y monta los de la
+        siguiente. Va en el hash de entidades de la traza, asi que si las dos
+        implementaciones no montaran lo mismo -o no en el mismo orden- se
+        separarian en el primer cruce.
+
+        Se comprueba que el cruce **pasa** en la partida que se compara: si el
+        jugador no llegara a salir de la primera habitacion, la prueba de
+        paridad de arriba no estaria mirando nada de esto."""
+        entradas = [(IN_START, 0)] * 3 + [(IN_RIGHT, 0)] * 300
+        traza_c, traza_js = self._trazas_de("iso", entradas, "sala")
+        self.assertEqual(traza_c, traza_js)
+        # la columna 1 es la x del jugador: al cruzar pasa de la primera sala
+        # (0..127 pixeles de planta) a la segunda
+        xs = [int(l.split()[1]) for l in traza_c]
+        self.assertGreater(max(xs), 128,
+                           "el jugador no ha salido de la primera sala: "
+                           "llego a x=%d" % max(xs))
 
     def test_misma_traza_en_la_aventura(self):
         """El genero de aventura mete tres cosas en el bucle del jugador: la

@@ -49,6 +49,15 @@
   var KIND_ENEMY_SHOT = 7;      /* lo que tira un enemigo con `dispara:` */
   var KIND_PRISONER = 8;        /* el rehen: se suelta tocandolo */
   var KIND_GENERATOR = 9;       /* el nido: saca bichos hasta que lo rompes */
+  /* El cubo de la vista isometrica: escenario que se dibuja como entidad para
+     que entre en su sitio en la fila de profundidad. */
+  var KIND_BLOQUE = 10;
+  /* La vista isometrica: una sala son 8x8 casillas (128x128 px de planta) y se
+     proyecta en rombos de 32x16. Los mismos numeros que np_types.h. */
+  var SALA = 8, SALA_PX = 128, SALA_SHIFT = 7;
+  var ISO_OX = 160, ISO_OY = 64;
+  var ESCALON = 6;              /* lo que se sube andando */
+  var ISO_PISA = 6;             /* lo cerca del suelo que hay que estar */
   /* el arma secundaria: 0 ninguna, 1 recta, 2 en arco */
   var SUB_NONE = 0, SUB_LINE = 1, SUB_ARC = 2;
   /* lo que se aparta un maton despues de pegarte, en frames (np_world.c) */
@@ -123,6 +132,10 @@
     /* Cuantos enemigos pegan ahora mismo, los frames de parada al acertar y
        los que tiembla la camara. Igual que en NpWorld. */
     this.atacando = 0; this.congelado = 0; this.sacudida = 0;
+    /* La sala que se esta viendo y cuantos cubos suyos hay montados (solo la
+       vista isometrica). Igual que en NpWorld. */
+    this.salaX = -1; this.salaY = -1; this.bloquesN = 0;
+    this.bloquesAbiertos = 0;
     this.sub = 0;                 /* el arma secundaria que se lleva */
     this.bossHealth = 0; this.bossMax = 0;
     /* El punto de control tocado en este nivel, en casillas. `checkOn` a cero
@@ -179,7 +192,14 @@
     /* La cinta es una vista cenital que ademas salta: el movimiento, la
        punteria y el empujon de los golpes son los mismos. Igual que
        np_vista_cenital en C, que tambien vale 1 con `vista: cinta`. */
-    return !!(this.data.view === "cenital" || this.data.view === "cinta");
+    return !!(this.data.view === "cenital" || this.data.view === "cinta"
+              || this.data.view === "iso");
+  };
+
+  /* La isometrica: se anda por la planta de una sala y se salta de cubo en
+     cubo. Igual que np_vista_iso. */
+  World.prototype.iso = function () {
+    return this.data.view === "iso";
   };
 
   World.prototype.cinta = function () {
@@ -188,12 +208,14 @@
 
   World.prototype.tileKindAt = function (tx, ty) {
     var lv = this.level;
-    if (tx < 0 || tx >= lv.width) return TILE_SOLID;
+    /* Ojo con las medidas: cells_w y cells_h son las del mapa que se pisa, que
+       en la isometrica no es el que se ve. Igual que np_tile_kind_at. */
+    if (tx < 0 || tx >= lv.cells_w) return TILE_SOLID;
     /* De lado, arriba hay cielo y abajo un abismo. Desde arriba el mapa es
        una caja cerrada y sus cuatro lados son pared. */
-    if (ty < 0 || ty >= lv.height)
+    if (ty < 0 || ty >= lv.cells_h)
       return this.cenital() ? TILE_SOLID : TILE_EMPTY;
-    return this.data.tiles.kind[lv.cells[ty * lv.width + tx]];
+    return this.data.tiles.kind[lv.cells[ty * lv.cells_w + tx]];
   };
 
   /* Lo mismo, pero contando los cerrojos ya abiertos: una puerta abierta es
@@ -202,7 +224,7 @@
   World.prototype.tileVisto = function (tx, ty) {
     var kind = this.tileKindAt(tx, ty);
     if (kind !== TILE_LOCK) return kind;
-    var casilla = ty * this.level.width + tx;
+    var casilla = ty * this.level.cells_w + tx;
     for (var i = 0; i < this.abiertos.length; i++)
       if (this.abiertos[i] === casilla) return TILE_EMPTY;
     return kind;
@@ -211,12 +233,15 @@
   World.prototype.tileGfxAt = function (tx, ty) {
     var lv = this.level;
     if (tx < 0 || tx >= lv.width || ty < 0 || ty >= lv.height) return -1;
+    /* En la isometrica el escenario que se dibuja no es el mapa: es el suelo
+       de las salas, que ya viene en numeros de tile. */
+    if (this.iso()) return lv.fondo[ty * lv.width + tx];
     /* Una puerta abierta se ve por lo que hay detras: el aire. Igual que
        np_tile_gfx_at en C. */
     if (this.abiertos.length && this.tileKindAt(tx, ty) === TILE_LOCK
         && this.tileVisto(tx, ty) === TILE_EMPTY)
       return this.data.tiles.gfx_vacio || 0;
-    return this.data.tiles.gfx[lv.cells[ty * lv.width + tx]];
+    return this.data.tiles.gfx[lv.cells[ty * lv.cells_w + tx]];
   };
 
   /* Un cerrojo frena como una pared hasta que se abre: en cuanto se abre,
@@ -230,6 +255,85 @@
     if (by + I2F(bh) <= ay) return false;
     return true;
   }
+
+  /* --- la vista isometrica ------------------------------------------
+   *
+   * El mapa es la planta de la sala y cada casilla ademas levanta: lo que te
+   * frena no es el tipo de la casilla de al lado sino lo alto que esta
+   * comparada con tus pies. Traduccion literal del bloque del mismo nombre de
+   * engine/core/np_world.c. */
+
+  World.prototype.celdaAlto = function (cx, cy) {
+    var lv = this.level;
+    if (cx < 0 || cx >= lv.cells_w) return I2F(255);
+    if (cy < 0 || cy >= lv.cells_h) return I2F(255);
+    if (this.abiertos.length && this.tileVisto(cx, cy) === TILE_EMPTY
+        && this.tileKindAt(cx, cy) === TILE_LOCK) return 0;
+    return I2F(this.data.tiles.alto[lv.cells[cy * lv.cells_w + cx]]);
+  };
+
+  World.prototype.isoChoca = function (cx, cy, pies) {
+    return this.celdaAlto(cx, cy) > pies + I2F(ESCALON);
+  };
+
+  /* El suelo que hay debajo de una caja: la casilla mas alta que pisa. */
+  World.prototype.isoSuelo = function (x, y, bw, bh) {
+    var cx0 = F2I(x) >> TILE_SHIFT, cx1 = F2I(x + I2F(bw) - 1) >> TILE_SHIFT;
+    var cy0 = F2I(y) >> TILE_SHIFT, cy1 = F2I(y + I2F(bh) - 1) >> TILE_SHIFT;
+    var alto = 0, cx, cy;
+    for (cy = cy0; cy <= cy1; cy++)
+      for (cx = cx0; cx <= cx1; cx++) {
+        var h = this.celdaAlto(cx, cy);
+        if (h > alto) alto = h;
+      }
+    return alto;
+  };
+
+  /* Andar por la planta con el relieve delante. Un solo bucle para los dos
+     ejes, como np_iso_move: en la planta no hay un eje que sea el del suelo. */
+  World.prototype.isoMove = function (x, y, bw, bh, paso, pies, eje, out) {
+    var movil = eje ? y : x;
+    var quieto = eje ? x : y;
+    var tam = eje ? bh : bw;
+    var otroTam = eje ? bw : bh;
+    out.hit = 0;
+    while (paso !== 0) {
+      var trozo = clamp(paso, -SUBSTEP, SUBSTEP);
+      var a0, a1, c, borde, choca = false;
+      paso -= trozo;
+      movil += trozo;
+      a0 = F2I(quieto) >> TILE_SHIFT;
+      a1 = F2I(quieto + I2F(otroTam) - 1) >> TILE_SHIFT;
+      borde = (trozo > 0) ? (F2I(movil + I2F(tam) - 1) >> TILE_SHIFT)
+                          : (F2I(movil) >> TILE_SHIFT);
+      for (c = a0; c <= a1; c++) {
+        var cx = eje ? c : borde, cy = eje ? borde : c;
+        if (this.isoChoca(cx, cy, pies)) { choca = true; break; }
+      }
+      if (choca) {
+        movil = (trozo > 0) ? I2F(borde * TILE - tam) : I2F((borde + 1) * TILE);
+        out.hit = 1;
+        paso = 0;
+      }
+    }
+    return movil;
+  };
+
+  /* Donde cae en la pantalla un actor: la esquina de arriba a la izquierda de
+     su dibujo, sin restar la camara. Gemelo de np_pantalla. */
+  World.prototype.pantalla = function (x, y, altura, def) {
+    if (!this.iso())
+      return { sx: F2I(x) - def.box_x, sy: F2I(y) - def.box_y };
+    /* Solo cuenta el sitio dentro de la sala: todas se dibujan en el mismo
+       cuadro y la camara no se mueve. Igual que np_pantalla. */
+    var px = F2I(x) + idiv(def.box_w, 2);
+    var py = F2I(y) + idiv(def.box_h, 2);
+    var lx = px & (SALA_PX - 1), ly = py & (SALA_PX - 1);
+    return {
+      sx: ISO_OX + (lx - ly) - (def.box_x + idiv(def.box_w, 2)),
+      sy: ISO_OY + ((lx + ly) >> 1) - F2I(altura) - (def.box_y + def.box_h)
+    };
+  };
 
   World.prototype.moveX = function (x, y, bw, bh, dx, out) {
     out.hit = 0;
@@ -311,6 +415,7 @@
     if (e.kind === KIND_ENEMY_SHOT) return this.data.enemy_shots[e.def];
     if (e.kind === KIND_PRISONER) return this.data.prisoners[e.def];
     if (e.kind === KIND_GENERATOR) return this.data.generators[e.def];
+    if (e.kind === KIND_BLOQUE) return this.data.bloques[e.def];
     return this.data.items[e.def];
   };
 
@@ -345,6 +450,9 @@
        sitio ocupado. En C es el mismo bucle sobre las 64 ranuras. */
     this.entities = [];
     this.entityCount = 0;
+    /* y con ellas se van los cubos de la sala, que se vuelven a montar en
+       cuanto la camara diga en cual estamos */
+    this.bloquesN = 0;
     for (i = 0; i < lv.spawns.length && this.entityCount < MAX_ENTITIES; i++) {
       var s = lv.spawns[i];
       var e = {
@@ -358,6 +466,12 @@
         /* el luchador: en que fase va y a quien ha tocado **su** golpe */
         fase: LUCHA_IR, tocado: 0, aturdido: 0
       };
+      /* En la isometrica todo se apoya en el relieve: una llave puesta encima
+         de un cubo sale encima del cubo. Igual que np_spawn_entities. */
+      if (this.iso()) {
+        var da = this.entityDef(e).actor;
+        e.altura = this.isoSuelo(e.x, e.y, da.box_w, da.box_h);
+      }
       if (e.kind === KIND_ENEMY) {
         var ed = this.data.enemies[e.def];
         e.health = ed.health;
@@ -422,6 +536,11 @@
     this.state = STATE.PLAY;
     this.stateTimer = 0;
     this.spawnEntities();
+    /* Nadie ha estado nunca en la sala -1: con eso la camara ve un cambio de
+       sala en su primera vuelta y monta los cubos de la de verdad. */
+    this.salaX = -1;
+    this.salaY = -1;
+    this.cameraUpdate();
   };
 
   /* Cuantos siguen en juego y no se estan muriendo. */
@@ -497,7 +616,10 @@
      que en C, o la paridad falla. */
   World.prototype.huecoLibre = function () {
     var i;
-    for (i = 0; i < this.entities.length; i++) {
+    /* Los cubos de la sala ocupan el final de la lista y no son huecos libres
+       aunque lo parezcan. Igual que np_hueco_libre. */
+    var tope = this.entities.length - this.bloquesN;
+    for (i = 0; i < tope; i++) {
       if (!this.entities[i].active) {
         if (i >= this.entityCount) this.entityCount = i + 1;
         return i;
@@ -1332,6 +1454,97 @@
     animTick(a, p);
   };
 
+  /* --- el jugador isometrico ----------------------------------------
+   *
+   * Se anda por la planta de la sala en las cuatro direcciones del mapa -que
+   * en pantalla salen en diagonal- y se salta de verdad: la altura es la
+   * tercera coordenada y el suelo es el relieve de las casillas. Traduccion
+   * literal de np_player_update_iso. */
+  World.prototype.playerUpdateIso = function (quien, input) {
+    var d = this.data.player, a = d.actor, p = this.players[quien];
+    var dx = 0, dy = 0, pose, cota;
+    var out = {};
+
+    /* Si no estas por el aire, estas de pie: sin esto un jugador recien
+       colocado -que viene con onGround a cero- no podria saltar en su primer
+       frame. Igual que np_player_update_iso. */
+    if (p.altura <= 0 && p.valtura <= 0) {
+      p.altura = 0;
+      p.valtura = 0;
+      p.onGround = 1;
+    }
+
+    if (p.stun) { p.stun--; input = 0; }
+    else {
+      if (input & IN.RIGHT) dx += 1;
+      if (input & IN.LEFT) dx -= 1;
+      if (input & IN.DOWN) dy += 1;
+      if (input & IN.UP) dy -= 1;
+    }
+
+    /* Por el aire manda el impulso con el que despegaste. */
+    if (p.onGround) {
+      if (dx || dy) {
+        p.aim = aimDe(dx, dy);
+        p.vx = pasoCenital(d.speed, dx, dx && dy);
+        p.vy = pasoCenital(d.speed, dy, dx && dy);
+        /* el espejo se mira por donde cae en la pantalla (x - y) */
+        p.facing = (dx - dy > 0) ? 1 : 0;
+      } else if (p.stun) {
+        p.vx = approach(p.vx, 0, d.friction);
+        p.vy = approach(p.vy, 0, d.friction);
+      } else { p.vx = 0; p.vy = 0; }
+    }
+
+    if (!p.stun && (input & IN.JUMP) && !(this.prevInput[quien] & IN.JUMP)
+        && p.onGround) {
+      p.valtura = d.jump;
+      p.onGround = 0;
+      this.sfx |= SFX.JUMP;
+    }
+    if (!p.onGround) {
+      p.altura += p.valtura;
+      p.valtura -= d.gravity;
+      if (p.valtura < -d.max_fall) p.valtura = -d.max_fall;
+    }
+
+    var chocoX, chocoY;
+    p.x = this.isoMove(p.x, p.y, a.box_w, a.box_h, p.vx, p.altura, 0, out);
+    chocoX = out.hit;
+    p.y = this.isoMove(p.x, p.y, a.box_w, a.box_h, p.vy, p.altura, 1, out);
+    chocoY = out.hit;
+    /* Chocar solo te para de pie: por el aire el impulso se guarda aunque de
+       momento no quepas. Igual que np_player_update_iso. */
+    if (p.onGround) {
+      if (chocoX) p.vx = 0;
+      if (chocoY) p.vy = 0;
+    }
+
+    cota = this.isoSuelo(p.x, p.y, a.box_w, a.box_h);
+    if (p.valtura <= 0 && p.altura <= cota) {
+      p.altura = cota;
+      p.valtura = 0;
+      p.onGround = 1;
+    } else if (p.altura > cota) {
+      p.onGround = 0;
+    }
+
+    p.jumpsLeft = 0;
+    p.stairs = 0;
+    p.crouch = 0;
+    p.riding = 0;
+
+    this.playerAction(quien, input);
+    if (p.invuln) p.invuln--;
+
+    if (p.attackTimer) pose = ANIM_ATTACK;
+    else if (!p.onGround) pose = (p.valtura > 0) ? ANIM_JUMP : ANIM_FALL;
+    else if (!dx && !dy) pose = ANIM_IDLE;
+    else pose = (dx + dy < 0) ? ANIM_UP : ANIM_DOWN;
+    animSet(p, pose);
+    animTick(a, p);
+  };
+
   World.prototype.playerUpdate = function (quien, input) {
     var d = this.data.player, a = d.actor, p = this.players[quien];
     var dir = 0;
@@ -1778,7 +1991,12 @@
         e.vx = e.facing ? d.speed : -d.speed;
         e.timer = (e.timer + 1) % period;
         var phase = this.data.sin[(idiv(e.timer * 64, period)) & 63];
-        e.y = e.homeY + ((d.amplitude * phase) >> FIX_SHIFT);
+        /* En la isometrica lo que sube y baja es la altura, no la fila del
+           mapa: un bicho que flota sobre los cubos. Igual que en C. */
+        if (this.iso())
+          e.altura = d.amplitude + ((d.amplitude * phase) >> FIX_SHIFT);
+        else
+          e.y = e.homeY + ((d.amplitude * phase) >> FIX_SHIFT);
         break;
       }
       case AI_CHASER: {
@@ -1822,6 +2040,24 @@
     if (d.behavior !== AI_FLYER && !this.cenital()) {
       e.vy += d.gravity;
       if (e.vy > ENTITY_FALL) e.vy = ENTITY_FALL;
+    }
+
+    if (this.iso()) {
+      /* Por la planta, con el relieve delante: un cubo frena a un bicho igual
+         que a ti. Igual que np_enemy_update. */
+      e.x = this.isoMove(e.x, e.y, a.box_w, a.box_h, e.vx, e.altura, 0, moveOut);
+      if (moveOut.hit) { e.facing = e.facing ? 0 : 1; e.vx = 0; }
+      e.y = this.isoMove(e.x, e.y, a.box_w, a.box_h, e.vy, e.altura, 1, moveOut);
+      if (moveOut.hit) e.vy = 0;
+      if (d.behavior !== AI_FLYER)
+        e.altura = this.isoSuelo(e.x, e.y, a.box_w, a.box_h);
+      animSet(e, (e.vx || e.vy) ? ANIM_RUN : ANIM_IDLE);
+      animTick(a, e);
+      if (d.shot) {
+        if (e.vida) e.vida--;
+        else this.enemyShoot(e, d);
+      }
+      return;
     }
 
     e.x = this.moveX(e.x, e.y, a.box_w, a.box_h, e.vx, moveOut);
@@ -1992,8 +2228,9 @@
       for (;;) {
         x += pasos[d][0];
         y += pasos[d][1];
-        if (x < 0 || y < 0 || x >= this.level.width || y >= this.level.height) break;
-        var casilla = y * this.level.width + x;
+        if (x < 0 || y < 0 || x >= this.level.cells_w
+            || y >= this.level.cells_h) break;
+        var casilla = y * this.level.cells_w + x;
         if (this.level.cells[casilla] !== tile) break;
         if (this.tileVisto(x, y) !== TILE_LOCK) break;
         if (!this.apuntarAbierta(casilla)) return;
@@ -2005,10 +2242,10 @@
     if (!this.data.bolsa_activa) return;
     for (var ty = ty0; ty <= ty1; ty++) {
       for (var tx = tx0; tx <= tx1; tx++) {
-        if (tx < 0 || ty < 0 || tx >= this.level.width
-            || ty >= this.level.height) continue;
+        if (tx < 0 || ty < 0 || tx >= this.level.cells_w
+            || ty >= this.level.cells_h) continue;
         if (this.tileVisto(tx, ty) !== TILE_LOCK) continue;
-        var casilla = ty * this.level.width + tx;
+        var casilla = ty * this.level.cells_w + tx;
         var pide = this.data.tiles.need[this.level.cells[casilla]];
         if (!pide) continue;
         var hueco = this.bolsaBusca(pide - 1);
@@ -2061,6 +2298,12 @@
         if (!overlap(p.x, this.playerTop(quien), pa.box_w,
                      this.playerHeight(quien),
                      e.x, e.y, ea.box_w, ea.box_h)) continue;
+        /* En la isometrica hay que cruzarse tambien en altura: saltar por
+           encima de un bicho es esquivarlo. Igual que np_touch_entities. */
+        if (this.iso()) {
+          var huecoZ = p.altura - e.altura;
+          if (huecoZ > I2F(12) || huecoZ < -I2F(12)) continue;
+        }
         if (e.kind === KIND_SHOT || e.kind === KIND_SUBSHOT)
           continue;                              /* es tuyo: no te toca */
         if (e.kind === KIND_MELEE) continue;     /* es tu propio latigo */
@@ -2128,23 +2371,76 @@
      vista de cinta -donde los actores se pisan a cada rato y hay un "detras"
      de verdad- y en el orden de la lista en las demas. Gemelo de
      np_orden_dibujo, para que el preview reparta como las siete maquinas. */
+  /* La hondura de un puesto: cuanto mas grande, mas cerca de quien mira y mas
+     tarde se dibuja. Igual que np_hondura. */
+  World.prototype.hondura = function (puesto) {
+    if (puesto >= MAX_ENTITIES) {
+      var p = this.players[puesto - MAX_ENTITIES];
+      return this.iso() ? (p.x + p.y + (p.altura >> 3)) : (p.y + p.altura);
+    }
+    var e = this.entities[puesto];
+    return this.iso() ? (e.x + e.y + (e.altura >> 3)) : (e.y + e.altura);
+  };
+
   World.prototype.ordenDibujo = function () {
     var orden = [], i;
-    for (i = 0; i < this.entityCount; i++)
-      if (this.entities[i].active) orden.push(i);
-    if (!this.cinta()) return orden;
-    var ents = this.entities;
+    var iso = this.iso();
+    for (i = 0; i < this.entityCount; i++) {
+      if (!this.entities[i].active) continue;
+      /* Lo que esta en otra habitacion no se dibuja, asi que tampoco entra en
+         la fila ni se ordena. */
+      if (iso && !this.enLaSala(this.entities[i])) continue;
+      orden.push(i);
+    }
+    if (!this.cinta() && !iso) return orden;
+    if (iso) {
+      /* Los cubos de la sala, que viven al final de la lista, del ultimo hacia
+         atras: asi salen en orden de profundidad. Y los jugadores, que en esta
+         vista entran en la fila porque hay un detras de verdad. */
+      for (i = 0; i < this.bloquesN; i++) orden.push(MAX_ENTITIES - 1 - i);
+      for (i = 0; i < MAX_PLAYERS; i++) orden.push(MAX_ENTITIES + i);
+    }
     for (i = 1; i < orden.length; i++) {
       var sitio = orden[i];
-      var suelo = ents[sitio].y + ents[sitio].altura;
+      var hondo = this.hondura(sitio);
       var j = i - 1;
-      while (j >= 0 && ents[orden[j]].y + ents[orden[j]].altura > suelo) {
+      while (j >= 0 && this.hondura(orden[j]) > hondo) {
         orden[j + 1] = orden[j];
         j--;
       }
       orden[j + 1] = sitio;
     }
     return orden;
+  };
+
+  /* Que se dibuja en un puesto de la fila y donde cae (sin restar la camara).
+     Devuelve null cuando ahi no hay nada que pintar. Gemelo de np_dibujo. */
+  /* Esta esa entidad en la sala que se esta viendo? */
+  World.prototype.enLaSala = function (e) {
+    var px = Math.max(0, F2I(e.x)), py = Math.max(0, F2I(e.y));
+    return (px >> SALA_SHIFT) === this.salaX && (py >> SALA_SHIFT) === this.salaY;
+  };
+
+  World.prototype.dibujo = function (puesto) {
+    var def, punto;
+    if (puesto >= MAX_ENTITIES) {
+      var quien = puesto - MAX_ENTITIES;
+      var p = this.players[quien];
+      if (!this.playerVisible(quien)) return null;
+      def = this.data.player.actor;
+      punto = this.pantalla(p.x, p.y, p.altura, def);
+      return { def: def, sx: punto.sx, sy: punto.sy,
+               frame: actorFrame(def, p.anim, p.animFrame), flip: !p.facing };
+    }
+    var e = this.entities[puesto];
+    if (!e || !e.active) return null;
+    if (e.hurt && (this.frame & 1)) return null;
+    /* Lo que esta en otra habitacion caeria encima de esta: no se pinta. */
+    if (this.iso() && !this.enLaSala(e)) return null;
+    def = this.entityDef(e).actor;
+    punto = this.pantalla(e.x, e.y, e.altura, def);
+    return { def: def, sx: punto.sx, sy: punto.sy,
+             frame: actorFrame(def, e.anim, e.animFrame), flip: !e.facing };
   };
 
   /* Queda alguien vivo en la pantalla? Es de lo que vive el genero de tortas:
@@ -2162,7 +2458,85 @@
     return false;
   };
 
+  /* Montar los cubos de la sala que se esta viendo. Van al final de la lista
+     -de MAX_ENTITIES hacia atras- y por diagonales, o sea en orden de
+     profundidad. Gemelo de np_bloques_sala. */
+  World.prototype.bloquesSala = function () {
+    var lv = this.level, i;
+    var baseX = this.salaX * SALA, baseY = this.salaY * SALA;
+    var tope = MAX_ENTITIES - this.entityCount;
+    var nn = 0, d, cy;
+    for (i = 0; i < this.bloquesN; i++)
+      this.entities[MAX_ENTITIES - 1 - i].active = 0;
+    this.bloquesN = 0;
+    if (!this.iso()) return;
+    /* la lista tiene que llegar hasta el final para poder poner cubos ahi */
+    while (this.entities.length < MAX_ENTITIES)
+      this.entities.push({ active: 0, kind: KIND_SHOT, def: 0, x: 0, y: 0,
+        homeX: 0, homeY: 0, vx: 0, vy: 0, facing: 0, anim: ANIM_IDLE,
+        animFrame: 0, animTimer: 0, hurt: 0, timer: 0, health: 1, vida: 0,
+        knock: 0, golpeado: 0, altura: 0, valtura: 0, fase: LUCHA_IR,
+        tocado: 0, aturdido: 0 });
+    for (d = 0; d <= (SALA - 1) * 2; d++) {
+      for (cy = 0; cy < SALA; cy++) {
+        var cx = d - cy;
+        if (cx < 0 || cx >= SALA) continue;
+        if (nn >= tope) { this.bloquesN = nn;
+                          this.bloquesAbiertos = this.abiertos.length; return; }
+        var mx = baseX + cx, my = baseY + cy;
+        if (mx < 0 || mx >= lv.cells_w || my < 0 || my >= lv.cells_h) continue;
+        var tile = lv.cells[my * lv.cells_w + mx];
+        var cubo = this.data.tiles.bloque[tile];
+        if (!cubo) continue;
+        if (this.data.tiles.kind[tile] === TILE_LOCK
+            && this.tileVisto(mx, my) === TILE_EMPTY) continue;
+        var e = this.entities[MAX_ENTITIES - 1 - nn];
+        nn++;
+        e.active = 1; e.kind = KIND_BLOQUE; e.def = cubo - 1;
+        e.x = I2F(mx * TILE); e.y = I2F(my * TILE);
+        e.homeX = e.x; e.homeY = e.y;
+        e.vx = 0; e.vy = 0; e.altura = 0; e.valtura = 0;
+        e.vida = 0; e.timer = 0;
+        e.anim = ANIM_IDLE; e.animFrame = 0; e.animTimer = 0;
+        e.facing = 1; e.health = 1; e.hurt = 0; e.knock = 0;
+        e.golpeado = 0; e.fase = LUCHA_IR; e.tocado = 0; e.aturdido = 0;
+      }
+    }
+    this.bloquesN = nn;
+    this.bloquesAbiertos = this.abiertos.length;
+  };
+
+  /* La camara isometrica no sigue a nadie: ensena la sala en la que estas.
+     Gemela de np_camara_iso. */
+  World.prototype.camaraIso = function () {
+    var a = this.data.player.actor;
+    var p = this.players[0], i;
+    for (i = 0; i < MAX_PLAYERS; i++)
+      if (this.players[i].playing) { p = this.players[i]; break; }
+    var px = F2I(p.x) + idiv(a.box_w, 2);
+    var py = F2I(p.y) + idiv(a.box_h, 2);
+    if (px < 0) px = 0;
+    if (py < 0) py = 0;
+    var sx = px >> SALA_SHIFT, sy = py >> SALA_SHIFT;
+    var salasX = Math.max(1, idiv(this.level.cells_w, SALA));
+    var salasY = Math.max(1, idiv(this.level.cells_h, SALA));
+    sx = clamp(sx, 0, salasX - 1);
+    sy = clamp(sy, 0, salasY - 1);
+    /* Al abrir un cerrojo la puerta pasa a ser un hueco: hay que rehacer los
+       cubos o la puerta se quedaria dibujada hasta salir de la habitacion. */
+    if (sx !== this.salaX || sy !== this.salaY
+        || this.bloquesAbiertos !== this.abiertos.length) {
+      this.salaX = sx;
+      this.salaY = sy;
+      this.bloquesSala();
+    }
+    /* La camara se queda quieta: lo que cambia es lo que hay dentro. */
+    this.camX = 0;
+    this.camY = 0;
+  };
+
   World.prototype.cameraUpdate = function () {
+    if (this.iso()) { this.camaraIso(); return; }
     var a = this.data.player.actor;
     var maxX = this.level.width * TILE - SCREEN_W;
     var maxY = this.level.height * TILE - SCREEN_H;
@@ -2217,7 +2591,7 @@
   World.prototype.playersInView = function () {
     var a = this.data.player.actor, i;
     var izquierda = this.camX, derecha = this.camX + SCREEN_W - a.box_w;
-    if (this.playerCount < 2) return;
+    if (this.playerCount < 2 || this.iso()) return;
     for (i = 0; i < MAX_PLAYERS; i++) {
       var p = this.players[i];
       if (!p.playing || p.dying) continue;
@@ -2286,6 +2660,7 @@
          que en np_play_step: asi la serie va igual en las dos. */
       if (jugador.comboTimer) jugador.comboTimer--;
       if (jugador.dying) this.playerFalling(quien);
+      else if (this.iso()) this.playerUpdateIso(quien, mandos[quien]);
       else if (this.cinta()) this.playerUpdateCinta(quien, mandos[quien]);
       else if (this.cenital()) this.playerUpdateCenital(quien, mandos[quien]);
       else this.playerUpdate(quien, mandos[quien]);
@@ -2294,8 +2669,16 @@
     for (i = 0; i < this.entityCount; i++) {
       var e = this.entities[i];
       if (!e.active) continue;
-      var dx = F2I(e.x) - this.camX;
-      if (dx < -CULL_MARGIN || dx > SCREEN_W + CULL_MARGIN) {
+      if (e.kind === KIND_BLOQUE) continue;   /* los cubos no hacen nada */
+      var fuera;
+      if (this.iso()) {
+        /* Aqui "fuera de la vista" es "en otra habitacion". Igual que en C. */
+        fuera = !this.enLaSala(e);
+      } else {
+        var dx = F2I(e.x) - this.camX;
+        fuera = (dx < -CULL_MARGIN || dx > SCREEN_W + CULL_MARGIN);
+      }
+      if (fuera) {
         /* Lejos de la vista, los enemigos se quedan en pausa y los
            proyectiles se apagan: uno que sale de la pantalla ya no vuelve. */
         if (e.kind === KIND_SHOT || e.kind === KIND_SUBSHOT) {
@@ -2335,7 +2718,10 @@
     for (quien = 0; quien < MAX_PLAYERS; quien++) {
       var q = this.players[quien];
       if (!q.playing || q.dying) continue;
-      if (this.boxTouches(q.x + I2F(HAZARD_INSET_X),
+      /* Saltando por encima de un pincho no pasa nada: en la isometrica la
+         altura es de verdad. Igual que en C. */
+      if ((!this.iso() || q.altura <= I2F(ISO_PISA)) &&
+          this.boxTouches(q.x + I2F(HAZARD_INSET_X),
                           this.playerTop(quien) + I2F(HAZARD_INSET_Y),
                           pa.box_w - HAZARD_INSET_X * 2,
                           this.playerHeight(quien) - HAZARD_INSET_Y,
@@ -2349,11 +2735,14 @@
       /* La meta solo se abre si se llevan las llaves que pide el nivel. Las
          llaves son de la partida, no de cada jugador. */
       if (this.keys >= (this.level.keys_needed || 0) &&
+          (!this.iso() || q.altura <= I2F(ISO_PISA)) &&
           this.boxTouches(q.x, q.y, pa.box_w, pa.box_h, TILE_GOAL)) {
         this.finishLevel();            /* llega uno, se acaba para los dos */
         return;
       }
-      if (F2I(q.y) > (this.level.height + 2) * TILE) this.playerHurt(quien, 99);
+      /* Caerse del mapa: en la isometrica no hay de donde caerse. */
+      if (!this.iso() && F2I(q.y) > (this.level.height + 2) * TILE)
+        this.playerHurt(quien, 99);
     }
     if (this.state !== STATE.PLAY) return;
 

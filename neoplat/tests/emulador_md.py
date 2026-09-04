@@ -16,6 +16,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from libretro import (Emulador, buscar_core, colores, distintos,  # noqa: E402
                       franja, guardar_png)
+from imagen import minimo_de_colores, minimo_del_marcador  # noqa: E402
 from camara import Vigia, comprobar_salto  # noqa: E402
 from sonido import (banda_del_efecto, comprobar_melodia, comprobar_titulo,  # noqa: E402
                     nivel, pico_por_frame)
@@ -25,7 +26,8 @@ FPS = 60
 
 
 def comprobar(rom: str, capturas: str = "capturas", musica=None,
-              salto=None, pantallas: bool = False, titulo_musica: str = "") -> int:
+              salto=None, pantallas: bool = False, titulo_musica: str = "",
+              iso: bool = False) -> int:
     core = buscar_core(CORE, "NEOPLAT_CORE_MD")
     if not core:
         print("el core de Genesis Plus GX no esta instalado: se salta la prueba")
@@ -49,12 +51,13 @@ def comprobar(rom: str, capturas: str = "capturas", musica=None,
     exigir(titulo[0] == 320 and titulo[1] == 224,
            "la pantalla mide %dx%d y deberia ser 320x224" % (titulo[0], titulo[1]))
     distintos_titulo = colores(titulo)
-    exigir(len(distintos_titulo) > 8,
+    exigir(len(distintos_titulo) > minimo_de_colores(iso),
            "la pantalla de titulo solo tiene %d colores: no esta dibujando"
            % len(distintos_titulo))
     print("titulo: %dx%d con %d colores" % (titulo[0], titulo[1], len(distintos_titulo)))
     # el marcador vive en las tres primeras filas (plano ventana)
-    exigir(len(set(franja(titulo, 24))) > 2, "no se ve el marcador arriba")
+    exigir(len(set(franja(titulo, 24))) > minimo_del_marcador(iso),
+           "no se ve el marcador arriba")
     comprobar_titulo(exigir, nivel(emu.escuchar(30)), titulo_musica)
 
     # --- 2) empieza la partida ------------------------------------------
@@ -74,7 +77,8 @@ def comprobar(rom: str, capturas: str = "capturas", musica=None,
     # Se escucha nada mas empezar el nivel y sin tocar el mando: los efectos
     # comparten canal con la musica y taparian las notas.
     if musica:
-        exigir(nivel(emu.escuchar(10)) > 1.0, "la consola no saca ningun sonido")
+        exigir(nivel(emu.escuchar(max(10, musica.velocidad))) > 1.0,
+               "la consola no saca ningun sonido")
         oido = emu.escuchar(musica.velocidad * (len(musica.pistas[0]) + 1))
         aciertos, total, _, notas = comprobar_melodia(oido, emu.ritmo, musica, FPS)
         exigir(total and aciertos >= total * 0.8,
@@ -119,7 +123,7 @@ def comprobar(rom: str, capturas: str = "capturas", musica=None,
     print("jugando: hasta un %.0f%% de la pantalla cambia entre tramos"
           % (movimiento * 100))
     if vigia:
-        comprobar_salto(vigia, exigir)
+        comprobar_salto(vigia, exigir, iso)
 
     # --- 5) sigue vivo al final -----------------------------------------
     ultimo = emu.frame
@@ -153,4 +157,5 @@ if __name__ == "__main__":
                        musica_al_empezar(p) if p else None,
                        p.sound.efectos.get("salto") if p else None,
                        pantallas=bool(p and p.camera == "pantallas"),
+                       iso=bool(p and p.view == "iso"),
                        titulo_musica=p.sound.titulo if p else ""))

@@ -22,10 +22,21 @@ function fx(v) { return Math.round(v * F); }
 var LEYENDA = { ".": 0, "#": 1, "=": 2, "^": 3, "G": 4, "/": 5, "\\": 6, "!": 7,
                 /* las dos puertas de las aventuras: "L" la abre la llave y
                    "Y" el tablon (los objetos 5 y 6 de la lista) */
-                "L": 8, "Y": 9 };
-var TIPOS = [0, 1, 2, 3, 4, 6, 7, 8, 9, 9];
+                "L": 8, "Y": 9,
+                /* Y el relieve de la vista isometrica: un escalon que se sube
+                   andando, un cubo al que hay que saltar y una pared. Son
+                   `solido` de toda la vida; lo que cambia es lo que levantan */
+                "b": 10, "c": 11, "W": 12,
+                /* y la pared que **no se dibuja**, porque ya viene en el
+                   dibujo de la sala: levanta lo mismo que "W" y no trae cubo */
+                "p": 13 };
+var TIPOS = [0, 1, 2, 3, 4, 6, 7, 8, 9, 9, 1, 1, 1, 1];
 /* que objeto abre cada tile: el objeto mas uno, 0 = no es cerrojo */
-var NECESITA = [0, 0, 0, 0, 0, 0, 0, 0, 6, 7];
+var NECESITA = [0, 0, 0, 0, 0, 0, 0, 0, 6, 7, 0, 0, 0, 0];
+/* lo que levanta cada tile (solo lo mira la vista isometrica) y con que cubo
+   se dibuja: el indice en `bloques` mas uno, 0 = no se dibuja */
+var ALTOS =   [0, 0, 0, 0, 0, 0, 0, 0, 48, 48, 4, 16, 48, 48];
+var BLOQUES = [0, 0, 0, 0, 0, 0, 0, 0,  1,  1, 1,  1,  1,  0];
 
 function anim(frames, speed) {
   return { frames: frames, count: frames.length, speed: speed || 8, loop: 1 };
@@ -51,13 +62,19 @@ function datos(filas, opciones) {
   var enemigo = actor(12, 12), objeto = actor(10, 10);
   var tablon = actor(opciones.tablonAncho || 32, 6);
   var candelabro = actor(12, 14);
+  /* En la isometrica la caja es la **planta** de lo que se ocupa, no un cuerpo
+     apoyado en una linea de suelo: va centrada en la casilla por los dos ejes,
+     igual que hace el compilador. */
+  function abajo(y, caja) {
+    return opciones.iso ? y * 16 + ((16 - caja) >> 1) : y * 16 + 16 - caja;
+  }
   for (var y = 0; y < alto; y++) {
     for (var x = 0; x < ancho; x++) {
       var ch = filas[y][x];
-      if (ch === "P") { start = [x * 16 + 2, y * 16 + 16 - jugador.box_h]; ch = "."; }
-      else if (ch === "e") { spawns.push([x * 16 + 2, y * 16 + 16 - enemigo.box_h, 0, 0]); ch = "."; }
-      else if (ch === "v") { spawns.push([x * 16 + 2, y * 16 + 16 - enemigo.box_h, 0, 1]); ch = "."; }
-      else if (ch === "o") { spawns.push([x * 16 + 3, y * 16 + 16 - objeto.box_h, 1, 0]); ch = "."; }
+      if (ch === "P") { start = [x * 16 + 2, abajo(y, jugador.box_h)]; ch = "."; }
+      else if (ch === "e") { spawns.push([x * 16 + 2, abajo(y, enemigo.box_h), 0, 0]); ch = "."; }
+      else if (ch === "v") { spawns.push([x * 16 + 2, abajo(y, enemigo.box_h), 0, 1]); ch = "."; }
+      else if (ch === "o") { spawns.push([x * 16 + 3, abajo(y, objeto.box_h), 1, 0]); ch = "."; }
       else if (ch === "k") { spawns.push([x * 16 + 3, y * 16 + 16 - objeto.box_h, 1, 1]); ch = "."; }
       else if (ch === "M") { spawns.push([x * 16 + 3, y * 16 + 16 - objeto.box_h, 1, 3]); ch = "."; }
       else if (ch === "H") { spawns.push([x * 16 + 3, y * 16 + 16 - objeto.box_h, 1, 4]); ch = "."; }
@@ -87,8 +104,9 @@ function datos(filas, opciones) {
     bolsa_activa: opciones.bolsa ? 1 : 0,
     /* desde donde se mira: con "cenital" no hay gravedad y se anda en
        ocho direcciones */
-    view: opciones.cinta ? "cinta"
-        : (opciones.cenital ? "cenital" : "lateral"),
+    view: opciones.iso ? "iso"
+        : (opciones.cinta ? "cinta"
+        : (opciones.cenital ? "cenital" : "lateral")),
     player: {
       actor: jugador,
       speed: fx(opciones.speed || 1.6), accel: fx(0.3), friction: fx(0.35),
@@ -262,10 +280,20 @@ function datos(filas, opciones) {
       axis: opciones.tablonEje === "vertical" ? 1 : 0,
       name: "tablon"
     }],
-    tiles: { kind: TIPOS, gfx: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-             need: NECESITA },
+    tiles: { kind: TIPOS, gfx: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0],
+             need: NECESITA, alto: ALTOS, bloque: BLOQUES,
+             sala: { tile: 0, ancho: 1, alto: 1, x: 0, y: 0 } },
+    /* el cubo con el que se dibuja una casilla levantada: aqui solo hace
+       falta que exista, porque las pruebas no dibujan nada */
+    bloques: [{ actor: actor(16, 16), name: "cubo" }],
     levels: [{
-      name: "TEST", width: ancho, height: alto, cells: celdas,
+      name: "TEST",
+      /* Lo que se dibuja y lo que se pisa. Fuera de la isometrica son lo
+         mismo; alli lo que se ve es una sala y lo que se pisa es la planta. */
+      width: opciones.iso ? 20 : ancho, height: opciones.iso ? 14 : alto,
+      cells_w: ancho, cells_h: alto,
+      fondo: opciones.iso ? new Array(20 * 14).fill(0) : [],
+      cells: celdas,
       spawns: spawns, start: start, background: "#000000",
       keys_needed: opciones.llaves || 0,
       music: opciones.musicaNivel || 0
@@ -2892,6 +2920,297 @@ prueba("con pantallas, la camara no se sale del nivel", function () {
     w.step(NP.IN.RIGHT);
     assert.ok(w.camX >= 0 && w.camX <= 60 * 16 - 320, "camara fuera: " + w.camX);
   }
+});
+
+/* ------------------------------------------- la vista isometrica
+ *
+ * Aqui la tercera coordenada es de verdad: el suelo tiene relieve y lo que te
+ * frena no es el tipo de la casilla de al lado sino lo alto que esta. Estas
+ * pruebas son las de esa regla, que es la que sostiene el genero entero.
+ *
+ * El mapa de estas pruebas es una sala de 8x8 con el jugador en el centro, y
+ * los simbolos del relieve son: "b" un escalon de 4 (se sube andando), "c" un
+ * cubo de 16 (hay que saltarlo) y "W" una pared de 48.
+ */
+
+function sala(extra) {
+  var filas = [];
+  for (var y = 0; y < 8; y++) filas.push("........");
+  (extra || []).forEach(function (par) {   // [fila, columna, simbolo]
+    var f = filas[par[0]].split("");
+    f[par[1]] = par[2];
+    filas[par[0]] = f.join("");
+  });
+  return filas;
+}
+
+function isoMundo(extra, opciones) {
+  opciones = opciones || {};
+  opciones.iso = true;
+  opciones.pantallas = true;
+  if (opciones.jump === undefined) opciones.jump = 3.6;
+  if (opciones.gravity === undefined) opciones.gravity = 0.28;
+  if (opciones.speed === undefined) opciones.speed = 1.0;
+  return mundo(sala(extra), opciones);
+}
+
+/* Lo mas alto a lo que llego el jugador en toda la tirada. Se mide asi -y no
+   al final- porque andando se pasa por encima de un cubo y se sale por el otro
+   lado: preguntar al final contaria donde acabo, no si se subio. */
+function isoCorrer(w, frames, input) {
+  var maximo = 0;
+  for (var i = 0; i < frames; i++) {
+    w.step(input || 0);
+    maximo = Math.max(maximo, NP.F2I(w.players[0].altura));
+  }
+  return maximo;
+}
+
+/* la casilla en la que esta el jugador, por el centro de su caja */
+function celda(w) {
+  var p = w.players[0], a = w.data.player.actor;
+  return [(NP.F2I(p.x) + (a.box_w >> 1)) >> 4,
+          (NP.F2I(p.y) + (a.box_h >> 1)) >> 4];
+}
+
+prueba("en isometrica se anda por la planta y el mando va a los ejes del mapa",
+       function () {
+  /* Derecha es el eje x del mapa y abajo el eje y: en pantalla salen en
+     diagonal, pero lo que se mueve es la planta. */
+  var w = isoMundo([[4, 3, "P"]]);
+  correr(w, 30, NP.IN.RIGHT);
+  assert.strictEqual(celda(w)[1], 4, "andando a la derecha ha cambiado de fila");
+  assert.ok(celda(w)[0] > 3, "andando a la derecha no ha avanzado en x");
+  var w2 = isoMundo([[4, 3, "P"]]);
+  correr(w2, 30, NP.IN.DOWN);
+  assert.strictEqual(celda(w2)[0], 3, "andando hacia abajo ha cambiado de columna");
+  assert.ok(celda(w2)[1] > 4, "andando hacia abajo no ha avanzado en y");
+});
+
+prueba("un escalon pequeno se sube andando", function () {
+  var w = isoMundo([[4, 3, "P"], [4, 5, "b"]]);
+  var arriba = isoCorrer(w, 60, NP.IN.RIGHT);
+  assert.ok(celda(w)[0] >= 5,
+            "se ha quedado en la casilla " + celda(w) + ": el escalon de 4 "
+            + "pixeles no se sube andando");
+  assert.strictEqual(arriba, 4,
+                     "lo mas alto que ha estado es " + arriba
+                     + " y el escalon levanta 4");
+});
+
+prueba("un cubo de una altura no se sube andando: hay que saltar", function () {
+  var w = isoMundo([[4, 3, "P"], [4, 5, "c"]]);
+  var arriba = isoCorrer(w, 60, NP.IN.RIGHT);
+  assert.ok(celda(w)[0] < 5,
+            "ha llegado a la casilla " + celda(w) + " andando: un cubo de 16 "
+            + "tiene que frenar");
+  assert.strictEqual(arriba, 0, "andando ya se ha subido: " + arriba);
+  /* y saltando si */
+  w.step(NP.IN.RIGHT | NP.IN.JUMP);
+  arriba = isoCorrer(w, 40, NP.IN.RIGHT);
+  assert.ok(arriba >= 16,
+            "saltando lo mas alto que ha estado es " + arriba);
+});
+
+prueba("una pared de tres alturas no se salta", function () {
+  var w = isoMundo([[4, 3, "P"], [4, 5, "W"]]);
+  for (var i = 0; i < 6; i++) {
+    w.step(NP.IN.RIGHT | NP.IN.JUMP);
+    correr(w, 40, NP.IN.RIGHT);
+  }
+  assert.ok(celda(w)[0] < 5,
+            "ha llegado a la casilla " + celda(w) + ": una pared de 48 no se "
+            + "salta con un salto de 23");
+});
+
+prueba("una pared ya pintada en la sala para igual y no cuesta un cubo",
+       function () {
+  /* Las dos paredes del fondo de una habitacion vienen dibujadas en el propio
+     dibujo de la sala, asi que en el mapa son casillas que levantan y **no
+     traen cubo**. Tienen que frenar exactamente igual que un muro -si no, el
+     jugador se sale de la habitacion- y no deben entrar en la fila del
+     dibujado, que es de lo que vive el que la Mega Drive vaya a 60. */
+  var w = isoMundo([[4, 3, "P"], [4, 5, "p"]]);
+  for (var i = 0; i < 6; i++) {
+    w.step(NP.IN.RIGHT | NP.IN.JUMP);
+    correr(w, 40, NP.IN.RIGHT);
+  }
+  assert.ok(celda(w)[0] < 5,
+            "ha llegado a la casilla " + celda(w) + ": una pared pintada de 48 "
+            + "tiene que parar igual que un muro");
+  assert.strictEqual(w.bloquesN, 0,
+                     "la sala ha montado " + w.bloquesN + " cubos y la unica "
+                     + "casilla que levanta es la que ya viene pintada");
+});
+
+prueba("en la fila del dibujado no entra lo que esta en otra habitacion",
+       function () {
+  /* Todas las salas se dibujan en el mismo cuadro de pantalla, asi que lo que
+     esta en otra habitacion no se pinta. Tampoco tiene que entrar en la fila:
+     ordenar treinta puestos cuando se van a dibujar cinco es lo que le costaba
+     a la Mega Drive el frame. */
+  var w = isoMundo([[4, 3, "P"], [4, 5, "c"]], { extraFilas: null });
+  var fuera = w.entities[0];
+  fuera.active = 1;
+  fuera.kind = 1;                       // un objeto cualquiera
+  fuera.def = 0;
+  fuera.x = NP.I2F(8 * 16);             // la sala de al lado
+  fuera.y = NP.I2F(4 * 16);
+  if (w.entityCount < 1) w.entityCount = 1;
+  var orden = w.ordenDibujo();
+  assert.ok(orden.indexOf(0) < 0,
+            "el puesto 0 esta en otra sala y ha entrado en la fila");
+  fuera.x = NP.I2F(2 * 16);             // y ahora si, en esta
+  orden = w.ordenDibujo();
+  assert.ok(orden.indexOf(0) >= 0,
+            "el puesto 0 esta en esta sala y no ha entrado en la fila");
+});
+
+prueba("al abrir un cerrojo su cubo deja de dibujarse en el acto", function () {
+  /* La puerta de un cerrojo es un cubo de la sala. Al abrirla la casilla pasa
+     a ser un hueco por el que se pasa, y el cubo tiene que desaparecer en ese
+     mismo frame: los cubos de la sala se montan una vez y no se vuelven a
+     mirar, asi que sin rehacerlos la puerta se quedaba pintada -y atravesable-
+     hasta salir de la habitacion. */
+  var w = isoMundo([[4, 3, "P"], [4, 5, "L"], [4, 2, "1"]], { bolsa: true });
+  correr(w, 40, NP.IN.LEFT);            // recoger lo que abre la puerta
+  assert.strictEqual(w.bolsaCuantos(), 1, "no ha cogido el objeto");
+  var antes = w.bloquesN;
+  assert.ok(antes >= 1, "la sala no ha montado el cubo de la puerta");
+  correr(w, 90, NP.IN.RIGHT);           // ir a la puerta y abrirla
+  assert.strictEqual(w.abiertos.length, 1,
+                     "la puerta no se ha abierto llevando lo que pide");
+  assert.strictEqual(w.bloquesN, antes - 1,
+                     "la sala sigue con " + w.bloquesN + " cubos de los "
+                     + antes + " de antes: la puerta abierta sigue dibujada");
+});
+
+prueba("al salirse de un cubo se cae hasta el suelo", function () {
+  var w = isoMundo([[4, 3, "P"], [4, 4, "c"]]);
+  /* Subirse al cubo. Despues del despegue se suelta el mando: por el aire da
+     igual, y al aterrizar se queda quieto encima en vez de seguir andando. */
+  w.step(NP.IN.RIGHT | NP.IN.JUMP);
+  correr(w, 30, 0);
+  assert.strictEqual(NP.F2I(w.players[0].altura), 16,
+                     "no se ha quedado encima del cubo: altura "
+                     + NP.F2I(w.players[0].altura));
+  assert.strictEqual(w.players[0].onGround, 1, "no ha aterrizado");
+  /* y seguir andando: al pasarse, se cae */
+  correr(w, 60, NP.IN.RIGHT);
+  assert.strictEqual(NP.F2I(w.players[0].altura), 0,
+                     "sigue a altura " + NP.F2I(w.players[0].altura)
+                     + " fuera del cubo");
+  assert.strictEqual(w.players[0].onGround, 1, "se ha quedado por el aire");
+});
+
+prueba("en el aire el impulso no se manda pero se guarda", function () {
+  /* Saltar pegado a un cubo tiene que subirte encima: el impulso con el que
+     despegaste se guarda aunque de momento no quepas. Es lo unico que hace
+     que se pueda subir a algo estando al lado, sin carrerilla. */
+  var w = isoMundo([[4, 3, "P"], [4, 4, "c"]]);
+  correr(w, 40, NP.IN.RIGHT);          // pegarse al cubo
+  assert.strictEqual(NP.F2I(w.players[0].altura), 0, "se ha subido andando");
+  w.step(NP.IN.RIGHT | NP.IN.JUMP);
+  correr(w, 25, NP.IN.RIGHT);
+  assert.strictEqual(NP.F2I(w.players[0].altura), 16,
+                     "saltando desde al lado se ha quedado a altura "
+                     + NP.F2I(w.players[0].altura));
+});
+
+prueba("saltar por encima de un pincho no mata", function () {
+  /* Con el paso largo el salto cruza una casilla entera: es lo que hace que
+     un pincho suelto sea un obstaculo y no una pared. */
+  var rapido = { speed: 1.6 };
+  var w = isoMundo([[4, 3, "P"], [4, 5, "^"]], { speed: 1.6 });
+  correr(w, 40, NP.IN.RIGHT);
+  assert.strictEqual(w.state, NP.STATE.DYING, "andando sobre el pincho no muere");
+  var w2 = isoMundo([[4, 3, "P"], [4, 5, "^"]], { speed: 1.6 });
+  /* Saltar antes de pisarlo y mirar **mientras se pasa por encima**: en pleno
+     vuelo el jugador esta sobre la casilla del pincho y sigue vivo. */
+  correr(w2, 2, NP.IN.RIGHT);
+  w2.step(NP.IN.RIGHT | NP.IN.JUMP);
+  correr(w2, 18, NP.IN.RIGHT);
+  assert.strictEqual(celda(w2)[0], 5,
+                     "no esta sobre el pincho: esta en " + celda(w2));
+  assert.ok(NP.F2I(w2.players[0].altura) > 6,
+            "no esta por el aire: altura " + NP.F2I(w2.players[0].altura));
+  assert.strictEqual(w2.state, NP.STATE.PLAY,
+                     "pasando por encima tambien muere");
+  void rapido;
+});
+
+prueba("saltar por encima de un bicho es esquivarlo", function () {
+  /* En esta vista no basta con pisar la misma casilla: hay que cruzarse
+     tambien en altura. Es lo que convierte el salto en una forma de esquivar. */
+  var w = isoMundo([[4, 3, "P"], [4, 4, "e"]]);
+  var vida0 = w.players[0].health;
+  correr(w, 30, NP.IN.RIGHT);
+  assert.ok(w.players[0].health < vida0 || w.state === NP.STATE.DYING,
+            "andando contra el bicho no ha cobrado");
+  var w2 = isoMundo([[4, 3, "P"], [4, 4, "e"]]);
+  w2.step(NP.IN.RIGHT | NP.IN.JUMP);
+  correr(w2, 8, NP.IN.RIGHT);
+  assert.ok(NP.F2I(w2.players[0].altura) > 12,
+            "no ha despegado: " + NP.F2I(w2.players[0].altura));
+  assert.strictEqual(w2.state, NP.STATE.PLAY,
+                     "por encima del bicho tambien cobra");
+});
+
+prueba("la sala se monta con sus cubos y se rehace al cambiar de sala",
+       function () {
+  /* Los cubos viven al final de la lista de entidades y solo existen los de la
+     habitacion que se ve: es lo que permite que un castillo entero quepa en
+     sesenta y cuatro huecos. */
+  var filas = [];
+  for (var y = 0; y < 8; y++) filas.push("........" + "........");
+  filas[4] = "...P...." + "..cc....";
+  filas[2] = "..cc...." + "........";
+  var w = mundo(filas, { iso: true, pantallas: true, speed: 1.0,
+                         jump: 3.6, gravity: 0.28 });
+  assert.strictEqual(w.salaX, 0, "no empieza en la primera sala");
+  assert.strictEqual(w.bloquesN, 2,
+                     "la primera sala ha montado " + w.bloquesN + " cubos y "
+                     + "tiene 2");
+  correr(w, 200, NP.IN.RIGHT);
+  assert.strictEqual(w.salaX, 1, "no ha cambiado de sala");
+  assert.strictEqual(w.bloquesN, 2,
+                     "la segunda sala tiene " + w.bloquesN + " cubos y "
+                     + "tambien tiene 2");
+});
+
+prueba("lo que pasa en la sala de al lado no corre", function () {
+  /* Un bicho de otra habitacion se queda en pausa: ni anda, ni te toca, ni
+     ocupa sitio en la pantalla. */
+  var filas = [];
+  for (var y = 0; y < 8; y++) filas.push("................");
+  filas[4] = "...P...........e";
+  var w = mundo(filas, { iso: true, pantallas: true, speed: 1.0,
+                         jump: 3.6, gravity: 0.28 });
+  var bicho = w.entities[0];
+  var x0 = bicho.x;
+  correr(w, 120, 0);
+  assert.strictEqual(bicho.x, x0,
+                     "el bicho de la sala de al lado se ha movido");
+  assert.strictEqual(w.dibujo(0), null,
+                     "el bicho de la sala de al lado se dibuja encima de esta");
+});
+
+prueba("los cubos se dibujan por profundidad y el jugador entra en la fila",
+       function () {
+  /* En esta vista hay un detras de verdad: uno se mete tras un cubo cada dos
+     pasos, asi que los jugadores tienen que entrar en la fila de dibujado y
+     no pintarse al final, encima de todo. */
+  var w = isoMundo([[4, 3, "P"], [2, 2, "c"], [6, 6, "c"]]);
+  var orden = w.ordenDibujo();
+  var honduras = orden.map(function (p) { return w.hondura(p); });
+  for (var i = 1; i < honduras.length; i++)
+    assert.ok(honduras[i] >= honduras[i - 1],
+              "la fila no va de mas lejos a mas cerca");
+  assert.ok(orden.indexOf(64) >= 0,
+            "el jugador no entra en la fila de dibujado");
+  assert.ok(orden.indexOf(64) > 0 && orden.indexOf(64) < orden.length - 1,
+            "el jugador sale el primero o el ultimo de la fila: no esta "
+            + "colocado por profundidad");
 });
 
 var fallos = 0;

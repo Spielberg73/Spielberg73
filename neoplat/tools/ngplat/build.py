@@ -17,8 +17,17 @@ from .errors import ProjectError
 from .png import read_png
 from .fixed import to_fixed
 from .project import (
-    Actor, Animation, BEHAVIOR_ID, ITEM_EFFECT_ID, Layer, Project, TILE_KIND_ID, TileDef,
+    Actor, Animation, BEHAVIOR_ID, ITEM_EFFECT_ID, Layer, Project, SALA,
+    TILE_KIND_ID, TileDef,
 )
+
+# Lo que ocupa una sala en la pantalla, en tiles de 16x16. Es una pantalla
+# entera: la camara de la vista isometrica salta de habitacion en habitacion.
+SALA_TILES_X = 20
+SALA_TILES_Y = 14
+# Cuantas entidades caben (NP_MAX_ENTITIES del motor). Los cubos de la sala que
+# se esta viendo salen de las que sobran despues de los enemigos y los objetos.
+MAX_ENTIDADES = 64
 
 # Las dos ultimas solo se usan en vista cenital (el heroe de espaldas y de
 # frente); en lateral se quedan en su sustituto y no estorban.
@@ -53,6 +62,8 @@ class LayerBuild:
 @dataclass
 class LevelBuild:
     name: str
+    # Lo que se ve, en tiles de pantalla. En casi todos los juegos es el propio
+    # mapa; en la vista isometrica es el dibujo de las salas (20x14 por sala).
     width: int
     height: int
     cells: List[int]
@@ -63,6 +74,13 @@ class LevelBuild:
     layers: List[int] = field(default_factory=list)   # indices en Build.layers
     music: int = 0                             # 0 = sin musica, si no indice + 1
     keys_needed: int = 0                       # llaves que pide la meta
+    # Lo que mide el mapa que se pisa, en casillas. Fuera de la isometrica vale
+    # lo mismo que width y height.
+    cells_w: int = 0
+    cells_h: int = 0
+    # Solo isometrica: el dibujo del suelo de las salas, ya en numeros de tile
+    # de la maquina. Vacio en las demas vistas.
+    fondo: List[int] = field(default_factory=list)
 
 
 @dataclass
@@ -78,6 +96,7 @@ class Build:
     layers: List[LayerBuild]
     levels: List[LevelBuild]
     platforms: List[ActorBuild] = field(default_factory=list)
+    blocks: List[ActorBuild] = field(default_factory=list)   # los cubos
     breakables: List[ActorBuild] = field(default_factory=list)
     prisoners: List[ActorBuild] = field(default_factory=list)   # los rehenes
     generators: List[ActorBuild] = field(default_factory=list)  # los nidos
@@ -97,6 +116,18 @@ class Build:
     sistema: object = None
     paletas: List[List[int]] = field(default_factory=list)   # colores ya en su formato
     tile_gfx: List[int] = field(default_factory=list)        # numero grafico por tile
+    # Cuantos numeros de tile ocupa cada tile del tileset en esta maquina: uno
+    # en casi todas y cuatro en la Mega Drive, que trabaja con celdas de 8x8.
+    # Hace falta para poder numerar cualquier tile del tileset -y no solo los
+    # de la leyenda-, que es lo que pide el dibujo de una sala isometrica.
+    tile_gfx_paso: int = 1
+    # De cada tile del PNG del tileset, cual es su sitio en la hoja ya
+    # compactada. Un tileset puede traer el mismo dibujo repetido -el suelo de
+    # una sala isometrica son 128 tiles y casi todos son la misma losa- y
+    # guardarlos una sola vez ahorra ROM en todas las maquinas y es lo que hace
+    # que quepan en la PCG del X68000, que solo tiene 192 patrones. Fuera es la
+    # lista 0, 1, 2... y no cambia nada.
+    tileset_remap: List[int] = field(default_factory=list)
     info: Dict[str, object] = field(default_factory=dict)    # datos sueltos del sistema
     pcm_bytes: int = 0                                       # lo que ocupan las muestras
 
@@ -112,6 +143,7 @@ class Build:
             todos.append(self.attack)
         todos.extend(self.subs)
         todos.extend(self.enemy_shots)
+        todos.extend(self.blocks)
         return todos
 
     def stats(self) -> Dict[str, int]:
@@ -241,6 +273,22 @@ def build_project(project: Project) -> Build:
                 where="tiles.leyenda",
             )
 
+    # Los tiles repetidos se guardan una sola vez. El suelo de una sala
+    # isometrica son 128 tiles del PNG y casi todos son la misma losa; con esto
+    # se quedan en una treintena, que es lo que hace que quepan en la PCG del
+    # X68000. `tileset_remap` dice donde acabo cada tile del PNG: fuera de ahi
+    # nadie lo mira, porque en un tileset normal no se repite nada y la lista
+    # sale 0, 1, 2...
+    vistos, unicos, tileset_remap = {}, [], []
+    for tile in tileset.tiles:
+        clave = tuple(tile)
+        if clave not in vistos:
+            vistos[clave] = len(unicos)
+            unicos.append(tile)
+        tileset_remap.append(vistos[clave])
+    tileset.tiles = unicos
+    tileset.frames = len(unicos)
+
     layers: List[LayerBuild] = [
         _load_layer(layer, project.root) for layer in project.layers.values()
     ]
@@ -272,6 +320,11 @@ def build_project(project: Project) -> Build:
         _load_actor(rom, "rompibles.%s" % name, project.root)
         for name, rom in project.breakables.items()
     ]
+    blocks = [
+        _load_actor(cubo, "cubos.%s" % name, project.root)
+        for name, cubo in project.blocks.items()
+    ]
+    block_index = {b.name: i for i, b in enumerate(blocks)}
     attack = (_load_actor(project.player.attack, "jugador.ataque", project.root)
               if project.player.attack is not None
               and project.player.attack.sprite else None)
@@ -299,6 +352,7 @@ def build_project(project: Project) -> Build:
     music_boss = music_index.get(project.sound.jefe, 0)
 
     empty_index = tile_index.get(".", 0)
+    iso = project.view == "iso"
     levels: List[LevelBuild] = []
     for level in project.levels:
         width = len(level.rows[0])
@@ -333,7 +387,13 @@ def build_project(project: Project) -> Build:
                         kind, index = 1, item_index[name]
                         actor = items[index].actor
                     px = x * 16 + (16 - actor.box_w) // 2
-                    py = y * 16 + 16 - actor.box_h
+                    # En la isometrica la caja es la **planta** de lo que
+                    # ocupa, no un cuerpo apoyado en una linea de suelo: va
+                    # centrada en la casilla por los dos ejes.
+                    if iso:
+                        py = y * 16 + (16 - actor.box_h) // 2
+                    else:
+                        py = y * 16 + 16 - actor.box_h
                     spawns.append((max(0, px), max(0, py), kind, index))
                 else:
                     cells.append(tile_index[ch])
@@ -344,10 +404,18 @@ def build_project(project: Project) -> Build:
                 hint="reparte el contenido en varios niveles",
             )
         sx = level.start[0] * 16 + (16 - project.player.box_w) // 2
-        sy = level.start[1] * 16 + 16 - project.player.box_h
+        sy = (level.start[1] * 16 + (16 - project.player.box_h) // 2 if iso
+              else level.start[1] * 16 + 16 - project.player.box_h)
+        fondo: List[int] = []
+        vista_w, vista_h = width, height
+        if iso:
+            fondo, vista_w, vista_h = _fondo_de_salas(project, tileset,
+                                                      len(tileset_remap))
+            _cubos_por_sala(project, level, width, height, len(spawns))
         levels.append(LevelBuild(
             name=level.name.upper()[:20],
-            width=width, height=height, cells=cells, spawns=spawns,
+            width=vista_w, height=vista_h, cells=cells, spawns=spawns,
+            cells_w=width, cells_h=height, fondo=fondo,
             start=(max(0, sx), max(0, sy)),
             background=gfx.ng_color(level.background),
             background_rgb=level.background,
@@ -357,9 +425,11 @@ def build_project(project: Project) -> Build:
         ))
 
     return Build(
-        project=project, rom=rom, tiles=tiles, tile_index=tile_index, tileset=tileset,
+        project=project, rom=rom, tiles=tiles, tile_index=tile_index,
+        tileset=tileset, tileset_remap=tileset_remap,
         player=player, enemies=enemies, items=items, layers=layers, levels=levels,
-        platforms=platforms, breakables=breakables, attack=attack, subs=subs,
+        platforms=platforms, breakables=breakables, blocks=blocks,
+        attack=attack, subs=subs,
         enemy_shots=enemy_shots, prisoners=prisoners, generators=generators,
         music_order=music_order, music_title=music_title, music_boss=music_boss,
         sin_table=_sin_table(),
@@ -539,6 +609,79 @@ def attack_values(project: Project) -> Dict[str, object]:
         # es invisible, que es como estaba el kit
         "fx": 1 if a.sprite else 0,
     }
+
+
+def _fondo_de_salas(project: Project, tileset: gfx.Sheet, del_png: int
+                    ) -> Tuple[List[int], int, int]:
+    """El dibujo del suelo de una sala, en tiles de pantalla.
+
+    Es **uno solo** para todo el juego, y de ahi salen dos cosas buenas: un
+    castillo de veinte habitaciones ocupa de fondo lo que una pantalla -que es
+    lo que hace que quepa en el mapa de bits del Amiga, del ST y de la Jaguar-,
+    y cambiar de sala es un corte y no un viaje. Lo que distingue una
+    habitacion de otra son los cubos y los bichos, que son sprites.
+
+    El dibujo de una sala isometrica es siempre el mismo -el rombo de 8x8
+    casillas y las dos paredes del fondo por encima-, asi que no hay nada que
+    calcular: es un trozo del tileset que se pega donde toca. Repintarlo cambia
+    el aspecto del juego entero sin tocar una linea de codigo. Y las paredes
+    ahi dentro son gratis: no son cubos, no se ordenan y no se dibujan.
+
+    Devuelve indices **del tileset** (y -1 donde no se pinta nada): los numeros
+    de verdad los pone el generador de codigo, que es quien sabe como los
+    numera cada maquina.
+    """
+    ts = project.tileset
+    ultimo = ts.sala_tile + (ts.sala_h - 1) * tileset.per_row + ts.sala_w - 1
+    # Ojo: se mide contra los tiles **del PNG**, no contra los que quedan
+    # despues de juntar los repetidos.
+    if ultimo >= del_png:
+        raise ProjectError(
+            "el dibujo de la sala llega hasta el tile %d y el tileset tiene %d"
+            % (ultimo, tileset.frames),
+            hint="agranda '%s' (tiene %d tiles) o baja 'sala:' en 'tiles:'"
+                 % (project.tileset.image, del_png),
+            where="tiles.sala")
+    ancho, alto = SALA_TILES_X, SALA_TILES_Y
+    fondo = [-1] * (ancho * alto)
+    for fy in range(ts.sala_h):
+        ty = ts.sala_y + fy
+        if ty >= alto:
+            continue
+        for fx in range(ts.sala_w):
+            tx = ts.sala_x + fx
+            if tx >= ancho:
+                continue
+            fondo[ty * ancho + tx] = ts.sala_tile + fy * tileset.per_row + fx
+    return fondo, ancho, alto
+
+
+def _cubos_por_sala(project: Project, level, width: int, height: int,
+                    spawns: int) -> None:
+    """Que los cubos de cada sala quepan en la lista de entidades.
+
+    Solo existen los de la habitacion que se esta viendo -por eso un castillo
+    entero cabe en sesenta y cuatro huecos-, pero la habitacion mas cargada
+    tiene que caber junto con los enemigos y los objetos del nivel.
+    """
+    hueco = MAX_ENTIDADES - spawns
+    for ry in range(height // SALA):
+        for rx in range(width // SALA):
+            cuantos = 0
+            for cy in range(ry * SALA, ry * SALA + SALA):
+                for cx in range(rx * SALA, rx * SALA + SALA):
+                    ch = level.rows[cy][cx]
+                    tile = project.tiles.get(ch)
+                    if tile is not None and tile.bloque:
+                        cuantos += 1
+            if cuantos > hueco:
+                raise ProjectError(
+                    "la sala %d,%d de '%s' tiene %d cubos y solo caben %d"
+                    % (rx, ry, level.name, cuantos, max(hueco, 0)),
+                    hint="quita cubos de esa habitacion o enemigos y objetos "
+                         "del nivel: entre todos no pueden pasar de %d"
+                         % MAX_ENTIDADES,
+                    where="niveles")
 
 
 def tile_tables(build: Build) -> Tuple[List[int], List[int]]:

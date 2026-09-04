@@ -98,11 +98,14 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     # cinta no tiene por que pagarla.
     header.append("#define NP_VISTA_CINTA %d"
                   % (1 if project.view == "cinta" else 0))
-    header.append("/* Como recorren los dibujantes la lista de entidades: por "
-                  "profundidad en un")
-    header.append(" * juego de cinta y en el orden de siempre en los demas. "
-                  "Ver np_orden_dibujo. */")
-    header.append("#if NP_VISTA_CINTA")
+    header.append("/* Como recorren los dibujantes la fila: por profundidad "
+                  "en un juego de")
+    header.append(" * cinta o isometrico -donde hay un detras de verdad- y en "
+                  "el orden de la")
+    header.append(" * lista en los demas. Ver np_orden_dibujo. */")
+    header.append("#define NP_VISTA_ISO %d"
+                  % (1 if project.view == "iso" else 0))
+    header.append("#if NP_VISTA_CINTA || NP_VISTA_ISO")
     header.append("#define NP_DIBUJO(orden, i) ((orden)[(i)])")
     header.append("#else")
     # el (void) es para que `orden` cuente como usada: sin el, un juego que no
@@ -135,10 +138,14 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     # para que el movimiento, la punteria y el empujon de los golpes sean los
     # de cenital sin repetir una linea.
     src.append("const uint8_t np_vista_cenital = %d;"
-               % (1 if project.view in ("cenital", "cinta") else 0))
+               % (1 if project.view in ("cenital", "cinta", "iso") else 0))
     src.append("/* Y si ademas se salta (el 'yo contra el barrio'). */")
     src.append("const uint8_t np_vista_cinta = %d;"
                % (1 if project.view == "cinta" else 0))
+    src.append("/* Y la isometrica: la sala vista desde una esquina. Anda como")
+    src.append("   la cenital y salta como la cinta, pero con relieve. */")
+    src.append("const uint8_t np_vista_iso = %d;"
+               % (1 if project.view == "iso" else 0))
     src.append("/* Cuantos enemigos pegan a la vez: el numero que hace que una")
     src.append("   pelea se juegue en vez de sufrirse. */")
     src.append("const uint8_t np_agresivos = %d;" % project.aggressive)
@@ -198,6 +205,17 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
                 for t in build.tiles]
     src.append("const uint8_t np_tile_need[] = {")
     src.append(_array(necesita))
+    src.append("};")
+    # El relieve de la vista isometrica: lo que levanta cada casilla y con que
+    # cubo se dibuja (indice + 1, cero = no se dibuja).
+    indice_cubos = {c.name: i for i, c in enumerate(build.blocks)}
+    src.append("/* Relieve de la vista isometrica: lo que levanta cada casilla")
+    src.append("   y con que cubo se pinta. Todo ceros en las demas vistas. */")
+    src.append("const uint8_t np_tile_alto[] = {")
+    src.append(_array([t.alto for t in build.tiles]))
+    src.append("};")
+    src.append("const uint8_t np_tile_bloque[] = {")
+    src.append(_array([indice_cubos.get(t.bloque, -1) + 1 for t in build.tiles]))
     src.append("};")
     src.append("const uint16_t np_tile_count = %d;" % len(kinds))
     # El dibujo que se ve por el hueco de una puerta abierta: el del primer
@@ -432,6 +450,21 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("const uint16_t np_breakable_count = %d;" % len(build.breakables))
     src.append("")
 
+    # --- los cubos de la vista isometrica
+    for i, cubo in enumerate(build.blocks):
+        src.append("/* cubo %d: %s */" % (i, cubo.name))
+        src.append(_anim_arrays("np_cubo%d" % i, cubo))
+    src.append("const NpBlockDef np_bloques[] = {")
+    if not build.blocks:
+        src.append("    { %s }" % _actor_vacio())
+    for i, cubo in enumerate(build.blocks):
+        src.append("    {")
+        src.append(_actor_def("np_cubo%d" % i, actor_def_values(cubo)))
+        src.append("    }," if i + 1 < len(build.blocks) else "    }")
+    src.append("};")
+    src.append("const uint8_t np_bloque_count = %d;" % len(build.blocks))
+    src.append("")
+
     # --- capas de fondo (parallax)
     for i, layer in enumerate(build.layers):
         values = layer_values(layer)
@@ -460,6 +493,17 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
         src.append("static const uint8_t np_level%d_cells[] = {" % i)
         src.append(_array(level.cells, per_line=32))
         src.append("};")
+        if level.fondo:
+            # El dibujo del suelo de las salas ya en numeros de tile: no pasa
+            # por la leyenda porque son 280 tiles por sala y no caben en un
+            # abecedario. -1 quiere decir "aqui no se pinta nada".
+            paso = build.tile_gfx_paso
+            base = build.tileset.first_tile
+            remap = build.tileset_remap
+            src.append("static const uint16_t np_level%d_fondo[] = {" % i)
+            src.append(_array([vacio if n < 0 else base + remap[n] * paso
+                               for n in level.fondo], per_line=20))
+            src.append("};")
         if level.spawns:
             src.append("static const NpSpawn np_level%d_spawns[] = {" % i)
             for x, y, kind, index in level.spawns:
@@ -472,9 +516,13 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     for i, level in enumerate(build.levels):
         spawns = "np_level%d_spawns" % i if level.spawns else "0"
         capas = "np_level%d_layers" % i if level.layers else "0"
+        fondo = "np_level%d_fondo" % i if level.fondo else "0"
         src.append(
-            "    { %s, %d, %d, np_level%d_cells, %s, %d, %d, %d, 0x%04x, %s, %d, %d, %d },"
-            % (_c_string(level.name), level.width, level.height, i, spawns,
+            "    { %s, %d, %d, np_level%d_cells, %d, %d, %s, %s, %d, %d, %d,"
+            " 0x%04x, %s, %d, %d, %d },"
+            % (_c_string(level.name), level.width, level.height, i,
+               level.cells_w or level.width, level.cells_h or level.height,
+               fondo, spawns,
                len(level.spawns), level.start[0], level.start[1], level.background,
                capas, len(level.layers), level.music, level.keys_needed)
         )

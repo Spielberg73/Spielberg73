@@ -165,6 +165,20 @@ typedef struct {
     uint8_t atacando;
     uint8_t congelado;
     uint8_t sacudida;
+    /* --- la vista isometrica --------------------------------------------
+     *
+     * La sala que se esta viendo, en salas de 8x8 casillas, y cuantos cubos
+     * suyos hay montados. Los cubos viven al **final** de la lista de
+     * entidades -de NP_MAX_ENTITIES hacia atras- y se rehacen enteros cada vez
+     * que se cambia de sala: asi solo ocupan hueco los de la sala de ahora y
+     * los bucles de siempre, que llegan hasta `entity_count`, ni los miran.
+     *
+     * Van en palabras y no en bytes por lo mismo que la bolsa: dos bytes
+     * pegados que se leen seguidos los junta gcc en una palabra, y si cae en
+     * direccion impar el 68000 se para en seco. */
+    uint16_t sala_x, sala_y;
+    uint8_t bloques_n;
+    uint8_t bloques_abiertos;    /* cuantos cerrojos habia abiertos al montarla */
 } NpWorld;
 
 void np_world_init(NpWorld *w);
@@ -174,6 +188,16 @@ void np_world_step(NpWorld *w, uint16_t input, uint16_t input2);
 
 /* Consultas que usa la capa grafica. */
 uint8_t np_tile_kind_at(const NpLevel *level, int32_t tx, int32_t ty);
+/* Donde cae en la pantalla un actor del mundo: la esquina de arriba a la
+ * izquierda de su dibujo, sin restar la camara.
+ *
+ * En las vistas de siempre es la cuenta de toda la vida (x - box_x, y - box_y)
+ * y por eso los dibujantes no la llaman: la resuelve la macro NP_PANTALLA de
+ * gamedata.h en el propio sitio. En la isometrica hay que proyectar, y ahi el
+ * punto que manda es **donde apoya los pies** -el centro de su caja en la
+ * planta-, que es lo unico que tiene sentido cuando el suelo son rombos. */
+void np_pantalla(const NpWorld *w, np_fix x, np_fix y, np_fix altura,
+                 const NpActorDef *def, int32_t *sx, int32_t *sy);
 uint16_t np_tile_gfx_at(const NpWorld *w, int32_t tx, int32_t ty);
 void np_tile_gfx_column(const NpWorld *w, int32_t tx, int32_t ty,
                         uint16_t count, uint16_t *out);
@@ -210,6 +234,29 @@ const uint8_t *np_orden_dibujo(const NpWorld *w, uint8_t *cuantas);
  *
  * NP_DIBUJO lo escribe el compilador en gamedata.h, que es donde se sabe que
  * vista lleva el juego. */
+
+/* Que se dibuja en un puesto de la fila que devuelve np_orden_dibujo, y donde
+ * cae en la pantalla (sin restar la camara: eso lo hace cada maquina a su
+ * manera). Devuelve cero cuando en ese puesto no hay nada que pintar.
+ *
+ * Es el unico sitio donde se decide todo eso, y por eso los seis dibujantes
+ * tienen un solo bucle:
+ *
+ *     orden = np_orden_dibujo(w, &cuantas);
+ *     for (i = 0; i < cuantas; i++) {
+ *         const NpActorDef *def = np_dibujo(w, NP_DIBUJO(orden, i),
+ *                                           &sx, &sy, &frame, &flip);
+ *         if (!def) continue;
+ *
+ * Solo lo usan los dibujantes **en la vista isometrica**, que es donde la fila
+ * lleva ademas los cubos de la sala y a los jugadores -ahi hay un detras de
+ * verdad: uno se mete tras un cubo cada dos pasos-. En las demas vistas cada
+ * maquina sigue con sus dos bucles de siempre, y no por gusto: preguntar aqui
+ * por cada actor cuesta lo justo para que la Mega Drive pierda el vblank y el
+ * juego se vaya a la mitad de velocidad. */
+const NpActorDef *np_dibujo(const NpWorld *w, uint8_t puesto,
+                            int32_t *sx, int32_t *sy,
+                            uint8_t *frame, uint8_t *flip);
 
 uint8_t np_actor_frame(const NpActorDef *def, uint8_t anim, uint8_t anim_frame);
 /* Si hay que dibujar al jugador `quien` (0 o 1): fuera de juego, en el titulo o

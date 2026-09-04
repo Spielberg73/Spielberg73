@@ -441,11 +441,48 @@ static uint16_t np_mover_fondo(const NpWorld *w)
 #define NP_TILES_Y (NP_MAPA_ALTO / NP_TILE)
 static uint8_t np_ya_repintado[(NP_TILES_X * NP_TILES_Y + 7) / 8];
 
+/* Los cubos de la sala isometrica viven **dentro** del mapa de bits: se pintan
+ * una vez al entrar en la habitacion y ahi se quedan, como el suelo. No es un
+ * ahorro pequeno: un cubo de 32x64 son ocho trozos que borrar y ocho que
+ * volver a pintar en cada frame, y con los cinco o seis de una habitacion el
+ * Amiga y el ST pierden el frame y se van a la mitad de velocidad (medido: la
+ * melodia pasa de 16 notas de 16 a 8).
+ *
+ * Lo unico que hay que rehacer es lo que pisa un actor que si se mueve: al
+ * borrar su rastro se repinta el suelo y ahi se lleva por delante el trozo de
+ * cubo que hubiera. Por eso se apunta que se ha repintado y se vuelven a poner
+ * **solo** los cubos que tocan esos trozos, en su sitio de la fila de
+ * profundidad, que es lo que sigue dejando pasar al jugador por detras. */
+#if NP_VISTA_ISO
+static NpRastro np_borrados[NP_MAX_RASTROS];
+static uint8_t np_borrados_n;
+
+/* Toca ese cuadro alguno de los trozos de suelo que se acaban de repintar? */
+static int np_pisa_lo_borrado(int32_t x, int32_t y, int32_t ancho, int32_t alto)
+{
+    uint8_t i;
+    for (i = 0; i < np_borrados_n; i++) {
+        const NpRastro *r = &np_borrados[i];
+        if (x >= r->x + r->ancho || x + ancho <= r->x) continue;
+        if (y >= r->y + r->alto || y + alto <= r->y) continue;
+        return 1;
+    }
+    return 0;
+}
+#endif
+
 static void np_repintar_rastros(const NpWorld *w)
 {
     uint8_t i;
     uint16_t b;
+#if NP_VISTA_ISO
+    np_borrados_n = 0;
+#endif
     if (!np_rastro_count) return;
+#if NP_VISTA_ISO
+    for (i = 0; i < np_rastro_count; i++) np_borrados[i] = np_rastros[i];
+    np_borrados_n = np_rastro_count;
+#endif
     for (b = 0; b < sizeof(np_ya_repintado); b++) np_ya_repintado[b] = 0;
 
     for (i = 0; i < np_rastro_count; i++) {
@@ -482,8 +519,10 @@ static void np_apuntar_rastro(int32_t x, int32_t y, int16_t ancho, int16_t alto)
     np_rastro_count++;
 }
 
-static void np_dibujar_actor(const NpActorDef *def, int32_t mundo_x, int32_t mundo_y,
-                             uint8_t frame, uint8_t flip)
+/* `quieto` = este dibujo se queda en el mapa de bits y no hay que borrarlo el
+   frame que viene: son los cubos de una sala isometrica. */
+static void np_pintar_actor(const NpActorDef *def, int32_t mundo_x, int32_t mundo_y,
+                            uint8_t frame, uint8_t flip, uint8_t quieto)
 {
     uint16_t base = (uint16_t)(def->first_tile + frame * def->cols * def->rows);
     uint8_t c, r;
@@ -497,8 +536,9 @@ static void np_dibujar_actor(const NpActorDef *def, int32_t mundo_x, int32_t mun
             np_blit_bob((uint16_t)(base + c * def->rows + r), x + c * NP_TILE, py);
         }
     }
-    np_apuntar_rastro(mundo_x, mundo_y, (int16_t)(def->cols * NP_TILE),
-                      (int16_t)(def->rows * NP_TILE));
+    if (!quieto)
+        np_apuntar_rastro(mundo_x, mundo_y, (int16_t)(def->cols * NP_TILE),
+                          (int16_t)(def->rows * NP_TILE));
 }
 
 void np_video_frame(const NpWorld *w)
@@ -509,8 +549,16 @@ void np_video_frame(const NpWorld *w)
     int32_t columna = w->cam_x / NP_TILE;
     uint32_t direccion;
     uint8_t i;
+    /* La habitacion isometrica que hay pintada ahora mismo en el mapa de bits.
+       Al cambiar de sala hay que repintarla entera con sus cubos: todas las
+       salas se dibujan en el mismo cuadro y lo unico que cambia son ellos. */
+    static uint16_t np_sala_pintada_x = 0xffff, np_sala_pintada_y = 0xffff;
+    uint8_t sala_nueva = 0;
+    (void)sala_nueva;                 /* solo lo mira la vista isometrica */
 
-    if (w->level != np_nivel_actual || w->abiertos_n != np_abiertos_pintados) {
+    if (w->level != np_nivel_actual || w->abiertos_n != np_abiertos_pintados
+        || (np_vista_iso && (w->sala_x != np_sala_pintada_x
+                             || w->sala_y != np_sala_pintada_y))) {
         np_nivel_actual = w->level;
         np_abiertos_pintados = w->abiertos_n;
         /* el color 0 es el fondo de la pantalla, y cada nivel trae el suyo */
@@ -525,6 +573,12 @@ void np_video_frame(const NpWorld *w)
 #endif
         np_redibujar_todo(w);
         ultima_columna = columna;
+        np_sala_pintada_x = w->sala_x;
+        np_sala_pintada_y = w->sala_y;
+        sala_nueva = 1;
+#if NP_VISTA_ISO
+        np_borrados_n = 0;
+#endif
     } else {
         np_repintar_rastros(w);
         if (!np_mapa_fijo) {
@@ -542,6 +596,12 @@ void np_video_frame(const NpWorld *w)
                 NP_MAPA_ANCHO - NP_SCREEN_W - NP_TILE * 2) {
                 np_redibujar_todo(w);
                 ultima_columna = columna;
+                /* se ha repintado el mapa de bits entero: los cubos de la sala
+                   se han ido con el y hay que volver a ponerlos */
+                sala_nueva = 1;
+#if NP_VISTA_ISO
+                np_borrados_n = 0;
+#endif
             }
         }
     }
@@ -549,7 +609,34 @@ void np_video_frame(const NpWorld *w)
     /* De mas lejos a mas cerca: en la vista de cinta los actores se pisan a
        cada rato y hay que pintarlos por la linea del suelo. En las demas
        vistas np_orden_dibujo devuelve el orden de la lista tal cual. */
+    /* En la isometrica la fila lleva los cubos de la sala y ademas a los
+       jugadores -ahi hay un detras de verdad-, y donde cae cada uno lo decide
+       la proyeccion: por eso se pide todo a np_dibujo y el bucle es uno solo.
+       En las demas vistas se dibuja como siempre, y no por gusto: preguntarle
+       a np_dibujo por cada actor cuesta lo justo para que la Mega Drive pierda
+       el vblank y el juego entero se vaya a la mitad de velocidad. Medido: la
+       melodia pasa de 16 notas de 16 a 4. */
     orden = np_orden_dibujo(w, &cuantas);
+#if NP_VISTA_ISO
+    for (i = 0; i < cuantas; i++) {
+        const NpActorDef *def;
+        int32_t sx, sy;
+        uint8_t frame, flip, cubo;
+        uint8_t puesto = NP_DIBUJO(orden, i);
+        def = np_dibujo(w, puesto, &sx, &sy, &frame, &flip);
+        if (!def) continue;
+        if (sx < w->cam_x - 32 || sx > w->cam_x + NP_SCREEN_W) continue;
+        /* Un cubo ya esta pintado en el mapa de bits desde que se monto la
+           sala: solo hay que volver a ponerlo si un actor que se mueve le ha
+           repintado el suelo por encima. */
+        cubo = (uint8_t)(puesto < NP_MAX_ENTITIES
+                         && puesto >= (uint8_t)(NP_MAX_ENTITIES - w->bloques_n));
+        if (cubo && !sala_nueva
+            && !np_pisa_lo_borrado(sx, sy, def->cols * NP_TILE, def->rows * NP_TILE))
+            continue;
+        np_pintar_actor(def, sx, sy, frame, flip, cubo);
+    }
+#else
     for (i = 0; i < cuantas; i++) {
         const NpEntity *e = &w->entities[NP_DIBUJO(orden, i)];
         const NpActorDef *def;
@@ -560,18 +647,19 @@ void np_video_frame(const NpWorld *w)
         sx = NP_F2I(e->x) - def->box_x;
         sy = NP_F2I(e->y) - def->box_y;
         if (sx < w->cam_x - 32 || sx > w->cam_x + NP_SCREEN_W) continue;
-        np_dibujar_actor(def, sx, sy, np_actor_frame(def, e->anim, e->anim_frame),
-                         (uint8_t)!e->facing);
+        np_pintar_actor(def, sx, sy, np_actor_frame(def, e->anim, e->anim_frame),
+                        (uint8_t)!e->facing, 0);
     }
     for (i = 0; i < NP_MAX_PLAYERS; i++) {
         const NpActorDef *def = &np_player_def.actor;
         const NpPlayer *p = &w->players[i];
         if (!np_player_visible(w, i)) continue;
-        np_dibujar_actor(def, NP_F2I(p->x) - def->box_x,
-                         NP_F2I(p->y) - def->box_y,
-                         np_actor_frame(def, p->anim, p->anim_frame),
-                         (uint8_t)!p->facing);
+        np_pintar_actor(def, NP_F2I(p->x) - def->box_x,
+                        NP_F2I(p->y) - def->box_y,
+                        np_actor_frame(def, p->anim, p->anim_frame),
+                        (uint8_t)!p->facing, 0);
     }
+#endif
 
     /* Scroll: los punteros van al pixel de arriba a la izquierda de lo que se
        ve, y lo que no llega a un salto entero lo pone el scroll fino.

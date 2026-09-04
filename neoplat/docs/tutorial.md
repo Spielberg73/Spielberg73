@@ -18,6 +18,7 @@ que tipo de juego quieres hacer?
   4) mazmorra      laberinto: la vida se gasta sola y los nidos sacan bichos
   5) barrio        yo contra el barrio: se colocan, avisan y esperan turno
   6) aventura      cargar con las cosas y abrir con ellas lo que no se pasa
+  7) filmation     una habitacion vista desde una esquina: cubos y salas
 
 elige [1]:
 ```
@@ -576,6 +577,102 @@ una aventura.
 Como en el resto de géneros, el bot comprueba que los dos niveles se pueden
 resolver (`tests/test_niveles.py`), y hay un control que quita los tres objetos
 del mapa y exige que entonces **no** se pase.
+
+## Un castillo isométrico
+
+```bash
+./ngplat nuevo micastillo --genero filmation
+```
+
+Esto no se ve de lado ni desde arriba: se ve **una habitación desde una
+esquina**, como en el Knight Lore. Y es el género que más cosas cambia, porque
+cambia hasta lo que significa el mapa.
+
+**El mapa ya no es lo que se ve: es la planta de la sala.** Cada casilla lleva
+una altura, y con ese número se escribe el escenario entero:
+
+```yaml
+tiles:
+  leyenda:
+    '.': {tile: 0, tipo: vacio}                              # suelo
+    'o': {tile: 0, tipo: solido, alto: 16, cubo: losa}       # un salto
+    'O': {tile: 0, tipo: solido, alto: 32, cubo: pilar}      # dos alturas
+    '#': {tile: 0, tipo: solido, alto: 48, cubo: pintado}    # pared del fondo
+    'M': {tile: 0, tipo: solido, alto: 48, cubo: muro}       # y esto tapia
+```
+
+Y una habitación se escribe así, en ocho líneas de ocho:
+
+```
+####M###
+#.......
+#..o....
+#.......
+M..P....
+#....s..
+#..o....
+#..^....
+```
+
+La primera fila y la primera columna son las dos **paredes del fondo** —en
+pantalla caen detrás de todo, que es lo que hace que una sala parezca una sala—.
+Vienen ya dibujadas, con una puerta en medio de cada una, así que en el mapa se
+escriben con `'#'`: para al que anda y no cuesta un solo sprite. Donde esa
+puerta no lleve a ninguna parte se tapia con `'M'`, que sí es un cubo de verdad.
+
+Eso no es un capricho: quince cubos de pared por habitación son lo que separa a
+una Mega Drive de ir a 60 o a 30. Y no hacen falta, porque una pared del fondo
+nunca tapa a nadie.
+
+Las tres reglas del género:
+
+- **Lo que te frena es la altura.** No hay tiles de pared y tiles de suelo: hay
+  un número. Seis píxeles se suben andando, dieciséis hay que saltarlos y
+  cuarenta y ocho no se pasan. El salto de serie llega a 23, y esa diferencia
+  **es** el diseño del juego: para llegar arriba hay que buscar el escalón.
+- **El mando va a los ejes del mapa**, no a los de la pantalla: derecha es el
+  eje x de la planta, que en pantalla sale hacia abajo y a la derecha. Escrito
+  suena raro y jugado se aprende en dos pasos; a cambio, las diagonales del
+  mando dan los cuatro lados rectos de la pantalla.
+- **El salto no se manda en el aire.** Como en la aventura: al despegar decides
+  y hasta caer no se cambia. Lo que sí se guarda es el impulso, así que para
+  subirte a un cubo que tienes pegado no hace falta carrerilla.
+
+Los mandos:
+
+- **Flechas**: andar por la planta.
+- <kbd>Z</kbd> / <kbd>espacio</kbd>: saltar.
+- <kbd>X</kbd>: soltar lo que llevas (el talismán).
+
+Saltar no es solo para subirse: es la forma de **esquivar**. Por encima de un
+pincho no pasa nada, y por encima de un bicho tampoco, porque en esta vista dos
+que no se cruzan en altura no se tocan.
+
+Una sala son **8x8 casillas** y el mapa se reparte en salas enteras: los dos
+niveles del proyecto de partida son seis habitaciones cada uno, tres por dos.
+Al cruzar el borde la cámara **salta** a la de al lado, y lo que pasa en las
+demás se queda en pausa —de eso vive el que un castillo entero quepa en una
+máquina de 1985: solo existen los cubos de la habitación que se está viendo—.
+
+- **EL PATIO** enseña el relieve: tres llaves repartidas por el castillo y la
+  salida en la última sala.
+- **LAS MAZMORRAS** añade el puzle: la salida está detrás de una puerta con un
+  talismán grabado, y el talismán está en la otra punta del piso de arriba. Hay
+  que cruzar el nivel entero, volver y bajar.
+
+**El editor edita habitaciones.** Al entrar con <kbd>E</kbd> no sale una
+cuadrícula de tiles: salen las salas dibujadas en isométrica, con sus cubos y
+sus bichos puestos donde van a estar jugando, y el ratón pincha **en el rombo**.
+En la paleta cada casilla sale con su cubo y con su altura —"sólido: muro (alto
+48)"—, que es lo que hace falta para no confundir una pared con un escalón.
+
+El dibujo de una sala —las dos paredes del fondo y el suelo— es un rectángulo
+del propio tileset (`sala: {tile: 16, ancho: 16, alto: 11}`): repintarlo cambia
+el castillo entero sin tocar nada más.
+
+Como en el resto de géneros, el bot comprueba que los dos castillos se pueden
+terminar, y hay un control que quita el talismán del mapa y exige que entonces
+**no** se pase.
 
 ## Cuando algo falla
 

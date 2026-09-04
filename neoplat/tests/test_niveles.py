@@ -16,6 +16,7 @@ import unittest
 import comun
 from comun import KIT, cargar_demo
 
+from ngplat.build import build_project
 from ngplat.preview import build_data
 from ngplat.project import load_project
 from ngplat.scaffold import crear_proyecto
@@ -159,6 +160,78 @@ class TestNivelesJugables(unittest.TestCase):
         # se queda a medias, se llame como se llame el fallo: o clavado donde
         # el primer grupo o muerto de tanto cobrar sin poder responder
         self.assertNotIn("ok   nivel", resultado.stdout, resultado.stdout)
+
+    def test_el_proyecto_isometrico_tambien_se_termina(self):
+        """El genero isometrico no se pasa andando: hay que cruzar seis
+        habitaciones, subirse a los cubos para pasar por encima de lo que no se
+        rodea y llevar el talisman hasta la puerta. Sus dos castillos tienen
+        que poder terminarse."""
+        destino = os.path.join(self.tmp, "filmation")
+        crear_proyecto(destino, "CASTILLO", "TEST", genero="filmation")
+        resultado = self._jugar(destino)
+        self.assertEqual(resultado.returncode, 0,
+                         "el bot no puede terminar el proyecto isometrico:\n"
+                         + resultado.stdout)
+
+    def test_en_la_isometrica_sin_talisman_no_se_abre_la_puerta(self):
+        """Y que lo que le hace terminar el segundo castillo es el talisman: la
+        salida esta detras de una puerta que lo pide, y el talisman esta tres
+        habitaciones atras. Quitandolo del mapa -y dejando la puerta donde
+        estaba- el bot no puede llegar. Si tambien pasara, es que el cerrojo no
+        estaria frenando y la prueba de arriba no probaria nada."""
+        destino = os.path.join(self.tmp, "filmation-sin-talisman")
+        crear_proyecto(destino, "SINTALISMAN", "TEST", genero="filmation")
+        ruta = os.path.join(destino, "game.yaml")
+        with open(ruta, encoding="utf-8") as fh:
+            texto = fh.read()
+        # el talisman del segundo castillo, quitado del mapa: la puerta sigue
+        # ahi y el camino tambien, lo unico que falta es con que abrirla
+        marca = "      #..oo...#.O...O.#..t....\n"
+        self.assertIn(marca, texto, "el segundo castillo ya no pone el talisman ahi")
+        texto = texto.replace(marca, "      #..oo...#.O...O.#.......\n", 1)
+        with open(ruta, "w", encoding="utf-8") as fh:
+            fh.write(texto)
+        resultado = self._jugar(destino)
+        self.assertNotEqual(resultado.returncode, 0,
+                            "sin talisman tambien se abre la puerta")
+        self.assertIn("FALLO nivel 2", resultado.stdout, resultado.stdout)
+
+    def test_las_paredes_del_castillo_no_cuestan_un_cubo(self):
+        """Las dos paredes del fondo de una habitacion vienen dibujadas en el
+        propio dibujo de `sala:`, asi que en el mapa son casillas que levantan
+        48 y no traen cubo. No es un detalle de estilo: son quince casillas por
+        habitacion, y quince cubos mas los de dentro no le caben a la Mega
+        Drive en un frame -medido: el juego se iba a la mitad de velocidad-.
+        Aqui se comprueba que siguen sin costar un cubo y que aun asi paran."""
+        destino = os.path.join(self.tmp, "filmation-paredes")
+        crear_proyecto(destino, "PAREDES", "TEST", genero="filmation")
+        proyecto = load_project(os.path.join(destino, "game.yaml"))
+        pared = proyecto.tiles["#"]
+        self.assertEqual(pared.alto, 48, "la pared del fondo ya no levanta 48")
+        self.assertEqual(pared.bloque, "",
+                         "la pared del fondo se dibuja con el cubo '%s' y "
+                         "deberia venir ya pintada en la sala" % pared.bloque)
+        self.assertTrue(pared.pintado, "la pared no esta marcada como pintada")
+        self.assertEqual(pared.kind, "solid", "la pared ya no frena")
+        # y el muro de verdad, el que tapia el hueco que la sala deja en medio
+        # de cada pared, sigue siendo un cubo
+        self.assertEqual(proyecto.tiles["M"].bloque, "muro")
+        # ninguna habitacion pasa de ocho cubos: es lo que la Mega Drive dibuja
+        # en un frame sin perder el retrazo
+        build = build_project(proyecto)
+        con_cubo = set(i for i, t in enumerate(build.tiles) if t.bloque)
+        for nivel in build.levels:
+            for ry in range(nivel.cells_h // 8):
+                for rx in range(nivel.cells_w // 8):
+                    cuantos = 0
+                    for cy in range(ry * 8, ry * 8 + 8):
+                        for cx in range(rx * 8, rx * 8 + 8):
+                            if nivel.cells[cy * nivel.cells_w + cx] in con_cubo:
+                                cuantos += 1
+                    self.assertLessEqual(
+                        cuantos, 8,
+                        "la sala %d,%d de '%s' trae %d cubos"
+                        % (rx, ry, nivel.name, cuantos))
 
     def test_el_proyecto_de_aventura_tambien_se_termina(self):
         """El genero de aventura no se pasa andando: cada pantalla acaba en un

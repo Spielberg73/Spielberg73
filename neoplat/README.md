@@ -126,6 +126,7 @@ el nivel de partida.
 | `mazmorra` | un **laberinto** visto desde arriba, al estilo Gauntlet. La vida **se gasta sola**, así que la partida es una cuenta atrás y hay que ir buscando comida; los **generadores** sueltan bichos sin parar hasta que los revientas, y la poción del botón de saltar se lleva por delante todo lo que se ve. La meta pide una llave que está al otro lado del laberinto |
 | `barrio` | **yo contra el barrio**, al estilo Double Dragon: se anda por una calle **con profundidad** y se pelea de verdad. Los enemigos **no van a rozarte**: se colocan a la distancia de su brazo, esperan turno (solo pegan dos a la vez), **avisan** antes de soltar el golpe y se quedan vendidos después —esa es tu ventana—, y te **rodean** por los dos lados. Tú encadenas (puño, puño y remate), das **codazos** al de atrás, entras con **patada en salto**, **corres** con doble toque y **agarras** al que se tambalea. Cada acierto **para el mundo** unos frames y cada derribo **sacude la pantalla** |
 | `aventura` | una **aventura de pantallas**, al estilo Dizzy. Aquí **no se pega**: el botón suelta lo que llevas, y en la bolsa caben tres cosas. Lo que te para no es un bicho sino un **cerrojo** —una puerta, una hoguera, una pared— que solo se abre si apareces con lo suyo; al abrirlo se gasta el objeto y el paso se queda abierto. Y el salto **no se manda en el aire**: al despegar decides hacia dónde vas y hasta caer no se cambia |
+| `filmation` | una **habitación vista desde una esquina**, al estilo Knight Lore. El mapa ya no es lo que se ve: es la **planta** de la sala, y cada casilla lleva una **altura** —0 es suelo, 16 un cubo al que se sube de un salto, 32 dos alturas y 48 una pared—. Con ese número se escribe el escenario entero. El mando va a los ejes del mapa (en pantalla salen en diagonal), el salto **no se manda en el aire** y la cámara enseña la sala en la que estás y **salta** a la siguiente al cruzar. Saltar es la forma de esquivar: por encima de un pincho o de un bicho no pasa nada |
 
 Si prefieres decirlo de una:
 
@@ -356,9 +357,9 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.24.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
-| `neoplat-kit-1.24.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.24.zip` | el `ngplat.exe` y su LEEME |
+| `neoplat-docs-1.25.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
+| `neoplat-kit-1.25.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.25.zip` | el `ngplat.exe` y su LEEME |
 
 El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
 plantillas; no necesita Python ni nada instalado. Con **doble clic** —sin
@@ -397,6 +398,7 @@ archivo nuevo y que el `.exe` se quede sin él; así salta antes de repartirlo.
 | `ngplat nuevo <carpeta> --genero mazmorra` | Un laberinto tipo Gauntlet: la vida se gasta sola, hay generadores de bichos y una poción que limpia la pantalla |
 | `ngplat nuevo <carpeta> --genero barrio` | Un juego de tortas tipo Double Dragon: enemigos que se colocan, avisan y esperan turno; codazo, patada en salto, carrera y agarres |
 | `ngplat nuevo <carpeta> --genero aventura` | Una aventura tipo Dizzy: cuatro pantallas por nivel, una bolsa de tres cosas, puertas que piden lo suyo y el salto sin control |
+| `ngplat nuevo <carpeta> --genero filmation` | Un castillo isométrico tipo Knight Lore: seis salas por nivel, cubos a los que subirse, un talismán que abre la puerta del final y un editor que edita habitaciones |
 | `ngplat nuevo <carpeta> --estilo hierro` | Lo mismo, pero dibujado con seis colores y listo para el doble plano del Amiga |
 | `ngplat comprobar [proyecto]` | Valida el `game.yaml` y dice cuánto ocupa el juego |
 | `ngplat probar [proyecto]` | Abre el preview y el editor, y se queda sirviéndolo |

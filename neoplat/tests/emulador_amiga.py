@@ -41,7 +41,7 @@ FRAMES_ANTES_DE_MEDIR = 110  # lo que tarda la camara en despegarse del borde
 def comprobar(adf: str, capturas: str = "capturas", musica=None,
               salto=None, disparo=None, parallax: bool = False,
               pantallas: bool = False, titulo_musica: str = "",
-              modelo: str = "A500") -> int:
+              modelo: str = "A500", iso: bool = False) -> int:
     """`modelo` es la maquina que se emula: 'A500' (OCS, lo de siempre) o
     'A1200' (AGA). El disquete del A1200 lleva ocho bitplanes y en un A500 no
     se veria nada, asi que cada uno se prueba en el suyo."""
@@ -230,7 +230,7 @@ def comprobar(adf: str, capturas: str = "capturas", musica=None,
     print("jugando: hasta un %.0f%% de la pantalla cambia entre tramos"
           % (movimiento * 100))
     if vigia:
-        comprobar_salto(vigia, exigir)
+        comprobar_salto(vigia, exigir, iso)
 
     # --- 5) sigue vivo --------------------------------------------------
     ultimo = emu.frame
@@ -274,6 +274,7 @@ if __name__ == "__main__":
                        p.sound.efectos.get("salto") if p else None,
                        p.sound.efectos.get("disparo") if p else None,
                        parallax=bool(p and p.amiga_modo == "8colores" and p.layers),
+                       iso=bool(p and p.view == "iso"),
                        pantallas="--pantallas" in opciones
                                  or bool(p and p.camera == "pantallas"),
                        titulo_musica=p.sound.titulo if p else "",

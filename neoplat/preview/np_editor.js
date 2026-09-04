@@ -14,6 +14,20 @@
   "use strict";
 
   var TILE = 16;
+  /* --- la vista isometrica -------------------------------------------
+   *
+   * Un mapa isometrico no se puede editar como una cuadricula de tiles: lo que
+   * se escribe son **alturas** y lo que se ve son habitaciones. Asi que el
+   * editor dibuja lo mismo que el juego -el suelo de cada sala, los cubos y
+   * los bichos, puestos por profundidad- y traduce el raton al reves: de donde
+   * pinchas a que casilla de la planta es.
+   *
+   * Todo lo demas del editor sigue igual, que es la gracia: se pinta sobre el
+   * mismo mapa de texto, con el mismo lapiz, la misma paleta, el mismo relleno
+   * y el mismo deshacer. Lo unico que cambia es como se ve y donde cae el
+   * raton. Los numeros son los del motor (np_types.h). */
+  var SALA = 8, ISO_OX = 160, ISO_OY = 80;
+  var SALA_W = 320, SALA_H = 224;
   var MINI_ALTO = 40;                 // franja del minimapa
   var PASOS_HISTORIAL = 60;
   var VERSION_GUARDADO = 2;
@@ -188,6 +202,35 @@
     function filas() { asegurarNivel(); return editor.modelo.filas[editor.nivel]; }
     function ancho() { return filas()[0].length; }
     function alto() { return filas().length; }
+
+    function esIso() { return DATA.view === "iso"; }
+    function salasX() { return Math.max(1, Math.ceil(ancho() / SALA)); }
+    function salasY() { return Math.max(1, Math.ceil(alto() / SALA)); }
+
+    /* Lo que ocupa el nivel entero en pixeles del editor. En la isometrica no
+       son las casillas por dieciseis: son las salas por lo que mide una
+       pantalla, porque cada habitacion se dibuja en la suya. */
+    function anchoMundo() { return esIso() ? salasX() * SALA_W : ancho() * TILE; }
+    function altoMundo() { return esIso() ? salasY() * SALA_H : alto() * TILE; }
+
+    /* De una casilla de la planta al pixel donde se apoya su rombo. Es la
+       misma cuenta que np_pantalla del motor, con la sala de cada una. */
+    function isoPunto(cx, cy) {
+      var rx = Math.floor(cx / SALA), ry = Math.floor(cy / SALA);
+      var lx = (cx - rx * SALA) * TILE + 8, ly = (cy - ry * SALA) * TILE + 8;
+      return { x: rx * SALA_W + ISO_OX + (lx - ly),
+               y: ry * SALA_H + ISO_OY + ((lx + ly) >> 1) };
+    }
+
+    /* Y al reves, que es lo que hace falta para el raton: deshacer la
+       proyeccion. De sx = lx - ly y sy = (lx + ly) / 2 salen lx = sy + sx / 2
+       y ly = sy - sx / 2, que es todo lo que hay. */
+    function isoCelda(px, py) {
+      var rx = Math.floor(px / SALA_W), ry = Math.floor(py / SALA_H);
+      var sx = px - rx * SALA_W - ISO_OX, sy = py - ry * SALA_H - ISO_OY;
+      return { x: rx * SALA + Math.floor((sy + sx / 2) / TILE),
+               y: ry * SALA + Math.floor((sy - sx / 2) / TILE) };
+    }
     function propsNivel() { asegurarNivel(); return editor.modelo.niveles[editor.nivel]; }
 
     function spawnChars() {
@@ -496,7 +539,7 @@
       editor.nivel = indice;
       editor.seleccion = null;
       editor.camX = 0;
-      editor.camY = Math.max(0, alto() * TILE - altoVista());
+      editor.camY = Math.max(0, altoMundo() - altoVista());
       limitarCamara();
       revisar();
       alCambiar();
@@ -858,8 +901,8 @@
     function anchoVista() { return canvas.width / editor.zoom; }
 
     function limitarCamara() {
-      var maxX = Math.max(0, ancho() * TILE - anchoVista());
-      var maxY = Math.max(0, alto() * TILE - altoVista());
+      var maxX = Math.max(0, anchoMundo() - anchoVista());
+      var maxY = Math.max(0, altoMundo() - altoVista());
       editor.camX = Math.max(0, Math.min(editor.camX, maxX));
       editor.camY = Math.max(0, Math.min(editor.camY, maxY));
     }
@@ -1567,7 +1610,67 @@
       }
     }
 
+    /* Un actor puesto sobre una casilla de la planta: la misma regla de
+       anclaje que np_pantalla -los pies en el centro de abajo de la caja-,
+       para que en el editor se vea exactamente donde va a estar jugando. */
+    function dibujarActorIso(actor, x, y) {
+      if (!actor) return;
+      dibujarFrame(actor.sheet, 0,
+                   x - (actor.box_x + (actor.box_w >> 1)),
+                   y - (actor.box_y + actor.box_h), false);
+    }
+
+    /* Una habitacion: primero su suelo -que es un trozo del tileset pegado tal
+       cual, el mismo que pega el compilador- y encima lo que haya en cada
+       casilla, por diagonales, o sea de mas lejos a mas cerca. */
+    function dibujarSalaIso(f, rx, ry) {
+      var sala = DATA.tiles.sala;
+      var ox = rx * SALA_W - editor.camX, oy = ry * SALA_H - editor.camY;
+      var d, ly;
+      if (sala && sala.tile >= 0) {
+        var hoja = DATA.sheets["__tiles__"];
+        var porFila = (hoja && hoja.per_row) || 16;
+        for (var fy = 0; fy < sala.alto; fy++)
+          for (var fx = 0; fx < sala.ancho; fx++)
+            dibujarFrame("__tiles__", sala.tile + fy * porFila + fx,
+                         ox + (sala.x + fx) * TILE,
+                         oy + (sala.y + fy) * TILE, false);
+      }
+      for (d = 0; d <= (SALA - 1) * 2; d++) {
+        for (ly = 0; ly < SALA; ly++) {
+          var lx = d - ly;
+          if (lx < 0 || lx >= SALA) continue;
+          var cx = rx * SALA + lx, cy = ry * SALA + ly;
+          if (cx >= ancho() || cy >= alto()) continue;
+          var ch = f[cy][cx];
+          var p = isoPunto(cx, cy);
+          var x = p.x - editor.camX, y = p.y - editor.camY;
+          if (ch === "P") { dibujarActorIso(DATA.player.actor, x, y); continue; }
+          if (esSpawn(ch)) { dibujarActorIso(actorDe(ch), x, y); continue; }
+          var indice = DATA.tiles.index[ch];
+          if (indice === undefined) continue;
+          var cubo = DATA.tiles.bloque ? DATA.tiles.bloque[indice] : 0;
+          if (cubo && DATA.bloques && DATA.bloques[cubo - 1])
+            dibujarActorIso(DATA.bloques[cubo - 1].actor, x, y);
+        }
+      }
+    }
+
+    function dibujarMapaIso() {
+      var f = filas();
+      var rx0 = Math.max(0, Math.floor(editor.camX / SALA_W));
+      var rx1 = Math.min(salasX() - 1,
+                         Math.floor((editor.camX + anchoVista()) / SALA_W));
+      var ry0 = Math.max(0, Math.floor(editor.camY / SALA_H));
+      var ry1 = Math.min(salasY() - 1,
+                         Math.floor((editor.camY + altoVista()) / SALA_H));
+      for (var ry = ry0; ry <= ry1; ry++)
+        for (var rx = rx0; rx <= rx1; rx++)
+          dibujarSalaIso(f, rx, ry);
+    }
+
     function dibujarMapa() {
+      if (esIso()) { dibujarMapaIso(); return; }
       var col0 = Math.floor(editor.camX / TILE), row0 = Math.floor(editor.camY / TILE);
       var offX = editor.camX - col0 * TILE, offY = editor.camY - row0 * TILE;
       var columnas = Math.ceil(anchoVista() / TILE) + 1;
@@ -1598,8 +1701,31 @@
       }
     }
 
+    /* La rejilla de la isometrica son los rombos de la planta: es lo que
+       cuenta las casillas cuando el suelo esta en diagonal. */
+    function dibujarRejillaIso() {
+      ctx.strokeStyle = "rgba(255,255,255,0.12)";
+      ctx.lineWidth = 1 / editor.zoom;
+      ctx.beginPath();
+      for (var cy = 0; cy < alto(); cy++) {
+        for (var cx = 0; cx < ancho(); cx++) {
+          var p = isoPunto(cx, cy);
+          var x = p.x - editor.camX, y = p.y - editor.camY;
+          if (x < -32 || x > anchoVista() + 32) continue;
+          if (y < -32 || y > altoVista() + 32) continue;
+          ctx.moveTo(x, y - 8);
+          ctx.lineTo(x + 16, y);
+          ctx.lineTo(x, y + 8);
+          ctx.lineTo(x - 16, y);
+          ctx.closePath();
+        }
+      }
+      ctx.stroke();
+    }
+
     function dibujarRejilla() {
       if (!editor.rejilla) return;
+      if (esIso()) { dibujarRejillaIso(); return; }
       var col0 = Math.floor(editor.camX / TILE), row0 = Math.floor(editor.camY / TILE);
       var offX = editor.camX - col0 * TILE, offY = editor.camY - row0 * TILE;
       ctx.strokeStyle = "rgba(255,255,255,0.10)";
@@ -1622,11 +1748,21 @@
       ctx.strokeStyle = "rgba(242,183,5,0.35)";
       ctx.lineWidth = 1 / editor.zoom;
       ctx.beginPath();
-      for (var x = 0; x <= ancho() * TILE; x += 320) {
+      for (var x = 0; x <= anchoMundo(); x += SALA_W) {
         var px = x - editor.camX;
         if (px < -8 || px > anchoVista() + 8) continue;
         ctx.moveTo(px, 0);
         ctx.lineTo(px, altoVista());
+      }
+      /* En la isometrica cada sala es una pantalla tambien de alto, asi que
+         las lineas de abajo hacen falta para ver donde acaba cada cuarto. */
+      if (esIso()) {
+        for (var y = 0; y <= altoMundo(); y += SALA_H) {
+          var py = y - editor.camY;
+          if (py < -8 || py > altoVista() + 8) continue;
+          ctx.moveTo(0, py);
+          ctx.lineTo(anchoVista(), py);
+        }
       }
       ctx.stroke();
     }
@@ -1645,6 +1781,22 @@
 
     function dibujarCursor() {
       if (editor.raton.x < 0) return;
+      if (esIso()) {
+        var cx = editor.raton.x, cy = editor.raton.y;
+        if (cx >= ancho() || cy >= alto()) return;
+        var p = isoPunto(cx, cy);
+        var ix = p.x - editor.camX, iy = p.y - editor.camY;
+        ctx.strokeStyle = "#f2b705";
+        ctx.lineWidth = 1 / editor.zoom;
+        ctx.beginPath();
+        ctx.moveTo(ix, iy - 8);
+        ctx.lineTo(ix + 16, iy);
+        ctx.lineTo(ix, iy + 8);
+        ctx.lineTo(ix - 16, iy);
+        ctx.closePath();
+        ctx.stroke();
+        return;
+      }
       var x = editor.raton.x * TILE - editor.camX;
       var y = editor.raton.y * TILE - editor.camY;
       // vista previa del rectangulo mientras se arrastra
@@ -1703,9 +1855,12 @@
       }
       ctx.strokeStyle = "rgba(255,255,255,0.7)";
       ctx.lineWidth = 1;
-      ctx.strokeRect(offX + (editor.camX / TILE) * escala + 0.5,
-                     y0 + 4.5 + (editor.camY / TILE) * escala,
-                     (anchoVista() / TILE) * escala, (altoVista() / TILE) * escala);
+      /* El recuadro de lo que se ve. Va en fraccion del mundo y no en tiles
+         porque en la isometrica un pixel del editor no es un dieciseisavo de
+         casilla: una sala entera son 320 pixeles y ocho casillas. */
+      var fx = ancho() * escala / anchoMundo(), fy = alto() * escala / altoMundo();
+      ctx.strokeRect(offX + editor.camX * fx + 0.5, y0 + 4.5 + editor.camY * fy,
+                     anchoVista() * fx, altoVista() * fy);
       editor._mini = { y0: y0, escala: escala, offX: offX };
     }
 
@@ -1732,18 +1887,19 @@
     /* ------------------------------------------------------------ raton */
 
     function aTile(px, py) {
-      return {
-        x: Math.floor((px / editor.zoom + editor.camX) / TILE),
-        y: Math.floor((py / editor.zoom + editor.camY) / TILE)
-      };
+      var wx = px / editor.zoom + editor.camX;
+      var wy = py / editor.zoom + editor.camY;
+      if (esIso()) return isoCelda(wx, wy);
+      return { x: Math.floor(wx / TILE), y: Math.floor(wy / TILE) };
     }
 
     editor.pulsar = function (px, py, boton, conAlt) {
       if (py >= canvas.height - MINI_ALTO) {
         var mini = editor._mini;
         if (mini) {
-          editor.irA(((px - mini.offX) / mini.escala) * TILE,
-                     ((py - mini.y0 - 4) / mini.escala) * TILE);
+          /* del minimapa (que va en casillas) al mundo del editor */
+          editor.irA(((px - mini.offX) / mini.escala) * (anchoMundo() / ancho()),
+                     ((py - mini.y0 - 4) / mini.escala) * (altoMundo() / alto()));
         }
         return;
       }
@@ -1836,8 +1992,29 @@
         var pide = DATA.tiles.need ? DATA.tiles.need[i] : 0;
         if (pide && DATA.nombres.objetos[pide - 1])
           etiqueta = "cerrojo: " + DATA.nombres.objetos[pide - 1];
+        /* En la isometrica el tile no se dibuja -el escenario no sale del
+           mapa- y lo que se ve es su cubo. Puestos en la paleta por su
+           `tile:`, que ahi siempre es el vacio, saldrian todos en blanco y no
+           habria manera de saber cual es la pared y cual el escalon. */
+        var cubo = esIso() && DATA.tiles.bloque ? DATA.tiles.bloque[i] : 0;
+        var hoja = "__tiles__", cuadro = DATA.tiles.gfx[i];
+        if (cubo && DATA.bloques && DATA.bloques[cubo - 1]) {
+          hoja = DATA.bloques[cubo - 1].actor.sheet;
+          cuadro = 0;
+          /* Y se llama por su cubo: dos casillas del mismo tipo y la misma
+             altura -un escalon y un pebetero, por ejemplo- son cosas
+             distintas, y en la paleta hay que poder distinguirlas. */
+          etiqueta += ": " + (DATA.nombres.cubos[cubo - 1] || "cubo");
+        }
+        if (esIso() && DATA.tiles.alto && DATA.tiles.alto[i]) {
+          etiqueta += " (alto " + DATA.tiles.alto[i] + ")";
+          /* Una casilla que levanta y no trae cubo es de las que ya vienen
+             dibujadas en la sala -las paredes del fondo-. En la paleta sale en
+             blanco, asi que hay que decirlo o parece un tile roto. */
+          if (!cubo) etiqueta += " ya pintado";
+        }
         lista.push({ char: ch, etiqueta: etiqueta,
-                     tipo: "tile", hoja: "__tiles__", frame: DATA.tiles.gfx[i] });
+                     tipo: "tile", hoja: hoja, frame: cuadro });
       });
       var chars = spawnChars();
       Object.keys(chars).forEach(function (ch) {
@@ -1855,7 +2032,7 @@
 
     editor.entrar = function () {
       editor.activo = true;
-      editor.camY = Math.max(0, alto() * TILE - altoVista());
+      editor.camY = Math.max(0, altoMundo() - altoVista());
       limitarCamara();
       revisar();
     };

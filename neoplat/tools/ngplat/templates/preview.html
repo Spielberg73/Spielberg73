@@ -1042,22 +1042,24 @@
   }
 
   function drawEntities() {
-    /* de mas lejos a mas cerca, como hacen las siete maquinas */
+    /* De mas lejos a mas cerca, como hacen las siete maquinas: se pide el
+       orden y por cada puesto se pregunta que hay ahi y donde cae. Igual que
+       el bucle unico de los seis np_video.c. */
     var orden = world.ordenDibujo();
     for (var k = 0; k < orden.length; k++) {
-      var e = world.entities[orden[k]];
-      if (!e.active) continue;
-      if (e.hurt && (world.frame & 1)) continue;
-      var def = world.entityDef(e).actor;
-      var sx = NPCore.F2I(e.x) - def.box_x - world.camX;
-      var sy = NPCore.F2I(e.y) - def.box_y - world.camY;
-      if (sx <= -def.frame_w || sx >= NPCore.SCREEN_W) continue;
-      if (sy <= -def.frame_h || sy >= NPCore.SCREEN_H) continue;
-      drawActor(def, sx, sy, NPCore.actorFrame(def, e.anim, e.animFrame), !e.facing);
+      var d = world.dibujo(orden[k]);
+      if (!d) continue;
+      var sx = d.sx - world.camX, sy = d.sy - world.camY;
+      if (sx <= -d.def.frame_w || sx >= NPCore.SCREEN_W) continue;
+      if (sy <= -d.def.frame_h || sy >= NPCore.SCREEN_H) continue;
+      drawActor(d.def, sx, sy, d.frame, d.flip);
     }
   }
 
   function drawPlayer() {
+    /* En la isometrica los jugadores ya van en la fila de arriba, colocados
+       por profundidad: aqui no queda nada que pintar. */
+    if (world.iso()) return;
     var def = DATA.player.actor;
     for (var i = 0; i < world.players.length; i++) {
       if (!world.playerVisible(i)) continue;

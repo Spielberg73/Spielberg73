@@ -198,6 +198,7 @@ class Sheet:
     tiles: List[List[int]] = field(default_factory=list)  # indices de paleta
     first_tile: int = 0                                   # asignado al empaquetar
     palette_index: int = 0
+    per_row: int = 1        # fotogramas por fila de la imagen
 
     @property
     def cols(self) -> int:
@@ -230,7 +231,7 @@ def load_sheet(path: str, name: str, frame_w: int, frame_h: int) -> Sheet:
     frames = per_row * rows_of_frames
     palette, lookup = build_palette(image, name, name)
     sheet = Sheet(name=name, path=path, frame_w=frame_w, frame_h=frame_h,
-                  frames=frames, palette=palette)
+                  frames=frames, palette=palette, per_row=per_row)
     for fy in range(rows_of_frames):
         for fx in range(per_row):
             frame = image.crop(fx * frame_w, fy * frame_h, frame_w, frame_h)

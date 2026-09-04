@@ -61,6 +61,48 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
  * Que objeto abre cada cerrojo lo dice `np_tile_need` (el objeto mas uno). */
 #define NP_TILE_LOCK     9
 
+/* --- la vista isometrica (los juegos de tipo filmation) ------------------
+ *
+ * Ahi el mapa no es lo que se ve: es la **planta** de la sala, y cada casilla
+ * tiene ademas una altura. Una casilla de altura cero es suelo por el que se
+ * anda; una de altura 16 es un cubo al que hay que subirse de un salto; una de
+ * 48 es una pared. Lo que frena no es el tipo de la casilla sino lo alto que
+ * esta comparado con tus pies, y por eso no hace falta un tipo nuevo: el mismo
+ * `solido` de siempre, con su `alto:`, hace de cubo, de escalon y de muro.
+ *
+ * NP_SALA es lo que mide una sala en casillas. Ocho por ocho es lo que cabe en
+ * una pantalla de 320x224 con la proyeccion de abajo, y es tambien el tamano
+ * de las salas de los juegos del genero: una habitacion, un puzle. */
+#define NP_SALA        8
+#define NP_SALA_PX     (NP_SALA * NP_TILE)      /* 128 px de planta */
+#define NP_SALA_SHIFT  7                        /* ...que son 2^7 */
+
+/* La proyeccion: un punto de la planta (x, y) en pixeles cae en la pantalla en
+ *
+ *     sx = NP_ISO_OX + (x - y)
+ *     sy = NP_ISO_OY + (x + y) / 2 - altura
+ *
+ * o sea rombos de 32x16, los de toda la vida. Con eso la planta de 128x128 px
+ * de una sala ocupa 256x128 en pantalla, y NP_ISO_OX / NP_ISO_OY la centran
+ * dejando sitio arriba para lo que sobresalga y para el marcador.
+ *
+ * Los dos son multiplos de 16 a proposito: el suelo de la sala se pega en la
+ * rejilla de tiles de la pantalla, y con un origen a medio tile no cuadraria.
+ * Y 80 y no 64 porque una pared de tres alturas en la casilla del fondo sube
+ * hasta 48 pixeles por encima del rombo: con 64 se le comeria la punta el
+ * marcador, que ocupa las tres primeras filas. */
+#define NP_ISO_OX      160
+#define NP_ISO_OY      80
+
+/* Lo que se sube andando. Un escalon de seis pixeles se sube solo -asi un
+ * suelo con relieve no se pelea contigo- y un cubo de dieciseis no: a los
+ * cubos se salta, que es de lo que va el genero. */
+#define NP_ESCALON     6
+
+/* Y lo cerca del suelo que hay que estar para que un pincho pinche o para que
+ * una meta cuente: saltando por encima no pasa nada. */
+#define NP_ISO_PISA    6
+
 /* Tipos de ataque del jugador (NpAttackDef.kind). */
 #define NP_ATTACK_NONE  0
 #define NP_ATTACK_SHOT  1
@@ -77,6 +119,12 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_KIND_ENEMY_SHOT 7     /* lo que tira un enemigo con `dispara:` */
 #define NP_KIND_PRISONER 8       /* el rehen: se suelta tocandolo */
 #define NP_KIND_GENERATOR 9      /* el nido: saca bichos hasta que lo rompes */
+/* El cubo de la vista isometrica: no anda, no hace dano y no se le pega. Es
+ * escenario, y esta en la lista de entidades por una sola razon: para que se
+ * dibuje **en su sitio** en la fila de profundidad, delante o detras de quien
+ * pase por al lado. Se crean y se borran al cambiar de sala, asi que solo
+ * ocupan huecos los de la sala que se esta viendo. */
+#define NP_KIND_BLOQUE 10
 
 /* El arma secundaria: se lanza con arriba + accion y gasta municion. */
 #define NP_SUB_NONE  0

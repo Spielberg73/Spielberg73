@@ -18,6 +18,12 @@ from typing import List, Tuple
 
 QUIETO = 0.85          # a partir de aqui la franja se considera la misma
 SALTO = 0.55           # por debajo de aqui ha cambiado media pantalla o mas
+# En la vista isometrica todas las habitaciones se dibujan con el mismo suelo y
+# las mismas paredes -eso es lo que hace que un castillo entero quepa en una
+# maquina de 1985-, asi que cambiar de sala mueve los cubos y los bichos, no el
+# fondo: la cuarta parte de las columnas, no la mitad. Medido en las seis
+# maquinas: entre el 25% y el 44%.
+SALTO_ISO = 0.80
 DESDE, HASTA = 0.15, 0.98      # de debajo del marcador al borde de abajo
 
 
@@ -50,14 +56,15 @@ class Vigia:
         return (quietos, min(self.iguales))
 
 
-def comprobar_salto(vigia: Vigia, exigir) -> None:
+def comprobar_salto(vigia: Vigia, exigir, iso: bool = False) -> None:
     """Las dos condiciones que separan 'pantallas' de 'scroll'."""
     quietos, mayor = vigia.veredicto()
+    tope = SALTO_ISO if iso else SALTO
     exigir(quietos >= 0.8,
            "la camara no esta quieta: solo el %.0f%% de los frames dejan el "
            "escenario donde estaba, y por pantallas deberian ser casi todos"
            % (quietos * 100))
-    exigir(mayor <= SALTO,
+    exigir(mayor <= tope,
            "la camara no llega a saltar: el frame que mas cambia solo mueve el "
            "%.0f%% de la pantalla" % ((1 - mayor) * 100))
     print("camara por pantallas: quieta el %.0f%% de los frames y el salto "
