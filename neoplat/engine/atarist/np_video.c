@@ -711,8 +711,18 @@ static void np_apuntar_rastro(NpBuffer *b, int32_t x, int32_t y,
     b->rastro_count++;
 }
 
-/* `quieto` = este dibujo se queda en la pantalla y no hay que borrarlo el frame
-   que viene: son los cubos de una sala isometrica. */
+/* `quieto` dice de que clase es este dibujo:
+ *
+ *   0  un actor que se mueve: se pinta entero y se apunta su rastro para
+ *      borrarlo el frame que viene;
+ *   1  un cubo de una sala isometrica recien montada: se pinta entero y ahi se
+ *      queda, como el suelo, sin rastro que borrar;
+ *   2  un cubo que ya estaba pintado y al que un actor le ha repintado el
+ *      suelo por encima: solo hacen falta **los trozos que se han borrado**.
+ *      Un muro son ocho trozos y el rastro de un bicho toca uno o dos: con
+ *      esta cuenta, una sala con bichos le cabe al ST en un frame, y sin ella
+ *      la melodia se le va de 16 notas de 16 a 12 (medido).
+ */
 static void np_pintar_actor(NpBuffer *b, const NpActorDef *def,
                             int32_t mundo_x, int32_t mundo_y, uint8_t frame,
                             uint8_t quieto)
@@ -723,9 +733,16 @@ static void np_pintar_actor(NpBuffer *b, const NpActorDef *def,
     int32_t y = mundo_y - b->vista_y;
     if (x + def->cols * NP_TILE <= 0 || x >= NP_ANCHO) return;
     for (c = 0; c < def->cols; c++)
-        for (r = 0; r < def->rows; r++)
+        for (r = 0; r < def->rows; r++) {
+#if NP_VISTA_ISO
+            if (quieto == 2
+                && !np_pisa_lo_borrado(b, mundo_x + c * NP_TILE,
+                                       mundo_y + r * NP_TILE,
+                                       NP_TILE, NP_TILE)) continue;
+#endif
             np_sprite_en(b->pixeles, (uint16_t)(base + c * def->rows + r),
                          x + c * NP_TILE, y + r * NP_TILE);
+        }
     if (!quieto)
         np_apuntar_rastro(b, mundo_x, mundo_y, (int16_t)(def->cols * NP_TILE),
                           (int16_t)(def->rows * NP_TILE));
@@ -870,7 +887,8 @@ void np_video_actores(const NpWorld *w)
             && !np_pisa_lo_borrado(b, sx, sy, def->cols * NP_TILE,
                                    def->rows * NP_TILE))
             continue;
-        np_pintar_actor(b, def, sx, sy, frame, cubo);
+        np_pintar_actor(b, def, sx, sy, frame,
+                        (uint8_t)(cubo ? (b->sala_nueva ? 1 : 2) : 0));
     }
 #else
     for (i = 0; i < cuantas; i++) {

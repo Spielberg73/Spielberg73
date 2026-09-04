@@ -1760,14 +1760,26 @@ def _revisar_isometrica(levels, tiles, tileset, blocks, warnings) -> None:
             continue
         cubo = blocks[tile.bloque]
         # Un prisma de `alto` pixeles sobre un rombo de 32x16 ocupa 32 de ancho
-        # y alto+16 de alto. Si el dibujo no mide eso, el cubo se vera flotando
-        # o hundido en el suelo, que es de esas cosas que uno mira diez minutos
-        # sin saber por que no encajan.
-        if cubo.frame_w != 32 or cubo.frame_h != tile.alto + 16:
+        # y alto+16 de alto, asi que ahi no cabe. El cuadro puede ser mas alto
+        # -los fotogramas van de 16 en 16 en las siete maquinas, y un escalon
+        # de 4 no tiene otra forma de dibujarse-, pero nunca mas bajo.
+        if cubo.frame_w != 32 or cubo.frame_h < tile.alto + 16:
             warnings.append(
-                "el cubo '%s' mide %dx%d y para un alto de %d deberia medir 32x%d"
+                "el cubo '%s' mide %dx%d y para un alto de %d no baja de 32x%d"
                 % (tile.bloque, cubo.frame_w, cubo.frame_h, tile.alto,
                    tile.alto + 16))
+            continue
+        # Y lo que de verdad decide si encaja: **donde se apoya**. El rombo de
+        # abajo del cubo va pegado al borde de abajo del cuadro, y eso fija el
+        # desplazamiento sea cual sea lo alto que sea el dibujo. Si no cuadra,
+        # el cubo sale flotando o hundido en el suelo, que es de esas cosas que
+        # uno mira diez minutos sin saber por que no encajan.
+        if cubo.box_x != 8 or cubo.box_y != cubo.frame_h - 24:
+            warnings.append(
+                "el cubo '%s' se apoya en [%d, %d] y en un cuadro de %d de alto "
+                "deberia ser [8, %d]"
+                % (tile.bloque, cubo.box_x, cubo.box_y, cubo.frame_h,
+                   cubo.frame_h - 24))
     for nivel in levels:
         ancho, alto = len(nivel.rows[0]), len(nivel.rows)
         if ancho % SALA or alto % SALA:

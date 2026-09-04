@@ -2340,65 +2340,76 @@ def _salas(filas_de_salas: List[List[Tuple[str, ...]]]) -> List[str]:
 
 
 # --- nivel 1: el patio. Seis salas, tres llaves y la salida al fondo.
+# A: la entrada. Un escalon que se sube andando, una losa que hay que saltar y
+#    un pincho: las tres cosas que hay que entender, una al lado de otra.
 _PATIO_A = (
     "####M###",
     "#.......",
-    "#..o....",
+    "#..e....",
     "#.......",
     "M..P....",
-    "#....s..",
-    "#..o....",
+    "#...so..",
+    "#.o.....",
     "#..^....",
 )
+# B: el patio de las losas. La primera llave, con la arana dando vueltas por
+#    delante y dos pinchos en la salida de abajo.
 _PATIO_B = (
     "####M###",
     "#...A...",
-    "#..oO...",
-    "#.......",
-    "........",
+    "#..oo...",
     "#....k..",
-    "#.......",
-    "#..^....",
+    "........",
+    "#..s....",
+    "#.oo....",
+    "#..^.^..",
 )
+# C: la tapia. La llave esta al otro lado de una fila de losas: hay que
+#    saltar encima y bajarse por el otro lado. Es la primera vez que el juego
+#    pide subirse a algo para llegar a alguna parte.
 _PATIO_C = (
     "####M###",
     "#.......",
-    "#...f...",
-    "#..OO...",
+    "#...k...",
+    "#.oooo..",
     "........",
-    "#..oo...",
-    "#....k..",
-    "#.......",
+    "#..f....",
+    "#.o..o..",
+    "#..^....",
 )
+# D: la sala de la antorcha. Sitio para andar, un escalon y la tercera llave.
 _PATIO_D = (
     "####.###",
     "#.......",
-    "#.o.....",
-    "#.......",
-    "M....s..",
-    "#.......",
-    "#..A....",
+    "#.oo....",
+    "#....e..",
+    "M...k...",
+    "#..s....",
+    "#.A..o..",
     "#.......",
 )
+# E: el paso de los pinchos. Tres pinchos en fila y tres losas mas arriba: se
+#    cruza en zigzag por los huecos o de un salto por encima.
 _PATIO_E = (
     "####.###",
     "#.......",
+    "#.o.o.o.",
     "#.......",
-    "#....^^.",
     "........",
-    "#.o.o...",
-    "#...k...",
+    "#.^.^.^.",
     "#.......",
+    "#..oo...",
 )
+# F: la salida, en alto sobre su pedestal y con el fantasma rondandola.
 _PATIO_F = (
     "####M###",
     "#.......",
+    "#..oOo..",
     "#...G...",
-    "#..ooo..",
     "........",
-    "#.......",
-    "#...f...",
-    "#.......",
+    "#..f....",
+    "#.o...o.",
+    "#..^....",
 )
 
 
@@ -2412,68 +2423,80 @@ def _nivel_filmation_1() -> List[str]:
 # La salida esta detras de una puerta con el talisman grabado, y el talisman
 # esta en la otra punta del piso de arriba, asi que hay que cruzar el nivel
 # entero, volver y bajar. Es el puzle mas viejo del genero y sigue funcionando.
+# A: el pozo. Aqui se ensena la escalera del genero: del suelo a una losa de
+#    16 y de la losa al pilar de 32. De un salto se suben 23 pixeles, asi que
+#    al pilar no se llega desde el suelo: hay que subir por la losa.
 _MAZMORRA_A = (
     "####M###",
     "#.......",
-    "#..oo...",
+    "#..o....",
     "#..oO...",
     "M..P....",
     "#.......",
     "#..s....",
     "#.......",
 )
+# B: la sala de las columnas. Cuatro pilares de 32 que no se suben, un pincho
+#    en medio y el fantasma flotando entre ellos.
 _MAZMORRA_B = (
     "####M###",
-    "#...A...",
     "#.O...O.",
     "#.......",
-    "....^...",
+    "#...^...",
+    "........",
     "#.O...O.",
     "#....f..",
     "#.......",
 )
+# C: el altar del talisman, detras de una tapia de losas.
 _MAZMORRA_C = (
     "####M###",
     "#.......",
     "#..t....",
-    "#.......",
+    "#.oooo..",
     "........",
     "#..oO...",
     "#.......",
-    "#.......",
+    "#..^....",
 )
+# D: la galeria. La unica llave del piso y un escalon para el que se fie.
 _MAZMORRA_D = (
     "####.###",
     "#.......",
     "#..o....",
     "#.......",
-    "M...s...",
-    "#.......",
-    "#.......",
+    "M...s.k.",
+    "#..e....",
+    "#.oo....",
     "#.......",
 )
+# E: el laberinto de losas. Dos rejillas con una losa en medio del paso: o se
+#    rodea o se salta, y por ahi esta la antorcha.
 _MAZMORRA_E = (
     "####M###",
     "#.......",
-    "#..oo...",
+    "#.o.o.o.",
     "#.......",
-    "....k...",
-    "#.......",
+    "....o...",
+    "#.o.o.o.",
     "#..A....",
     "#.......",
 )
 # La sala de la salida: no se entra por arriba -su pared del fondo esta
 # entera- sino por el oeste, y ahi esta la puerta. Sin el talisman no hay
 # manera, y por eso el talisman esta donde esta.
+# F: la salida. No se entra por arriba -su pared del fondo esta entera- sino
+#    por el oeste, y ahi esta la puerta. Sin el talisman no hay manera, y por
+#    eso el talisman esta donde esta.
 _MAZMORRA_F = (
     "####M###",
     "#.......",
+    "#..oOo..",
     "#...G...",
-    "#..ooo..",
     "C.......",
-    "#.......",
     "#..f....",
-    "#.......",
+    "#.oo.o..",
+    "#..^....",
 )
 
 
@@ -2581,6 +2604,10 @@ tiles:
     # numero de `tile:` no se usa en esta vista -el escenario no sale del
     # mapa-, asi que van todos a 0.
     '.': {{tile: 0, tipo: vacio}}
+    # Cuatro pixeles: se sube **andando**, sin saltar. Es el escalon del que
+    # vive el genero -para llegar arriba hay que buscarlo- y la unica casilla
+    # que levanta y no frena.
+    'e': {{tile: 0, tipo: solido, alto: 4, cubo: escalon}}
     'o': {{tile: 0, tipo: solido, alto: 16, cubo: losa}}
     'O': {{tile: 0, tipo: solido, alto: 32, cubo: pilar}}
     # La pared del fondo: para, pero **no se dibuja**, porque ya viene en el
@@ -2604,6 +2631,16 @@ tiles:
 # dibuja en 32 x (alto + 16) y se apoya en el centro de abajo del cuadro, asi
 # que la caja va siempre [16, 16] con desplazamiento [8, alto - 8].
 cubos:
+  # El escalon: el unico relieve que se sube andando. Su cuadro es de 32x32 y
+  # no de 32x20 -que es lo que mide el prisma- porque los fotogramas van de 16
+  # en 16 en las siete maquinas. Lo que tiene que cuadrar no es el alto del
+  # cuadro sino donde se apoya: el rombo de abajo, pegado al borde de abajo, o
+  # sea 'desplazamiento: [8, alto_del_cuadro - 24]'.
+  escalon:
+    sprite: graficos/escalon.png
+    frame: [32, 32]
+    caja: [16, 16]
+    desplazamiento: [8, 8]
   losa:
     sprite: graficos/losa.png
     frame: [32, 32]

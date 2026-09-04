@@ -595,6 +595,7 @@ una altura, y con ese número se escribe el escenario entero:
 tiles:
   leyenda:
     '.': {tile: 0, tipo: vacio}                              # suelo
+    'e': {tile: 0, tipo: solido, alto: 4,  cubo: escalon}    # se sube andando
     'o': {tile: 0, tipo: solido, alto: 16, cubo: losa}       # un salto
     'O': {tile: 0, tipo: solido, alto: 32, cubo: pilar}      # dos alturas
     '#': {tile: 0, tipo: solido, alto: 48, cubo: pintado}    # pared del fondo
@@ -654,11 +655,17 @@ Al cruzar el borde la cámara **salta** a la de al lado, y lo que pasa en las
 demás se queda en pausa —de eso vive el que un castillo entero quepa en una
 máquina de 1985: solo existen los cubos de la habitación que se está viendo—.
 
-- **EL PATIO** enseña el relieve: tres llaves repartidas por el castillo y la
-  salida en la última sala.
-- **LAS MAZMORRAS** añade el puzle: la salida está detrás de una puerta con un
-  talismán grabado, y el talismán está en la otra punta del piso de arriba. Hay
-  que cruzar el nivel entero, volver y bajar.
+- **EL PATIO** enseña el relieve, y lo enseña por orden. La sala de entrada
+  pone un escalón, una losa y un pincho uno al lado de otro —lo que se anda, lo
+  que se salta y lo que mata—; la tercera es una tapia de losas con la llave
+  detrás, que es la primera vez que el juego pide subirse a algo para llegar a
+  alguna parte; y la del paso de los pinchos se cruza en zigzag o por encima.
+  Tres llaves y la salida en la última sala.
+- **LAS MAZMORRAS** añade dos cosas. La escalera del género: del suelo a una
+  losa de 16 y de la losa a un pilar de 32, porque de un salto se suben 23
+  píxeles y al pilar no se llega desde abajo. Y el puzle: la salida está detrás
+  de una puerta con un talismán grabado, y el talismán está en la otra punta
+  del piso de arriba. Hay que cruzar el nivel entero, volver y bajar.
 
 **El editor edita habitaciones.** Al entrar con <kbd>E</kbd> no sale una
 cuadrícula de tiles: salen las salas dibujadas en isométrica, con sus cubos y

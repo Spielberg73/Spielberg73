@@ -2,8 +2,56 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.25.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.26.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.26
+
+**El castillo, amueblado.** La 1.25 dejo el genero isometrico corriendo a 60 en
+las seis maquinas, pero con las habitaciones a medio vestir: cuatro o cinco
+cubos por sala porque no cabian mas. Ahora caben, y el ejemplo los usa.
+
+**Y con ellos aparece la pieza que faltaba: el escalon.** La tabla de relieve
+decia desde el principio que lo que levanta cuatro pixeles o menos **se sube
+andando** -es de lo que vive el genero: para llegar arriba hay que buscar el
+escalon- y el juego de ejemplo no tenia ninguno. No por olvido: un cubo de 4 se
+dibuja en 32x20 y los fotogramas van de 16 en 16 en las siete maquinas, asi que
+no habia forma de dibujarlo. La tiene: lo que tiene que cuadrar no es lo alto
+que sea el cuadro sino **donde se apoya el cubo dentro de el**. El compilador
+ya lo comprueba asi -`desplazamiento: [8, alto_del_cuadro - 24]`, con el cuadro
+tan alto como haga falta y nunca mas bajo que el prisma-, y el escalon se
+dibuja en 32x32 con el prisma pegado abajo.
+
+**Las doce habitaciones, rehechas y comentadas una a una.** La de entrada pone
+un escalon, una losa y un pincho uno al lado de otro -lo que se anda, lo que se
+salta y lo que mata-; la tercera es una tapia de losas con la llave detras, que
+es la primera vez que el juego pide subirse a algo para llegar a alguna parte;
+y en las mazmorras esta la escalera entera del genero: del suelo a una losa de
+16 y de la losa a un pilar de 32, que desde abajo no se alcanza porque un salto
+sube 23 pixeles.
+
+**El bot no sabia saltar en esta vista, y por eso los niveles no podian pedir
+un salto.** En la isometrica el salto no se corrige en el aire: se despega con
+la velocidad que se lleve encima y se cae donde sea. El bot saltaba en cuanto
+pisaba suelo y andaba hacia el cubo, salia de lado, aterrizaba en la casilla de
+al lado y volvia a intentarlo, en bucle, delante del mismo cubo. Ahora se
+endereza antes: anda por el eje que toca hasta ponerse en linea y **con el otro
+eje parado del todo**, y entonces salta. La friccion se come la velocidad en
+dos frames, asi que esperar no cuesta nada y a cambio el salto sale recto. Con
+eso el bot termina los dos castillos con las tapias puestas.
+
+**Y en el Amiga y en el ST, los cubos se repintan por trozos.** Un cubo de la
+sala esta pintado dentro del mapa de bits, y solo hay que volver a ponerlo
+cuando un actor que se mueve le repinta el suelo por encima. Hasta ahora se
+repintaba **entero**: ocho trozos por un muro cuando el rastro de un bicho
+tocaba uno. Medido en un Atari ST: una sala de seis cubos **con una arana
+dentro** se le iba a 12 notas de 16 -o sea a 30-. Repintando solo los trozos
+borrados, 16 de 16. Es lo que permite que las salas amuebladas lleven bichos.
+
+Medido en el ejemplo de la 1.26, con la sala mas cargada que monta (nueve cubos,
+el fantasma y los pinchos) como sala de entrada: **16 notas de 16 en las cinco
+maquinas que se pueden medir aqui** -Mega Drive, Amiga, Atari ST, Jaguar y Neo
+Geo-, y la Neo Geo gasta 146.674 ciclos de los 200.000 que da un frame.
 
 ## 1.25
 

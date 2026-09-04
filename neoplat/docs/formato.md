@@ -268,8 +268,15 @@ cubos:
 
 Un cubo de `alto` píxeles se dibuja en **32 x (alto + 16)**: el rombo de arriba,
 las dos caras de delante y el pico de abajo. Su caja es siempre `[16, 16]` —una
-casilla de planta— y el desplazamiento `[8, alto - 8]`. El compilador avisa si
-las medidas no cuadran.
+casilla de planta—.
+
+Lo que decide si encaja no es lo alto que sea el cuadro sino **dónde se apoya**:
+el rombo de abajo va pegado al borde de abajo, y eso fija el desplazamiento en
+`[8, alto_del_cuadro - 24]`. Para un cubo de la medida justa eso es
+`[8, alto - 8]`, que es lo de siempre. El cuadro puede ser **más alto** que el
+prisma —los fotogramas van de 16 en 16 en las siete máquinas, así que un escalón
+de 4 píxeles no tiene otra forma de dibujarse que en un cuadro de 32x32 con el
+prisma abajo—, pero nunca más bajo. El compilador avisa de las dos cosas.
 
 `sala:` es el dibujo de una habitación, un rectángulo del propio tileset que se
 pega en todas: las **dos paredes del fondo** y el suelo de 8x8 casillas.

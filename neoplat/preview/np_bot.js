@@ -735,9 +735,23 @@
       else if (dy < -2) input |= NPCore.IN.UP;
       else if (dy > 2) input |= NPCore.IN.DOWN;
 
-      /* Y si la casilla a la que se va esta mas alta, se salta: solo con los
-         pies en el suelo y solo yendo hacia ella, que es como se sube. */
-      if (destino[2] && p.onGround && input) input |= NPCore.IN.JUMP;
+      /* Y si la casilla a la que se va esta mas alta, se salta. Pero no vale
+         con estar en el suelo y andar hacia ella: en esta vista **el salto no
+         se corrige en el aire**, asi que se despega con la velocidad que se
+         lleve encima y se cae donde sea. Un bot que salta en cuanto puede sale
+         de lado, aterriza en la casilla de al lado, vuelve a intentarlo y se
+         queda dando tumbos delante del mismo cubo.
+
+         Asi que antes de saltar se endereza: se anda por el eje que toca hasta
+         estar en la linea de la casilla y con el **otro eje parado del todo**.
+         Como la friccion se come la velocidad en dos frames, esperar a que sea
+         cero no cuesta casi nada y a cambio el salto sale recto. */
+      if (destino[2] && p.onGround && input) {
+        var porX = destino[0] !== tx;        /* el salto va por el eje x */
+        var derecho = porX ? (dy > -3 && dy < 3 && p.vy === 0)
+                           : (dx > -3 && dx < 3 && p.vx === 0);
+        if (derecho) input |= NPCore.IN.JUMP;
+      }
 
       w.step(input);
 

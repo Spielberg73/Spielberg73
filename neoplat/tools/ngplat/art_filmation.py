@@ -722,6 +722,22 @@ def talisman(estilo: str) -> Image:
 #
 # Los tres salen de la misma formula, y por eso encajan entre si al pixel.
 
+def escalon(estilo: str) -> Image:
+    """Un escalon de 4 pixeles: el unico relieve que se sube **andando**.
+
+    Va en un cuadro de 32x32 y no de 32x20, que es lo que mediria el prisma,
+    porque los fotogramas tienen que ser multiplos de 16 en las siete maquinas.
+    Lo que manda no es lo que mide el cuadro sino donde se apoya: el rombo de
+    abajo tiene que quedar pegado al borde de abajo del cuadro, y de ahi sale
+    el `desplazamiento: [8, alto_del_cuadro - 24]` que pide el compilador. Con
+    32 de alto, eso es [8, 8].
+    """
+    colores = COLORES[estilo]
+    c = Lienzo(32, 32)
+    c.blit(0, 12, cubo(4, colores))        # el prisma, pegado abajo
+    return c.image
+
+
 def losa(estilo: str) -> Image:
     return cubo(16, COLORES[estilo])
 
@@ -829,6 +845,7 @@ def todos(estilo: str) -> Dict[str, Image]:
         "graficos/fantasma.png": fantasma(estilo),
         "graficos/llave.png": llave(estilo),
         "graficos/talisman.png": talisman(estilo),
+        "graficos/escalon.png": escalon(estilo),
         "graficos/losa.png": losa(estilo),
         "graficos/pilar.png": pilar(estilo),
         "graficos/muro.png": muro(estilo),
