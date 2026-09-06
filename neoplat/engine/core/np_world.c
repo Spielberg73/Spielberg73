@@ -157,6 +157,16 @@ static uint8_t np_stair_at(const NpWorld *w, np_fix x, np_fix y)
     return (kind == NP_TILE_STAIR_R || kind == NP_TILE_STAIR_L) ? kind : 0;
 }
 
+/* Hay una liana en ese punto del mundo?
+ *
+ * Como las escaleras, no frena a nadie: se pasa por delante andando. Lo que
+ * cambia es como se coge -en el aire tambien- y que se sube recta. */
+static int np_climb_at(const NpWorld *w, np_fix x, np_fix y)
+{
+    return np_tile_visto(w, NP_F2I(x) >> NP_TILE_SHIFT,
+                            NP_F2I(y) >> NP_TILE_SHIFT) == NP_TILE_CLIMB;
+}
+
 static int np_boxes_overlap(np_fix ax, np_fix ay, int aw, int ah,
                             np_fix bx, np_fix by, int bw, int bh)
 {
@@ -411,6 +421,8 @@ static void np_anim_tick(const NpActorDef *def, uint8_t anim,
 /* ------------------------------------------------------------- ciclo de vida */
 
 static void np_camera_update(NpWorld *w);
+static void np_tenaces_siguen(NpWorld *w, int32_t dx, int32_t dy);
+static void np_cambio_de_pantalla(NpWorld *w);
 static int np_en_la_sala(const NpWorld *w, const NpEntity *e);
 
 /* Donde sale cada jugador. A dos, el segundo aparece un poco a la derecha para
@@ -595,6 +607,7 @@ static void np_player_reset(NpWorld *w, uint8_t quien)
     p->crouch = 0;
     np_whip_off(w, quien);
     p->stairs = 0;
+    p->trepa = 0;
     p->stair_dir = 1;
     p->anim = NP_ANIM_IDLE;
     p->anim_frame = 0;
@@ -630,6 +643,10 @@ void np_world_load_level(NpWorld *w, uint16_t index)
     w->sala_x = 0xFFFF;
     w->sala_y = 0xFFFF;
     np_camera_update(w);
+    /* La pantalla de salida es en la que se empieza: nadie "entra" detras de
+       ti en el primer frame de un nivel. */
+    w->pantalla_x = (uint16_t)(w->cam_x / NP_SCREEN_W);
+    w->pantalla_y = (uint16_t)(w->cam_y / NP_SCREEN_H);
 }
 
 /* Cuantos jugadores siguen en juego y no se estan muriendo. */
@@ -724,6 +741,7 @@ static void np_player_hurt(NpWorld *w, uint8_t quien, uint8_t damage)
     p->attack_timer = 0;
     np_whip_off(w, quien);
     p->stairs = 0;              /* un golpe te tira de la escalera */
+    p->trepa = 0;               /* y de la liana */
 }
 
 /* La vida que se gasta sola.
@@ -889,9 +907,23 @@ static uint8_t np_attack_level(const NpPlayer *p)
     return p->power < at->levels ? p->power : at->levels;
 }
 
+/* Esto es una patada voladora y no un puno?
+ *
+ * Con `patada:` puesto, pegar **sin pisar suelo** es otro golpe: llega mas
+ * lejos y hace mas dano. No hay boton nuevo ni hay que aprenderse nada: es el
+ * mismo de siempre, y lo que cambia lo que sale es si estabas en el aire. De
+ * ahi sale el repertorio de un juego de kung-fu: el puno para el que tienes
+ * delante y la patada para el que viene. */
+static int np_es_patada(const NpPlayer *p)
+{
+    return np_player_def.attack.kick_range && !p->on_ground
+           && !p->stairs && !p->trepa;
+}
+
 static uint16_t np_attack_range(const NpPlayer *p)
 {
     const NpAttackDef *at = &np_player_def.attack;
+    if (np_es_patada(p)) return at->kick_range;
     return (uint16_t)(at->range + np_attack_level(p) * at->range_step);
 }
 
@@ -1272,6 +1304,7 @@ static int np_es_remate(const NpPlayer *p)
 static uint8_t np_golpe_dano(const NpPlayer *p)
 {
     const NpAttackDef *at = &np_player_def.attack;
+    if (np_es_patada(p) && at->kick_damage) return at->kick_damage;
     if (np_es_remate(p) && at->finish_damage) return at->finish_damage;
     return at->damage;
 }
@@ -1684,6 +1717,91 @@ static int np_stair_update(NpWorld *w, uint8_t quien, uint16_t input)
     return 1;
 }
 
+/* --- las lianas -----------------------------------------------------------
+ *
+ * Una liana no es una escalera, y la diferencia es el genero entero. A una
+ * escalera se sube desde el suelo y va en diagonal, de un piso al de arriba. A
+ * una liana **te agarras en el aire**: saltas, la coges al vuelo y te quedas
+ * colgado donde la hayas cogido. Desde ahi se sube, se baja, se salta a donde
+ * sea y se suelta para caer. De eso viven las torres de Bruce Lee: el camino
+ * no es un pasillo con escalones, es un salto de liana en liana.
+ */
+
+/* Agarrarse. Devuelve 1 si se ha agarrado.
+ *
+ * Basta con que el punto de referencia -el centro de la caja- este dentro de
+ * una liana y se este pidiendo arriba o abajo. No hace falta pisar suelo: esa
+ * es justo la gracia. */
+static int np_climb_mount(NpWorld *w, uint8_t quien, uint16_t input)
+{
+    const NpActorDef *a = &np_player_def.actor;
+    NpPlayer *p = &w->players[quien];
+    int32_t tx;
+
+    if (np_player_def.climb_speed <= 0) return 0;
+    if (!(input & (NP_IN_UP | NP_IN_DOWN))) return 0;
+    if (!np_climb_at(w, np_ref_x(p, a), np_ref_y(p, a))) return 0;
+    /* Centrado en la liana, como en las escaleras: agarrarse te coloca. */
+    tx = NP_F2I(np_ref_x(p, a)) >> NP_TILE_SHIFT;
+    p->x = NP_I2F(tx * NP_TILE + NP_TILE / 2 - a->box_w / 2);
+    p->vx = 0;
+    p->vy = 0;
+    p->trepa = 1;
+    p->on_ground = 0;
+    return 1;
+}
+
+/* Un frame colgado de la liana. Devuelve 1 si sigue en ella. */
+static int np_climb_update(NpWorld *w, uint8_t quien, uint16_t input)
+{
+    const NpPlayerDef *d = &np_player_def;
+    const NpActorDef *a = &d->actor;
+    NpPlayer *p = &w->players[quien];
+    int moviendo = 0;
+
+    p->vx = 0;
+    p->vy = 0;
+    p->on_ground = 0;
+
+    /* Saltar suelta la liana con el impulso de siempre, y hacia donde se este
+       pidiendo: es como se pasa de una liana a la de al lado. */
+    if ((input & NP_IN_JUMP) && !(w->prev_input[quien] & NP_IN_JUMP)) {
+        p->trepa = 0;
+        p->vy = -d->jump;
+        if (input & NP_IN_RIGHT) { p->vx = d->speed; p->facing = 1; }
+        else if (input & NP_IN_LEFT) { p->vx = -d->speed; p->facing = 0; }
+        w->sfx |= NP_SFX_JUMP;
+        return 0;
+    }
+
+    /* Subir y bajar. Va por np_move_y y no a pelo para que la cabeza no
+       atraviese el techo ni los pies el suelo: una liana pegada a un piso se
+       trepa hasta el borde y ahi se para. Se pasa `drop_through` porque las
+       plataformas de atravesar no frenan a quien baja por una cuerda. */
+    if (input & (NP_IN_UP | NP_IN_DOWN)) {
+        np_fix paso = (input & NP_IN_UP) ? -d->climb_speed : d->climb_speed;
+        int abajo, arriba;
+        p->y = np_move_y(w, p->x, p->y, a->box_w, a->box_h, paso, 1,
+                         &abajo, &arriba);
+        moviendo = 1;
+    }
+
+    if (!np_climb_at(w, np_ref_x(p, a), np_ref_y(p, a))) {
+        /* Se acabo la liana. Por arriba se sale de pie en el borde -que es lo
+           que uno espera al llegar al final de una cuerda- y por abajo se
+           suelta y se cae. */
+        p->trepa = 0;
+        if (input & NP_IN_UP) {
+            int32_t ty = NP_F2I(np_ref_y(p, a)) >> NP_TILE_SHIFT;
+            p->y = NP_I2F(ty * NP_TILE + NP_TILE - a->box_h);
+        }
+        return 0;
+    }
+    np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer, NP_ANIM_STAIR);
+    if (moviendo) np_anim_tick(a, p->anim, &p->anim_frame, &p->anim_timer);
+    return 1;
+}
+
 /* ------------------------------------------------------------- el jugador */
 
 /* El jugador mirando desde arriba: ocho direcciones, sin gravedad y sin
@@ -1733,6 +1851,7 @@ static void np_player_update_cenital(NpWorld *w, uint8_t quien, uint16_t input)
     p->on_ground = 1;
     p->jumps_left = 0;
     p->stairs = 0;
+    p->trepa = 0;
     p->crouch = 0;
 
     /* El boton de saltar no tiene nada que saltar, asi que es el de la
@@ -1999,6 +2118,7 @@ static void np_player_update_cinta(NpWorld *w, uint8_t quien, uint16_t input)
 
     p->jumps_left = 0;
     p->stairs = 0;
+    p->trepa = 0;
     p->crouch = 0;
 
     /* El boton de accion es el punetazo; el de saltar, saltar. Aqui no hay
@@ -2147,6 +2267,7 @@ static void np_player_update_iso(NpWorld *w, uint8_t quien, uint16_t input)
 
     p->jumps_left = 0;
     p->stairs = 0;
+    p->trepa = 0;
     p->crouch = 0;
     p->riding = 0;
 
@@ -2219,6 +2340,23 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
         return;
     }
     if (!p->stun && np_stair_mount(w, quien, input)) {
+        np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer, NP_ANIM_STAIR);
+        return;
+    }
+
+    /* --- lianas ----------------------------------------------------------
+     *
+     * Igual que la escalera: colgado manda la liana. Lo que cambia es que a
+     * ella se llega tambien por el aire, asi que se prueba a agarrarse aunque
+     * no se pise suelo. */
+    if (p->trepa) {
+        p->crouch = 0;
+        np_player_action(w, quien, input);
+        if (!np_climb_update(w, quien, input))
+            np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer, NP_ANIM_IDLE);
+        return;
+    }
+    if (!p->stun && np_climb_mount(w, quien, input)) {
         np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer, NP_ANIM_STAIR);
         return;
     }
@@ -2307,7 +2445,10 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
     if (p->crouch)
         np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer, NP_ANIM_CROUCH);
     else if (p->attack_timer)
-        np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer, NP_ANIM_ATTACK);
+        /* En el aire con `patada:` puesto, la pose es la de la patada: lo que
+           se ve tiene que ser lo que pega, y lo que pega ahi no es el puno. */
+        np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer,
+                    np_es_patada(p) ? NP_ANIM_KICK : NP_ANIM_ATTACK);
     else if (!p->on_ground)
         np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer,
                     p->vy < 0 ? NP_ANIM_JUMP : NP_ANIM_FALL);
@@ -2625,6 +2766,32 @@ static void np_lucha_pegar(NpWorld *w, NpEntity *e, const NpEnemyDef *d,
         np_player_hurt(w, quien, d->punch ? d->punch : d->damage);
         w->congelado = NP_CONGELADO;
     }
+
+    /* --- y si el juego lo lleva, ese mismo golpe le da al de al lado -------
+     *
+     * Con `entre_ellos: si` el punetazo de un enemigo hace dano a **otro
+     * enemigo** que este delante. Suena a detalle y es media mecanica: dos
+     * perseguidores que se pegan entre ellos dejan de ser dos problemas y
+     * pasan a ser una herramienta, porque colocarlos para que se crucen es lo
+     * unico que tienes cuando no puedes con ninguno de los dos.
+     *
+     * Solo cuenta el golpe: rozarse no hace nada, igual que entre un enemigo y
+     * tu cuando el enemigo pega en vez de arrollar. */
+    if (np_entre_ellos) {
+        uint8_t i;
+        for (i = 0; i < w->entity_count; i++) {
+            NpEntity *o = &w->entities[i];
+            const NpActorDef *oa;
+            if (o == e || !o->active || o->kind != NP_KIND_ENEMY) continue;
+            if (o->hurt) continue;           /* al que aun se queja, no */
+            oa = np_entity_def(o);
+            if (!np_boxes_overlap(gx, e->y, d->reach, a->box_h,
+                                  o->x, o->y, oa->box_w, oa->box_h))
+                continue;
+            np_hit_enemy(w, o, d->punch ? d->punch : d->damage);
+            w->congelado = NP_CONGELADO;
+        }
+    }
 }
 
 /* Que no se amontonen: si esta encima de otro, se aparta por profundidad, que
@@ -2657,15 +2824,21 @@ static void np_lucha_update(NpWorld *w, NpEntity *e, const NpEnemyDef *d,
     np_fix lejos = NP_ABS(dx);
     np_fix cerca = np_lucha_cerca(d, a);
     np_fix anillo = cerca + NP_I2F(22);
+    /* De perfil no hay profundidad: la `y` es lo alto, y ahi manda la
+       gravedad. Asi que el que pelea de perfil hace lo mismo que el de la
+       cinta -se coloca, avisa, suelta y se aparta- pero **solo en x**: ni
+       ranuras, ni rodear por detras, ni apartarse hacia dentro. Es el
+       luchador de Bruce Lee: se te planta delante y te sacude. */
+    int plano = !np_vista_cinta;
     /* Cada uno ronda por su profundidad: tres ranuras repartidas alrededor de
        donde esta el jugador. Sale del sitio que ocupa en la lista, asi que es
        el mismo en las dos implementaciones y no hace falta guardarlo. */
-    int32_t ranura = ((int32_t)(e - w->entities) % 3 - 1) * 14;
+    int32_t ranura = plano ? 0 : ((int32_t)(e - w->entities) % 3 - 1) * 14;
     np_fix hacia_y;
     int32_t ex = 0, ey = 0;
     int puede, en_su_sitio = 0;
 
-    np_lucha_separar(w, e, a);
+    if (!plano) np_lucha_separar(w, e, a);
     if (e->timer) e->timer--;
     /* mirar siempre al que tienes delante: darte la espalda no es dificultad,
        es un bicho tonto */
@@ -2674,7 +2847,7 @@ static void np_lucha_update(NpWorld *w, NpEntity *e, const NpEnemyDef *d,
     switch (e->fase) {
     case NP_LUCHA_PREPARAR:
         e->vx = 0;
-        e->vy = 0;
+        if (!plano) e->vy = 0;
         if (!e->timer) {
             e->fase = NP_LUCHA_GOLPEAR;
             e->timer = d->active;
@@ -2684,7 +2857,7 @@ static void np_lucha_update(NpWorld *w, NpEntity *e, const NpEnemyDef *d,
         return;
     case NP_LUCHA_GOLPEAR:
         e->vx = 0;
-        e->vy = 0;
+        if (!plano) e->vy = 0;
         np_lucha_pegar(w, e, d, a);
         if (!e->timer) {
             e->fase = NP_LUCHA_RECUPERAR;
@@ -2694,7 +2867,7 @@ static void np_lucha_update(NpWorld *w, NpEntity *e, const NpEnemyDef *d,
         return;
     case NP_LUCHA_RECUPERAR:
         e->vx = 0;
-        e->vy = 0;
+        if (!plano) e->vy = 0;
         if (!e->timer) {
             e->fase = NP_LUCHA_REPLEGAR;
             e->timer = d->wait;
@@ -2738,7 +2911,8 @@ static void np_lucha_update(NpWorld *w, NpEntity *e, const NpEnemyDef *d,
             if (!en_su_sitio) ex = hueco_x > 0 ? 1 : -1;
             hacia_y = (p->y + p->altura)
                     + NP_I2F((puede && en_su_sitio) ? 0 : ranura);
-            {
+            (void)hacia_y;
+            if (!plano) {
                 np_fix hueco = hacia_y - e->y;
                 if (NP_ABS(hueco) > NP_I2F(2)) ey = hueco > 0 ? 1 : -1;
             }
@@ -2750,7 +2924,7 @@ static void np_lucha_update(NpWorld *w, NpEntity *e, const NpEnemyDef *d,
             e->fase = NP_LUCHA_PREPARAR;
             e->timer = d->windup;
             e->vx = 0;
-            e->vy = 0;
+            if (!plano) e->vy = 0;
             w->atacando++;
             np_anim_set(&e->anim, &e->anim_frame, &e->anim_timer, NP_ANIM_ATTACK);
             return;
@@ -2758,7 +2932,7 @@ static void np_lucha_update(NpWorld *w, NpEntity *e, const NpEnemyDef *d,
         break;
     }
     e->vx = np_paso_cenital(d->speed, ex, ex && ey);
-    e->vy = np_paso_cenital(d->speed, ey, ex && ey);
+    if (!plano) e->vy = np_paso_cenital(d->speed, ey, ex && ey);
     np_anim_set(&e->anim, &e->anim_frame, &e->anim_timer,
                 (ex || ey) ? NP_ANIM_RUN : NP_ANIM_IDLE);
 }
@@ -2837,7 +3011,7 @@ static void np_enemy_update(NpWorld *w, NpEntity *e)
            coloca, espera turno y suelta el golpe. Lo de andar en linea recta
            hacia el jugador se queda para los otros generos, donde el enemigo
            es un obstaculo y no un rival. */
-        if (np_vista_cinta && d->reach) {
+        if (d->reach) {
             np_lucha_update(w, e, d, a, p);
             break;
         }
@@ -3227,7 +3401,7 @@ static void np_touch_entities(NpWorld *w)
                    que pegan (`golpe:` con alcance) y en la vista de cinta: en
                    el resto de generos tocar a un bicho sigue costandote vida,
                    como toda la vida. */
-                if (np_vista_cinta && d->reach) continue;
+                if (d->reach) continue;
                 /* Se pisa al enemigo si vienes cayendo y, antes de moverte en
                  * este frame, tenias los pies por encima de su mitad. Con un
                  * tercio la ventana era tan estrecha que era casi imposible
@@ -3653,6 +3827,96 @@ static void np_camera_update(NpWorld *w)
             w->cam_x += 3;
             if (w->cam_x > max_x) w->cam_x = max_x;
         }
+    }
+}
+
+/* Se ha cambiado de pantalla? Entonces los perseguidores tenaces entran detras
+ * de ti. Se mira por la camara -y no por el jugador- porque lo que decide que
+ * es "otra pantalla" es ella, y asi vale igual con uno que con dos.
+ *
+ * Va aparte de np_camera_update y se llama solo desde el paso del frame. Antes
+ * estaba dentro, y entonces empezar un nivel movia la camara de la pantalla
+ * donde te acababas de morir a la de la salida: eso era un cambio de pantalla
+ * como otro cualquiera y los tenaces aparecian pegados a ti nada mas revivir,
+ * en un sitio distinto ademas del que dice el mapa. Empezar un nivel no es
+ * cruzar una puerta.
+ */
+static void np_cambio_de_pantalla(NpWorld *w)
+{
+    uint16_t px, py;
+    if (!np_camara_pantallas) return;
+    px = (uint16_t)(w->cam_x / NP_SCREEN_W);
+    py = (uint16_t)(w->cam_y / NP_SCREEN_H);
+    if (px == w->pantalla_x && py == w->pantalla_y) return;
+    {
+        int32_t dx = (int32_t)px - (int32_t)w->pantalla_x;
+        int32_t dy = (int32_t)py - (int32_t)w->pantalla_y;
+        w->pantalla_x = px;
+        w->pantalla_y = py;
+        np_tenaces_siguen(w, dx, dy);
+    }
+}
+
+/* --- los perseguidores tenaces --------------------------------------------
+ *
+ * Un enemigo con `tenaz:` no vive en una pantalla: vive detras de ti. Al
+ * cruzar a la pantalla de al lado aparece por el borde por el que has entrado
+ * -o sea, viniendo por donde tu venias- y sigue a lo suyo.
+ *
+ * Lo que hace esto no es un truco de dibujo: cambia lo que significa una
+ * pantalla. Sin ellos, cada pantalla es un puzle que se resuelve con calma y
+ * el bicho de al lado se queda al lado. Con ellos, entretenerse cuesta, y
+ * volver sobre tus pasos es meterte de cabeza en el que venia detras.
+ *
+ * Se les coloca a ras del borde y a la altura del jugador -que es un sitio por
+ * el que se puede andar, porque el jugador esta ahi-, y se les separa un poco
+ * entre ellos para que dos no entren pegados. Lo demas ya lo hace su IA de
+ * siempre: en cuanto estan dentro, persiguen.
+ */
+static void np_tenaces_siguen(NpWorld *w, int32_t dx, int32_t dy)
+{
+    const NpPlayer *p = &w->players[0];
+    int32_t izq = w->cam_x, der = w->cam_x + NP_SCREEN_W;
+    int32_t arr = w->cam_y, aba = w->cam_y + NP_SCREEN_H;
+    uint8_t i, cuantos = 0;
+
+    /* Con dos jugadores, el que mande es el primero que siga en juego. */
+    for (i = 0; i < NP_MAX_PLAYERS; i++)
+        if (w->players[i].playing && !w->players[i].dying) { p = &w->players[i]; break; }
+
+    for (i = 0; i < w->entity_count; i++) {
+        NpEntity *e = &w->entities[i];
+        const NpEnemyDef *ed;
+        int32_t x, y;
+        if (!e->active || e->kind != NP_KIND_ENEMY) continue;
+        ed = &np_enemies[e->def];
+        if (!ed->tenaz) continue;
+
+        /* De donde vienes tu: si has ido a la derecha, ellos entran por la
+           izquierda. Uno detras de otro, separados media pantalla de nada. */
+        x = NP_F2I(p->x);
+        y = NP_F2I(p->y);
+        if (dx > 0)      x = izq + 2 + cuantos * (ed->actor.box_w + 8);
+        else if (dx < 0) x = der - ed->actor.box_w - 2 - cuantos * (ed->actor.box_w + 8);
+        if (dy > 0)      y = arr + 2;
+        else if (dy < 0) y = aba - ed->actor.box_h - 2;
+        if (x < izq) x = izq;
+        if (x > der - ed->actor.box_w) x = der - ed->actor.box_w;
+        if (y < arr) y = arr;
+        if (y > aba - ed->actor.box_h) y = aba - ed->actor.box_h;
+
+        e->x = NP_I2F(x);
+        e->y = NP_I2F(y);
+        e->vx = 0;
+        e->vy = 0;
+        e->home_x = e->x;
+        e->home_y = e->y;
+        e->facing = (dx >= 0) ? 1 : 0;
+        e->hurt = 0;
+        e->knock = 0;
+        e->fase = NP_LUCHA_IR;
+        e->timer = ed->interval;
+        cuantos++;
     }
 }
 
@@ -4202,6 +4466,7 @@ void np_world_step(NpWorld *w, uint16_t input, uint16_t input2)
     }
 
     np_camera_update(w);
+    np_cambio_de_pantalla(w);
     np_players_in_view(w);
     w->prev_input[0] = input;
     if (NP_MAX_PLAYERS > 1) w->prev_input[1] = input2;

@@ -612,6 +612,31 @@ sin esa parada el puño atraviesa al otro y no se siente nada. El mando **no se
 apunta** durante la parada, así que lo que se pulse dentro sigue contando:
 encadenar es un ritmo, no un examen de reflejos.
 
+### `patada`: la patada voladora
+
+```yaml
+jugador:
+  ataque:
+    tipo: golpe
+    alcance: 14
+    dano: 1
+    patada: 26        # alcance del golpe en el aire; 0 = el mismo de siempre
+    dano_patada: 2    # y su dano; 0 = el mismo de siempre
+```
+
+En cualquier vista de lado, `patada:` hace que **pegar sin pisar suelo sea otro
+golpe**: su propio alcance, su propio daño y su propio dibujo (la animación
+`patada:`, que ocupa una ranura aparte de `atacar:`).
+
+Es lo que convierte el salto en un ataque en vez de en una manera de moverse, y
+es de donde sale el nombre del género de kung-fu. Sin la línea, en el aire sale
+el mismo puñetazo corto de estar de pie.
+
+Si la pones, dibuja el fotograma **estirado**: un golpe que llega al doble
+tiene que verse el doble de largo, o el jugador no entiende por qué ese ha
+entrado y el otro no. Por eso el género de kung-fu usa fotogramas de 32×32 en
+vez de 16×16.
+
 ### `agarre`: coger, zarandear y lanzar
 
 Lo que hace de un juego de tortas un juego de tortas y no un pasillo de
@@ -804,6 +829,59 @@ Se dibujan en diagonal, un escalón por casilla:
 
 Sin `velocidad_escalera` se sube a la mitad de lo que se anda. Con `0` el juego
 no tiene escaleras y los tiles se quedan de adorno.
+
+### Lianas
+
+```yaml
+tiles:
+  leyenda:
+    '|': {tile: 5, tipo: liana}     # tambien: verja, cuerda, cadena, enredadera
+
+jugador:
+  trepa: 1.1      # 0 = las casillas de liana no hacen nada
+```
+
+Una liana **no es una escalera**, y la diferencia es media mecánica:
+
+|                    | escalera                      | liana                      |
+|--------------------|-------------------------------|----------------------------|
+| cómo te subes      | de pie, en la casilla         | **también en el aire**     |
+| por dónde va       | en diagonal, un escalón/casilla | recta, en vertical       |
+| cómo te bajas      | se sale sola por los extremos | saltando, con impulso      |
+| desde ella puedes  | atacar                        | **saltar** a donde sea     |
+
+Se agarra pulsando arriba o abajo mientras la tocas: en el suelo o cayendo, da
+igual. Mientras estás colgado no hay gravedad; arriba y abajo suben y bajan, y
+el motor te para contra el techo y contra el suelo, así que una liana pegada a
+un piso se trepa hasta el borde y ahí se queda.
+
+**Se suelta saltando**, y el salto sale con el impulso de siempre y hacia donde
+estés pidiendo: eso es lo que sirve para pasar de una liana a la de al lado o
+para caer en una viga. Y **un golpe te tira**, igual que de una escalera: por
+eso trepar delante de un bicho es una decisión y no un trámite.
+
+Al llegar arriba del todo se sale de pie en el borde. Ojo al dibujar el mapa:
+la casilla en la que apareces es la de la punta de la liana, así que si ahí no
+hay nada sólido, te caes. Lo normal es saltar de lado a una viga desde un poco
+más abajo.
+
+Sin `trepa:` —o con `trepa: 0`— el juego no lleva lianas y esos tiles se quedan
+de adorno.
+
+### `entre_ellos`: que los bichos se peguen entre ellos
+
+```yaml
+juego:
+  entre_ellos: si
+```
+
+El [`golpe:`](#golpe-el-ataque-del-enemigo) de un enemigo le hace daño a **otro
+enemigo** que esté delante. Sólo cuenta el golpe: rozarse no hace nada.
+
+Es lo que convierte a dos perseguidores en una herramienta. Sin esto, dos
+bichos duros son dos problemas; con esto, colocarlos para que se crucen y
+quitarte de en medio es una jugada de verdad, y es la única que tienes cuando
+no puedes con ninguno de los dos.
 
 ### Puntos de control
 
@@ -1010,6 +1088,29 @@ enemigos:
     puntos: 1000
     jefe: si
 ```
+
+
+### `tenaz`: el que no se queda atrás
+
+```yaml
+enemigos:
+  yamo:
+    comportamiento: perseguidor
+    tenaz: si
+```
+
+Sólo lo miran los juegos con `camara: pantallas`. Un enemigo con `tenaz: si`
+**no vive en una pantalla: vive detrás de ti**. Al cruzar al cuadro de al lado
+vuelve a aparecer por el borde por el que has entrado tú —o sea, viniendo por
+donde tú venías— y sigue a lo suyo. Si son varios, entran uno detrás de otro.
+
+No es un truco de dibujo: cambia lo que significa una pantalla. Sin ellos, cada
+cuadro es un puzle que se resuelve con calma y el bicho de al lado se queda al
+lado; con ellos, entretenerse cuesta y volver sobre tus pasos es meterte de
+cabeza en el que venía detrás.
+
+Empezar un nivel no cuenta como cruzar una puerta: al reaparecer tras perder
+una vida los tenaces salen donde dice el mapa, no pegados a ti.
 
 ### `golpe`: el ataque del enemigo
 

@@ -29,14 +29,17 @@ var LEYENDA = { ".": 0, "#": 1, "=": 2, "^": 3, "G": 4, "/": 5, "\\": 6, "!": 7,
                 "b": 10, "c": 11, "W": 12,
                 /* y la pared que **no se dibuja**, porque ya viene en el
                    dibujo de la sala: levanta lo mismo que "W" y no trae cubo */
-                "p": 13 };
-var TIPOS = [0, 1, 2, 3, 4, 6, 7, 8, 9, 9, 1, 1, 1, 1];
+                "p": 13,
+                /* y la liana: se trepa en vertical y se coge en el aire.
+                   Se escribe "|" y no "T" porque "T" ya es el tablon. */
+                "|": 14 };
+var TIPOS = [0, 1, 2, 3, 4, 6, 7, 8, 9, 9, 1, 1, 1, 1, 10];
 /* que objeto abre cada tile: el objeto mas uno, 0 = no es cerrojo */
-var NECESITA = [0, 0, 0, 0, 0, 0, 0, 0, 6, 7, 0, 0, 0, 0];
+var NECESITA = [0, 0, 0, 0, 0, 0, 0, 0, 6, 7, 0, 0, 0, 0, 0];
 /* lo que levanta cada tile (solo lo mira la vista isometrica) y con que cubo
    se dibuja: el indice en `bloques` mas uno, 0 = no se dibuja */
-var ALTOS =   [0, 0, 0, 0, 0, 0, 0, 0, 48, 48, 4, 16, 48, 48];
-var BLOQUES = [0, 0, 0, 0, 0, 0, 0, 0,  1,  1, 1,  1,  1,  0];
+var ALTOS =   [0, 0, 0, 0, 0, 0, 0, 0, 48, 48, 4, 16, 48, 48, 0];
+var BLOQUES = [0, 0, 0, 0, 0, 0, 0, 0,  1,  1, 1,  1,  1,  0,  0];
 
 function anim(frames, speed) {
   return { frames: frames, count: frames.length, speed: speed || 8, loop: 1 };
@@ -47,10 +50,10 @@ function actor(boxW, boxH) {
     first_tile: 0, palette: 0, cols: 1, rows: 1,
     box_x: 0, box_y: 0, box_w: boxW, box_h: boxH,
     frames: 1, frame_w: 16, frame_h: 16, sheet: "x",
-    /* once ranuras: las ocho de siempre, las dos de la vista cenital (de
-       espaldas y de frente) y la del remate */
+    /* doce ranuras: las ocho de siempre, las dos de la vista cenital (de
+       espaldas y de frente), la del remate y la de la patada voladora */
     anims: [anim([0]), anim([0]), anim([0]), anim([0]), anim([0]), anim([0]),
-            anim([0]), anim([0]), anim([0]), anim([0]), anim([0])]
+            anim([0]), anim([0]), anim([0]), anim([0]), anim([0]), anim([0])]
   };
 }
 
@@ -100,6 +103,8 @@ function datos(filas, opciones) {
     hud: true, camara_pantallas: opciones.pantallas ? 1 : 0,
     /* cuantos enemigos pegan a la vez en un juego de tortas */
     agresivos: opciones.agresivos === undefined ? 2 : opciones.agresivos,
+    /* 1 = el golpe de un enemigo hace dano a otro enemigo */
+    entre_ellos: opciones.entreEllos ? 1 : 0,
     /* 1 = el juego lleva bolsa (objetos de `efecto: llevar`) */
     bolsa_activa: opciones.bolsa ? 1 : 0,
     /* desde donde se mira: con "cenital" no hay gravedad y se anda en
@@ -118,6 +123,7 @@ function datos(filas, opciones) {
       stun: opciones.aturdido || 0,
       /* lo que se avanza por frame en una escalera; 0 = no se pueden subir */
       stair_speed: fx(opciones.escalera === undefined ? 0.8 : opciones.escalera),
+      climb_speed: fx(opciones.trepa === undefined ? 0 : opciones.trepa),
       coyote: opciones.coyote === undefined ? 6 : opciones.coyote,
       jump_buffer: opciones.buffer === undefined ? 6 : opciones.buffer,
       double_jump: opciones.doubleJump ? 1 : 0,
@@ -149,6 +155,9 @@ function datos(filas, opciones) {
         levels: opciones.mejoras || 0,
         range_step: opciones.alcanceMejora === undefined ? 12
                                                          : opciones.alcanceMejora,
+        /* la patada voladora: pegar en el aire es otro golpe */
+        kick_range: opciones.patada || 0,
+        kick_damage: opciones.danoPatada || 0,
         /* 1 = el ataque trae dibujo propio (el latigo) y se ve al pegar */
         fx: opciones.latigo ? 1 : 0,
         /* la serie de golpes de los juegos de tortas: 1 = no hay serie */
@@ -192,6 +201,8 @@ function datos(filas, opciones) {
         health: opciones.vidaEnemigo || 1,
         damage: 1, stompable: 1, edge_turn: 1, name: "patrulla",
         reach: 0, windup: 16, active: 6, recover: 20, wait: 40, punch: 0,
+        /* con `tenaz: si` te sigue de pantalla en pantalla */
+        tenaz: opciones.tenaz ? 1 : 0,
         /* con `dispara:` este mismo enemigo te tirotea */
         shot: opciones.dispara ? 1 : 0 },
       { actor: enemigo, speed: fx(0.5), gravity: 0, jump: 0, range: fx(96),
@@ -1278,6 +1289,112 @@ prueba("el golpe recibido corta el ataque a medias", function () {
   for (i = 0; i < 300 && w.players[0].health === 3; i++) w.step(NP.IN.RIGHT);
   assert.strictEqual(w.players[0].attackTimer, 0,
     "sigue pegando despues de que le hayan dado");
+});
+
+/* ------------------------------------------------------------ lianas
+ *
+ * Una liana no es una escalera, y la diferencia es la mitad del genero de
+ * Bruce Lee: a la escalera se sube desde el suelo y va en diagonal; a la liana
+ * te agarras **en el aire**, se sube recta y desde ella se salta a donde sea.
+ *
+ *   fila  8   ....|.....       la liana, colgando
+ *   fila  9   ....|.....
+ *   ...
+ *   fila 12   ....|.....
+ *   fila 13   ##########       el suelo
+ */
+function conLiana(desde, hasta, col) {
+  var filas = [];
+  for (var y = 0; y < 13; y++) filas.push(".".repeat(24));
+  filas.push("#".repeat(24));
+  for (var y2 = desde; y2 <= hasta; y2++) {
+    var f = filas[y2].split("");
+    f[col] = "|";
+    filas[y2] = f.join("");
+  }
+  return filas;
+}
+
+function mundoLiana(desde, hasta, col, opciones) {
+  opciones = opciones || {};
+  if (opciones.trepa === undefined) opciones.trepa = 1.0;
+  return mundo(ponerP(conLiana(desde, hasta, col), 12, 1), opciones);
+}
+
+prueba("con arriba, dentro de una liana, uno se agarra", function () {
+  var w = mundoLiana(8, 12, 5);
+  var p = plantar(w, 5, 13);
+  assert.strictEqual(p.trepa, 0, "se ha agarrado sin pedirlo");
+  w.step(NP.IN.UP);
+  assert.strictEqual(p.trepa, 1, "no se ha agarrado a la liana");
+});
+
+prueba("a una liana se agarra uno tambien en el aire", function () {
+  /* Esto es lo que la separa de una escalera: la escalera pide pisar suelo. */
+  var w = mundoLiana(6, 10, 5);
+  var p = w.players[0], a = w.data.player.actor;
+  p.x = NP.I2F(5 * 16 + 8 - Math.floor(a.box_w / 2));
+  p.y = NP.I2F(8 * 16);              /* en el aire, a la altura de la liana */
+  p.vy = NP.I2F(2);
+  assert.strictEqual(p.onGround, 0, "esta en el suelo: la prueba no vale");
+  w.step(NP.IN.UP);
+  assert.strictEqual(p.trepa, 1, "no se ha agarrado en el aire");
+});
+
+prueba("sin velocidad_trepa las lianas no hacen nada", function () {
+  var w = mundoLiana(8, 12, 5, { trepa: 0 });
+  var p = plantar(w, 5, 13);
+  correr(w, 10, NP.IN.UP);
+  assert.strictEqual(p.trepa, 0, "se ha agarrado sin llevar lianas el juego");
+});
+
+prueba("subiendo por la liana se sube de verdad", function () {
+  var w = mundoLiana(8, 12, 5);
+  var p = plantar(w, 5, 13);
+  var y0 = NP.F2I(p.y);
+  w.step(NP.IN.UP);
+  correr(w, 30, NP.IN.UP);
+  assert.ok(NP.F2I(p.y) < y0 - 20,
+            "ha subido de " + y0 + " a " + NP.F2I(p.y) + ": no trepa");
+  assert.strictEqual(p.trepa, 1, "se ha soltado por el camino");
+});
+
+prueba("al acabarse la liana por arriba se sale de pie", function () {
+  var w = mundoLiana(9, 12, 5);
+  plantar(w, 5, 13);
+  var p = w.players[0];
+  w.step(NP.IN.UP);
+  correr(w, 90, NP.IN.UP);
+  assert.strictEqual(p.trepa, 0, "sigue colgado por encima del final");
+  assert.ok(NP.F2I(p.y) < 9 * 16, "no ha llegado arriba: y=" + NP.F2I(p.y));
+});
+
+prueba("saltar suelta la liana y da impulso", function () {
+  var w = mundoLiana(6, 12, 5);
+  var p = plantar(w, 5, 13);
+  w.step(NP.IN.UP);
+  correr(w, 20, NP.IN.UP);
+  assert.strictEqual(p.trepa, 1, "no esta colgado: la prueba no vale");
+  w.step(NP.IN.JUMP | NP.IN.RIGHT);
+  assert.strictEqual(p.trepa, 0, "no se ha soltado al saltar");
+  assert.ok(p.vy < 0, "no ha salido hacia arriba: vy=" + p.vy);
+  assert.ok(p.vx > 0, "no ha salido hacia la derecha: vx=" + p.vx);
+});
+
+prueba("un golpe te tira de la liana", function () {
+  /* Igual que en la escalera: colgado eres un blanco fijo, y eso es lo que
+     hace que trepar delante de un bicho sea una decision y no un tramite. */
+  var filas = conLiana(6, 12, 5);
+  filas = ponerP(filas, 12, 1);
+  var f = filas[8].split(""); f[2] = "v"; filas[8] = f.join("");   /* volador */
+  var w = mundo(filas, { trepa: 1.0, health: 3, aturdido: 20 });
+  var p = plantar(w, 5, 13);
+  w.step(NP.IN.UP);
+  assert.strictEqual(p.trepa, 1, "no se ha agarrado: la prueba no vale");
+  var i;
+  for (i = 0; i < 400 && p.health === 3; i++) w.step(NP.IN.UP);
+  assert.ok(p.health < 3, "el volador no le ha tocado");
+  assert.strictEqual(p.trepa, 0, "sigue colgado despues de cobrar");
 });
 
 /* --------------------------------------------------------- escaleras */
@@ -2920,6 +3037,239 @@ prueba("con pantallas, la camara no se sale del nivel", function () {
     w.step(NP.IN.RIGHT);
     assert.ok(w.camX >= 0 && w.camX <= 60 * 16 - 320, "camara fuera: " + w.camX);
   }
+});
+
+/* ------------------------------------------ la patada voladora
+ *
+ * Con `patada:` puesto, pegar **sin pisar suelo** es otro golpe: llega mas
+ * lejos y hace mas dano. No hay boton nuevo: es el mismo, y lo que cambia lo
+ * que sale es si estabas en el aire. De ahi sale el repertorio de un juego de
+ * kung-fu de 1984: el puno para el que tienes delante y la patada para el que
+ * viene.
+ */
+
+prueba("en el aire, la patada llega mas lejos que el puno", function () {
+  /* Un bicho justo fuera del alcance del puno y dentro del de la patada. */
+  var conPatada = { ataque: "golpe", alcance: 16, patada: 48, dano: 1,
+                    vidaEnemigo: 9, velocidadEnemigo: 0, espera: 0,
+                    duracion: 20, health: 99 };
+  var mapa = suelo([[12, 4, "P"], [12, 7, "e"]]);
+  /* de pie no llega */
+  var w = mundo(mapa, conPatada);
+  var bicho = null, i;
+  for (i = 0; i < w.entityCount; i++)
+    if (w.entities[i].active && w.entities[i].kind === 0) bicho = w.entities[i];
+  var antes = bicho.health;
+  correr(w, 30, 0);                 /* que caiga al suelo antes de nada */
+  assert.strictEqual(w.players[0].onGround, 1, "no ha llegado a pisar suelo");
+  for (i = 0; i < 60; i++) w.step(NP.IN.ACTION);
+  assert.strictEqual(bicho.health, antes,
+                     "el puno ya llega solo: la prueba no mide nada");
+  /* en el aire si */
+  var w2 = mundo(mapa, conPatada);
+  var bicho2 = null;
+  for (i = 0; i < w2.entityCount; i++)
+    if (w2.entities[i].active && w2.entities[i].kind === 0) bicho2 = w2.entities[i];
+  correr(w2, 30, 0);                /* en el suelo, para saltar de verdad */
+  w2.step(NP.IN.JUMP);
+  correr(w2, 4, 0);                 /* y que despegue antes de pegar */
+  for (i = 0; i < 40 && bicho2.health === antes; i++) w2.step(NP.IN.ACTION);
+  assert.ok(bicho2.health < antes,
+            "la patada tampoco ha llegado: el bicho sigue con "
+            + bicho2.health);
+});
+
+prueba("sin patada, en el aire se pega lo mismo que en el suelo", function () {
+  /* El control: sin `patada:` el mismo golpe en el aire no llega mas lejos. */
+  var mapa = suelo([[12, 4, "P"], [12, 7, "e"]]);
+  var w = mundo(mapa, { ataque: "golpe", alcance: 16, dano: 1, vidaEnemigo: 9,
+                        velocidadEnemigo: 0, espera: 0, duracion: 20,
+                        health: 99 });
+  var bicho = null, i;
+  for (i = 0; i < w.entityCount; i++)
+    if (w.entities[i].active && w.entities[i].kind === 0) bicho = w.entities[i];
+  var antes = bicho.health;
+  correr(w, 30, 0);
+  w.step(NP.IN.JUMP);
+  correr(w, 4, 0);
+  for (i = 0; i < 40; i++) w.step(NP.IN.ACTION);
+  assert.strictEqual(bicho.health, antes,
+                     "sin `patada:` el golpe del aire ha llegado igual");
+});
+
+prueba("la patada hace su propio dano", function () {
+  var mapa = suelo([[12, 4, "P"], [12, 5, "e"]]);
+  var w = mundo(mapa, { ataque: "golpe", alcance: 40, patada: 40,
+                        dano: 1, danoPatada: 5, vidaEnemigo: 9,
+                        velocidadEnemigo: 0, espera: 0, duracion: 20,
+                        health: 99 });
+  var bicho = null, i;
+  for (i = 0; i < w.entityCount; i++)
+    if (w.entities[i].active && w.entities[i].kind === 0) bicho = w.entities[i];
+  var antes = bicho.health;
+  correr(w, 30, 0);
+  w.step(NP.IN.JUMP);
+  correr(w, 4, 0);                  /* en el aire de verdad */
+  assert.strictEqual(w.players[0].onGround, 0, "no esta en el aire");
+  for (i = 0; i < 40 && bicho.health === antes; i++) w.step(NP.IN.ACTION);
+  assert.strictEqual(bicho.health, antes - 5,
+                     "la patada ha quitado " + (antes - bicho.health)
+                     + " y tenia que quitar 5");
+});
+
+/* ---------------------------- que los bichos se peguen entre ellos
+ *
+ * Con `entre_ellos: si` el punetazo de un enemigo hace dano a otro enemigo.
+ * Es lo que convierte a dos perseguidores en una herramienta: si no puedes con
+ * ninguno de los dos, lo que te queda es colocarlos para que se crucen.
+ */
+
+/* Un luchador y dos mirones, uno a cada lado del jugador.
+ *
+ * De perfil, el que pelea se coloca a un lado del jugador -a cual, lo decide
+ * su sitio en la lista- y suelta el golpe hacia el. Poniendo un mirón a cada
+ * lado, el golpe le entra a uno de los dos vaya por donde vaya, que es lo que
+ * se quiere medir sin depender de por donde le de la vuelta. */
+function unoQuePega(opciones) {
+  var o = { jefePersigue: true, jefeRango: 400,
+            ataque: "golpe", alcance: 20, dano: 1, health: 99,
+            velocidad: 1.5, alcanceEnemigo: 40, avisoEnemigo: 4,
+            duracionEnemigo: 20, recuperaEnemigo: 4, esperaEnemigo: 4,
+            bossHealth: 40, vidaEnemigo: 40, velocidadEnemigo: 0 };
+  for (var k in opciones) if (opciones.hasOwnProperty(k)) o[k] = opciones[k];
+  /* "J" es el que pega y las dos "e" los que se lo comen */
+  return mundo(suelo([[8, 6, "e"], [8, 8, "P"], [8, 10, "e"], [8, 14, "J"]]), o);
+}
+
+/* La vida que les queda a los mirones, sumada. */
+function vidaDeLosMirones(w) {
+  var suma = 0;
+  for (var i = 0; i < w.entityCount; i++) {
+    var e = w.entities[i];
+    if (e.active && e.kind === 0 && e.def === 0) suma += e.health;
+  }
+  return suma;
+}
+
+prueba("con entre_ellos, el golpe de uno le hace dano al de al lado",
+       function () {
+  var w = unoQuePega({ entreEllos: true });
+  var antes = vidaDeLosMirones(w);
+  assert.ok(antes > 0, "no hay mirones: la prueba no vale");
+  var i;
+  for (i = 0; i < 600 && vidaDeLosMirones(w) === antes; i++) w.step(0);
+  assert.ok(vidaDeLosMirones(w) < antes,
+            "los de al lado siguen con " + antes + " de vida entre los dos: "
+            + "no les ha entrado el golpe del que pega");
+});
+
+prueba("sin entre_ellos, los bichos se ignoran", function () {
+  /* El control. Sin la regla puesta, el mismo golpe en el mismo sitio no le
+     hace nada a nadie; si tambien se lo hiciera, la prueba de arriba no
+     probaria nada. */
+  var w = unoQuePega({});
+  var antes = vidaDeLosMirones(w);
+  for (var i = 0; i < 600; i++) w.step(0);
+  assert.strictEqual(vidaDeLosMirones(w), antes,
+                     "les ha entrado el golpe sin llevar el juego fuego amigo");
+});
+
+/* ------------------------------------- los perseguidores tenaces
+ *
+ * Un enemigo con `tenaz:` no vive en una pantalla: vive detras de ti. Es lo
+ * que hace que en un juego de pantallas fijas entretenerse cueste, y que
+ * volver sobre tus pasos sea meterte en el que venia siguiendote.
+ */
+
+prueba("un enemigo tenaz entra por el borde por el que has entrado tu",
+       function () {
+  var filas = nivelAncho();
+  /* el bicho, al principio del todo, en la primera pantalla */
+  var f = filas[12].split(""); f[6] = "e"; filas[12] = f.join("");
+  /* con vida de sobra: lo que se mide es la camara, no si sobrevive */
+  var w = mundo(filas, { pantallas: true, tenaz: true, velocidadEnemigo: 0,
+                         health: 99 });
+  var bicho = null, i;
+  for (i = 0; i < w.entityCount; i++)
+    if (w.entities[i].active && w.entities[i].kind === 0) bicho = w.entities[i];
+  assert.ok(bicho, "no hay enemigo en el mapa: la prueba no vale");
+  assert.strictEqual(w.camX, 0, "no se empieza en la primera pantalla");
+  /* a la pantalla de al lado */
+  for (i = 0; i < 900 && w.camX === 0; i++) w.step(NP.IN.RIGHT);
+  assert.ok(w.camX > 0, "la camara no ha cambiado de pantalla");
+  /* yendo a la derecha, el que te sigue entra por la izquierda */
+  var dentro = NP.F2I(bicho.x) >= w.camX && NP.F2I(bicho.x) < w.camX + 320;
+  assert.ok(dentro, "el tenaz se ha quedado en la pantalla de antes: x="
+                    + NP.F2I(bicho.x) + " y la pantalla empieza en " + w.camX);
+  assert.ok(NP.F2I(bicho.x) < w.camX + 160,
+            "ha entrado por la derecha y se venia por la izquierda: x="
+            + (NP.F2I(bicho.x) - w.camX));
+});
+
+prueba("un enemigo normal se queda en su pantalla", function () {
+  /* El control: sin `tenaz:` el mismo bicho en el mismo sitio no se mueve de
+     su pantalla. Si esto tambien pasara, la prueba de arriba no probaria nada. */
+  var filas = nivelAncho();
+  var f = filas[12].split(""); f[6] = "e"; filas[12] = f.join("");
+  var w = mundo(filas, { pantallas: true, velocidadEnemigo: 0, health: 99 });
+  var bicho = null, i;
+  for (i = 0; i < w.entityCount; i++)
+    if (w.entities[i].active && w.entities[i].kind === 0) bicho = w.entities[i];
+  for (i = 0; i < 900 && w.camX === 0; i++) w.step(NP.IN.RIGHT);
+  assert.ok(w.camX > 0, "la camara no ha cambiado de pantalla");
+  assert.ok(NP.F2I(bicho.x) < w.camX,
+            "un bicho sin `tenaz:` ha seguido al jugador de pantalla");
+});
+
+prueba("volviendo sobre tus pasos, el tenaz entra por el otro lado",
+       function () {
+  var filas = nivelAncho();
+  var f = filas[12].split(""); f[6] = "e"; filas[12] = f.join("");
+  var w = mundo(filas, { pantallas: true, tenaz: true, velocidadEnemigo: 0,
+                         health: 99 });
+  var bicho = null, i;
+  for (i = 0; i < w.entityCount; i++)
+    if (w.entities[i].active && w.entities[i].kind === 0) bicho = w.entities[i];
+  for (i = 0; i < 900 && w.camX === 0; i++) w.step(NP.IN.RIGHT);
+  var segunda = w.camX;
+  for (i = 0; i < 900 && w.camX === segunda; i++) w.step(NP.IN.LEFT);
+  assert.ok(w.camX < segunda, "no ha vuelto a la pantalla de antes");
+  assert.ok(NP.F2I(bicho.x) > w.camX + 160,
+            "volviendo a la izquierda tendria que entrar por la derecha: x="
+            + (NP.F2I(bicho.x) - w.camX));
+});
+
+prueba("empezar un nivel no cuenta como cambiar de pantalla", function () {
+  /* Al perder una vida la camara se va de la pantalla donde te has muerto a la
+     de la salida, y eso **no** es cruzar una puerta: los tenaces tienen que
+     reaparecer donde dice el mapa, no pegados a ti. En C esto estaba dentro de
+     la camara y al revivir salian encima; la prueba de paridad lo pillo. */
+  var filas = nivelAncho();
+  var f = filas[12].split(""); f[6] = "e"; filas[12] = f.join("");
+  var w = mundo(filas, { pantallas: true, tenaz: true, velocidadEnemigo: 0,
+                         health: 99, lives: 3 });
+  var bicho = null, i;
+  for (i = 0; i < w.entityCount; i++)
+    if (w.entities[i].active && w.entities[i].kind === 0) bicho = w.entities[i];
+  var casa = NP.F2I(bicho.x);
+  /* a la pantalla de al lado, para que el tenaz se recoloque */
+  for (i = 0; i < 900 && w.camX === 0; i++) w.step(NP.IN.RIGHT);
+  assert.ok(w.camX > 0, "la camara no ha cambiado de pantalla");
+  assert.notStrictEqual(NP.F2I(bicho.x), casa,
+                        "el tenaz no se ha movido: la prueba no vale");
+  /* y ahora se muere y se vuelve a empezar el nivel */
+  w.players[0].health = 0;
+  w.playerDie(0);
+  for (i = 0; i < 400 && w.state !== NP.STATE.PLAY; i++) w.step(0);
+  assert.strictEqual(w.state, NP.STATE.PLAY, "no ha vuelto a la partida");
+  assert.strictEqual(w.camX, 0, "no se reaparece en la primera pantalla");
+  var vivo = null;
+  for (i = 0; i < w.entityCount; i++)
+    if (w.entities[i].active && w.entities[i].kind === 0) vivo = w.entities[i];
+  assert.ok(vivo, "el nivel ha vuelto a empezar sin el bicho");
+  assert.strictEqual(NP.F2I(vivo.x), casa,
+                     "el tenaz ha reaparecido en x=" + NP.F2I(vivo.x)
+                     + " y el mapa lo pone en " + casa);
 });
 
 /* ------------------------------------------- la vista isometrica

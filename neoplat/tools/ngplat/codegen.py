@@ -149,6 +149,8 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("/* Cuantos enemigos pegan a la vez: el numero que hace que una")
     src.append("   pelea se juegue en vez de sufrirse. */")
     src.append("const uint8_t np_agresivos = %d;" % project.aggressive)
+    src.append("/* 1 = el golpe de un enemigo hace dano a otro enemigo */")
+    src.append("const uint8_t np_entre_ellos = %d;" % (1 if project.entre_ellos else 0))
     src.append("const uint8_t np_camara_pantallas = %d;"
                % (1 if project.camera == "pantallas" else 0))
     src.append("const uint16_t np_tileset_first_tile = %d;" % build.tileset.first_tile)
@@ -238,6 +240,7 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("    %d, %d, %d, %d, %d," % (pv["jump"], pv["jump_cut"], pv["gravity"],
                                             pv["max_fall"], pv["bounce"]))
     src.append("    %d, %d," % (pv["knockback"], pv["stair_speed"]))
+    src.append("    %d,   /* lo que se sube por una liana */" % pv["climb_speed"])
     src.append("    %d, %d," % (pv["invuln"], pv["stun"]))
     src.append("    %d,   /* desgaste */" % pv["wear"])
     src.append("    %d, %d,   /* el agarre: cuanto dura y con cuanta fuerza lanza */"
@@ -265,9 +268,11 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
                % (av["combo_window"], av["finish_push"]))
     src.append("        %d, %d, %d,   /* golpes, dano del remate y derribo */"
                % (av["combo"], av["finish_damage"], av["finish_stun"]))
-    src.append("        %d, %d, %d, %d, %d"
+    src.append("        %d, %d, %d, %d, %d,"
                % (av["levels"], av["kind"], av["damage"], av["locks"],
                   av["fx"]))
+    src.append("        %d, %d   /* la patada voladora: alcance y dano */"
+               % (av["kick_range"], av["kick_damage"]))
     src.append("    }")
     src.append("};")
     src.append("")
@@ -320,9 +325,11 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
                                                     ev["edge_turn"]))
         src.append("        %d, %d," % (ev["boss"], ev["shot"]))
         src.append("        /* el golpe: alcance, aviso, dano, recuperar, espera */")
-        src.append("        %d, %d, %d, %d, %d, %d"
+        src.append("        %d, %d, %d, %d, %d, %d,"
                    % (ev["reach"], ev["windup"], ev["active"], ev["recover"],
                       ev["wait"], ev["punch"]))
+        src.append("        %d   /* tenaz: te sigue de pantalla en pantalla */"
+                   % ev["tenaz"])
         src.append("    }," if i + 1 < len(build.enemies) else "    }")
     src.append("};")
     src.append("const uint16_t np_enemy_count = %d;" % len(build.enemies))

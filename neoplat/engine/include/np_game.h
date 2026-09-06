@@ -64,6 +64,17 @@ typedef struct {
     uint8_t damage;
     uint8_t locks;           /* 1 = mientras pegas no te puedes mover */
     uint8_t fx;              /* 1 = `actor` es un dibujo de verdad */
+    /* --- la patada voladora ----------------------------------------------
+     *
+     * Pegar en el aire es **otro golpe**: llega mas lejos, hace mas dano y se
+     * dibuja distinto. Con `kick_range` a cero -lo normal- en el aire se pega
+     * el mismo golpe de siempre y el kit se queda como estaba.
+     *
+     * Es la mitad del repertorio de un juego de kung-fu de los de 1984: el
+     * puno es para el que tienes delante y la patada es para el que viene, y
+     * elegir cual toca es el juego. */
+    uint16_t kick_range;     /* alcance en el aire; 0 = el mismo de siempre */
+    uint8_t kick_damage;     /* dano en el aire; 0 = el mismo de siempre */
 } NpAttackDef;
 
 /* Un arma secundaria: se lanza con **arriba + accion** y gasta municion, que
@@ -104,6 +115,11 @@ typedef struct {
      * de `speed` porque en los clasicos se sube despacio, y esa lentitud es la
      * que hace que una escalera sea un sitio donde te pueden cazar. */
     np_fix stair_speed;
+    /* Lo que se sube por cada frame agarrado a una liana, en vertical. A cero
+     * -lo normal- el juego no lleva lianas y las casillas trepables no hacen
+     * nada. Va aparte de `stair_speed` porque una liana no es una escalera:
+     * se coge en el aire y se sube recta. */
+    np_fix climb_speed;
     uint16_t invuln, stun;
     /* Frames que tarda en irse un punto de vida **sola**, sin que nadie te
      * toque. Cero -lo normal- quiere decir que la vida solo se pierde a
@@ -210,6 +226,17 @@ typedef struct {
     uint16_t reach;          /* alcance del golpe, en px; 0 = no pega */
     uint16_t windup, active, recover, wait;
     uint8_t punch;           /* dano del golpe; 0 = el mismo que `damage` */
+    /* --- el perseguidor tenaz --------------------------------------------
+     *
+     * Con `tenaz` a uno este enemigo **no es de una pantalla**: es tuyo. Al
+     * cambiar de pantalla aparece por el borde por el que has entrado y sigue
+     * detras de ti, pantalla tras pantalla, hasta que te lo quitas de encima.
+     *
+     * Es toda la tension del genero de Bruce Lee. Un bicho que se queda en su
+     * pantalla es un obstaculo: se rodea y se olvida. Uno que te sigue es un
+     * reloj: cada segundo que pierdes recogiendo algo lo tienes mas cerca, y
+     * la pantalla deja de ser un puzle tranquilo. */
+    uint8_t tenaz;
 } NpEnemyDef;
 
 typedef struct {
@@ -379,6 +406,10 @@ extern const uint8_t np_vista_iso;
    una pelea se juega o se sufre: con todos a la vez no hay hueco entre golpe y
    golpe, y con uno solo la calle esta vacia. Dos es lo de los recreativos. */
 extern const uint8_t np_agresivos;
+/* 1 = el golpe de un enemigo hace dano a otro enemigo. Es lo que convierte a
+ * dos perseguidores en una herramienta: si no puedes con ninguno, los cruzas.
+ * A cero -lo normal- los bichos se ignoran entre ellos, como siempre. */
+extern const uint8_t np_entre_ellos;
 extern const uint8_t np_camara_pantallas; /* 1 = pantalla a pantalla, 0 = scroll */
 extern const char np_game_title[];
 extern const char np_game_author[];

@@ -15,6 +15,7 @@
 
   var TILE_SOLID = 1, TILE_PLATFORM = 2, TILE_HAZARD = 3, TILE_GOAL = 4;
   var TILE_LOCK = 9;            /* la puerta que pide algo para abrirse */
+  var TILE_CLIMB = 10;          /* la liana: se trepa y se coge en el aire */
   var KIND_ENEMY = 0, KIND_ITEM = 1, KIND_PRISONER = 8;
 
   /**
@@ -31,6 +32,10 @@
     if (data.view === "cinta") return jugarCinta(NPCore, data, nivel, opciones);
     if (data.view === "iso") return jugarIso(NPCore, data, nivel, opciones);
     if (data.view === "cenital") return jugarCenital(NPCore, data, nivel, opciones);
+    /* Y un juego con lianas tampoco: lo que hay que coger esta arriba y la
+       puerta no se abre hasta tenerlo, asi que no vale con ir a la derecha. */
+    if (data.player.climb_speed > 0)
+      return jugarLianas(NPCore, data, nivel, opciones);
     var w = NPCore.create(data);
     w.step(NPCore.IN.START);
     if (nivel) w.loadLevel(nivel);
@@ -783,7 +788,350 @@
              muertes: muertes, avance: 0, y: 0 };
   }
 
-  var api = { jugar: jugar };
+
+  /* ------------------------------------------------------------------ *
+   * El bot de los juegos con lianas.
+   *
+   * El de lado normal anda hacia la derecha y salta lo que se le pone
+   * delante, y con eso basta cuando el camino es el camino. En un juego de
+   * kung-fu no lo es: lo que hay que coger esta **arriba**, en una viga o al
+   * final de una liana, y la puerta no se abre hasta tenerlo todo. Un bot que
+   * solo sabe ir hacia la derecha se planta delante de la salida cerrada sin
+   * entender por que.
+   *
+   * Asi que este busca el camino de verdad, como el de la vista cenital, pero
+   * por un mapa de lado: las casillas no se tocan por los cuatro lados sino
+   * que se **anda**, se **salta** o se **trepa**, que son las tres maneras de
+   * moverse que tiene el jugador. Lo demas es lo mismo: se busca lo que falta,
+   * se va a por ello y, cuando ya no falta nada, a la meta.
+   * ------------------------------------------------------------------ */
+
+  var SUBE_SALTO = 2;           /* casillas que sube un salto */
+  var BAJA_SALTO = 3;           /* y las que se puede caer de un salto */
+  var LARGO_SALTO = 3;          /* y lo que se llega de largo */
+
+  function piso(w, x, y) {
+    var k = w.tileKindAt(x, y);
+    return k === TILE_SOLID || k === TILE_PLATFORM;
+  }
+
+  function seguro(w, x, y) {
+    var k = w.tileKindAt(x, y);
+    return k !== TILE_SOLID && k !== TILE_HAZARD;
+  }
+
+  function esLiana(w, x, y) { return w.tileKindAt(x, y) === TILE_CLIMB; }
+
+  /** Una casilla en la que se puede estar de pie: libre y con suelo debajo. */
+  function dePie(w, x, y) { return seguro(w, x, y) && piso(w, x, y + 1); }
+
+  /** El pasillo de un salto: se sube por la columna de salida, se cruza por
+      arriba y se baja por la de llegada. Es una aproximacion del arco -sube,
+      vuela, cae- y peca de prudente a proposito: un salto que este bot da por
+      bueno lo da bien cualquiera. */
+  function pasilloLibre(w, x0, y0, x1, y1) {
+    var alto = Math.min(y0, y1), y, x;
+    for (y = alto; y <= y0; y++) if (!seguro(w, x0, y)) return false;
+    for (x = Math.min(x0, x1); x <= Math.max(x0, x1); x++)
+      if (!seguro(w, x, alto)) return false;
+    for (y = alto; y <= y1; y++) if (!seguro(w, x1, y)) return false;
+    return true;
+  }
+
+  /** Donde se acaba de caer si uno se tira por la casilla (x, y). */
+  function dondeCae(w, x, y) {
+    var lv = w.level;
+    for (var ny = y; ny < lv.cells_h; ny++) {
+      if (!seguro(w, x, ny)) return -1;
+      if (piso(w, x, ny + 1)) return ny;
+    }
+    return -1;
+  }
+
+  /**
+   * Camino desde una casilla hasta lo que se busque, contando las tres formas
+   * de moverse. Cada nodo es una casilla **y en que se esta**: de pie o
+   * colgado, porque no es lo mismo estar en una casilla pisando el suelo que
+   * estar en ella agarrado a una liana.
+   *
+   * Devuelve una lista de [x, y, colgado, comoSeLlega] o null si no hay
+   * manera. `como` es 0 andando, 1 saltando y 2 agarrandose.
+   */
+  function caminoLateral(w, desdeX, desdeY, colgado, quiere) {
+    var an = w.level.cells_w, al = w.level.cells_h;
+    var n = an * al * 2;
+    var previo = new Int32Array(n), como = new Uint8Array(n);
+    var visto = new Uint8Array(n);
+    var nodo = function (x, y, c) { return (y * an + x) * 2 + c; };
+    var inicio = nodo(desdeX, desdeY, colgado ? 1 : 0);
+    var cola = [inicio], cabeza = 0, meta = -1;
+    visto[inicio] = 1;
+    previo[inicio] = -1;
+
+    function mete(desde, x, y, c, forma) {
+      if (x < 0 || y < 0 || x >= an || y >= al) return;
+      var nn = nodo(x, y, c);
+      if (visto[nn]) return;
+      visto[nn] = 1;
+      previo[nn] = desde;
+      como[nn] = forma;
+      cola.push(nn);
+    }
+
+    while (cabeza < cola.length) {
+      var c = cola[cabeza++];
+      var cc = c & 1, celda = c >> 1;
+      var cx = celda % an, cy = (celda / an) | 0;
+      if (quiere(cx, cy)) { meta = c; break; }
+
+      if (cc) {
+        /* Colgado de una liana: se sube, se baja y se salta a un lado. */
+        if (esLiana(w, cx, cy - 1)) mete(c, cx, cy - 1, 1, 2);
+        if (esLiana(w, cx, cy + 1)) mete(c, cx, cy + 1, 1, 2);
+        if (dePie(w, cx, cy)) mete(c, cx, cy, 0, 0);
+        for (var s = -1; s <= 1; s += 2) {
+          for (var dx = 1; dx <= LARGO_SALTO; dx++) {
+            /* Desde una liana solo se cuenta con subir **una** casilla, y no
+               dos como desde el suelo. Colgado uno no esta pisando nada: la
+               altura de la que despega es la que tenga en ese momento, no la
+               del borde de la casilla, y un salto que sube justo lo justo se
+               queda a un pixel de la viga. Subir un poco mas por la liana es
+               gratis, asi que el camino que se planea es el seguro. */
+            for (var dy = -1; dy <= 4; dy++) {
+              var nx = cx + s * dx, ny = cy + dy;
+              if (!dePie(w, nx, ny)) continue;
+              if (!pasilloLibre(w, cx, cy, nx, ny)) continue;
+              mete(c, nx, ny, 0, 1);
+            }
+          }
+        }
+        continue;
+      }
+
+      /* De pie: andar al lado, dejarse caer, saltar y agarrarse. */
+      for (var s2 = -1; s2 <= 1; s2 += 2) {
+        var lx = cx + s2;
+        if (dePie(w, lx, cy)) mete(c, lx, cy, 0, 0);
+        else if (seguro(w, lx, cy)) {
+          var caida = dondeCae(w, lx, cy);
+          if (caida >= 0) mete(c, lx, caida, 0, 0);
+        }
+        /* Los saltos. `jx = 0` es saltar en el sitio, que sirve para subirse
+           a una plataforma de las de atravesar que este justo encima; y
+           `jy = 0` es cruzar un foso de frente, que es lo que mas se hace. Los
+           de `jy` negativo son los que caen mas abajo de donde se despega:
+           tambien son saltos, y sin ellos un escalon hacia abajo con un hueco
+           delante no tiene manera de bajarse. */
+        for (var jx = 0; jx <= LARGO_SALTO; jx++) {
+          for (var jy = -BAJA_SALTO; jy <= SUBE_SALTO; jy++) {
+            if (!jx && jy <= 0) continue;
+            var sx = cx + s2 * jx, sy = cy - jy;
+            if (!dePie(w, sx, sy)) continue;
+            if (!pasilloLibre(w, cx, cy, sx, sy)) continue;
+            mete(c, sx, sy, 0, 1);
+          }
+        }
+      }
+      /* Agarrarse a una liana: la de la propia casilla, la de al lado o una
+         que pase por encima al alcance del salto. Esto es lo que una escalera
+         no deja hacer y lo que hace que las lianas sean otra cosa. */
+      for (var ax = -2; ax <= 2; ax++) {
+        for (var ay = -SUBE_SALTO; ay <= 0; ay++) {
+          var ex = cx + ax, ey = cy + ay;
+          if (!esLiana(w, ex, ey)) continue;
+          if (!pasilloLibre(w, cx, cy, ex, ey)) continue;
+          mete(c, ex, ey, 1, ax === 0 && ay === 0 ? 2 : 1);
+        }
+      }
+    }
+
+    if (meta < 0) return null;
+    var ruta = [];
+    for (var q = meta; q >= 0; q = previo[q])
+      ruta.push([(q >> 1) % an, ((q >> 1) / an) | 0, q & 1, como[q]]);
+    ruta.reverse();
+    return ruta;
+  }
+
+  /** Que buscar: mientras falten llaves, la llave mas cercana; luego la meta.
+      Es el orden de un juego de faroles: primero apagarlos y luego salir. */
+  function objetivoLateral(w, data, F2I) {
+    var piden = w.level.keys_needed || 0;
+    if (piden && w.keys < piden) {
+      var sitios = {}, hay = 0;
+      for (var k = 0; k < w.entityCount; k++) {
+        var e = w.entities[k];
+        if (!e.active || e.kind !== KIND_ITEM) continue;
+        var d = data.items[e.def];
+        if (!d || d.effect !== 3) continue;         /* efecto llave */
+        sitios[(F2I(e.y) >> 4) * 1024 + (F2I(e.x) >> 4)] = 1;
+        hay++;
+      }
+      if (hay) {
+        return { nombre: "el farol",
+                 quiere: function (x, y) { return sitios[y * 1024 + x] === 1; } };
+      }
+    }
+    return { nombre: "la meta",
+             quiere: function (x, y) { return w.tileKindAt(x, y) === TILE_GOAL; } };
+  }
+
+  function jugarLianas(NPCore, data, nivel, opciones) {
+    var w = NPCore.create(data);
+    w.step(NPCore.IN.START);
+    if (nivel) w.loadLevel(nivel);
+    var pa = data.player.actor;
+    var limite = opciones.frames || 20000;
+    var maxMuertes = opciones.muertes === undefined ? 8 : opciones.muertes;
+    var ataque = data.player.attack && data.player.attack.kind ? data.player.attack : null;
+    var esperaGolpe = ataque ? (ataque.cooldown || 20) + 2 : 0;
+    var alcance = ataque ? (ataque.range || 24) + 12 : 0;
+    var golpeCd = 0, muertes = 0;
+    var ruta = null, paso = 0, recalcular = 0, saltando = 0;
+    var voy = "", mejorFalta = 99999, sinAvanzar = 0, llavesVistas = -1;
+
+    for (var i = 0; i < limite; i++) {
+      var p = w.players[0];
+      var cx = NPCore.F2I(p.x) + (pa.box_w >> 1);
+      var cy = NPCore.F2I(p.y) + (pa.box_h >> 1);
+      var tx = cx >> 4, ty = cy >> 4;
+
+      /* El camino se vuelve a pensar con los pies en el suelo o colgado de
+         una liana, no en mitad de un salto: en el aire la casilla en la que
+         se esta no es una casilla en la que se pueda estar, y el camino que
+         sale de ahi manda hacia un lado mientras uno cae. Asi es como el bot
+         se tiraba a los pinchos: iba bien a su casilla y a mitad de caida le
+         cambiaban el destino. */
+      if (!ruta || (recalcular <= 0 && (p.onGround || p.trepa))) {
+        var busca = objetivoLateral(w, data, NPCore.F2I);
+        var desdeY = ty;
+        if (!p.onGround && !p.trepa) {
+          var caida = dondeCae(w, tx, ty);
+          if (caida >= 0) desdeY = caida;
+        }
+        ruta = caminoLateral(w, tx, desdeY, p.trepa, busca.quiere);
+        paso = 0;
+        recalcular = 40;
+        if (voy !== busca.nombre) { voy = busca.nombre; mejorFalta = 99999; }
+        if (!ruta) {
+          return { ok: false, muertes: muertes, avance: cx, x: cx,
+                   motivo: "no hay camino hasta " + busca.nombre };
+        }
+      }
+      recalcular--;
+
+      /* Por donde va la ruta. Se busca **la casilla mas avanzada** que sea la
+         de ahora, no la siguiente sin mas: un salto se come dos o tres
+         casillas de golpe, y un bot que solo mira el paso siguiente se queda
+         apuntando a una casilla que ya dejo atras y va y vuelve sin parar. */
+      for (var q = ruta.length - 1; q >= 0; q--) {
+        if (ruta[q][0] === tx && ruta[q][1] === ty &&
+            ruta[q][2] === (p.trepa ? 1 : 0)) {
+          paso = Math.min(q + 1, ruta.length - 1);
+          break;
+        }
+      }
+      var destino = ruta[Math.min(paso, ruta.length - 1)];
+      var dx2 = (destino[0] * 16 + 8) - cx;
+      var dy2 = (destino[1] * 16 + 8) - cy;
+      var input = 0;
+
+      if (p.trepa) {
+        /* Colgado. Si el siguiente paso sigue en la liana se sube o se baja;
+           si no, se salta hacia el, que es la unica manera de soltarse con
+           impulso. */
+        if (destino[2]) {
+          if (dy2 < -3) input |= NPCore.IN.UP;
+          else if (dy2 > 3) input |= NPCore.IN.DOWN;
+          else {
+            input |= NPCore.IN.JUMP | (dx2 < 0 ? NPCore.IN.LEFT : NPCore.IN.RIGHT);
+            saltando = 1;
+          }
+        } else {
+          input |= NPCore.IN.JUMP;
+          saltando = 1;         /* y se mantiene: soltarlo corta el salto */
+          if (dx2 < -4) input |= NPCore.IN.LEFT;
+          else if (dx2 > 4) input |= NPCore.IN.RIGHT;
+        }
+      } else if (destino[2]) {
+        /* Yendo a por una liana: se anda hasta su columna con arriba pulsado,
+           que es lo que hace que se agarre en cuanto la toca -en el suelo o en
+           el aire, que da igual-. */
+        input |= NPCore.IN.UP;
+        if (dx2 < -3) input |= NPCore.IN.LEFT;
+        else if (dx2 > 3) input |= NPCore.IN.RIGHT;
+        /* Si la liana esta por encima, se salta hacia ella: se agarra en el
+           aire, que es lo que la separa de una escalera. No hace falta estar
+           debajo, porque en el aire todavia se manda. */
+        if (dy2 < -8 && p.onGround) { input |= NPCore.IN.JUMP; saltando = 1; }
+        else if (saltando && !p.onGround && p.vy < 0) input |= NPCore.IN.JUMP;
+      } else {
+        if (dx2 < -3) input |= NPCore.IN.LEFT;
+        else if (dx2 > 3) input |= NPCore.IN.RIGHT;
+        if (destino[3] === 1 && p.onGround) { input |= NPCore.IN.JUMP; saltando = 1; }
+        else if (saltando && !p.onGround && p.vy < 0) input |= NPCore.IN.JUMP;
+        else if (p.onGround) saltando = 0;
+      }
+
+      /* Y pegar a lo que se ponga al lado. Aqui no se pisa a nadie, asi que
+         quitarse de en medio a golpes no es opcional: es como se anda. */
+      if (golpeCd) golpeCd--;
+      if (ataque && !p.trepa) {
+        for (var k2 = 0; k2 < w.entityCount; k2++) {
+          var en = w.entities[k2];
+          if (!en.active || en.kind !== KIND_ENEMY) continue;
+          var ex2 = NPCore.F2I(en.x) - NPCore.F2I(p.x);
+          var ey2 = Math.abs(NPCore.F2I(en.y) - NPCore.F2I(p.y));
+          if (ey2 >= 24 || Math.abs(ex2) > alcance) continue;
+          if (!golpeCd) { input |= NPCore.IN.ACTION; golpeCd = esperaGolpe; }
+          break;
+        }
+      }
+
+      w.step(input);
+
+      if (w.state === NPCore.STATE.LEVEL_END || w.state === NPCore.STATE.FINISHED)
+        return { ok: true, frames: i, muertes: muertes, avance: cx };
+      if (w.state === NPCore.STATE.DYING) {
+        muertes++;
+        if (muertes > maxMuertes)
+          return { ok: false, motivo: "el bot muere una y otra vez",
+                   muertes: muertes, avance: cx, x: cx };
+        while (w.state !== NPCore.STATE.PLAY && w.state !== NPCore.STATE.GAME_OVER &&
+               w.state !== NPCore.STATE.TITLE) w.step(0);
+        if (w.state !== NPCore.STATE.PLAY)
+          return { ok: false, motivo: "se queda sin vidas", muertes: muertes,
+                   avance: cx, x: cx };
+        w.players[0].lives = data.lives;
+        ruta = null; mejorFalta = 99999; sinAvanzar = 0;
+        continue;
+      }
+
+      /* Ir bien es que mengue lo que falta de camino, pero al apagar un farol
+         el objetivo cambia y el camino nuevo puede ser mas largo que el que
+         acaba de terminarse. Sin esto el bot se daba por atascado justo
+         despues de conseguir algo, que es lo contrario de estar atascado. */
+      if (w.keys !== llavesVistas) {
+        llavesVistas = w.keys;
+        mejorFalta = 99999;
+        sinAvanzar = 0;
+      }
+      var falta = ruta.length - 1 - paso;
+      if (falta < mejorFalta) { mejorFalta = falta; sinAvanzar = 0; }
+      else if (++sinAvanzar > 900) {
+        var piden = w.level.keys_needed || 0;
+        return { ok: false, muertes: muertes, avance: cx, x: cx,
+                 motivo: "se queda atascado yendo a " + voy
+                         + (piden ? " (lleva " + w.keys + " de " + piden + ")" : "") };
+      }
+    }
+    return { ok: false, motivo: "no llega a la meta a tiempo",
+             muertes: muertes, avance: cx, x: cx };
+  }
+
+  /* El buscacaminos de lado se exporta aparte: lo usan las pruebas del kit
+     para saber si un mapa con lianas tiene camino sin tener que jugarlo. */
+  var api = { jugar: jugar, caminoLateral: caminoLateral };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.NPBot = api;
 })(typeof window !== "undefined" ? window : this);

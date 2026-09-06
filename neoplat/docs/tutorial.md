@@ -19,6 +19,8 @@ que tipo de juego quieres hacer?
   5) barrio        yo contra el barrio: se colocan, avisan y esperan turno
   6) aventura      cargar con las cosas y abrir con ellas lo que no se pasa
   7) filmation     una habitacion vista desde una esquina: cubos y salas
+  8) kung-fu       un templo de pantallas fijas: faroles, lianas y dos que
+                   te siguen
 
 elige [1]:
 ```
@@ -680,6 +682,110 @@ el castillo entero sin tocar nada más.
 Como en el resto de géneros, el bot comprueba que los dos castillos se pueden
 terminar, y hay un control que quita el talismán del mapa y exige que entonces
 **no** se pase.
+
+## Un templo de kung-fu
+
+```bash
+./ngplat nuevo mitemplo --genero kungfu
+```
+
+Este se ve de lado, como el de plataformas, pero no va de llegar al final: va
+de **recorrer** un templo apagando faroles con dos tipos detrás. Es el Bruce
+Lee de 1984, y lo que lo hace ese juego y no otro son tres reglas que van
+juntas.
+
+**1. Los que te persiguen no son de la pantalla: son tuyos.**
+
+```yaml
+  yamo:
+    comportamiento: perseguidor
+    tenaz: si          # esta linea es el genero entero
+```
+
+Con `tenaz: si`, al cambiar de cuadro el enemigo **vuelve a entrar por el borde
+por el que has entrado tú**. No se le deja atrás cambiando de pantalla: se le
+esquiva, se le tumba o se le usa. Sin esa línea cada pantalla es un puzle que
+se resuelve con calma; con ella entretenerse cuesta, y volver sobre tus pasos
+es meterte de cabeza en el que venía detrás.
+
+**2. Se pegan entre ellos.**
+
+```yaml
+juego:
+  entre_ellos: si    # el golpe de un bicho le hace dano al de al lado
+```
+
+El palo del ninja le entra a Yamo igual que a ti. Suena a detalle y es media
+mecánica: dos perseguidores que se pegan entre ellos dejan de ser dos problemas
+y pasan a ser una herramienta, porque colocarlos para que se crucen es lo único
+que tienes cuando no puedes con ninguno de los dos.
+
+**3. Se trepa, y una liana no es una escalera.**
+
+```yaml
+tiles:
+  leyenda:
+    '|': {tile: 5, tipo: liana}
+jugador:
+  trepa: 1.1         # 0 = las casillas de liana no hacen nada
+```
+
+A una escalera se sube desde el suelo y en diagonal. A una liana **te agarras
+en el aire**, se sube recta y desde ella se salta a donde sea con impulso: es
+el camino a lo que está arriba y la manera de quitarte de en medio. `trepa:` es
+lo que la enciende: a cero las mismas casillas siguen dibujándose y dejan de
+agarrar.
+
+Y encima de las tres, el golpe tiene dos formas:
+
+```yaml
+  ataque:
+    tipo: golpe
+    alcance: 14
+    patada: 26       # en el aire llega casi al doble
+    dano_patada: 2   # y duele el doble
+```
+
+`patada:` es lo que convierte el salto en un ataque. Sin esa línea, pegar en el
+aire saca el mismo puñetazo corto y saltar sólo sirve para moverse. Con ella,
+la patada voladora tiene su propio alcance, su propio daño y su propio dibujo
+(la animación `patada:`, que por eso los fotogramas son de 32×32: un golpe que
+llega más lejos tiene que **verse** más largo).
+
+**Lo que abre la puerta son los faroles.** El objeto lleva `efecto: llave` y el
+nivel dice cuántos pide:
+
+```yaml
+objetos:
+  farol:
+    efecto: llave
+    cantidad: 1
+niveles:
+  - nombre: "EL PATIO DEL TEMPLO"
+    llaves: 5        # hasta que no estan los cinco, la puerta no se abre
+```
+
+Los dos niveles que salen son cuatro pantallas cada uno, sin scroll: cada
+cuadro es una sala del templo.
+
+- **EL PATIO DEL TEMPLO** enseña de una en una. La primera pantalla sólo tiene
+  vigas —tres escalones de dos casillas, que es justo lo que sube el salto—; la
+  segunda añade la liana y a Yamo, que es lento pero no se queda atrás; la
+  tercera los fosos de pinchos; y la cuarta al ninja y la puerta. Cinco
+  faroles.
+- **LAS ENTRAÑAS** ya no enseña nada: usa. Los dos bichos desde la primera
+  pantalla, lianas gemelas, pinchos debajo de casi todo y **siete** faroles
+  para una puerta que pide seis: el que sobra es para que puedas elegir entre
+  trepar por él o quedarte abajo peleando.
+
+**La pared del fondo es una capa, no casillas** (`fondos: [muro]`, con
+`velocidad: 0.5`). Así no ocupa mapa, no estorba al saltar y se corre media
+pantalla al cambiar de sala, que es lo que hace que las cuatro no parezcan la
+misma.
+
+Como en el resto de géneros, el bot comprueba que los dos niveles se pueden
+terminar, y hay un control que **quita la liana** de la segunda pantalla y
+exige que entonces no se llegue al farol de arriba.
 
 ## Cuando algo falla
 

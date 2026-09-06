@@ -32,7 +32,7 @@ MAX_ENTIDADES = 64
 # Las dos ultimas solo se usan en vista cenital (el heroe de espaldas y de
 # frente); en lateral se quedan en su sustituto y no estorban.
 ANIM_SLOTS = ["idle", "run", "jump", "fall", "hurt", "attack", "stair", "crouch",
-              "up", "down", "remate"]
+              "up", "down", "remate", "patada"]
 SIN_STEPS = 64
 
 
@@ -171,7 +171,9 @@ def _resolve_anims(actor: Actor, where: str, frames_available: int) -> List[Anim
     if "idle" not in given:
         given["idle"] = Animation("idle", [0], 8, True)
     fallback = {"run": "idle", "jump": "idle", "fall": "jump", "hurt": "idle",
-                "up": "run", "down": "run", "remate": "attack"}
+                "up": "run", "down": "run", "remate": "attack",
+                # sin dibujo de patada se pega en el aire con el de siempre
+                "patada": "attack"}
     out: List[Animation] = []
     for slot in ANIM_SLOTS:
         anim = given.get(slot)
@@ -477,6 +479,7 @@ def enemy_values(build: ActorBuild) -> Dict[str, object]:
         # el golpe cuerpo a cuerpo; alcance 0 = este no pega, hace dano al tocarte
         "reach": e.reach, "windup": e.windup, "active": e.active,
         "recover": e.recover, "wait": e.wait, "punch": e.punch,
+        "tenaz": 1 if e.tenaz else 0,
     }
 
 
@@ -561,6 +564,7 @@ def player_values(project: Project) -> Dict[str, object]:
         "bounce": to_fixed(p.bounce), "invuln": p.invuln,
         "knockback": to_fixed(p.knockback), "stun": p.stun,
         "stair_speed": to_fixed(p.stair_speed),
+        "climb_speed": to_fixed(p.climb_speed),
         "coyote": p.coyote, "jump_buffer": p.jump_buffer, "wear": p.wear,
         # el agarre: con `grab_time` a 0 el motor ni lo mira
         "grab_time": p.grab_time, "grab_damage": p.grab_damage,
@@ -586,7 +590,8 @@ def attack_values(project: Project) -> Dict[str, object]:
                 "duration": 0, "windup": 0, "damage": 0, "locks": 0,
                 "levels": 0, "range_step": 0, "fx": 0,
                 "combo": 0, "combo_window": 0, "finish_damage": 0,
-                "finish_stun": 0, "finish_push": 0}
+                "finish_stun": 0, "finish_push": 0,
+                "kick_range": 0, "kick_damage": 0}
     return {
         "kind": ATTACK_KIND_ID[a.kind],
         "speed": to_fixed(a.speed),
@@ -604,6 +609,9 @@ def attack_values(project: Project) -> Dict[str, object]:
         "finish_damage": a.finish_damage,
         "finish_stun": a.finish_stun,
         "finish_push": to_fixed(a.finish_push),
+        # la patada voladora: pegar en el aire es otro golpe
+        "kick_range": a.kick_range,
+        "kick_damage": a.kick_damage,
         # con `tipo: golpe`, `sprite:` es el arma en si (el latigo) y se dibuja
         # delante del jugador mientras el golpe hace dano; sin sprite el golpe
         # es invisible, que es como estaba el kit

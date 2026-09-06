@@ -60,6 +60,14 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
  *
  * Que objeto abre cada cerrojo lo dice `np_tile_need` (el objeto mas uno). */
 #define NP_TILE_LOCK     9
+/* Liana, verja, cadena, enredadera: una casilla por la que se **trepa**.
+ *
+ * No es una escalera. Una escalera de las de arriba va en diagonal, se coge
+ * desde el suelo y te lleva de un piso a otro. Una liana es vertical, se coge
+ * **tambien en el aire** -saltas y te agarras, que es la mitad del genero de
+ * Bruce Lee- y desde ella se salta a donde sea. No frena a nadie: se pasa por
+ * delante andando, como una escalera. */
+#define NP_TILE_CLIMB   10
 
 /* --- la vista isometrica (los juegos de tipo filmation) ------------------
  *
@@ -220,7 +228,11 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 /* Y la del remate: el ultimo golpe de una serie, el que tumba. Quien no la
    traiga se queda con la de atacar, asi que un juego sin series ni se entera. */
 #define NP_ANIM_FINISH 10
-#define NP_ANIM_SLOTS 11
+/* La patada voladora: pegar **en el aire** es otro golpe, y por eso es otro
+ * dibujo. Sin `patada:` en el game.yaml este hueco se queda vacio y en el aire
+ * se pega con el fotograma de siempre, que es como estaba el kit. */
+#define NP_ANIM_KICK 11
+#define NP_ANIM_SLOTS 12
 
 /* Eventos de sonido que produce la simulacion (un bit cada uno). Coinciden con
  * EVENTO_BIT de tools/ngplat/sonido.py. La simulacion solo los marca; quien los

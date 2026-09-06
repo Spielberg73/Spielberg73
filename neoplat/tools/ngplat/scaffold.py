@@ -7,7 +7,7 @@ from dataclasses import dataclass, replace
 from typing import Dict, List, Tuple
 
 from . import (art, art_aventura, art_barrio, art_comando, art_filmation,
-               art_hierro, art_mazmorra,
+               art_hierro, art_kungfu, art_mazmorra,
                art_sonido)
 from .errors import ProjectError
 from .png import write_png
@@ -2750,6 +2750,430 @@ niveles:
 {niveles}"""
 
 
+# ------------------------------------------------------------------ kung-fu
+#
+# El de Bruce Lee: pantallas fijas, faroles que hay que apagar y dos que te
+# persiguen. Lo que hace distinto a este genero de un plataformas normal no es
+# que se pegue -eso ya estaba- sino tres cosas que van juntas:
+#
+#   1. **los perseguidores no son de la pantalla, son tuyos.** Al cambiar de
+#      cuadro entran otra vez por el borde por el que has entrado tu, asi que
+#      no se les deja atras: se les esquiva, se les pega o se les usa;
+#   2. **se pegan entre ellos.** El palo del ninja le entra a Yamo igual que a
+#      ti, asi que ponerlos en linea es una jugada y no una casualidad;
+#   3. **se trepa.** Las lianas suben rectas y se cogen en el aire: son el
+#      camino a lo que esta arriba y la manera de quitarse de en medio.
+#
+# El mapa es de pantallas de 20x14, como el de aventura, y se pegan una al lado
+# de otra: cada cuadro es una habitacion del templo.
+
+# --- nivel 1: el patio del templo -----------------------------------------
+#
+# Cuatro pantallas y cinco faroles. Va ensenando de una en una: la primera solo
+# tiene vigas, la segunda anade la liana y a Yamo, la tercera los pinchos y la
+# cuarta al ninja y la puerta.
+
+# A: las vigas. Tres escalones de dos casillas cada uno -que es justo lo que
+#    sube el salto- y dos faroles: uno en el suelo y otro arriba del todo.
+_TEMPLO_A = (
+    "MMMMMMMMMMMMMMMMMMMM",
+    "....................",
+    ".....f........f.....",
+    "....................",
+    "....................",
+    "....................",
+    ".............L......",
+    "............====....",
+    "....................",
+    "........====........",
+    "....................",
+    "....====............",
+    "..P.............L...",
+    "####################",
+)
+# B: la liana. Sube hasta la viga de arriba y desde ella se salta a un lado o
+#    al otro; y aqui aparece Yamo, que es lento pero no se queda atras.
+_TEMPLO_B = (
+    "MMMMMMMMMMMMMMMMMMMM",
+    "....................",
+    "....................",
+    "....................",
+    "......L.............",
+    "....======|.........",
+    "..........|.........",
+    "..........|.........",
+    "..........|=======..",
+    "..........|.........",
+    "..........|.........",
+    "..........|.........",
+    "..........|.....y...",
+    "####################",
+)
+# C: los pinchos. Dos fosos en el suelo y una escalera de vigas por encima:
+#    o se saltan o se va por arriba, y con Yamo detras no da tiempo a dudar.
+_TEMPLO_C = (
+    "MMMMMMMMMMMMMMMMMMMM",
+    "....................",
+    ".....f........f.....",
+    "....................",
+    "....................",
+    "....................",
+    "....................",
+    "....................",
+    ".........L..........",
+    ".......======.......",
+    "....................",
+    "...====......====...",
+    "....................",
+    "####^^######^^######",
+)
+# D: la puerta. El ultimo farol esta arriba de la liana y la salida abajo a la
+#    derecha: si falta un farol la puerta no se abre y hay que volver.
+_TEMPLO_D = (
+    "MMMMMMMMMMMMMMMMMMMM",
+    "....................",
+    "....................",
+    "....................",
+    ".....L..............",
+    "...======|..........",
+    ".........|..........",
+    ".........|..........",
+    ".........|..........",
+    ".........|..........",
+    ".........|..........",
+    ".........|.......GG.",
+    ".........|....n..GG.",
+    "####################",
+)
+
+
+def _nivel_kungfu_1() -> List[str]:
+    return _pantallas(list(_TEMPLO_A), list(_TEMPLO_B),
+                      list(_TEMPLO_C), list(_TEMPLO_D))
+
+
+# --- nivel 2: las entranas -------------------------------------------------
+#
+# Los dos bichos desde la primera pantalla, siete faroles y pinchos debajo de
+# casi todo. Aqui ya no se ensena nada: se usa.
+
+# A: dos lianas gemelas, una a cada lado, con su farol arriba. Yamo entra por
+#    la derecha y el ninja por donde entres tu.
+_ENTRANAS_A = (
+    "MMMMMMMMMMMMMMMMMMMM",
+    "....................",
+    "....L..........L....",
+    "...====|....|====...",
+    ".......|....|.......",
+    ".......|....|.......",
+    ".......|....|.......",
+    ".......|....|.......",
+    ".......|....|.......",
+    ".......|....|.......",
+    ".......|....|.......",
+    ".......|....|.......",
+    "..P....|....|...y...",
+    "####################",
+)
+# B: la liana con los pinchos debajo. Soltarse a destiempo cuesta una vida, y
+#    los dos faroles estan en las dos vigas que salen de ella.
+_ENTRANAS_B = (
+    "MMMMMMMMMMMMMMMMMMMM",
+    "....................",
+    "....................",
+    "........L...........",
+    ".....======.........",
+    "..........|.........",
+    "..........|.........",
+    "..........|.........",
+    "..........|..L......",
+    "..........|======...",
+    "..........|.........",
+    "..........|.........",
+    "..........|.........",
+    "####^^#######^^#####",
+)
+# C: la sala del ninja. La liana esta entre los dos fosos: se sube por ella y
+#    se sale por arriba, y el ninja llega antes que tu si te lo piensas.
+_ENTRANAS_C = (
+    "MMMMMMMMMMMMMMMMMMMM",
+    "....................",
+    "...L................",
+    ".======|............",
+    ".......|............",
+    ".......|............",
+    ".......|...L........",
+    ".......|=======.....",
+    ".......|............",
+    ".......|............",
+    ".......|............",
+    ".......|............",
+    ".......|.......n....",
+    "####^^#####^^#######",
+)
+# D: la salida del templo. El septimo farol es el de arriba y sobra: son seis
+#    los que pide la puerta, asi que se puede elegir entre trepar por el o
+#    quedarse abajo peleando. Que se pueda elegir es el final del nivel.
+_ENTRANAS_D = (
+    "MMMMMMMMMMMMMMMMMMMM",
+    "....................",
+    "....................",
+    "....L...............",
+    "...====|............",
+    ".......|............",
+    ".......|............",
+    ".......|............",
+    ".......|............",
+    ".......|............",
+    ".......|............",
+    ".......|............",
+    ".......|.......y.GG.",
+    "####################",
+)
+
+
+def _nivel_kungfu_2() -> List[str]:
+    return _pantallas(list(_ENTRANAS_A), list(_ENTRANAS_B),
+                      list(_ENTRANAS_C), list(_ENTRANAS_D))
+
+
+_MUSICA_KUNGFU = """  musica:
+    # Pentatonica: cinco notas y ninguna que roce con otra, que es lo que suena
+    # a oriental sin tener que afinar nada raro. El bajo va a negras marcando
+    # el paso, porque en este juego lo que hay debajo de todo son dos que
+    # vienen andando detras de ti.
+    patio:
+      velocidad: 10
+      pistas:
+        - |
+          la4 - do5 - re5 - mi5 -
+          re5 - do5 - la4 - sol4 -
+          la4 - do5 - mi5 - sol5 -
+          mi5 - re5 - do5 - la4 -
+        - |
+          la2 - - - mi3 - - -
+          re3 - - - la2 - - -
+          la2 - - - mi3 - - -
+          sol2 - - - la2 - - -
+    entranas:
+      velocidad: 11
+      pistas:
+        - |
+          mi4 - sol4 - la4 - do5 -
+          la4 - sol4 - mi4 - re4 -
+          mi4 - la4 - do5 - re5 -
+          do5 - la4 - sol4 - mi4 -
+        - |
+          mi2 - - - si2 - - -
+          la2 - - - mi2 - - -
+          re3 - - - la2 - - -
+          mi2 - - - mi2 - - -
+    presentacion:
+      velocidad: 9
+      pistas:
+        - |
+          la4 do5 re5 mi5 sol5 - mi5 -
+          re5 do5 la4 - la4 - - -
+        - |
+          la2 - la3 - mi3 - mi2 -
+          re3 - re2 - la2 - - -
+"""
+
+
+GAME_YAML_KUNGFU = """# Proyecto NeoPlat de kung-fu: un juego al estilo Bruce Lee.
+#
+#   ngplat probar     -> abre el preview jugable en el navegador
+#   ngplat compilar   -> genera el proyecto en C y las ROMs graficas
+#
+# Se ve de lado, en pantallas fijas, y va de recorrer un templo apagando
+# faroles con dos tipos detras. Tres reglas lo separan de un plataformas:
+#
+#   1. **los que te persiguen son tuyos, no de la pantalla.** Llevan
+#      `tenaz: si`, asi que al cambiar de cuadro vuelven a entrar por el borde
+#      por el que entras tu. No se les deja atras: o se esquivan o se tumban;
+#   2. **se pegan entre ellos.** Con `entre_ellos: si` el palo del ninja le
+#      hace dano a Yamo igual que a ti. Ponerlos en linea y quitarte de en
+#      medio es una jugada de verdad, y es gratis;
+#   3. **se trepa.** Las lianas se suben rectas y se cogen **en el aire**, que
+#      es lo que las separa de una escalera. Desde una liana se salta a donde
+#      sea, y de ahi sale la mitad del movimiento del juego.
+#
+# Y el golpe tiene dos formas: el punetazo, de pie, y la **patada voladora**,
+# que es el mismo boton en el aire y llega al doble de distancia. Es lo que
+# convierte el salto en un ataque.
+
+juego:
+  titulo: "{titulo}"
+  autor: "{autor}"
+  vidas: 3
+  tiempo: 0            # segundos por nivel (0 = sin limite)
+  camara: pantallas    # sin scroll: cada cuadro es una sala del templo
+  entre_ellos: si      # el golpe de un bicho le hace dano al de al lado
+  amiga: 32colores
+  fondo: "#101820"
+
+jugador:
+  sprite: graficos/heroe.png
+  frame: [32, 32]      # 32 de ancho porque la patada se dibuja estirada
+  caja: [12, 16]
+  offset_caja: [10, 11]
+  velocidad: 1.5
+  aceleracion: 0.5
+  friccion: 0.4
+  salto: 5.0
+  gravedad: 0.30
+  max_caida: 6.0
+  # La linea que trae las lianas. A 0 no se trepa y las casillas de liana no
+  # hacen nada, asi que este numero es lo que enciende media mecanica.
+  trepa: 1.1
+  pisar_enemigos: no   # aqui no se salta encima: se pega
+  vida: 4
+  invulnerable: 60
+  retroceso: 2.0
+  aturdido: 12
+  animaciones:
+    quieto: {{frames: [0], velocidad: 30}}
+    correr: {{frames: [1, 2], velocidad: 7}}
+    saltar: {{frames: [3]}}
+    caer:   {{frames: [3]}}
+    atacar: {{frames: [4], velocidad: 6}}
+    patada: {{frames: [5], velocidad: 6}}
+    dano:   {{frames: [6]}}
+    trepar: {{frames: [7], velocidad: 10}}
+  # El golpe. `patada:` es lo que hace que pegar en el aire sea **otra cosa**:
+  # sin esa linea en el aire sale el mismo punetazo corto y el salto no seria
+  # un ataque, solo una manera de moverse.
+  ataque:
+    tipo: golpe
+    alcance: 14
+    espera: 10         # frames entre golpe y golpe
+    duracion: 8
+    dano: 1
+    patada: 26         # la voladora llega casi al doble
+    dano_patada: 2     # y duele el doble
+
+# La pared del fondo. Va como capa y no como casillas: asi no ocupa mapa ni
+# estorba al saltar, y con velocidad 0.5 se corre media pantalla al cambiar de
+# sala, que es lo que hace que las cuatro no parezcan la misma.
+fondos:
+  - nombre: muro
+    imagen: graficos/muro.png
+    velocidad: 0.5
+    y: 16
+
+tiles:
+  imagen: graficos/tiles.png
+  leyenda:
+    '.': {{tile: 0, tipo: vacio}}
+    '#': {{tile: 1, tipo: solido}}       # el suelo de piedra
+    'M': {{tile: 2, tipo: solido}}       # la pared del templo
+    '=': {{tile: 3, tipo: plataforma}}   # viga: se atraviesa por abajo
+    '^': {{tile: 4, tipo: peligro}}      # el foso de pinchos
+    # La liana. No es una escalera: se sube recta, se coge en el aire y desde
+    # ella se salta con impulso. Ocupa la casilla entera a proposito, para que
+    # la columna por la que se trepa se vea aunque tenga a alguien delante.
+    '|': {{tile: 5, tipo: liana}}
+    'G': {{tile: 6, tipo: meta}}         # la puerta del fondo
+    'B': {{tile: 7, tipo: solido}}       # losa suelta
+    'f': {{tile: 8, tipo: decorado}}     # farolillo de pared, solo adorna
+
+enemigos:
+  # Los dos que te persiguen. Lo que los define no es cuanto aguantan sino
+  # `tenaz: si`: al cambiar de pantalla vuelven a entrar detras de ti, asi que
+  # correr no es una solucion, solo un aplazamiento.
+  yamo:
+    sprite: graficos/yamo.png
+    frame: [32, 32]
+    caja: [18, 18]
+    offset_caja: [7, 7]
+    comportamiento: perseguidor
+    velocidad: 0.55
+    rango: 320
+    vida: 6
+    dano: 2
+    puntos: 400
+    tenaz: si
+    pisable: no        # a este no se le salta encima: se le pega
+    # Pega fuerte y de lejos, pero **se ve venir**: treinta frames de aviso es
+    # medio segundo largo, que es lo que hace que sea justo y no una trampa.
+    golpe:
+      alcance: 20
+      preparacion: 30
+      duracion: 8
+      recuperar: 30
+      espera: 60
+      dano: 2
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 18}}
+      correr: {{frames: [1, 2], velocidad: 11}}
+      atacar: {{frames: [3]}}
+      dano:   {{frames: [4]}}
+  ninja:
+    sprite: graficos/ninja.png
+    frame: [32, 32]
+    caja: [12, 16]
+    offset_caja: [10, 9]
+    comportamiento: perseguidor
+    velocidad: 1.1
+    rango: 320
+    vida: 3
+    dano: 1
+    puntos: 300
+    tenaz: si
+    pisable: no
+    # El contrario de Yamo: llega mas lejos y avisa la mitad, pero aguanta la
+    # mitad. Los dos juntos son el juego: uno te acorrala y el otro te alcanza.
+    golpe:
+      alcance: 24
+      preparacion: 16
+      duracion: 6
+      recuperar: 20
+      espera: 40
+      dano: 1
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 14}}
+      correr: {{frames: [1, 2], velocidad: 7}}
+      atacar: {{frames: [3]}}
+      dano:   {{frames: [4]}}
+
+objetos:
+  # El farol. `efecto: llave` es lo que lo convierte en el objetivo del nivel:
+  # la puerta pide un numero de ellos y hasta que no estan no se abre.
+  farol:
+    sprite: graficos/farol.png
+    frame: [16, 16]
+    caja: [10, 12]
+    puntos: 100
+    efecto: llave
+    cantidad: 1
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 12}}
+
+# Sonido. El punetazo es ruido corto y la patada uno mas largo y mas grave:
+# se distinguen con los ojos cerrados, que es como hay que poder distinguirlos
+# cuando se tiene a dos encima.
+sonido:
+  efectos:
+    empezar: {{notas: "la4 do5 re5 mi5", velocidad: 6}}
+    golpe:   {{tipo: ruido, duracion: 8, tono: 8}}
+    disparo: {{tipo: ruido, duracion: 12, tono: 20}}
+    moneda:  {{notas: "mi5 la5 do6", velocidad: 4}}
+    vida:    {{notas: "la4 do5 mi5", velocidad: 5}}
+    salto:   {{tipo: barrido, desde: 260, hasta: 820, duracion: 5}}
+    muerte:  {{notas: "la4 sol4 mi4 la3", velocidad: 7}}
+    meta:    {{notas: "la4 do5 mi5 la5 do6", velocidad: 6}}
+{musica}
+# Simbolos del mapa que colocan faroles y perseguidores.
+spawns:
+  L: farol
+  y: yamo
+  n: ninja
+
+niveles:
+{niveles}"""
+
+
+
 # --------------------------------------------------------------- generos
 #
 # El **genero** decide como se juega y el **estilo** como se ve: son dos ejes
@@ -3062,7 +3486,7 @@ def _genero_castlevania(nombres: Dict[str, str]) -> Genero:
 
 
 GENEROS = ("plataformas", "castlevania", "comando", "mazmorra",
-           "barrio", "aventura", "filmation")
+           "barrio", "aventura", "filmation", "kungfu")
 
 # Como se llama cada cosa en cada estilo de dibujo.
 _NOMBRES = {
@@ -3151,6 +3575,22 @@ def _genero_filmation(nombres: Dict[str, str], estilo: str) -> Genero:
     )
 
 
+def _genero_kungfu(nombres: Dict[str, str], estilo: str) -> Genero:
+    """El de Bruce Lee: un templo, faroles y dos que no te sueltan.
+
+    Como los otros cinco de plantilla propia, trae su game.yaml entero en vez
+    de armarse a trozos. De este objeto solo se usa como se llama y que
+    promete.
+    """
+    return replace(
+        _genero_plataformas(nombres, estilo),
+        nombre="kungfu",
+        titulo="kung-fu",
+        resumen=("un templo de pantallas fijas: faroles que apagar, lianas "
+                 "por las que trepar y dos que te siguen a todas partes."),
+    )
+
+
 def genero_de(nombre: str, estilo: str) -> Genero:
     nombres = _NOMBRES[estilo]
     if nombre == "castlevania":
@@ -3165,6 +3605,8 @@ def genero_de(nombre: str, estilo: str) -> Genero:
         return _genero_aventura(nombres, estilo)
     if nombre == "filmation":
         return _genero_filmation(nombres, estilo)
+    if nombre == "kungfu":
+        return _genero_kungfu(nombres, estilo)
     return _genero_plataformas(nombres, estilo)
 
 
@@ -3256,6 +3698,11 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
         # entero de otra manera.
         dibujos = dict(dibujos)
         dibujos.update(art_filmation.todos(estilo))
+    elif genero == "kungfu":
+        # El heroe de este genero es de 32x32 y los bichos tambien: los del
+        # estilo, que son de 16, no valen ni de sitio.
+        dibujos = dict(dibujos)
+        dibujos.update(art_kungfu.todos(estilo))
     for relativo, imagen in dibujos.items():
         ruta = os.path.join(destino, relativo)
         write_png(ruta, imagen)
@@ -3346,6 +3793,29 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
         contenido = GAME_YAML_FILMATION.format(
             titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles,
             musica=_MUSICA_FILMATION)
+        with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
+                  newline="\n") as fh:
+            fh.write(contenido)
+        creados.append("game.yaml")
+        with open(os.path.join(destino, ".gitignore"), "w", encoding="utf-8",
+                  newline="\n") as fh:
+            fh.write("build/\npreview.html\n.neoplat/\n")
+        creados.append(".gitignore")
+        return creados
+
+    if genero == "kungfu":
+        # Cuatro pantallas por nivel, sin scroll: cada cuadro es una sala del
+        # templo. Lo que abre la puerta no es una llave sino los faroles, asi
+        # que 'llaves:' es aqui cuantos hay que apagar antes de poder salir.
+        niveles = (
+            _nivel_yaml("EL PATIO DEL TEMPLO", _nivel_kungfu_1(), "#101820",
+                        capas="muro", musica="patio", llaves=5)
+            + _nivel_yaml("LAS ENTRANAS", _nivel_kungfu_2(), "#0c1418",
+                          capas="muro", musica="entranas", llaves=6)
+        )
+        contenido = GAME_YAML_KUNGFU.format(
+            titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles,
+            musica=_MUSICA_KUNGFU)
         with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
                   newline="\n") as fh:
             fh.write(contenido)

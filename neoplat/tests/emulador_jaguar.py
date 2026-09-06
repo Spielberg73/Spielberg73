@@ -140,7 +140,14 @@ def comprobar(rom: str, capturas: str = "capturas",
     # confundia "el marcador tiene otra linea" (llaves, municion) con "el
     # marcador sale dos veces", que es lo unico que se quiere detectar. El
     # sintoma de la carrera es texto **por debajo** de la franja del marcador.
-    HUD = 24 * alto // 240                    # la franja de arriba, escalada
+    # La franja del marcador, en coordenadas de la **captura**: el objeto del
+    # HUD va en la linea 0 de la pantalla y mide NP_HUD_ALTO (24, tres filas de
+    # ocho), pero lo que devuelve el emulador trae ocho lineas de borde por
+    # arriba -medido: el texto de la primera fila sale en la 9-, asi que la
+    # franja cae entre la 8 y la 32. Con 24 a secas, un juego que use las tres
+    # filas -puntuacion, llaves y vida, que es lo que ensena el de kung-fu-
+    # daba por "marcador repetido" su propia tercera fila.
+    HUD = 32 * alto // 240
     arriba = abajo = 0
     for y in range(alto):
         cuantos = sum(1 for x in range(ancho) if pixeles[y * ancho + x] == claro)

@@ -274,6 +274,49 @@ class TestNivelesJugables(unittest.TestCase):
                             "sin los objetos tambien se pasan las puertas")
         self.assertNotIn("ok   nivel 1", resultado.stdout, resultado.stdout)
 
+    def test_el_proyecto_de_kungfu_tambien_se_termina(self):
+        """El genero de kung-fu no se pasa andando hacia la derecha: la puerta
+        pide todos los faroles y los faroles estan arriba, en las vigas y al
+        final de las lianas. Sus dos niveles tienen que poder terminarse."""
+        destino = os.path.join(self.tmp, "kungfu")
+        crear_proyecto(destino, "TEMPLO", "TEST", genero="kungfu")
+        resultado = self._jugar(destino)
+        self.assertEqual(resultado.returncode, 0,
+                         "el bot no puede terminar el proyecto de kung-fu:\n"
+                         + resultado.stdout)
+
+    def test_en_el_kungfu_sin_la_liana_no_se_llega_al_farol(self):
+        """Y que lo que le hace llegar arriba es la liana. Quitandola de la
+        segunda pantalla del primer nivel -y dejando la viga, el farol y todo
+        lo demas donde estaba- el farol de esa sala se queda sin camino y la
+        puerta ya no se abre. Si tambien pasara, es que el bot llegaba por otro
+        lado y la prueba de arriba no probaba que las lianas sirvan."""
+        destino = os.path.join(self.tmp, "kungfu-sin-liana")
+        crear_proyecto(destino, "SINLIANA", "TEST", genero="kungfu")
+        ruta = os.path.join(destino, "game.yaml")
+        with open(ruta, encoding="utf-8") as fh:
+            lineas = fh.read().split("\n")
+        # el mapa del primer nivel son las 14 filas de 80 que siguen a su
+        # 'mapa: |'; la liana de la segunda pantalla va por la columna 30
+        primero = next(i for i, l in enumerate(lineas) if l.strip() == "mapa: |")
+        quitadas = 0
+        for i in range(primero + 1, primero + 15):
+            fila = lineas[i]
+            sangria = len(fila) - len(fila.lstrip())
+            self.assertEqual(len(fila) - sangria, 80, "la fila %d no mide 80" % i)
+            col = sangria + 30
+            if fila[col] == "|":
+                lineas[i] = fila[:col] + "." + fila[col + 1:]
+                quitadas += 1
+        self.assertEqual(quitadas, 8,
+                         "la liana de la segunda pantalla ya no esta ahi")
+        with open(ruta, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(lineas))
+        resultado = self._jugar(destino)
+        self.assertNotEqual(resultado.returncode, 0,
+                            "sin la liana tambien se llega al farol de arriba")
+        self.assertNotIn("ok   nivel 1", resultado.stdout, resultado.stdout)
+
     def _mazmorra_con(self, nombre, parches):
         """Un proyecto de mazmorra con el game.yaml retocado."""
         destino = os.path.join(self.tmp, nombre)

@@ -147,13 +147,26 @@ class TestParidad(unittest.TestCase):
         cls.variantes["iso-llano"] = cls._preparar("pantallas",
                                                    genero="filmation",
                                                    sin_relieve=True)
+        # El kung-fu: trepar por lianas, la patada voladora, el fuego amigo
+        # entre bichos y los perseguidores que se recolocan al cambiar de
+        # pantalla. Las cuatro cosas deciden **cada frame** -donde se agarra
+        # uno, si el golpe que sale es el punetazo o la patada, a quien le
+        # entra y por que borde vuelven a entrar los que te siguen-, asi que si
+        # los dos motores no decidieran igual se separarian en la primera sala.
+        cls.variantes["kungfu"] = cls._preparar("pantallas", genero="kungfu")
+        # El mismo templo sin lianas: las casillas de liana siguen ahi y no
+        # hacen nada. Sirve de control -si las dos trazas fueran iguales, la
+        # de arriba no estaria probando que se trepa-.
+        cls.variantes["kungfu-sin-liana"] = cls._preparar("pantallas",
+                                                          genero="kungfu",
+                                                          sin_liana=True)
 
     @classmethod
     def _preparar(cls, camara, jefe=False, dos=False, golpe=False, llave=False,
                   tablon=False, genero="plataformas", sin_dibujo=False,
                   cenital=False, nidos_dormidos=False, cinta=False,
                   combo=False, agarre=False, sin_llave=False,
-                  sin_golpe=False, sin_relieve=False):
+                  sin_golpe=False, sin_relieve=False, sin_liana=False):
         proyecto_dir = os.path.join(
             cls.tmp, "juego-" + camara + ("-jefe" if jefe else "")
             + ("-dos" if dos else "") + ("-golpe" if golpe else "")
@@ -167,6 +180,7 @@ class TestParidad(unittest.TestCase):
             + ("-sinllave" if sin_llave else "")
             + ("-singolpe" if sin_golpe else "")
             + ("-llano" if sin_relieve else "")
+            + ("-sinliana" if sin_liana else "")
             + ("-" + genero if genero != "plataformas" else ""))
         crear_proyecto(proyecto_dir, "PARIDAD", "TEST", genero=genero)
         yaml = os.path.join(proyecto_dir, "game.yaml")
@@ -176,12 +190,18 @@ class TestParidad(unittest.TestCase):
         # anadir otra, o el lector se queda con la ultima
         # El genero de aventura sale ya con la camara de pantallas: es media
         # gracia del genero, asi que ahi no se cambia.
-        if genero in ("aventura", "filmation"):
+        if genero in ("aventura", "filmation", "kungfu"):
             assert "  camara: pantallas" in texto, \
                 "el genero '%s' ya no trae la camara de pantallas" % genero
         elif True:
             assert "  camara: scroll" in texto, "el andamiaje ya no trae la camara"
             texto = texto.replace("  camara: scroll", "  camara: " + camara, 1)
+        if sin_liana:
+            # el mismo templo con `trepa: 0`: las casillas de liana se quedan
+            # donde estan y dejan de agarrar, que es lo unico que cambia
+            marca = "  trepa: 1.1"
+            assert marca in texto, "el andamiaje de kung-fu ya no trae trepa"
+            texto = texto.replace(marca, "  trepa: 0", 1)
         if dos:
             texto = texto.replace("  vidas:", "  jugadores: 2\n  vidas:", 1)
         if cenital:
@@ -577,6 +597,42 @@ class TestParidad(unittest.TestCase):
         entran hasta los jugadores. Las cuatro corren cada frame."""
         for semilla in (1, 7, 99):
             self._comparar("iso", semilla)
+
+    def test_misma_traza_en_el_kungfu(self):
+        """El genero de kung-fu mete cuatro cosas en el bucle: agarrarse a una
+        liana -que se puede hacer en el aire-, subir y bajar por ella, el golpe
+        que cambia de forma segun se este pisando o no, y los perseguidores que
+        al cambiar de pantalla se recolocan en el borde por el que has entrado.
+        Las cuatro son decisiones por frame, asi que los dos motores tienen que
+        tomarlas iguales o se separan en la primera sala."""
+        for semilla in (2, 13, 61):
+            self._comparar("kungfu", semilla)
+
+    def test_la_liana_hace_algo(self):
+        """Control del anterior: el mismo templo con `trepa: 0`.
+
+        Se anda a la derecha hasta la liana y se pulsa arriba. Con `trepa:` uno
+        se agarra y sube; con `trepa: 0` las mismas casillas no hacen nada y se
+        queda en el suelo. Si las dos partidas acabaran igual, la prueba de
+        arriba estaria comparando dos motores que no trepan."""
+        # La liana del templo esta en la segunda pantalla, a 480 pixeles de la
+        # salida: a 1.5 por frame son 300 andando, y ahi se para y se pulsa
+        # arriba. Pasarse de largo no vale -detras esta Yamo, que te devuelve-,
+        # asi que el numero es el que es.
+        entradas = ([(IN_START, 0)] * 3 + [(IN_RIGHT, 0)] * 300
+                    + [(IN_UP, 0)] * 240)
+        con_c, con_js = self._trazas_de("kungfu", entradas, "liana-si")
+        sin_c, sin_js = self._trazas_de("kungfu-sin-liana", entradas, "liana-no")
+        self.assertEqual(con_c, con_js)
+        self.assertEqual(sin_c, sin_js)
+        # la columna 2 es la y del jugador: trepando se sube, y subir es que y
+        # se haga mas pequena
+        con_y = min(int(l.split()[2]) for l in con_c)
+        sin_y = min(int(l.split()[2]) for l in sin_c)
+        self.assertLess(
+            con_y, sin_y,
+            "con lianas y sin ellas se sube igual (y=%d y y=%d): 'trepa:' no "
+            "esta haciendo nada" % (con_y, sin_y))
 
     def test_el_relieve_frena(self):
         """Control del anterior: el mismo castillo con todo a ras de suelo.

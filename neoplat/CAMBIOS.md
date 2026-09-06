@@ -2,8 +2,88 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.26.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.27.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.27
+
+**Un genero nuevo: el templo de kung-fu**, al estilo del Bruce Lee de 1984. Es
+el octavo, y no es "plataformas con lianas": lo que lo hace ese juego y no otro
+son cuatro cosas que van juntas y que antes no se podian escribir.
+
+**1. Los que te persiguen no son de la pantalla: son tuyos.** Un enemigo con
+`tenaz: si`, en un juego de `camara: pantallas`, vuelve a entrar por el borde
+por el que entras tu cada vez que cambias de cuadro. No es un detalle: cambia
+lo que significa una pantalla. Sin ellos, cada cuadro es un puzle que se
+resuelve con calma y el bicho de al lado se queda al lado; con ellos,
+entretenerse cuesta y volver sobre tus pasos es meterte de cabeza en el que
+venia detras.
+
+**2. Se pegan entre ellos.** Con `entre_ellos: si` el golpe de un enemigo le
+hace dano a otro enemigo que tenga delante. Suena a detalle y es media
+mecanica: dos perseguidores duros dejan de ser dos problemas y pasan a ser una
+herramienta, porque colocarlos para que se crucen y quitarte de en medio es lo
+unico que tienes cuando no puedes con ninguno de los dos.
+
+**3. Se trepa, y una liana no es una escalera.** `tipo: liana` en la leyenda y
+`trepa:` en el jugador. A una escalera se sube desde el suelo y va en diagonal;
+a una liana **te agarras en el aire**, se sube recta y desde ella se salta a
+donde sea con impulso. Es el camino a lo que esta arriba y la manera de
+quitarte de en medio, y un golpe te tira de ella, asi que trepar delante de un
+bicho es una decision y no un tramite.
+
+**4. La patada voladora.** `patada:` y `dano_patada:` dentro de `ataque:` hacen
+que pegar sin pisar suelo sea **otro golpe**: su alcance, su dano y su dibujo.
+Es lo que convierte el salto en un ataque en vez de en una manera de moverse.
+Por eso los fotogramas del genero son de 32x32: un golpe que llega al doble
+tiene que **verse** el doble de largo, o el jugador no entiende por que ese ha
+entrado y el otro no.
+
+**Y el juego de ejemplo entero.** `ngplat nuevo mitemplo --genero kungfu` saca
+dos niveles de cuatro pantallas: EL PATIO DEL TEMPLO ensena de una en una -las
+vigas, la liana y Yamo, los fosos, el ninja y la puerta- y LAS ENTRANAS ya no
+ensena, usa. La puerta no se abre hasta que estan todos los faroles (`efecto:
+llave` y `llaves:` en el nivel), y en el segundo nivel hay siete para seis: el
+que sobra es para que puedas elegir entre trepar por el o quedarte abajo
+peleando. Arte propio -Bruce, Yamo, el ninja, el farol, el templo y una pared
+de fondo que va como capa- y musica pentatonica.
+
+**El bot aprendio a trepar.** El boton "se puede terminar?" del editor -y la
+prueba `tests/test_niveles.py`- usaban un bot que anda a la derecha y salta lo
+que se le pone delante. En un juego donde lo que hay que coger esta arriba, eso
+se planta delante de la salida cerrada sin entender por que. Ahora, cuando el
+juego lleva lianas, busca el camino de verdad: un mapa de casillas donde de una
+a otra se **anda**, se **salta** o se **trepa**, que son las tres maneras de
+moverse que tiene el jugador. Con eso termina los dos niveles sin morir, y hay
+un control que quita la liana de una pantalla y exige que entonces no se pueda.
+
+### Tres fallos que encontro la prueba de paridad
+
+El motor en C y el del navegador se comparan frame a frame, y montar este
+genero saco tres cosas que llevaban ahi desde que se escribieron:
+
+- **Empezar un nivel contaba como cruzar una puerta.** En C, la comprobacion de
+  "he cambiado de pantalla?" vivia dentro de la camara, y al reaparecer tras
+  perder una vida la camara se movia de la sala donde te habias muerto a la de
+  la salida. Eso disparaba a los tenaces: aparecian pegados a ti nada mas
+  revivir y en un sitio que no era el que dice el mapa. Ahora es un paso
+  aparte, y solo lo llama el frame.
+- **El fuego amigo no llegaba al navegador.** `entre_ellos:` se leia del
+  game.yaml y se generaba en el C, pero **no se escribia en los datos del
+  preview**: en el navegador -y por tanto en el editor y en el bot- los
+  enemigos nunca se pegaron entre ellos.
+- **Y en el preview la caja del de al lado se leia mal** (`entityDef(o)` en vez
+  de `entityDef(o).actor`), asi que aunque hubiera llegado, la comprobacion de
+  choque habria fallado siempre.
+
+### Y una prueba de emulador que medía mal
+
+La del Jaguar comprueba que el marcador no salga dos veces mirando si hay texto
+**por debajo** de su franja. La franja estaba puesta en 24 lineas, que es lo que
+mide el marcador en pantalla, pero la captura del emulador trae ocho lineas de
+borde por arriba: un juego que use las tres filas del marcador -puntuacion,
+llaves y vida, que es justo lo que ensena el de kung-fu- daba por "repetido" su
+propia tercera fila.
 
 ## 1.26
 

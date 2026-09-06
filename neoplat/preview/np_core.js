@@ -28,6 +28,7 @@
   var TILE_CHECK = 8;
   /* cerrojo: frena como una pared hasta que llegas con el objeto que pide */
   var TILE_LOCK = 9;
+  var TILE_CLIMB = 10;
   var AI_PATROL = 0, AI_FLYER = 1, AI_CHASER = 2, AI_JUMPER = 3;
   /* Las fases del luchador, igual que NP_LUCHA_* en C. */
   var LUCHA_IR = 0, LUCHA_RONDAR = 1, LUCHA_PREPARAR = 2, LUCHA_GOLPEAR = 3,
@@ -43,7 +44,7 @@
       /* solo en vista cenital: de espaldas y de frente */
       ANIM_UP = 8, ANIM_DOWN = 9,
       /* el ultimo golpe de una serie, el que tumba */
-      ANIM_FINISH = 10;
+      ANIM_FINISH = 10, ANIM_KICK = 11;
   var KIND_ENEMY = 0, KIND_ITEM = 1, KIND_SHOT = 2, KIND_PLATFORM = 3;
   var KIND_BREAKABLE = 4, KIND_SUBSHOT = 5, KIND_MELEE = 6;
   var KIND_ENEMY_SHOT = 7;      /* lo que tira un enemigo con `dispara:` */
@@ -113,7 +114,7 @@
         /* el repertorio de tortas: el golpe fuerte (patada o hombro), la
            carrera y el doble toque que la enciende */
         fuerte: 0, carrera: 0, toque: 0, toqueDir: 0,
-        stairs: 0, stairDir: 1
+        stairs: 0, trepa: 0, stairDir: 1
       });
     }
     this.playerCount = data.players || 1;
@@ -135,6 +136,7 @@
     /* La sala que se esta viendo y cuantos cubos suyos hay montados (solo la
        vista isometrica). Igual que en NpWorld. */
     this.salaX = -1; this.salaY = -1; this.bloquesN = 0;
+    this.pantallaX = 0; this.pantallaY = 0;
     this.bloquesAbiertos = 0;
     this.sub = 0;                 /* el arma secundaria que se lleva */
     this.bossHealth = 0; this.bossMax = 0;
@@ -512,7 +514,7 @@
     p.power = 0;                /* el arma vuelve a la de serie */
     p.crouch = 0;
     this.whipOff(quien);
-    p.stairs = 0; p.stairDir = 1;
+    p.stairs = 0; p.trepa = 0; p.stairDir = 1;
     p.jumpsLeft = d.double_jump ? 1 : 0;
     p.anim = ANIM_IDLE; p.animFrame = 0; p.animTimer = 0;
   };
@@ -541,6 +543,10 @@
     this.salaX = -1;
     this.salaY = -1;
     this.cameraUpdate();
+    /* La pantalla de salida es en la que se empieza: nadie entra detras de ti
+       en el primer frame de un nivel. */
+    this.pantallaX = Math.floor(this.camX / SCREEN_W);
+    this.pantallaY = Math.floor(this.camY / SCREEN_H);
   };
 
   /* Cuantos siguen en juego y no se estan muriendo. */
@@ -600,6 +606,7 @@
     p.attackTimer = 0;
     this.whipOff(quien);
     p.stairs = 0;               /* un golpe te tira de la escalera */
+    p.trepa = 0;                /* y de la liana */
   };
 
   var moveOut = { hit: 0, hitDown: 0, hitUp: 0 };
@@ -728,8 +735,17 @@
     return p.power < at.levels ? p.power : at.levels;
   };
 
+  /* Esto es una patada voladora y no un puno? Con `patada:` puesto, pegar sin
+     pisar suelo es otro golpe. Igual que np_es_patada. */
+  World.prototype.esPatada = function (quien) {
+    var p = this.players[quien];
+    return !!this.data.player.attack.kick_range && !p.onGround
+           && !p.stairs && !p.trepa;
+  };
+
   World.prototype.attackRange = function (quien) {
     var at = this.data.player.attack;
+    if (this.esPatada(quien)) return at.kick_range;
     return at.range + this.attackLevel(quien) * at.range_step;
   };
 
@@ -944,6 +960,7 @@
   /* Lo que hace el golpe que se esta dando ahora. Igual que np_golpe_dano. */
   World.prototype.golpeDano = function (quien) {
     var at = this.data.player.attack;
+    if (this.esPatada(quien) && at.kick_damage) return at.kick_damage;
     if (this.esRemate(quien) && at.finish_damage) return at.finish_damage;
     return at.damage;
   };
@@ -1194,6 +1211,59 @@
     return 1;
   };
 
+  /* --- las lianas. Gemelas de np_climb_at, np_climb_mount y np_climb_update.
+     Una liana no es una escalera: se coge en el aire y se sube recta. */
+  World.prototype.climbAt = function (x, y) {
+    return this.tileVisto(F2I(x) >> TILE_SHIFT, F2I(y) >> TILE_SHIFT) === TILE_CLIMB;
+  };
+
+  World.prototype.climbMount = function (quien, input) {
+    var a = this.data.player.actor, p = this.players[quien];
+    if (this.data.player.climb_speed <= 0) return 0;
+    if (!(input & (IN.UP | IN.DOWN))) return 0;
+    if (!this.climbAt(refX(p, a), refY(p, a))) return 0;
+    var tx = F2I(refX(p, a)) >> TILE_SHIFT;
+    p.x = I2F(tx * TILE + idiv(TILE, 2) - idiv(a.box_w, 2));
+    p.vx = 0;
+    p.vy = 0;
+    p.trepa = 1;
+    p.onGround = 0;
+    return 1;
+  };
+
+  World.prototype.climbUpdate = function (quien, input) {
+    var d = this.data.player, a = d.actor, p = this.players[quien];
+    var moviendo = 0;
+    p.vx = 0;
+    p.vy = 0;
+    p.onGround = 0;
+    if ((input & IN.JUMP) && !(this.prevInput[quien] & IN.JUMP)) {
+      p.trepa = 0;
+      p.vy = -d.jump;
+      if (input & IN.RIGHT) { p.vx = d.speed; p.facing = 1; }
+      else if (input & IN.LEFT) { p.vx = -d.speed; p.facing = 0; }
+      this.sfx |= SFX.JUMP;
+      return 0;
+    }
+    if (input & (IN.UP | IN.DOWN)) {
+      var paso = (input & IN.UP) ? -d.climb_speed : d.climb_speed;
+      var out = {};
+      p.y = this.moveY(p.x, p.y, a.box_w, a.box_h, paso, 1, out);
+      moviendo = 1;
+    }
+    if (!this.climbAt(refX(p, a), refY(p, a))) {
+      p.trepa = 0;
+      if (input & IN.UP) {
+        var ty = F2I(refY(p, a)) >> TILE_SHIFT;
+        p.y = I2F(ty * TILE + TILE - a.box_h);
+      }
+      return 0;
+    }
+    animSet(p, ANIM_STAIR);
+    if (moviendo) animTick(a, p);
+    return 1;
+  };
+
   /* El boton de accion, aparte porque vale igual andando que en la escalera. */
   World.prototype.playerAction = function (quien, input) {
     var p = this.players[quien];
@@ -1249,6 +1319,7 @@
     p.onGround = 1;
     p.jumpsLeft = 0;
     p.stairs = 0;
+    p.trepa = 0;
     p.crouch = 0;
 
     /* saltar no tiene sentido desde arriba: ese boton tira la granada */
@@ -1426,6 +1497,7 @@
 
     p.jumpsLeft = 0;
     p.stairs = 0;
+    p.trepa = 0;
     p.crouch = 0;
 
     if (p.attackCd) p.attackCd--;
@@ -1531,6 +1603,7 @@
 
     p.jumpsLeft = 0;
     p.stairs = 0;
+    p.trepa = 0;
     p.crouch = 0;
     p.riding = 0;
 
@@ -1576,6 +1649,20 @@
       return;
     }
     if (!p.stun && this.stairMount(quien, input)) {
+      animSet(p, ANIM_STAIR);
+      return;
+    }
+
+    /* Colgado de una liana manda la liana. A ella se llega tambien por el
+       aire, asi que se prueba a agarrarse sin pisar suelo. Igual que en
+       np_player_update. */
+    if (p.trepa) {
+      p.crouch = 0;
+      this.playerAction(quien, input);
+      if (!this.climbUpdate(quien, input)) animSet(p, ANIM_IDLE);
+      return;
+    }
+    if (!p.stun && this.climbMount(quien, input)) {
       animSet(p, ANIM_STAIR);
       return;
     }
@@ -1644,7 +1731,10 @@
 
     /* Agachado manda la pose de agachado, tambien pegando. Igual que en C. */
     if (p.crouch) animSet(p, ANIM_CROUCH);
-    else if (p.attackTimer) animSet(p, ANIM_ATTACK);
+    else if (p.attackTimer)
+      /* en el aire con `patada:`, la pose es la de la patada: lo que se ve
+         tiene que ser lo que pega. Igual que np_player_update. */
+      animSet(p, this.esPatada(quien) ? ANIM_KICK : ANIM_ATTACK);
     else if (!p.onGround) animSet(p, p.vy < 0 ? ANIM_JUMP : ANIM_FALL);
     else if (p.vx > idiv(FIX_ONE, 8) || p.vx < -idiv(FIX_ONE, 8)) animSet(p, ANIM_RUN);
     else animSet(p, ANIM_IDLE);
@@ -1860,6 +1950,21 @@
       this.playerHurt(quien, d.punch ? d.punch : d.damage);
       this.congelado = CONGELADO;
     }
+    /* Y con `entre_ellos:`, ese mismo golpe le da al de al lado. Es lo que
+       convierte a dos perseguidores en una herramienta. Igual que en
+       np_lucha_pegar. */
+    if (this.data.entre_ellos) {
+      for (var i = 0; i < this.entityCount; i++) {
+        var o = this.entities[i];
+        if (o === e || !o.active || o.kind !== KIND_ENEMY) continue;
+        if (o.hurt) continue;
+        var oa = this.entityDef(o).actor;
+        if (!overlap(gx, e.y, d.reach, a.box_h, o.x, o.y, oa.box_w, oa.box_h))
+          continue;
+        this.hitEnemy(o, d.punch ? d.punch : d.damage);
+        this.congelado = CONGELADO;
+      }
+    }
   };
 
   /* Que no se amontonen: si esta encima de otro se aparta por profundidad, que
@@ -1882,27 +1987,31 @@
     var lejos = abs(dx);
     var cerca = luchaCerca(d, a);
     var anillo = cerca + I2F(22);
-    var ranura = (this.entities.indexOf(e) % 3 - 1) * 14;
+    /* De perfil no hay profundidad: la `y` es lo alto y ahi manda la gravedad.
+       El que pelea de perfil hace lo mismo pero solo en x. Igual que el
+       `plano` de np_lucha_update. */
+    var plano = !this.cinta();
+    var ranura = plano ? 0 : (this.entities.indexOf(e) % 3 - 1) * 14;
     var haciaY, ex = 0, ey = 0, puede;
 
-    this.luchaSeparar(e, a);
+    if (!plano) this.luchaSeparar(e, a);
     if (e.timer) e.timer--;
     if (dx) e.facing = dx > 0 ? 1 : 0;
 
     switch (e.fase) {
       case LUCHA_PREPARAR:
-        e.vx = 0; e.vy = 0;
+        e.vx = 0; if (!plano) e.vy = 0;
         if (!e.timer) { e.fase = LUCHA_GOLPEAR; e.timer = d.active; e.tocado = 0; }
         animSet(e, ANIM_ATTACK);
         return;
       case LUCHA_GOLPEAR:
-        e.vx = 0; e.vy = 0;
+        e.vx = 0; if (!plano) e.vy = 0;
         this.luchaPegar(e, d, a);
         if (!e.timer) { e.fase = LUCHA_RECUPERAR; e.timer = d.recover; }
         animSet(e, ANIM_ATTACK);
         return;
       case LUCHA_RECUPERAR:
-        e.vx = 0; e.vy = 0;
+        e.vx = 0; if (!plano) e.vy = 0;
         if (!e.timer) { e.fase = LUCHA_REPLEGAR; e.timer = d.wait; }
         animSet(e, ANIM_IDLE);
         return;
@@ -1926,13 +2035,15 @@
         var enSuSitio = abs(huecoX) <= I2F(6);
         if (!enSuSitio) ex = huecoX > 0 ? 1 : -1;
         haciaY = (p.y + p.altura) + I2F((puede && enSuSitio) ? 0 : ranura);
-        var hueco = haciaY - e.y;
-        if (abs(hueco) > I2F(2)) ey = hueco > 0 ? 1 : -1;
+        if (!plano) {
+          var hueco = haciaY - e.y;
+          if (abs(hueco) > I2F(2)) ey = hueco > 0 ? 1 : -1;
+        }
         e.fase = (lejos <= anillo + I2F(8)) ? LUCHA_RONDAR : LUCHA_IR;
         if (puede && !e.timer && enSuSitio && abs(dy) <= I2F(7)) {
           e.fase = LUCHA_PREPARAR;
           e.timer = d.windup;
-          e.vx = 0; e.vy = 0;
+          e.vx = 0; if (!plano) e.vy = 0;
           this.atacando++;
           animSet(e, ANIM_ATTACK);
           return;
@@ -1941,7 +2052,7 @@
       }
     }
     e.vx = pasoCenital(d.speed, ex, ex && ey);
-    e.vy = pasoCenital(d.speed, ey, ex && ey);
+    if (!plano) e.vy = pasoCenital(d.speed, ey, ex && ey);
     animSet(e, (ex || ey) ? ANIM_RUN : ANIM_IDLE);
   };
 
@@ -2003,7 +2114,7 @@
         var dx = p.x - e.x;
         /* En la vista de cinta un perseguidor no persigue: pelea. Igual que
            np_enemy_update en C. */
-        if (this.cinta() && d.reach) { this.luchaUpdate(e, d, a, p); break; }
+        if (d.reach) { this.luchaUpdate(e, d, a, p); break; }
         if (this.cenital()) {
           /* desde arriba se persigue en los dos ejes: igual que en C */
           var dyc = p.y - e.y;
@@ -2333,7 +2444,7 @@
         var d = this.data.enemies[e.def];
         /* En una pelea, rozar a alguien no hace dano: hace dano su golpe.
            Igual que np_touch_entities en C. */
-        if (this.cinta() && d.reach) continue;
+        if (d.reach) continue;
         /* Misma ventana de pisado que np_world.c: cayendo y con los pies por
            encima de la mitad del enemigo antes de moverse. */
         var fromAbove = p.vy > 0 &&
@@ -2583,6 +2694,57 @@
         this.camX += 3;
         if (this.camX > maxX) this.camX = maxX;
       }
+    }
+  };
+
+  /* Se ha cambiado de pantalla? Entonces entran los perseguidores tenaces.
+     Gemelo de np_cambio_de_pantalla: va aparte de cameraUpdate y solo lo llama
+     el paso del frame, para que empezar un nivel -que tambien mueve la camara-
+     no cuente como cruzar una puerta. */
+  World.prototype.cambioDePantalla = function () {
+    if (!this.data.camara_pantallas) return;
+    var px = Math.floor(this.camX / SCREEN_W);
+    var py = Math.floor(this.camY / SCREEN_H);
+    if (px === this.pantallaX && py === this.pantallaY) return;
+    var ddx = px - this.pantallaX, ddy = py - this.pantallaY;
+    this.pantallaX = px;
+    this.pantallaY = py;
+    this.tenacesSiguen(ddx, ddy);
+  };
+
+  /* Los perseguidores tenaces: al cambiar de pantalla entran por el borde por
+     el que has entrado tu. Gemelo de np_tenaces_siguen. */
+  World.prototype.tenacesSiguen = function (dx, dy) {
+    var p = this.players[0], i;
+    var izq = this.camX, der = this.camX + SCREEN_W;
+    var arr = this.camY, aba = this.camY + SCREEN_H;
+    var cuantos = 0;
+    for (i = 0; i < MAX_PLAYERS; i++)
+      if (this.players[i].playing && !this.players[i].dying) { p = this.players[i]; break; }
+    for (i = 0; i < this.entityCount; i++) {
+      var e = this.entities[i];
+      if (!e.active || e.kind !== KIND_ENEMY) continue;
+      var ed = this.data.enemies[e.def];
+      if (!ed.tenaz) continue;
+      var x = F2I(p.x), y = F2I(p.y);
+      if (dx > 0) x = izq + 2 + cuantos * (ed.actor.box_w + 8);
+      else if (dx < 0) x = der - ed.actor.box_w - 2 - cuantos * (ed.actor.box_w + 8);
+      if (dy > 0) y = arr + 2;
+      else if (dy < 0) y = aba - ed.actor.box_h - 2;
+      x = clamp(x, izq, der - ed.actor.box_w);
+      y = clamp(y, arr, aba - ed.actor.box_h);
+      e.x = I2F(x);
+      e.y = I2F(y);
+      e.vx = 0;
+      e.vy = 0;
+      e.homeX = e.x;
+      e.homeY = e.y;
+      e.facing = (dx >= 0) ? 1 : 0;
+      e.hurt = 0;
+      e.knock = 0;
+      e.fase = LUCHA_IR;
+      e.timer = ed.interval;
+      cuantos++;
     }
   };
 
@@ -2844,6 +3006,7 @@
     }
 
     this.cameraUpdate();
+    this.cambioDePantalla();
     this.playersInView();
     this.prevInput[0] = input;
     this.prevInput[1] = input2;

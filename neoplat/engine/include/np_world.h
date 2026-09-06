@@ -36,6 +36,10 @@ typedef struct {
     uint8_t whip;            /* el dibujo del latigo: indice + 1, 0 = ninguno */
     uint8_t power;           /* mejoras del arma recogidas (0 = sin mejorar) */
     uint8_t stairs;          /* 1 = subido a una escalera */
+    /* 1 = agarrado a una liana. No es lo mismo que `stairs`: a una escalera se
+       sube desde el suelo y va en diagonal; a una liana te agarras **tambien
+       en el aire** y se sube recta. */
+    uint8_t trepa;
     uint8_t crouch;          /* 1 = agachado */
     int8_t stair_dir;        /* hacia donde avanza en x al subir: +1 o -1 */
     uint16_t wear_timer;     /* frames para el siguiente punto de `desgaste:` */
@@ -176,6 +180,10 @@ typedef struct {
      * Van en palabras y no en bytes por lo mismo que la bolsa: dos bytes
      * pegados que se leen seguidos los junta gcc en una palabra, y si cae en
      * direccion impar el 68000 se para en seco. */
+    /* En que pantalla estabamos el frame pasado, con `camara: pantallas`. Sirve
+       para enterarse de que se ha cambiado de una a otra, que es cuando entran
+       los perseguidores tenaces por el borde por el que has entrado tu. */
+    uint16_t pantalla_x, pantalla_y;
     uint16_t sala_x, sala_y;
     uint8_t bloques_n;
     uint8_t bloques_abiertos;    /* cuantos cerrojos habia abiertos al montarla */

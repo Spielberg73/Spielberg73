@@ -183,6 +183,8 @@ TILE_KINDS = {
     "meta": "goal", "goal": "goal", "salida": "goal", "exit": "goal",
     "decorado": "decor", "decor": "decor", "fondo": "decor",
     # escaleras: hay dos porque una escalera tiene sentido de subida
+    "liana": "climb", "climb": "climb", "trepable": "climb", "cuerda": "climb",
+    "verja": "climb", "enredadera": "climb", "cadena": "climb", "trepar": "climb",
     "escalera": "stair_r", "escalera_derecha": "stair_r", "stair_r": "stair_r",
     "escalera_sube_derecha": "stair_r", "stairs": "stair_r",
     "escalera_izquierda": "stair_l", "stair_l": "stair_l",
@@ -199,7 +201,9 @@ TILE_KIND_ID = {"empty": 0, "solid": 1, "platform": 2, "hazard": 3, "goal": 4,
                 "decor": 5, "stair_r": 6, "stair_l": 7, "check": 8,
                 # el cerrojo de las aventuras: frena como una pared hasta que
                 # llegas con el objeto que pide, y entonces se abre para siempre
-                "lock": 9}
+                "lock": 9,
+                # la liana: se trepa en vertical y se coge en el aire
+                "climb": 10}
 
 BEHAVIORS = {
     "patrulla": "patrol", "patrol": "patrol", "andar": "patrol", "walker": "patrol",
@@ -291,6 +295,9 @@ class Player(Actor):
     knockback: float = 0.0        # 0 = tanto como la velocidad de andar
     stun: int = 0                 # frames sin control tras un golpe
     stair_speed: float = 0.0      # 0 = la mitad de la velocidad de andar
+    # Lo que se sube por una liana. A cero el juego no lleva lianas y las
+    # casillas trepables no hacen nada, que es como estaba el kit.
+    climb_speed: float = 0.0
     crouch: bool = False          # si se puede agachar con abajo
     crouch_h: int = 0             # alto de la caja agachado (0 = tres cuartos)
     attack: Optional["Attack"] = None
@@ -321,6 +328,10 @@ class Attack(Actor):
     finish_damage: int = 0         # lo que hace el ultimo (0 = como los demas)
     finish_stun: int = 0           # frames que se queda en el suelo el que cobra
     finish_push: float = 3.0       # con cuanta fuerza sale despedido
+    # La patada voladora: pegar en el aire es otro golpe. Con `kick_range` a
+    # cero -lo normal- en el aire se pega el mismo de siempre.
+    kick_range: int = 0            # alcance en el aire; 0 = el de siempre
+    kick_damage: int = 0           # dano en el aire; 0 = el de siempre
 
 
 @dataclass
@@ -360,6 +371,9 @@ class Enemy(Actor):
     recover: int = 20                    # plantado despues: tu ventana
     wait: int = 40                       # espera antes de volver a intentarlo
     punch: int = 0                       # dano del golpe; 0 = el de `dano:`
+    # `tenaz: si` -- este enemigo no es de una pantalla: es tuyo. Al cambiar de
+    # pantalla entra por el borde por el que has entrado tu y sigue detras.
+    tenaz: bool = False
 
 
 @dataclass
@@ -519,6 +533,8 @@ class Project:
     # decide si una pelea se juega o se sufre: con todos a la vez no hay hueco
     # entre golpe y golpe. Dos es lo de los recreativos.
     aggressive: int
+    # 1 = el golpe de un enemigo hace dano a otro enemigo
+    entre_ellos: bool
     view: str              # "lateral" (con gravedad) o "cenital" (desde arriba)
     amiga_modo: str        # "32colores" o "8colores"
     player: Player
@@ -561,6 +577,9 @@ ANIM_ALIASES = {
     # el ultimo golpe de una serie, el que tumba (juegos de tortas)
     "remate": "remate", "finish": "remate", "ultimo": "remate",
     "final": "remate", "tumbar": "remate",
+    # la patada voladora: pegar en el aire es otro golpe y otro dibujo
+    "patada": "patada", "kick": "patada", "patada_voladora": "patada",
+    "voladora": "patada",
 }
 
 STANDARD_ANIMS = ["idle", "run", "jump", "fall", "hurt"]
@@ -790,6 +809,12 @@ def _read_attack(node: Node, root: str) -> Optional["Attack"]:
         finish_stun=node.int_(["finish_stun", "derribo", "tumbado"], 0, 0, 240),
         finish_push=node.num(["finish_push", "empujon_remate", "empujón_remate"],
                              3.0, 0.0, 12.0),
+        # La patada voladora: pegar sin pisar suelo es otro golpe, con su
+        # alcance, su dano y su dibujo. Sin esto, en el aire se pega el mismo.
+        kick_range=node.int_(["kick_range", "patada", "alcance_patada",
+                              "patada_alcance"], 0, 0, 200),
+        kick_damage=node.int_(["kick_damage", "dano_patada", "daño_patada"],
+                              0, 0, 99),
     )
     if ataque.windup >= ataque.duration:
         raise ProjectError(
@@ -803,6 +828,8 @@ def _read_attack(node: Node, root: str) -> Optional["Attack"]:
         "colisión", "tamano", "tamaño", "size", "hitbox_offset", "offset_caja",
         "desplazamiento", "animations", "animaciones", "anims",
         "speed", "velocidad", "range", "alcance", "cooldown", "espera",
+        "kick_range", "patada", "alcance_patada", "patada_alcance",
+        "kick_damage", "dano_patada", "daño_patada",
         "cadencia", "duration", "duracion", "duración",
         "windup", "preparacion", "preparación", "aviso",
         "locks", "clavado", "sin_moverse",
@@ -1066,6 +1093,8 @@ def _read_player(node: Node, root: str) -> Player:
         stun=node.int_(["stun", "aturdido", "aturdimiento"], 0, 0, 120),
         stair_speed=node.num(["stair_speed", "velocidad_escalera", "escalera"],
                              0.0, 0.0, 8.0),
+        climb_speed=node.num(["climb_speed", "velocidad_trepa", "trepa",
+                              "liana", "trepar"], 0.0, 0.0, 8.0),
         crouch=node.bool_(["crouch", "agachado", "agacharse", "agachar"], False),
         crouch_h=node.int_(["crouch_h", "caja_agachado", "alto_agachado"], 0, 0, 64),
         attack=_read_attack(node.child("attack", "ataque"), root),
@@ -1111,6 +1140,7 @@ def _read_player(node: Node, root: str) -> Player:
         "knockback", "retroceso", "empujon", "empujón",
         "stun", "aturdido", "aturdimiento",
         "stair_speed", "velocidad_escalera", "escalera",
+        "climb_speed", "velocidad_trepa", "trepa", "liana", "trepar",
         "crouch", "agachado", "agacharse", "agachar",
         "crouch_h", "caja_agachado", "alto_agachado",
         "sub", "secundaria", "arma_secundaria",
@@ -1142,6 +1172,8 @@ def _read_enemy(name: str, data: Any, root: str) -> Enemy:
         stompable=node.bool_(["stompable", "pisable"], True),
         edge_turn=node.bool_(["edge_turn", "girar_en_borde", "girar"], True),
         boss=node.bool_(["jefe", "boss"], False),
+        tenaz=node.bool_(["tenaz", "persigue_siempre", "te_sigue",
+                          "relentless", "sombra"], False),
         range=node.num(["range", "rango", "vista"], 96.0, 0.0, 512.0),
         amplitude=node.num(["amplitude", "amplitud"], 24.0, 0.0, 200.0),
         period=node.int_(["period", "periodo", "período"], 120, 8, 1200),
@@ -1850,6 +1882,10 @@ def load_project(path: str) -> Project:
     # `agresivos:` es el numero de enemigos que pueden estar pegando a la vez.
     # Solo lo miran los juegos de tortas; en el resto no hay a quien repartir.
     aggressive = game.int_(["aggressive", "agresivos", "a_la_vez"], 2, 1, 8)
+    # Que los bichos se peguen entre ellos: el golpe de uno hace dano al de
+    # al lado. Es lo que convierte a dos perseguidores en una herramienta.
+    entre_ellos = game.bool_(["entre_ellos", "fuego_amigo", "se_pegan",
+                              "friendly_fire"], False)
     view = _leer_vista(game)
     amiga_modo = _leer_modo_amiga(game)
     sistema = (game.str_(["system", "sistema", "maquina", "máquina"], "neogeo") or "neogeo")
@@ -2035,6 +2071,7 @@ def load_project(path: str) -> Project:
         root=root, title=title.upper()[:24], author=author[:24], system=sistema,
         lives=lives, players=players, camera=camera, view=view,
         aggressive=aggressive,
+        entre_ellos=entre_ellos,
         amiga_modo=amiga_modo,
         time_limit=time_limit, hud=hud, player=player, tileset=tileset, tiles=tiles,
         enemies=enemies, items=items, platforms=platforms,
