@@ -214,6 +214,7 @@ def build_data(build: Build) -> Dict[str, object]:
             "layers": list(level.layers),
             "music": level.music,
             "keys_needed": level.keys_needed,
+            "guion": level.guion,
             # la planta que se pisa y el dibujo del suelo de las salas (solo
             # los usa la vista isometrica)
             "cells_w": level.cells_w or level.width,
@@ -287,6 +288,16 @@ def build_data(build: Build) -> Dict[str, object]:
         "agresivos": project.aggressive,
         # y si el golpe de un enemigo le hace dano al de al lado
         "entre_ellos": 1 if project.entre_ellos else 0,
+        # --- los guiones y la memoria del juego ---
+        # `pasos` son todos los pasos seguidos, `guion_ini` donde empieza cada
+        # uno y `dialogo` las lineas ya partidas en paginas de dos. Es la misma
+        # tabla que se genera en C: lo que compara la prueba de paridad.
+        "pasos": [list(p) for p in build.guion_pasos],
+        "guion_ini": list(build.guion_ini),
+        "guion_nombres": list(build.guion_orden),
+        "dialogo": list(build.dialogo),
+        "var_inicial": list(project.variables.values()),
+        "var_nombres": list(project.variables),
         "time_limit": project.time_limit,
         "hud": project.hud,
         "player": player,
@@ -316,6 +327,10 @@ def build_data(build: Build) -> Dict[str, object]:
             # el relieve de la vista isometrica: lo que levanta cada casilla y
             # con que cubo se dibuja (indice + 1, cero = no se dibuja)
             "alto": [t.alto for t in build.tiles],
+            # los disparadores: que guion lanza cada casilla (indice + 1)
+            "guion": [({n: i for i, n in enumerate(build.guion_orden)}
+                       .get(t.guion, -1) + 1) for t in build.tiles],
+            "una_vez": [1 if t.una_vez else 0 for t in build.tiles],
             "bloque": [({c.name: i for i, c in enumerate(build.blocks)}
                         .get(t.bloque, -1) + 1) for t in build.tiles],
             # y donde esta el dibujo del suelo de una sala isometrica dentro

@@ -297,6 +297,69 @@ juego:
   sistema: megadrive
 ```
 
+## Que pase algo: guiones
+
+Hasta aquí el `game.yaml` describe **un mundo**. Lo que no dice es que **pase
+algo**: que al pisar una casilla se abra una puerta, que un cartel avise, que
+la segunda vez que pasas la cosa haya cambiado. Para eso están los guiones, y
+su memoria son las variables.
+
+Es lo más corto que se puede escribir para verlo:
+
+```yaml
+variables:
+  avisos: 0
+
+guiones:
+  cartel:
+    - sumar: {avisos: 1}
+    - si: {avisos: 1}
+      pasos:
+        - decir: "CUIDADO CON EL FOSO QUE HAY MAS ADELANTE."
+      si_no:
+        - decir: "TE LO DIJE."
+
+tiles:
+  leyenda:
+    'C': {tile: 0, tipo: vacio, guion: cartel}
+```
+
+Pones una `C` en el mapa y ya tienes un cartel que se lee, se acuerda de que lo
+leíste y la segunda vez dice otra cosa.
+
+**Un guion es una lista de pasos.** No son bloques que se arrastran: aquí el
+proyecto es texto a propósito —se lee, se compara, se mete en git y el editor
+lo reescribe sin tocar tus comentarios—, y un guion también. Los pasos que hay
+son ocho: `decir`, `esperar`, `poner`, `sumar`, `si`, `sonido`, `dar` e
+`ir_a_nivel` (los tienes todos en
+[docs/formato.md](formato.md#variables-y-guiones)).
+
+Tres cosas que conviene saber desde el principio:
+
+- **Los pasos que no esperan corren todos en el mismo frame.** Poner tres
+  variables y dar un objeto cuesta un frame, no cuatro. Sólo paran `decir:`
+  —hasta que pulsas— y `esperar:`.
+- **Mientras hay un guion, la partida no corre**: ni tú, ni los bichos, ni el
+  reloj. Un cuadro de texto mientras te matan por detrás no es un cuadro de
+  texto, es un adorno.
+- **Las variables son de la partida**, no del nivel: sobreviven a cambiar de
+  nivel y a perder una vida. Es lo que permite que el juego se acuerde de lo
+  que hiciste dos niveles atrás.
+
+Un guion se lanza de dos maneras: pisando una casilla que lo lleve (`guion:` en
+la leyenda, y con `una_vez: si` sólo la primera vez de toda la partida), o al
+empezar un nivel (`guion:` en el nivel, que es por donde un juego cuenta algo
+antes de dejarte jugar).
+
+**El cuadro de texto son dos líneas de 36 caracteres**, en el marcador. No es
+capricho: 36 es lo que cabe en la más estrecha de las siete máquinas, y el
+marcador es lo único libre sin tapar el juego. El texto se parte por palabras
+**en el compilador**, así que un `decir:` largo sale en varias páginas y se
+pasan con el botón.
+
+El género de aventura ya viene con todo esto puesto: prueba
+`./ngplat nuevo miaventura --genero aventura` y mira su `game.yaml`.
+
 ## Un juego visto desde arriba
 
 ```bash

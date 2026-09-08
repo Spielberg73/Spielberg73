@@ -219,6 +219,16 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("const uint8_t np_tile_bloque[] = {")
     src.append(_array([indice_cubos.get(t.bloque, -1) + 1 for t in build.tiles]))
     src.append("};")
+    # Los disparadores: que guion lanza cada casilla (indice + 1) y si es de
+    # los que solo saltan una vez en toda la partida.
+    indice_guiones = {n: i for i, n in enumerate(build.guion_orden)}
+    src.append("/* Disparadores: el guion que lanza cada casilla al pisarla. */")
+    src.append("const uint8_t np_tile_guion[] = {")
+    src.append(_array([indice_guiones.get(t.guion, -1) + 1 for t in build.tiles]))
+    src.append("};")
+    src.append("const uint8_t np_tile_una_vez[] = {")
+    src.append(_array([1 if t.una_vez else 0 for t in build.tiles]))
+    src.append("};")
     src.append("const uint16_t np_tile_count = %d;" % len(kinds))
     # El dibujo que se ve por el hueco de una puerta abierta: el del primer
     # tile vacio de la leyenda (que es el cielo o el suelo de fondo). Sin esto
@@ -526,12 +536,13 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
         fondo = "np_level%d_fondo" % i if level.fondo else "0"
         src.append(
             "    { %s, %d, %d, np_level%d_cells, %d, %d, %s, %s, %d, %d, %d,"
-            " 0x%04x, %s, %d, %d, %d },"
+            " 0x%04x, %s, %d, %d, %d, %d },"
             % (_c_string(level.name), level.width, level.height, i,
                level.cells_w or level.width, level.cells_h or level.height,
                fondo, spawns,
                len(level.spawns), level.start[0], level.start[1], level.background,
-               capas, len(level.layers), level.music, level.keys_needed)
+               capas, len(level.layers), level.music, level.keys_needed,
+               level.guion)
         )
     src.append("};")
     src.append("const uint16_t np_level_count = %d;" % len(build.levels))
@@ -539,6 +550,34 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     # jefe. El numero es el indice + 1, como en los niveles.
     src.append("const uint8_t np_music_title = %d;" % build.music_title)
     src.append("const uint8_t np_music_boss = %d;" % build.music_boss)
+    src.append("")
+
+    # --- los guiones y la memoria del juego
+    src.append("/* Los guiones: todos los pasos seguidos, y donde empieza cada")
+    src.append("   uno. El ultimo hueco de np_guion_ini cierra la lista. */")
+    src.append("const NpPaso np_pasos[] = {")
+    if build.guion_pasos:
+        for op, a_, cmp_, b_, c_ in build.guion_pasos:
+            src.append("    { %d, %d, %d, %d, %d }," % (op, a_, cmp_, b_, c_))
+    else:
+        src.append("    { 0, 0, 0, 0, 0 },")
+    src.append("};")
+    src.append("const uint16_t np_guion_ini[] = {")
+    src.append(_array(build.guion_ini or [0]))
+    src.append("};")
+    src.append("const uint16_t np_guion_count = %d;" % len(build.guion_orden))
+    src.append("const char *const np_dialogo[] = {")
+    if build.dialogo:
+        for linea in build.dialogo:
+            src.append("    %s," % _c_string(linea))
+    else:
+        src.append("    0,")
+    src.append("};")
+    src.append("const uint16_t np_dialogo_count = %d;" % len(build.dialogo))
+    src.append("const uint16_t np_var_inicial[] = {")
+    src.append(_array(list(project.variables.values()) or [0]))
+    src.append("};")
+    src.append("const uint16_t np_var_count = %d;" % len(project.variables))
     src.append("")
 
     return {

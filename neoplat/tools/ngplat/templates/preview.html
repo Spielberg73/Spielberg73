@@ -1162,6 +1162,13 @@
     } else if (world.state === NPCore.STATE.LEVEL_END) {
       text(14, 13, "LEVEL CLEAR");
     }
+    /* El cuadro de texto de un guion. Va en las mismas dos filas que en las
+       siete maquinas y con las mismas 36 columnas, para que lo que se lee aqui
+       sea lo que se lee alli. Mientras esta puesto la partida no corre. */
+    if (world.guion && world.paginas) {
+      text(2, 12, world.dialogoLinea(0));
+      text(2, 13, world.dialogoLinea(1));
+    }
   }
 
   function render() {

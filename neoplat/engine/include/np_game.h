@@ -291,6 +291,34 @@ typedef struct {
     NpActorDef actor;
 } NpBlockDef;
 
+/* --- un paso de guion ----------------------------------------------------
+ *
+ * Un guion es una lista de estos, seguidos, y `np_guion_ini` dice donde empieza
+ * cada uno. No hay punteros ni arboles: es una tabla plana en ROM, que es lo
+ * que se puede leer igual de rapido en las siete maquinas y lo que se compara
+ * byte a byte entre el motor en C y el del navegador.
+ *
+ * Los campos cambian de significado segun `op`, como en cualquier juego de
+ * instrucciones, y en el compilador queda escrito cual es cual:
+ *
+ *   DECIR    a = pagina de texto, c = cuantas paginas
+ *   ESPERAR  b = frames
+ *   PONER    a = variable, b = valor
+ *   SUMAR    a = variable, b = cuanto
+ *   SI       a = variable, cmp = comparacion, b = valor, c = pasos a saltar
+ *   SALTAR   c = pasos a saltar
+ *   SONIDO   a = evento (NP_SFX_*, ya resuelto por el compilador)
+ *   DAR      a = objeto
+ *   NIVEL    b = nivel
+ */
+typedef struct {
+    uint8_t op;                      /* NP_PASO_* */
+    uint8_t a;
+    uint8_t cmp;                     /* NP_CMP_*, solo en SI */
+    int16_t b;
+    int16_t c;
+} NpPaso;
+
 typedef struct {
     const char *name;
     /* Lo que se ve, en tiles de pantalla: es lo que recorren los dibujantes y
@@ -314,6 +342,9 @@ typedef struct {
     uint8_t layer_count;
     uint8_t music;                   /* 0 = sin musica, si no indice + 1 */
     uint8_t keys_needed;             /* llaves que pide la meta, 0 = ninguna */
+    /* El guion que se lanza al empezar el nivel: indice + 1, 0 = ninguno. Es
+       por donde entra un juego a contarte algo antes de dejarte jugar. */
+    uint8_t guion;
 } NpLevel;
 
 /* Tablas que genera el compilador (definidas en gamedata.c). */
@@ -328,6 +359,28 @@ extern const NpPlatformDef np_platforms[];
 extern const NpBreakableDef np_breakables[];
 extern const NpBlockDef np_bloques[];    /* los cubos de la vista isometrica */
 extern const NpLevel np_levels[];
+/* --- los guiones ---------------------------------------------------------
+ *
+ * `np_pasos` son todos los pasos de todos los guiones, uno detras de otro, y
+ * `np_guion_ini` donde empieza cada guion (con un ultimo hueco de cierre, para
+ * poder saber tambien donde acaba el ultimo). `np_dialogo` son las lineas de
+ * texto ya partidas por el compilador: dos por pagina, siempre. */
+extern const NpPaso np_pasos[];
+extern const uint16_t np_guion_ini[];
+extern const uint16_t np_guion_count;
+extern const char *const np_dialogo[];
+extern const uint16_t np_dialogo_count;   /* lineas, o sea paginas por dos */
+/* El valor con el que empieza cada variable al empezar la partida, y cuantas
+   hay. Las variables son de la **partida** y no del nivel: cambiar de nivel no
+   se lleva por delante lo que el juego se acuerda de ti. */
+extern const uint16_t np_var_inicial[];
+extern const uint16_t np_var_count;
+/* El guion que lanza cada tile de la leyenda: indice + 1, 0 = ese tile no
+   dispara nada. Va aparte de np_tile_kind porque un disparador puede ser
+   ademas cualquier otra cosa -suelo, plataforma o vacio-. */
+extern const uint8_t np_tile_guion[];
+/* Y si ese disparador es de los de una sola vez en toda la partida. */
+extern const uint8_t np_tile_una_vez[];
 extern const NpLayer np_layers[];
 extern const uint8_t np_tile_kind[];     /* tipo de cada tile del proyecto */
 /* Que objeto abre cada tile de cerrojo: el objeto **mas uno**, o cero si esa

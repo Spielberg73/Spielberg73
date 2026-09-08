@@ -21,9 +21,26 @@ from ngplat.codegen import copy_engine, generate_gamedata
 from ngplat.preview import build_data
 from ngplat.scaffold import crear_proyecto
 
+# Columnas de la traza que se miran por su numero. Van aqui y no a mano en cada
+# prueba porque la traza crece cada vez que el motor aprende algo -los guiones
+# le anadieron cuatro- y contar desde el final se rompe sin avisar.
+COL_BOLSA = 34            # lo que llevas encima, en un solo numero
+COL_ABIERTOS = 35         # cuantos cerrojos se han abierto
+COL_GUION = 36            # por que guion va (0 = ninguno)
+COL_PASO = 37             # y por que paso
+COL_PAGINAS = 38          # paginas de texto que le quedan al cuadro
+COL_VARS = 39             # las variables, en un solo numero
+
+# El genero de aventura empieza con un cuadro de texto que cuenta de que va, y
+# hasta que no se pasa la partida no corre. Las pruebas que le dan un mando
+# escrito a mano tienen que pasarlo primero, y pulsando **a golpes**: el cuadro
+# avanza con el flanco de la tecla, asi que tenerla apretada no pasa de pagina
+# (es a proposito: si no, un texto de tres paginas se lo comeria la pulsacion
+# con la que se acaba el anterior).
 IN_LEFT, IN_RIGHT, IN_DOWN, IN_JUMP, IN_START = 1, 2, 8, 16, 64
 IN_ACTION = 32
 IN_UP = 4
+PASAR_TEXTO = [(IN_ACTION, 0), (0, 0)] * 8
 FRAMES = 3000
 ESTADO_JUEGO = 1            # NP_STATE_PLAY
 ESTADO_MURIENDO = 2         # NP_STATE_DYING
@@ -160,13 +177,19 @@ class TestParidad(unittest.TestCase):
         cls.variantes["kungfu-sin-liana"] = cls._preparar("pantallas",
                                                           genero="kungfu",
                                                           sin_liana=True)
+        # Los guiones: variables, condiciones, cuadros de texto y un disparador
+        # en el mapa. Es la primera cosa del kit que **para** la partida, asi
+        # que si los dos interpretes no fueran paso a paso iguales, uno seguiria
+        # jugando mientras el otro lee y se separarian en el acto.
+        cls.variantes["guiones"] = cls._preparar("scroll", guiones=True)
 
     @classmethod
     def _preparar(cls, camara, jefe=False, dos=False, golpe=False, llave=False,
                   tablon=False, genero="plataformas", sin_dibujo=False,
                   cenital=False, nidos_dormidos=False, cinta=False,
                   combo=False, agarre=False, sin_llave=False,
-                  sin_golpe=False, sin_relieve=False, sin_liana=False):
+                  sin_golpe=False, sin_relieve=False, sin_liana=False,
+                  guiones=False):
         proyecto_dir = os.path.join(
             cls.tmp, "juego-" + camara + ("-jefe" if jefe else "")
             + ("-dos" if dos else "") + ("-golpe" if golpe else "")
@@ -181,6 +204,7 @@ class TestParidad(unittest.TestCase):
             + ("-singolpe" if sin_golpe else "")
             + ("-llano" if sin_relieve else "")
             + ("-sinliana" if sin_liana else "")
+            + ("-guiones" if guiones else "")
             + ("-" + genero if genero != "plataformas" else ""))
         crear_proyecto(proyecto_dir, "PARIDAD", "TEST", genero=genero)
         yaml = os.path.join(proyecto_dir, "game.yaml")
@@ -202,6 +226,45 @@ class TestParidad(unittest.TestCase):
             marca = "  trepa: 1.1"
             assert marca in texto, "el andamiaje de kung-fu ya no trae trepa"
             texto = texto.replace(marca, "  trepa: 0", 1)
+        if guiones:
+            # variables, un guion con condicion y cuadros de texto, un
+            # disparador en el mapa y un guion de bienvenida en el nivel
+            marca = "\nniveles:\n"
+            assert marca in texto, "el andamiaje ya no escribe asi los niveles"
+            texto = texto.replace(marca, """
+variables:
+  visitas: 0
+  puerta: 0
+
+guiones:
+  cartel:
+    - sumar: {visitas: 1}
+    - si: {visitas: 1}
+      pasos:
+        - decir: "CUIDADO CON EL FOSO QUE HAY MAS ADELANTE, VIAJERO."
+        - poner: {puerta: 1}
+      si_no:
+        - decir: "TE LO DIJE."
+    - esperar: 6
+  bienvenida:
+    - decir: "EL BOSQUE MAGICO"
+    - sumar: {visitas: 0}
+
+niveles:
+""", 1)
+            marca = "    '.': {tile: 0, tipo: vacio}"
+            assert marca in texto, "la leyenda ya no empieza asi"
+            texto = texto.replace(
+                marca, marca + "\n    'X': {tile: 0, tipo: vacio, guion: cartel}", 1)
+            # el guion de bienvenida en el primer nivel
+            marca = '  - nombre: "'
+            i = texto.index(marca)
+            j = texto.index("\n", i)
+            texto = texto[:j + 1] + "    guion: bienvenida\n" + texto[j + 1:]
+            # y el disparador en el suelo, unas casillas a la derecha
+            marca = "      P.......s"
+            assert marca in texto, "el primer nivel ya no empieza asi"
+            texto = texto.replace(marca, "      P....X..s", 1)
         if dos:
             texto = texto.replace("  vidas:", "  jugadores: 2\n  vidas:", 1)
         if cenital:
@@ -598,6 +661,16 @@ class TestParidad(unittest.TestCase):
         for semilla in (1, 7, 99):
             self._comparar("iso", semilla)
 
+    def test_misma_traza_con_guiones(self):
+        """Los guiones **paran** la partida: mientras hay un cuadro de texto no
+        se mueve nadie, ni el reloj. Es la primera cosa del kit que hace eso, y
+        si los dos interpretes no fueran paso a paso iguales -el mismo salto en
+        el mismo `si`, la misma pagina en el mismo frame- uno seguiria jugando
+        mientras el otro lee. La traza mira ademas por que guion va, en que
+        paso y cuanto valen las variables."""
+        for semilla in (3, 17, 88):
+            self._comparar("guiones", semilla)
+
     def test_misma_traza_en_el_kungfu(self):
         """El genero de kung-fu mete cuatro cosas en el bucle: agarrarse a una
         liana -que se puede hacer en el aire-, subir y bajar por ella, el golpe
@@ -690,7 +763,7 @@ class TestParidad(unittest.TestCase):
         ella -el mismo mapa, la misma puerta, pero sin llave que coger- el
         jugador se queda plantado delante. Si el cerrojo no frenara, las dos
         partidas acabarian en el mismo sitio y esta prueba no valdria nada."""
-        entradas = [(IN_START, 0)] * 3 + [(IN_RIGHT, 0)] * 600
+        entradas = ([(IN_START, 0)] * 3 + PASAR_TEXTO + [(IN_RIGHT, 0)] * 600)
         traza_c, traza_js = self._trazas_de("aventura", entradas, "puerta")
         self.assertEqual(traza_c, traza_js)
         sin_c, sin_js = self._trazas_de("sin-llave", entradas, "sin-llave")
@@ -703,16 +776,16 @@ class TestParidad(unittest.TestCase):
         self.assertLess(sin_llave, 416,
                         "sin llave ha pasado igual: x=%d" % sin_llave)
         # y que la ha gastado: la ultima columna es cuantas casillas ha abierto
-        self.assertGreater(int(traza_c[-1].split()[-1]), 0,
+        self.assertGreater(int(traza_c[-1].split()[COL_ABIERTOS]), 0,
                            "no ha abierto ninguna casilla")
-        self.assertEqual(int(sin_c[-1].split()[-1]), 0,
+        self.assertEqual(int(sin_c[-1].split()[COL_ABIERTOS]), 0,
                          "sin llave ha abierto algo igualmente")
 
     def test_el_salto_de_la_aventura_no_se_manda(self):
         """El salto fijo: en el aire el mando no mueve. Se salta parado y se
         empuja a la derecha; la `x` no puede cambiar hasta aterrizar."""
-        entradas = ([(IN_START, 0)] * 3 + [(0, 0)] * 20 + [(IN_JUMP, 0)]
-                    + [(IN_RIGHT, 0)] * 40)
+        entradas = ([(IN_START, 0)] * 3 + PASAR_TEXTO + [(0, 0)] * 20
+                    + [(IN_JUMP, 0)] + [(IN_RIGHT, 0)] * 40)
         traza_c, traza_js = self._trazas_de("aventura", entradas, "salto-fijo")
         self.assertEqual(traza_c, traza_js)
         columnas = [linea.split() for linea in traza_c]
@@ -957,7 +1030,7 @@ class TestParidad(unittest.TestCase):
         en su sitio y la prueba de paridad pasaria sin comprobar nada."""
         traza, _ = self._trazas(1, "dos")
         columnas = [linea.split() for linea in traza]
-        self.assertTrue(all(len(c) == 36 for c in columnas),
+        self.assertTrue(all(len(c) >= COL_ABIERTOS + 1 for c in columnas),
                         "la traza no trae las columnas del segundo jugador")
         # al empezar los dos estan dentro; luego el mando aleatorio puede
         # dejarlo sin vidas, y eso tambien tiene que salir igual en las dos

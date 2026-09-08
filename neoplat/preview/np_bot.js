@@ -149,6 +149,11 @@
         saltando = 0;
       }
 
+      /* Un cuadro de texto para la partida hasta que se pulsa. El bot pulsa:
+         si no, un juego con un cartel en el camino se le quedaria colgado y
+         diria que el nivel no se puede terminar cuando si se puede. */
+      if (w.guion && w.paginas) input = (w.frame & 1) ? NPCore.IN.ACTION : 0;
+
       w.step(input);
 
       if (w.state === NPCore.STATE.LEVEL_END || w.state === NPCore.STATE.FINISHED) {
@@ -384,6 +389,11 @@
         if (rozando > 20) input |= (rozando & 64) ? NPCore.IN.UP : NPCore.IN.DOWN;
       }
 
+      /* Un cuadro de texto para la partida hasta que se pulsa. El bot pulsa:
+         si no, un juego con un cartel en el camino se le quedaria colgado y
+         diria que el nivel no se puede terminar cuando si se puede. */
+      if (w.guion && w.paginas) input = (w.frame & 1) ? NPCore.IN.ACTION : 0;
+
       w.step(input);
 
       if (w.state === NPCore.STATE.LEVEL_END || w.state === NPCore.STATE.FINISHED)
@@ -523,6 +533,11 @@
         input |= NPCore.IN.ACTION;
         golpeCd = esperaGolpe;
       }
+
+      /* Un cuadro de texto para la partida hasta que se pulsa. El bot pulsa:
+         si no, un juego con un cartel en el camino se le quedaria colgado y
+         diria que el nivel no se puede terminar cuando si se puede. */
+      if (w.guion && w.paginas) input = (w.frame & 1) ? NPCore.IN.ACTION : 0;
 
       w.step(input);
 
@@ -757,6 +772,11 @@
                            : (dx > -3 && dx < 3 && p.vx === 0);
         if (derecho) input |= NPCore.IN.JUMP;
       }
+
+      /* Un cuadro de texto para la partida hasta que se pulsa. El bot pulsa:
+         si no, un juego con un cartel en el camino se le quedaria colgado y
+         diria que el nivel no se puede terminar cuando si se puede. */
+      if (w.guion && w.paginas) input = (w.frame & 1) ? NPCore.IN.ACTION : 0;
 
       w.step(input);
 
@@ -1087,6 +1107,11 @@
           break;
         }
       }
+
+      /* Un cuadro de texto para la partida hasta que se pulsa. El bot pulsa:
+         si no, un juego con un cartel en el camino se le quedaria colgado y
+         diria que el nivel no se puede terminar cuando si se puede. */
+      if (w.guion && w.paginas) input = (w.frame & 1) ? NPCore.IN.ACTION : 0;
 
       w.step(input);
 

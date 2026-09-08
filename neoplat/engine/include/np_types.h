@@ -169,6 +169,62 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
    dan de sobra para una aventura de las de entonces, y son ocho bytes. */
 #define NP_MAX_ABIERTOS 12
 
+/* --- las variables y los guiones -----------------------------------------
+ *
+ * Una variable es la memoria del juego: un numero con nombre que se pone, se
+ * suma y se mira. Sin ellas un nivel es siempre igual la primera vez y la
+ * decima; con ellas el juego se acuerda de lo que has hecho, y eso es lo que
+ * separa "un nivel" de "un juego".
+ *
+ * Treinta y dos dan de sobra para lo que se hace con esto -banderas de puertas
+ * abiertas, cuantas monedas llevas, si ya has hablado con alguien- y son 64
+ * bytes de RAM, que es lo que hay que mirar cuando el destino es una maquina de
+ * 1988. */
+#define NP_MAX_VARS 32
+
+/* Los pasos de un guion. Un guion es una lista de estos, y el motor los va
+ * ejecutando **en el mismo frame** hasta que llega a uno que espera (`decir` y
+ * `esperar`): asi poner tres variables y dar un objeto no cuesta cuatro frames,
+ * que es lo que pasaria si cada paso durase uno. */
+#define NP_PASO_FIN     0        /* se acabo el guion */
+#define NP_PASO_DECIR   1        /* cuadro de texto; para hasta que se pulsa */
+#define NP_PASO_ESPERAR 2        /* espera unos frames */
+#define NP_PASO_PONER   3        /* variable = valor */
+#define NP_PASO_SUMAR   4        /* variable += valor (puede ser negativo) */
+#define NP_PASO_SI      5        /* si no se cumple, salta unos pasos */
+#define NP_PASO_SALTAR  6        /* salta unos pasos, sin mirar nada */
+#define NP_PASO_SONIDO  7        /* dispara un efecto de los del game.yaml */
+#define NP_PASO_DAR     8        /* da un objeto, como si lo hubieras cogido */
+#define NP_PASO_NIVEL   9        /* cambia de nivel */
+
+/* Como se compara en un `si`. */
+#define NP_CMP_IGUAL    0
+#define NP_CMP_DISTINTO 1
+#define NP_CMP_MENOR    2
+#define NP_CMP_MENOR_IG 3
+#define NP_CMP_MAYOR    4
+#define NP_CMP_MAYOR_IG 5
+
+/* Lo que cabe en un cuadro de texto: dos lineas de 36 caracteres. El limite no
+ * es de la RAM sino de la pantalla mas estrecha de las siete -40 columnas de
+ * ocho pixeles-, dejando dos de margen a cada lado. El compilador parte el
+ * texto en paginas de este tamano; el motor solo sabe ensenar una pagina. */
+#define NP_DIALOGO_COLS 36
+#define NP_DIALOGO_FILAS 2
+/* La columna donde empieza el cuadro y la primera de sus dos filas. Cada
+ * maquina puede mover la fila: en la Neo Geo el marcador vive arriba del todo
+ * y los mensajes en medio de la pantalla, asi que alli el cuadro va donde ya
+ * sale "LEVEL CLEAR" y no debajo del tanteo. */
+#define NP_DIALOGO_COL 2
+#ifndef NP_DIALOGO_FILA
+#define NP_DIALOGO_FILA 1
+#endif
+
+/* Cuantos pasos seguidos se ejecutan en un frame antes de cortar. Es la red
+ * contra un guion que se llame a si mismo dando vueltas: mejor que se note que
+ * va lento a que la maquina se quede colgada. */
+#define NP_PASOS_POR_FRAME 64
+
 /* Cuantas cosas se llevan a la vez. Tres, como en los Dizzy: con dos no hay
    puzle y con cinco te llevas media pantalla encima y ya no eliges. */
 #define NP_BOLSA 3

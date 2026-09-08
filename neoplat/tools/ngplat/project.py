@@ -476,6 +476,11 @@ class TileDef:
     # viene en el dibujo de la sala-. Es lo que hace que las paredes del fondo
     # de una habitacion no cuesten un sprite cada una.
     pintado: bool = False
+    # `guion:` -- que guion lanza al pisarla. Va aparte del `tipo:` porque un
+    # disparador puede ser ademas cualquier otra cosa: suelo, plataforma o aire.
+    guion: str = ""
+    # y si solo salta la primera vez en toda la partida
+    una_vez: bool = False
 
 
 @dataclass
@@ -489,6 +494,257 @@ class Layer:
     repeat: bool = True
 
 
+# --- las variables y los guiones -----------------------------------------
+#
+# Un guion es lo que convierte un nivel en un juego: que al pisar una casilla
+# pase algo, que un cartel avise, que la puerta se acuerde de que ya la
+# abriste. Se escribe como una lista de pasos, en el mismo yaml que todo lo
+# demas, y no como bloques que se arrastran: el proyecto de NeoPlat es texto a
+# proposito -se lee, se compara, se mete en git y el editor lo reescribe sin
+# tocar tus comentarios-, y un guion tambien.
+
+PASOS_CON_BLOQUE = ("pasos", "entonces", "haz", "then")
+PASOS_SI_NO = ("si_no", "sino", "else", "otro")
+
+# Como se compara en un `si`. El numero es el que entiende el motor (NP_CMP_*).
+COMPARACIONES = {
+    "=": 0, "==": 0, "!=": 1, "<>": 1, "<": 2, "<=": 3, ">": 4, ">=": 5,
+}
+
+
+@dataclass
+class Paso:
+    """Un paso de guion, ya resuelto a numeros menos el texto.
+
+    Los campos son los mismos que los de NpPaso en el motor, y significan lo
+    mismo en cada paso: `a` la variable, el objeto o el evento; `b` el valor o
+    los frames; `c` los pasos que se saltan (en `si` y en `saltar`) o cuantas
+    paginas tiene un `decir`."""
+    op: str
+    a: int = 0
+    cmp: int = 0
+    b: int = 0
+    c: int = 0
+    texto: str = ""              # solo en `decir`, sin partir todavia
+
+
+@dataclass
+class Guion:
+    name: str
+    pasos: List[Paso] = field(default_factory=list)
+
+
+def _leer_variables(raw, where: str) -> Dict[str, int]:
+    """`variables:` -- la memoria del juego, con su valor de salida."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ProjectError("'variables' tiene que ser una lista de nombre: valor",
+                           where=where)
+    variables: Dict[str, int] = {}
+    for nombre, valor in raw.items():
+        clave = str(nombre).strip()
+        if not clave:
+            raise ProjectError("hay una variable sin nombre", where=where)
+        if len(variables) >= 32:
+            raise ProjectError(
+                "hay mas de 32 variables",
+                hint="el motor lleva 32; junta las que sean banderas del mismo "
+                     "sitio en una sola",
+                where=where)
+        try:
+            variables[clave] = int(valor if valor is not None else 0)
+        except (TypeError, ValueError):
+            raise ProjectError(
+                "la variable '%s' vale '%s' y tiene que ser un numero"
+                % (clave, valor), where=where)
+        if not 0 <= variables[clave] <= 65535:
+            raise ProjectError(
+                "la variable '%s' vale %d; van de 0 a 65535"
+                % (clave, variables[clave]), where=where)
+    return variables
+
+
+def _leer_condicion(raw, variables: Dict[str, int], where: str):
+    """`si: {puerta: 1}` o `si: {monedas: '>= 10'}` -> (variable, cmp, valor)."""
+    if not isinstance(raw, dict) or len(raw) != 1:
+        raise ProjectError(
+            "un 'si' se escribe con una variable y lo que tiene que valer",
+            hint="por ejemplo: si: {puerta: 1}  o  si: {monedas: '>= 10'}",
+            where=where)
+    nombre, valor = list(raw.items())[0]
+    nombre = str(nombre).strip()
+    if nombre not in variables:
+        raise ProjectError(
+            "el 'si' mira la variable '%s' y no esta en 'variables:'" % nombre,
+            hint="anadela con su valor de salida, o corrige el nombre",
+            where=where)
+    cmp_id, texto = 0, str(valor).strip()
+    for simbolo in (">=", "<=", "==", "!=", "<>", ">", "<", "="):
+        if texto.startswith(simbolo):
+            cmp_id = COMPARACIONES[simbolo]
+            texto = texto[len(simbolo):].strip()
+            break
+    try:
+        numero = int(texto)
+    except ValueError:
+        raise ProjectError(
+            "el 'si' de '%s' compara con '%s' y tiene que ser un numero"
+            % (nombre, valor), where=where)
+    return list(variables).index(nombre), cmp_id, numero
+
+
+def _leer_pasos(raw, variables, items, eventos, niveles, where: str) -> List[Paso]:
+    """Los pasos de un guion, con los `si` ya aplanados a saltos.
+
+    El motor no entiende bloques: entiende "si no se cumple, salta N pasos".
+    Aplanarlo aqui es lo que deja el interprete en veinte lineas y lo que hace
+    que se pueda comparar paso a paso con el del navegador."""
+    if raw is None:
+        return []
+    if not isinstance(raw, (list, tuple)):
+        raise ProjectError("un guion es una lista de pasos", where=where)
+    pasos: List[Paso] = []
+    for i, bruto in enumerate(raw):
+        sitio = "%s[%d]" % (where, i)
+        if not isinstance(bruto, dict):
+            raise ProjectError(
+                "el paso %d no es una orden; escribe por ejemplo "
+                "- decir: \"HOLA\"" % (i + 1), where=sitio)
+        clave = None
+        for k in bruto:
+            if k not in PASOS_CON_BLOQUE + PASOS_SI_NO:
+                clave = k
+                break
+        if clave is None:
+            raise ProjectError("el paso %d no dice que hacer" % (i + 1),
+                               where=sitio)
+        valor = bruto[clave]
+        nombre = str(clave).strip().lower()
+
+        if nombre in ("si", "if"):
+            var, cmp_id, contra = _leer_condicion(valor, variables, sitio)
+            dentro = None
+            for k in PASOS_CON_BLOQUE:
+                if k in bruto:
+                    dentro = bruto[k]
+                    break
+            si_no = None
+            for k in PASOS_SI_NO:
+                if k in bruto:
+                    si_no = bruto[k]
+                    break
+            bloque = _leer_pasos(dentro, variables, items, eventos, niveles,
+                                 sitio + ".pasos")
+            otro = _leer_pasos(si_no, variables, items, eventos, niveles,
+                               sitio + ".si_no")
+            if not bloque and not otro:
+                raise ProjectError(
+                    "el 'si' del paso %d no lleva 'pasos:'" % (i + 1),
+                    hint="escribe debajo  pasos:  con lo que pasa si se cumple",
+                    where=sitio)
+            # si NO se cumple, salta el bloque entero (y el salto del si_no)
+            salto = len(bloque) + (1 if otro else 0)
+            pasos.append(Paso("si", a=var, cmp=cmp_id, b=contra, c=salto))
+            pasos.extend(bloque)
+            if otro:
+                pasos.append(Paso("saltar", c=len(otro)))
+                pasos.extend(otro)
+            continue
+
+        if nombre in ("decir", "texto", "say", "dialogo", "diálogo"):
+            texto = str(valor)
+            if not texto.strip():
+                raise ProjectError("el paso %d dice una linea vacia" % (i + 1),
+                                   where=sitio)
+            pasos.append(Paso("decir", texto=texto))
+        elif nombre in ("esperar", "espera", "wait", "pausa"):
+            pasos.append(Paso("esperar", b=_entero(valor, 0, 3600, "esperar", sitio)))
+        elif nombre in ("poner", "set", "vale"):
+            var, cantidad = _leer_asignacion(valor, variables, sitio, "poner")
+            pasos.append(Paso("poner", a=var, b=cantidad))
+        elif nombre in ("sumar", "add", "mas", "más"):
+            var, cantidad = _leer_asignacion(valor, variables, sitio, "sumar")
+            pasos.append(Paso("sumar", a=var, b=cantidad))
+        elif nombre in ("sonido", "efecto", "sound", "sfx"):
+            evento = str(valor).strip().lower()
+            evento = sonido_mod.EVENTO_ALIAS.get(evento, evento)
+            if evento not in eventos:
+                raise ProjectError(
+                    "el paso %d toca el sonido '%s' y no es uno de los que hay"
+                    % (i + 1, evento),
+                    hint="los que hay son: %s" % ", ".join(eventos),
+                    where=sitio)
+            pasos.append(Paso("sonido", a=eventos.index(evento)))
+        elif nombre in ("dar", "give", "regalar"):
+            objeto = str(valor).strip()
+            if objeto not in items:
+                raise ProjectError(
+                    "el paso %d da '%s' y no es ningun objeto" % (i + 1, objeto),
+                    hint="los que hay son: %s" % ", ".join(items) or "ninguno",
+                    where=sitio)
+            pasos.append(Paso("dar", a=list(items).index(objeto)))
+        elif nombre in ("ir_a_nivel", "nivel", "level", "ir"):
+            numero = _entero(valor, 1, max(niveles, 1), "ir_a_nivel", sitio)
+            pasos.append(Paso("nivel", b=numero - 1))
+        else:
+            raise ProjectError(
+                "no conozco el paso '%s'" % clave,
+                hint="los que hay son: decir, esperar, poner, sumar, si, "
+                     "sonido, dar e ir_a_nivel",
+                where=sitio)
+    return pasos
+
+
+def _entero(valor, minimo, maximo, quien, where):
+    try:
+        numero = int(valor)
+    except (TypeError, ValueError):
+        raise ProjectError("'%s' quiere un numero y le has puesto '%s'"
+                           % (quien, valor), where=where)
+    if not minimo <= numero <= maximo:
+        raise ProjectError("'%s' vale %d; va de %d a %d"
+                           % (quien, numero, minimo, maximo), where=where)
+    return numero
+
+
+def _leer_asignacion(raw, variables, where, quien):
+    if not isinstance(raw, dict) or len(raw) != 1:
+        raise ProjectError(
+            "'%s' se escribe con una variable y un numero" % quien,
+            hint="por ejemplo: %s: {monedas: 1}" % quien, where=where)
+    nombre, valor = list(raw.items())[0]
+    nombre = str(nombre).strip()
+    if nombre not in variables:
+        raise ProjectError(
+            "'%s' toca la variable '%s' y no esta en 'variables:'"
+            % (quien, nombre), where=where)
+    return list(variables).index(nombre), _entero(valor, -32768, 65535, quien, where)
+
+
+def _cuantos_niveles(top: "Node") -> int:
+    """Cuantos niveles trae el proyecto, sin leerlos todavia.
+
+    Hace falta antes de tiempo para poder decirle a `ir_a_nivel:` si el numero
+    que le han puesto existe, y los niveles se leen despues porque ellos si
+    necesitan los guiones."""
+    raw = top.raw("levels", "niveles")
+    return len(raw) if isinstance(raw, (list, tuple)) else 1
+
+
+def _leer_guiones(raw, variables, items, eventos, niveles, where: str):
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ProjectError("'guiones' es una lista de nombre: pasos", where=where)
+    guiones: Dict[str, Guion] = {}
+    for nombre, pasos in raw.items():
+        clave = str(nombre).strip()
+        guiones[clave] = Guion(clave, _leer_pasos(
+            pasos, variables, items, eventos, niveles, "guiones.%s" % clave))
+    return guiones
+
+
 @dataclass
 class Level:
     name: str
@@ -499,6 +755,7 @@ class Level:
     music: str = ""                                   # nombre de la musica del nivel
     keys_needed: int = 0                              # llaves que pide la meta
     start: Tuple[int, int] = (0, 0)
+    guion: str = ""                                   # el que se lanza al entrar
 
 
 @dataclass
@@ -549,6 +806,10 @@ class Project:
     generators: Dict[str, "Generator"]
     layers: Dict[str, Layer]
     sound: "sonido_mod.Sonido"
+    # La memoria del juego y lo que la mueve. Vacios en un juego que no los use:
+    # el motor los lleva igual y no cuestan nada.
+    variables: Dict[str, int]
+    guiones: Dict[str, "Guion"]
     levels: List[Level]
     warnings: List[str] = field(default_factory=list)
 
@@ -1362,6 +1623,7 @@ def _read_tiles(node: Node, root: str) -> Tuple[Tileset, Dict[str, TileDef]]:
                     )
             needs = ""
             alto, bloque, pintado = 0, "", False
+            guion, una_vez = "", False
             if isinstance(value, dict):
                 sub = Node(value, sub_where)
                 index = sub.int_(["tile", "indice", "índice", "id"], 0, minimum=0)
@@ -1374,13 +1636,18 @@ def _read_tiles(node: Node, root: str) -> Tuple[Tileset, Dict[str, TileDef]]:
                 bloque = sub.str_(["bloque", "cubo", "block"], "") or ""
                 if bloque.strip().lower() in PINTADO:
                     bloque, pintado = "", True
+                # el disparador: que guion lanza al pisar esta casilla
+                guion = sub.str_(["guion", "guión", "script", "dispara"], "") or ""
+                una_vez = sub.bool_(["una_vez", "una vez", "solo_una_vez",
+                                     "once"], False)
             elif not isinstance(value, (int, float, list, tuple)):
                 sub = Node(value, sub_where)
                 index = sub.int_(["tile", "indice", "índice", "id"], 0, minimum=0)
                 kind = sub.choice(["type", "tipo", "clase"], TILE_KINDS, "solid")
             if index < 0:
                 raise ProjectError("el numero de tile no puede ser negativo", where=sub_where)
-            tiles[char] = TileDef(char, index, kind, needs, alto, bloque, pintado)
+            tiles[char] = TileDef(char, index, kind, needs, alto, bloque, pintado,
+                                  guion, una_vez)
         tiles.setdefault(".", TileDef(".", 0, "empty"))
         tiles.setdefault(" ", TileDef(" ", 0, "empty"))
     return Tileset(image=image, size=size, sala_tile=sala_tile,
@@ -1578,7 +1845,8 @@ def _read_levels(raw_levels: Any, tiles: Dict[str, TileDef], spawn_names: List[s
                  layer_names: Optional[List[str]] = None,
                  music_names: Optional[List[str]] = None,
                  jefes: Optional[set] = None,
-                 llaves: Optional[Dict[str, int]] = None) -> List[Level]:
+                 llaves: Optional[Dict[str, int]] = None,
+                 guion_names: Optional[List[str]] = None) -> List[Level]:
     if not raw_levels:
         raise ProjectError(
             "el juego no tiene niveles",
@@ -1645,8 +1913,15 @@ def _read_levels(raw_levels: Any, tiles: Dict[str, TileDef], spawn_names: List[s
                 hint="pon 'llaves: 3' o quita la linea si la meta esta abierta",
                 where=where,
             )
+        guion = node.str_(["guion", "guión", "script", "intro"], "") or ""
+        if guion and guion not in (guion_names or []):
+            raise ProjectError(
+                "el nivel lanza el guion '%s', que no esta definido" % guion,
+                hint="definelo en la seccion 'guiones:'",
+                where=where,
+            )
         level = Level(name=name, rows=rows, spawns=spawns, background=background,
-                      layers=usadas, music=musica, keys_needed=piden)
+                      layers=usadas, music=musica, keys_needed=piden, guion=guion)
         _validate_level(level, tiles, spawn_names, where, warnings,
                         necesitan_suelo or {}, jefes or set(), llaves or {})
         levels.append(level)
@@ -2025,12 +2300,36 @@ def load_project(path: str) -> Project:
               if item.effect == "key"}
     layers = _read_layers(top.raw("backgrounds", "fondos", "capas"), root)
     sound = _read_sound(top.raw("sound", "sonido", "audio"), root)
+    # La memoria del juego y los guiones que la mueven. Se leen antes que los
+    # niveles porque un nivel puede lanzar uno al empezar.
+    variables = _leer_variables(top.raw("variables", "banderas", "memoria"),
+                                os.path.basename(path))
+    guiones = _leer_guiones(top.raw("guiones", "scripts", "eventos"),
+                            variables, items, list(sonido_mod.EVENTOS),
+                            _cuantos_niveles(top), os.path.basename(path))
+    # Un simbolo que este en la leyenda **y** en `spawns:` no dibuja nada: gana
+    # el spawn y la casilla se queda vacia. Callarlo es dejar que alguien pase
+    # una tarde preguntandose por que su disparador no dispara -paso aqui
+    # mismo, escribiendo esto-.
+    for char in tiles:
+        if char in global_spawns:
+            warnings.append(
+                "el simbolo '%s' esta en la leyenda y en 'spawns:' a la vez: "
+                "en el mapa gana el spawn y la casilla se queda vacia" % char)
+    for char, tile in tiles.items():
+        if tile.guion and tile.guion not in guiones:
+            raise ProjectError(
+                "el tile '%s' dispara el guion '%s', que no esta definido"
+                % (char, tile.guion),
+                hint="definelo en la seccion 'guiones:'",
+                where="tiles.leyenda['%s']" % char)
     levels = _read_levels(
         top.raw("levels", "niveles"), tiles,
         list(enemies) + list(items) + list(platforms) + list(breakables)
         + list(prisoners) + list(generators),
         global_spawns, default_bg, warnings, necesitan_suelo, list(layers),
         list(sound.musica), jefes=jefes, llaves=llaves,
+        guion_names=list(guiones),
     )
 
     known_top = {
@@ -2041,6 +2340,7 @@ def load_project(path: str) -> Project:
         "generators", "generadores", "nidos",
         "spawns", "simbolos", "símbolos", "backgrounds", "fondos", "capas",
         "sound", "sonido", "audio", "blocks", "cubos",
+        "variables", "banderas", "memoria", "guiones", "scripts", "eventos",
     }
     extra_top = [key for key in data if key not in known_top]
     if extra_top:
@@ -2077,6 +2377,7 @@ def load_project(path: str) -> Project:
         enemies=enemies, items=items, platforms=platforms,
         breakables=breakables, blocks=blocks,
         prisoners=prisoners, generators=generators,
-        layers=layers, sound=sound, levels=levels,
+        layers=layers, sound=sound, variables=variables, guiones=guiones,
+        levels=levels,
         warnings=warnings,
     )

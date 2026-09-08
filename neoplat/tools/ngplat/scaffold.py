@@ -1087,17 +1087,19 @@ niveles:
 
 
 def _nivel_yaml(nombre: str, filas: List[str], fondo: str, capas: str = "",
-                musica: str = "", llaves: int = 0) -> str:
+                musica: str = "", llaves: int = 0, guion: str = "") -> str:
     cuerpo = "\n".join("      " + fila for fila in filas)
     linea_capas = "    fondos: [%s]\n" % capas if capas else ""
     linea_musica = "    musica: %s\n" % musica if musica else ""
     linea_llaves = "    llaves: %d\n" % llaves if llaves else ""
+    linea_guion = "    guion: %s\n" % guion if guion else ""
     return (
         "  - nombre: \"%s\"\n"
         "    fondo: \"%s\"\n"
-        "%s%s%s"
+        "%s%s%s%s"
         "    mapa: |\n%s\n"
-        % (nombre, fondo, linea_capas, linea_musica, linea_llaves, cuerpo)
+        % (nombre, fondo, linea_capas, linea_musica, linea_llaves, linea_guion,
+           cuerpo)
     )
 
 # --------------------------------------------------------- el barrio
@@ -1313,7 +1315,7 @@ def _nivel_aventura_2() -> List[str]:
         ".......rrrrrrrrrrrrr",
         ".......rrrrrrrrrrrrr",
         "....rrrrrrrrrrrrrrrr",
-        "..P.rrrrrrrrrrrrrrrr",
+        "..P!rrrrrrrrrrrrrrrr",
         "ttttrrrrrrrrrrrrrrrr",
     ]
     pared = [
@@ -2204,6 +2206,9 @@ tiles:
     'D': {{tile: 7, tipo: cerrojo, abre_con: llave}}
     'F': {{tile: 8, tipo: cerrojo, abre_con: cubo}}
     'W': {{tile: 9, tipo: cerrojo, abre_con: pico}}
+    # Y un cartel: no frena ni se dibuja, pero al pisarlo lanza un guion. Un
+    # disparador puede ser ademas cualquier otra cosa; este es aire.
+    '!': {{tile: 0, tipo: vacio, guion: cartel_puerta}}
 
 enemigos:
   # No se matan: se esquivan. Por eso lo que importa de ellos es **donde
@@ -2280,6 +2285,32 @@ objetos:
     efecto: puntos
     animaciones:
       quieto: {{frames: [0, 1], velocidad: 10}}
+
+# --- la memoria del juego y lo que la mueve -----------------------------
+#
+# Una variable es un numero con nombre que el juego se acuerda: aqui, cuantas
+# veces has leido el cartel. Son de la partida, asi que sobreviven a cambiar de
+# nivel y a perder una vida.
+variables:
+  avisos: 0
+
+# Un guion es una lista de pasos. Los que no esperan corren **todos en el mismo
+# frame**; solo paran `decir:` -hasta que pulsas- y `esperar:`. Mientras hay
+# guion la partida no corre: ni tu, ni los bichos, ni el reloj.
+guiones:
+  bienvenida:
+    - decir: "EL VALLE. AQUI NO SE PEGA: SE CARGA CON LAS COSAS Y SE ABRE CON ELLAS LO QUE NO SE PASA."
+  cueva:
+    - decir: "LA CUEVA. AQUI LAS DOS PRIMERAS COSAS SE COGEN JUNTAS Y HACEN FALTA EN SITIOS DISTINTOS."
+  # Un cartel que sabe cuantas veces lo has leido: la primera explica y las
+  # demas se rien de ti. Es el ejemplo mas corto de para que sirve una variable.
+  cartel_puerta:
+    - sumar: {{avisos: 1}}
+    - si: {{avisos: 1}}
+      pasos:
+        - decir: "AQUI LAS DOS PRIMERAS COSAS SE COGEN JUNTAS. ELIGE CON CUAL TE QUEDAS."
+      si_no:
+        - decir: "QUE SI, QUE ELIJAS."
 
 # Sonido. En una aventura lo que hay que oir es **coger** y **abrir**: son las
 # dos cosas que pasan, y las dos suenan a nota y no a ruido.
@@ -3763,9 +3794,9 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
         # aventura.
         niveles = (
             _nivel_yaml("EL VALLE", _nivel_aventura_1(), "#204878",
-                        musica="valle")
+                        musica="valle", guion="bienvenida")
             + _nivel_yaml("LA CUEVA", _nivel_aventura_2(), "#181430",
-                          musica="cueva")
+                          musica="cueva", guion="cueva")
         )
         contenido = GAME_YAML_AVENTURA.format(
             titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles,

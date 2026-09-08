@@ -38,6 +38,19 @@ static uint32_t entity_hash(const NpWorld *w)
     return hash;
 }
 
+/* Las variables en un solo numero, para que quepan en una columna. Es la
+ * misma cuenta que hace trace.js: no vale para nada mas que para comparar. */
+static uint32_t vars_firma(const NpWorld *w)
+{
+    uint32_t firma = 2166136261u;
+    uint16_t i;
+    for (i = 0; i < NP_MAX_VARS; i++) {
+        firma ^= (uint32_t)w->vars[i];
+        firma *= 16777619u;
+    }
+    return firma;
+}
+
 /* El archivo de pulsaciones lleva **dos numeros por linea**, uno por mando.
  * Las quince primeras columnas de la traza son las de siempre (el primer
  * jugador) y detras van las del segundo: asi las pruebas que miran una columna
@@ -63,7 +76,7 @@ int main(int argc, char **argv)
         np_world_step(&world, (uint16_t)input, (uint16_t)input2);
         printf("%lu %ld %ld %ld %ld %u %u %u %lu %ld %ld %u %u %u %08x"
                " %ld %ld %ld %ld %u %u %u %u %u %u %u %u %u %d %d %u %u %u %u"
-               " %lu %u\n",
+               " %lu %u %u %u %u %lu\n",
                (unsigned long)world.frame,
                (long)p0->x, (long)p0->y, (long)p0->vx, (long)p0->vy,
                (unsigned)world.state, (unsigned)p0->health,
@@ -88,7 +101,15 @@ int main(int argc, char **argv)
                   dos implementaciones podria guardar lo que le diera la gana
                   mientras el jugador acabara en el mismo sitio. */
                (unsigned long)np_bolsa_firma(&world),
-               (unsigned)world.abiertos_n);
+               (unsigned)world.abiertos_n,
+               /* Y el guion: por cual va, en que paso, que pagina de texto se
+                  ve y que valen las variables. Sin esto la traza no miraria
+                  nada de los guiones, y dos interpretes podrian decidir
+                  distinto mientras el jugador acabara en el mismo sitio -que
+                  es justo lo que pasa cuando el guion **para** la partida-. */
+               (unsigned)world.guion, (unsigned)world.paso,
+               (unsigned)world.paginas,
+               (unsigned long)vars_firma(&world));
     }
     fclose(fh);
     return 0;

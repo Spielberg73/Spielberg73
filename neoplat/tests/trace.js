@@ -42,6 +42,16 @@ function bolsaFirma(world) {
   return firma;
 }
 
+/* Las variables en un solo numero, igual que vars_firma en np_trace.c. */
+function varsFirma(world) {
+  var firma = 2166136261, i;
+  for (i = 0; i < 32; i++) {
+    firma = (firma ^ (world.vars[i] | 0)) >>> 0;
+    firma = Math.imul(firma, 16777619) >>> 0;
+  }
+  return firma >>> 0;
+}
+
 function hex8(v) {
   var s = v.toString(16);
   while (s.length < 8) s = "0" + s;
@@ -66,7 +76,9 @@ inputs.forEach(function (par) {
     p0.crouch,
     world.sub,                   /* el arma secundaria que se lleva */
     /* y la aventura: lo que llevas encima y cuantas casillas has abierto */
-    bolsaFirma(world), world.abiertos.length
+    bolsaFirma(world), world.abiertos.length,
+    /* y el guion: por cual va, en que paso, que pagina se ve y las variables */
+    world.guion, world.paso, world.paginas, varsFirma(world)
   ].join(" "));
 });
 process.stdout.write(out.join("\n") + "\n");

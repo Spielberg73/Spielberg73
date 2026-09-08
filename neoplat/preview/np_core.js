@@ -66,6 +66,14 @@
   /* La bolsa de las aventuras: tres cosas a la vez, como en los Dizzy. Y los
      frames que un objeto recien soltado no se deja coger (np_world.c). */
   var BOLSA = 3, GRACIA_SOLTAR = 40, MAX_ABIERTOS = 12;
+  /* Los guiones: las mismas constantes que np_types.h. */
+  var MAX_VARS = 32, PASOS_POR_FRAME = 64;
+  var DIALOGO_COLS = 36, DIALOGO_FILAS = 2;
+  var PASO_FIN = 0, PASO_DECIR = 1, PASO_ESPERAR = 2, PASO_PONER = 3;
+  var PASO_SUMAR = 4, PASO_SI = 5, PASO_SALTAR = 6, PASO_SONIDO = 7;
+  var PASO_DAR = 8, PASO_NIVEL = 9;
+  var CMP_IGUAL = 0, CMP_DISTINTO = 1, CMP_MENOR = 2, CMP_MENOR_IG = 3;
+  var CMP_MAYOR = 4, CMP_MAYOR_IG = 5;
   /* por donde va y viene una plataforma movil */
   var PLAT_X = 0, PLAT_Y = 1;
   var ATTACK_NONE = 0, ATTACK_SHOT = 1, ATTACK_MELEE = 2;
@@ -122,6 +130,12 @@
     this.camX = 0; this.camY = 0;
     /* lo que se lleva encima: el objeto de cada hueco mas uno (0 = vacio) */
     this.bolsa = [0, 0, 0];
+    /* Los guiones y la memoria del juego. Igual que en NpWorld. */
+    this.vars = new Array(MAX_VARS);
+    this.guion = 0; this.paso = 0; this.guionEspera = 0;
+    this.pagina = 0; this.paginas = 0;
+    this.gastados = [];
+    this.pisadaX = -1; this.pisadaY = -1;
     /* las casillas de cerrojo ya abiertas en este nivel */
     this.abiertos = [];
     this.score = 0; this.frame = 0;
@@ -150,6 +164,7 @@
       this.players[i].lives = data.lives;
       this.placePlayer(i);
     }
+    this.varsReset();
     this.cameraUpdate();
   }
 
@@ -537,6 +552,15 @@
     this.timeLeft = this.data.time_limit * 60;
     this.state = STATE.PLAY;
     this.stateTimer = 0;
+    /* Nadie ha pisado la casilla -1,-1: asi el primer frame ya mira si hay
+       disparador debajo de la salida. Igual que en C. */
+    this.pisadaX = -1;
+    this.pisadaY = -1;
+    this.guion = 0;
+    this.paso = 0;
+    this.guionEspera = 0;
+    this.pagina = 0;
+    this.paginas = 0;
     this.spawnEntities();
     /* Nadie ha estado nunca en la sala -1: con eso la camara ve un cambio de
        sala en su primera vuelta y monta los cubos de la de verdad. */
@@ -547,6 +571,8 @@
        en el primer frame de un nivel. */
     this.pantallaX = Math.floor(this.camX / SCREEN_W);
     this.pantallaY = Math.floor(this.camY / SCREEN_H);
+    /* Y el guion de bienvenida, si el nivel lleva uno. Igual que en C. */
+    this.guionLanzar(this.level.guion || 0);
   };
 
   /* Cuantos siguen en juego y no se estan muriendo. */
@@ -2291,8 +2317,8 @@
     this.sfx |= SFX.COIN;
   };
 
-  World.prototype.collect = function (quien, e) {
-    var d = this.data.items[e.def], p = this.players[quien];
+  World.prototype.darObjeto = function (quien, def) {
+    var d = this.data.items[def], p = this.players[quien];
     this.score += d.score;
     this.sfx |= (d.effect === 1) ? SFX.LIFE : SFX.COIN;
     if (d.effect === 1) { if (p.lives < 99) p.lives += d.amount; }
@@ -2311,9 +2337,14 @@
     } else if (d.effect === 8) {
       /* el objeto que se lleva: si no cabe en la bolsa **se queda donde
          estaba**, que es lo que obliga a elegir. Igual que np_collect. */
-      if (!this.bolsaMeter(e.def)) return;
+      if (!this.bolsaMeter(def)) return 0;
     }
-    e.active = 0;
+    return 1;
+  };
+
+  /* Lo recoge quien lo toca. Igual que np_collect. */
+  World.prototype.collect = function (quien, e) {
+    if (this.darObjeto(quien, e.def)) e.active = 0;
   };
 
   /* Los puntos de control. Se busca **la casilla**, no solo si toca alguna,
@@ -2791,9 +2822,156 @@
     else { p.lives = 0; p.playing = 0; }
   };
 
+  /* --- los guiones ---------------------------------------------------------
+   *
+   * Gemelo de la parte de guiones de np_world.c: mismas tablas, mismos pasos y
+   * el mismo orden, para que la prueba de paridad compare dos motores que
+   * deciden igual y no dos que se parecen.
+   */
+
+  /* Las variables vuelven a su valor de salida. Es de la **partida**: cambiar
+     de nivel o perder una vida no se lleva por delante lo que el juego se
+     acuerda de ti. Igual que np_vars_reset. */
+  World.prototype.varsReset = function () {
+    var inicial = this.data.var_inicial || [], i;
+    for (i = 0; i < MAX_VARS; i++) this.vars[i] = inicial[i] || 0;
+  };
+
+  /* Lanza un guion, si no hay otro en marcha. Igual que np_guion_lanzar. */
+  World.prototype.guionLanzar = function (guion) {
+    if (!guion || guion > (this.data.guion_ini || []).length - 1) return;
+    if (this.guion) return;
+    this.guion = guion;
+    this.paso = this.data.guion_ini[guion - 1];
+    this.guionEspera = 0;
+    this.pagina = 0;
+    this.paginas = 0;
+  };
+
+  function cumple(valor, cmp, contra) {
+    switch (cmp) {
+      case CMP_DISTINTO: return valor !== contra;
+      case CMP_MENOR:    return valor < contra;
+      case CMP_MENOR_IG: return valor <= contra;
+      case CMP_MAYOR:    return valor > contra;
+      case CMP_MAYOR_IG: return valor >= contra;
+      default:           return valor === contra;
+    }
+  }
+
+  /* La linea que toca del cuadro de texto, o "" si no hay cuadro. Gemelo de
+     np_dialogo_linea. */
+  World.prototype.dialogoLinea = function (fila) {
+    var lineas = this.data.dialogo || [], linea;
+    if (!this.guion || !this.paginas) return "";
+    linea = this.pagina * DIALOGO_FILAS + fila;
+    return linea < lineas.length ? lineas[linea] : "";
+  };
+
+  /* Un frame de guion. Devuelve true si se ha quedado con el frame. Gemelo de
+     np_guion_update. */
+  World.prototype.guionUpdate = function (input) {
+    var antes = this.prevInput[0];
+    var teclas = IN.ACTION | IN.JUMP | IN.START;
+    var pulsado = (input & teclas) && !(antes & teclas);
+    var vueltas, pasos = this.data.pasos || [];
+
+    if (!this.guion) return false;
+
+    if (this.paginas) {
+      if (!pulsado) return true;
+      this.pagina++;
+      this.paginas--;
+      if (this.paginas) return true;
+    }
+    if (this.guionEspera) { this.guionEspera--; return true; }
+
+    for (vueltas = 0; vueltas < PASOS_POR_FRAME; vueltas++) {
+      var paso = pasos[this.paso] || [0, 0, 0, 0, 0];
+      var op = paso[0], a = paso[1], cmp = paso[2], b = paso[3], c = paso[4];
+      var vr = a < MAX_VARS ? a : 0;
+      this.paso++;
+      switch (op) {
+        case PASO_DECIR:
+          this.pagina = a;
+          this.paginas = c;
+          if (this.paginas) return true;
+          break;
+        case PASO_ESPERAR:
+          if (b > 0) { this.guionEspera = b; return true; }
+          break;
+        case PASO_PONER:
+          this.vars[vr] = b & 0xFFFF;
+          break;
+        case PASO_SUMAR:
+          this.vars[vr] = (this.vars[vr] + b) & 0xFFFF;
+          break;
+        case PASO_SI:
+          if (!cumple(this.vars[vr], cmp, b)) this.paso += c;
+          break;
+        case PASO_SALTAR:
+          this.paso += c;
+          break;
+        case PASO_SONIDO:
+          this.sfx |= (1 << a);
+          break;
+        case PASO_DAR:
+          if (a < this.data.items.length) this.darObjeto(0, a);
+          break;
+        case PASO_NIVEL:
+          this.guion = 0;
+          this.paso = 0;
+          this.loadLevel(b);
+          return true;
+        default:
+          this.guion = 0;
+          this.paso = 0;
+          return true;
+      }
+    }
+    return true;
+  };
+
+  /* Los disparadores del mapa: al entrar en la casilla, no mientras la pisas.
+     Gemelo de np_disparadores. */
+  World.prototype.disparadores = function () {
+    var a = this.data.player.actor, p = this.players[0];
+    var tx, ty, casilla, i, tile, guion;
+    var guiones = (this.data.guion_ini || []).length - 1;
+
+    if (this.guion || guiones <= 0) return;
+    if (!p.playing || p.dying) return;
+
+    tx = (F2I(p.x) + (a.box_w >> 1)) >> TILE_SHIFT;
+    ty = (F2I(p.y) + (a.box_h >> 1)) >> TILE_SHIFT;
+    if (tx === this.pisadaX && ty === this.pisadaY) return;
+    this.pisadaX = tx;
+    this.pisadaY = ty;
+    if (tx < 0 || ty < 0 || tx >= this.level.cells_w || ty >= this.level.cells_h)
+      return;
+
+    tile = this.level.cells[ty * this.level.cells_w + tx];
+    guion = (this.data.tiles.guion || [])[tile] || 0;
+    if (!guion) return;
+
+    casilla = ty * this.level.cells_w + tx;
+    if ((this.data.tiles.una_vez || [])[tile]) {
+      for (i = 0; i < this.gastados.length; i++)
+        if (this.gastados[i] === casilla) return;
+      if (this.gastados.length < MAX_ABIERTOS) this.gastados.push(casilla);
+    }
+    this.guionLanzar(guion);
+  };
+
   World.prototype.playStep = function (input, input2) {
     var pa = this.data.player.actor, quien, i;
     var mandos = [input, input2 | 0];
+
+    /* Si hay un guion en marcha, el frame es suyo: no se mueve nadie. Igual
+       que np_play_step. */
+    if (this.guionUpdate(input)) return;
+    this.disparadores();
+    if (this.guion) return;
 
     /* Cuantos estan pegando ahora mismo: de ahi salen las fichas de ataque.
        Igual que en np_play_step. */
@@ -2953,6 +3131,10 @@
         if (startPressed) {
           this.sfx |= SFX.START;
           this.score = 0;
+          this.varsReset();
+          this.guion = 0;
+          this.paso = 0;
+          this.gastados = [];
           for (i = 0; i < MAX_PLAYERS; i++) {
             this.players[i].playing = i < this.playerCount ? 1 : 0;
             this.players[i].lives = this.data.lives;

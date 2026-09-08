@@ -423,6 +423,8 @@ static void np_anim_tick(const NpActorDef *def, uint8_t anim,
 static void np_camera_update(NpWorld *w);
 static void np_tenaces_siguen(NpWorld *w, int32_t dx, int32_t dy);
 static void np_cambio_de_pantalla(NpWorld *w);
+static void np_vars_reset(NpWorld *w);
+static void np_guion_lanzar(NpWorld *w, uint8_t guion);
 static int np_en_la_sala(const NpWorld *w, const NpEntity *e);
 
 /* Donde sale cada jugador. A dos, el segundo aparece un poco a la derecha para
@@ -461,6 +463,7 @@ void np_world_init(NpWorld *w)
         w->players[i].lives = np_start_lives;
         np_player_place(w, (uint8_t)i);
     }
+    np_vars_reset(w);
     /* Colocamos al jugador en su salida ya en la pantalla de titulo: asi el
      * fondo del titulo es el principio del nivel y no una esquina vacia. */
     np_camera_update(w);
@@ -637,6 +640,15 @@ void np_world_load_level(NpWorld *w, uint16_t index)
     w->time_left = (uint16_t)(np_time_limit * 60);
     w->state = NP_STATE_PLAY;
     w->state_timer = 0;
+    /* Nadie ha pisado la casilla -1,-1, asi que el primer frame ya mira si hay
+       disparador debajo de la salida. */
+    w->pisada_x = -1;
+    w->pisada_y = -1;
+    w->guion = 0;
+    w->paso = 0;
+    w->guion_espera = 0;
+    w->pagina = 0;
+    w->paginas = 0;
     np_spawn_entities(w);
     /* Nadie ha estado nunca en la sala 0xFFFF: con eso la camara ve un cambio
        de sala en su primera vuelta y monta los cubos de la de verdad. */
@@ -647,6 +659,9 @@ void np_world_load_level(NpWorld *w, uint16_t index)
        ti en el primer frame de un nivel. */
     w->pantalla_x = (uint16_t)(w->cam_x / NP_SCREEN_W);
     w->pantalla_y = (uint16_t)(w->cam_y / NP_SCREEN_H);
+    /* Y el guion de bienvenida, si el nivel lleva uno: es por donde un juego
+       cuenta algo antes de dejarte jugar. */
+    np_guion_lanzar(w, w->level->guion);
 }
 
 /* Cuantos jugadores siguen en juego y no se estan muriendo. */
@@ -3175,11 +3190,15 @@ static void np_bomba(NpWorld *w, uint8_t dano)
     }
 }
 
-/* Lo recoge quien lo toca: la vida y la salud van a ese jugador, y los puntos
-   y las llaves al marcador, que es comun. */
-static void np_collect(NpWorld *w, uint8_t quien, NpEntity *e)
+/* Le da a un jugador lo que hace un objeto, sin que tenga que haberlo tocado.
+   Devuelve 0 si no se ha podido -solo pasa con la bolsa llena-, y entonces el
+   objeto se queda donde estaba.
+
+   Va aparte de np_collect porque un guion tambien da cosas (`dar:`) y hacerlo
+   dos veces era la manera segura de que un dia se arreglara una y no la otra. */
+static int np_dar_objeto(NpWorld *w, uint8_t quien, uint8_t def)
 {
-    const NpItemDef *d = &np_items[e->def];
+    const NpItemDef *d = &np_items[def];
     NpPlayer *p = &w->players[quien];
     w->score += d->score;
     w->sfx |= (d->effect == NP_ITEM_LIFE) ? NP_SFX_LIFE : NP_SFX_COIN;
@@ -3213,12 +3232,19 @@ static void np_collect(NpWorld *w, uint8_t quien, NpEntity *e)
         /* No hace nada al cogerlo: se guarda. Y si no queda hueco en la bolsa
            **se queda donde estaba**, que es lo que obliga a elegir que llevas
            encima: en un Dizzy, la mitad del juego es esa decision. */
-        if (!np_bolsa_meter(w, e->def)) return;
+        if (!np_bolsa_meter(w, def)) return 0;
         break;
     default:
         break;
     }
-    e->active = 0;
+    return 1;
+}
+
+/* Lo recoge quien lo toca: la vida y la salud van a ese jugador, y los puntos
+   y las llaves al marcador, que es comun. */
+static void np_collect(NpWorld *w, uint8_t quien, NpEntity *e)
+{
+    if (np_dar_objeto(w, quien, e->def)) e->active = 0;
 }
 
 /* Se acaba el nivel: por la meta o por matar al jefe, da igual. */
@@ -4046,11 +4072,208 @@ static void np_level_restart(NpWorld *w)
     for (i = 0; i < NP_MAX_PLAYERS; i++) np_player_place(w, i);
 }
 
+/* --- los guiones ----------------------------------------------------------
+ *
+ * Hasta aqui, un juego del kit era una simulacion: te mueves, chocas, pegas y
+ * cobras. Lo que no habia manera de decir era **que pase algo**: que al pisar
+ * una casilla se abra una puerta, que un cartel te avise, que la segunda vez
+ * que pasas por un sitio la cosa haya cambiado. Eso son los guiones.
+ *
+ * Un guion es una lista de pasos en ROM. El motor ejecuta los que no esperan
+ * -poner una variable, sumar, mirar una condicion, dar un objeto- **todos en
+ * el mismo frame**, y se para en los que si esperan: el cuadro de texto, que
+ * espera a que pulses, y `esperar:`, que cuenta frames. Si cada paso durase un
+ * frame, abrir una puerta y avisar de ello tardaria un cuarto de segundo en
+ * cosas que el jugador no ve.
+ *
+ * Mientras hay un guion en marcha **la partida no corre**: ni el jugador, ni
+ * los bichos, ni el reloj. Es lo que hace que un cuadro de texto sea un cuadro
+ * de texto y no un adorno que pasa mientras te matan por detras.
+ *
+ * Todo esto es determinista y vive dentro de np_world_step, como el resto: la
+ * prueba de paridad compara el motor en C con el del navegador frame a frame, y
+ * un guion que no diera lo mismo en los dos saltaria a la primera.
+ */
+
+/* Las variables se ponen a lo que diga el game.yaml. Se hace al empezar la
+   partida y no al cargar un nivel: son la memoria del **juego**, y cambiar de
+   nivel o perder una vida no se la lleva por delante. */
+static void np_vars_reset(NpWorld *w)
+{
+    uint16_t i;
+    for (i = 0; i < NP_MAX_VARS; i++)
+        w->vars[i] = (i < np_var_count) ? np_var_inicial[i] : 0;
+}
+
+/* Lanza un guion. Si ya habia otro en marcha no lo pisa: el de antes acaba
+   primero, que es lo que uno espera al cruzar dos disparadores seguidos. */
+static void np_guion_lanzar(NpWorld *w, uint8_t guion)
+{
+    if (!guion || guion > np_guion_count) return;
+    if (w->guion) return;
+    w->guion = guion;
+    w->paso = np_guion_ini[guion - 1];
+    w->guion_espera = 0;
+    w->pagina = 0;
+    w->paginas = 0;
+}
+
+static int np_cumple(uint16_t valor, uint8_t cmp, int32_t contra)
+{
+    int32_t v = (int32_t)valor;
+    switch (cmp) {
+    case NP_CMP_DISTINTO: return v != contra;
+    case NP_CMP_MENOR:    return v <  contra;
+    case NP_CMP_MENOR_IG: return v <= contra;
+    case NP_CMP_MAYOR:    return v >  contra;
+    case NP_CMP_MAYOR_IG: return v >= contra;
+    default:              return v == contra;
+    }
+}
+
+/* La linea que toca del cuadro de texto, para que la dibuje cada maquina con su
+   fuente. Devuelve 0 cuando no hay cuadro: asi el marcador puede preguntar sin
+   saber nada de guiones. */
+const char *np_dialogo_linea(const NpWorld *w, uint8_t fila)
+{
+    /* Todas las lineas salen del compilador rellenadas a 36 columnas, y esta
+       tambien: asi escribirla **borra** lo que hubiera debajo y ninguna
+       maquina necesita una funcion de borrar fila propia. */
+    static const char vacia[NP_DIALOGO_COLS + 1] =
+        "                                    ";
+    uint16_t linea;
+    if (!w->guion || !w->paginas) return vacia;
+    linea = (uint16_t)(w->pagina * NP_DIALOGO_FILAS + fila);
+    if (linea >= np_dialogo_count) return vacia;
+    return np_dialogo[linea];
+}
+
+/* Un frame de guion. Devuelve 1 si el guion se ha quedado con el mando -o sea,
+   si la partida no tiene que correr este frame-. */
+static int np_guion_update(NpWorld *w, uint16_t input)
+{
+    uint16_t antes = w->prev_input[0];
+    int pulsado = ((input & (NP_IN_ACTION | NP_IN_JUMP | NP_IN_START)) &&
+                   !(antes & (NP_IN_ACTION | NP_IN_JUMP | NP_IN_START)));
+    uint16_t vueltas;
+
+    if (!w->guion) return 0;
+
+    /* El cuadro de texto: se queda hasta que se pulsa, y entonces pasa de
+       pagina o se acaba. */
+    if (w->paginas) {
+        if (!pulsado) return 1;
+        w->pagina++;
+        w->paginas--;
+        if (w->paginas) return 1;
+    }
+    if (w->guion_espera) {
+        w->guion_espera--;
+        return 1;
+    }
+
+    for (vueltas = 0; vueltas < NP_PASOS_POR_FRAME; vueltas++) {
+        const NpPaso *paso = &np_pasos[w->paso];
+        uint8_t var = (uint8_t)(paso->a < NP_MAX_VARS ? paso->a : 0);
+        w->paso++;
+        switch (paso->op) {
+        case NP_PASO_DECIR:
+            w->pagina = (uint16_t)paso->a;
+            w->paginas = (uint16_t)paso->c;
+            if (w->paginas) return 1;
+            break;
+        case NP_PASO_ESPERAR:
+            if (paso->b > 0) {
+                w->guion_espera = (uint16_t)paso->b;
+                return 1;
+            }
+            break;
+        case NP_PASO_PONER:
+            w->vars[var] = (uint16_t)paso->b;
+            break;
+        case NP_PASO_SUMAR:
+            w->vars[var] = (uint16_t)((int32_t)w->vars[var] + paso->b);
+            break;
+        case NP_PASO_SI:
+            if (!np_cumple(w->vars[var], paso->cmp, paso->b))
+                w->paso = (uint16_t)(w->paso + paso->c);
+            break;
+        case NP_PASO_SALTAR:
+            w->paso = (uint16_t)(w->paso + paso->c);
+            break;
+        case NP_PASO_SONIDO:
+            w->sfx |= (uint16_t)(1u << paso->a);
+            break;
+        case NP_PASO_DAR:
+            if (paso->a < np_item_count) np_dar_objeto(w, 0, paso->a);
+            break;
+        case NP_PASO_NIVEL:
+            w->guion = 0;
+            w->paso = 0;
+            np_world_load_level(w, (uint16_t)paso->b);
+            return 1;
+        default:                 /* NP_PASO_FIN y lo que no se entienda */
+            w->guion = 0;
+            w->paso = 0;
+            return 1;            /* el frame en que acaba tampoco se juega */
+        }
+    }
+    return 1;
+}
+
+/* Los disparadores del mapa: al **entrar** en una casilla que lleva guion, se
+   lanza. Al entrar y no mientras la pisas, que si no un cartel te hablaria
+   sesenta veces por segundo.
+ *
+ * Con `una_vez:` ademas se apunta la casilla y no vuelve a saltar en toda la
+ * partida: es la diferencia entre un cartel, que puedes releer, y la escena en
+ * la que alguien te da una llave. */
+static void np_disparadores(NpWorld *w)
+{
+    const NpActorDef *a = &np_player_def.actor;
+    const NpPlayer *p = &w->players[0];
+    int32_t tx, ty;
+    uint16_t casilla, i, tile;
+    uint8_t guion;
+
+    if (w->guion || !np_guion_count) return;
+    if (!p->playing || p->dying) return;
+
+    tx = (NP_F2I(p->x) + a->box_w / 2) >> NP_TILE_SHIFT;
+    ty = (NP_F2I(p->y) + a->box_h / 2) >> NP_TILE_SHIFT;
+    if (tx == w->pisada_x && ty == w->pisada_y) return;
+    w->pisada_x = (int16_t)tx;
+    w->pisada_y = (int16_t)ty;
+    if (tx < 0 || ty < 0 || tx >= (int32_t)w->level->cells_w
+        || ty >= (int32_t)w->level->cells_h) return;
+
+    tile = w->level->cells[(uint32_t)ty * w->level->cells_w + (uint32_t)tx];
+    guion = np_tile_guion[tile];
+    if (!guion) return;
+
+    casilla = (uint16_t)((uint32_t)ty * w->level->cells_w + (uint32_t)tx);
+    if (np_tile_una_vez[tile]) {
+        for (i = 0; i < w->gastados_n; i++)
+            if (w->gastados[i] == casilla) return;
+        if (w->gastados_n < NP_MAX_ABIERTOS)
+            w->gastados[w->gastados_n++] = casilla;
+    }
+    np_guion_lanzar(w, guion);
+}
+
 static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
 {
     const NpActorDef *pa = &np_player_def.actor;
     uint16_t mandos[NP_MAX_PLAYERS];
     uint8_t quien, i;
+
+    /* Si hay un guion en marcha, este frame es suyo: no se mueve nadie, no
+       corre el reloj y no hay golpes. Es lo mismo que hace el congelado del
+       impacto, y por la misma razon: lo que para la partida tiene que pararla
+       de verdad o no sirve de nada. */
+    if (np_guion_update(w, input)) return;
+    np_disparadores(w);
+    if (w->guion) return;
 
     mandos[0] = input;
     if (NP_MAX_PLAYERS > 1) mandos[1] = input2;
@@ -4383,6 +4606,10 @@ void np_world_step(NpWorld *w, uint16_t input, uint16_t input2)
         if (start_pressed) {
             w->sfx |= NP_SFX_START;
             w->score = 0;
+            np_vars_reset(w);
+            w->guion = 0;
+            w->paso = 0;
+            w->gastados_n = 0;
             for (quien = 0; quien < NP_MAX_PLAYERS; quien++) {
                 w->players[quien].playing = (uint8_t)(quien < np_player_count);
                 w->players[quien].lives = np_start_lives;

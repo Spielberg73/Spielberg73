@@ -80,6 +80,7 @@ void np_hud_draw(const NpWorld *w)
     static uint32_t ultimas_llaves = 0xFFFFFFFFu;
     static uint32_t ultima_bolsa = 0xFFFFFFFFu;
     static uint32_t ultima_vida = 0xFFFFFFFFu;
+    static uint32_t np_hud_cuadro = 0;
     if (!np_hud_etiquetas) {
         np_hud_print(2, 0, "SCORE");
         if (np_player_count > 1) {
@@ -180,5 +181,35 @@ void np_hud_draw(const NpWorld *w)
         break;
     default:
         break;
+    }
+
+    /* --- el cuadro de texto de un guion ---------------------------------
+     *
+     * Se pinta al final, despues del mensaje de estado, para que sea lo ultimo
+     * que se escribe: mientras hay cuadro, la partida esta parada y el cuadro
+     * manda. Las lineas salen del compilador rellenadas a 36 columnas, asi
+     * que escribirlas borra lo que hubiera debajo y no hace falta nada mas.
+     *
+     * Al acabarse se marca como sucio lo que vivia en esas filas -la barra del
+     * jefe, lo que llevas, la vida y el mensaje- y vuelve solo al frame
+     * siguiente. */
+    {
+        uint32_t hay = (w->guion && w->paginas)
+                     ? (((uint32_t)w->guion << 16) | ((uint32_t)w->pagina + 1))
+                     : 0;
+        if (hay != np_hud_cuadro) {
+            np_hud_cuadro = hay;
+            np_hud_print(NP_DIALOGO_COL, NP_DIALOGO_FILA,
+                         np_dialogo_linea(w, 0));
+            np_hud_print(NP_DIALOGO_COL, NP_DIALOGO_FILA + 1,
+                         np_dialogo_linea(w, 1));
+            if (!hay) {                  /* que vuelva lo que estaba debajo */
+                ultimo_jefe = 0xFF;
+                ultimas_llaves = 0xFFFFFFFFu;
+                ultima_bolsa = 0xFFFFFFFFu;
+                ultima_vida = 0xFFFFFFFFu;
+                np_hud_estado = 0xFFFF;
+            }
+        }
     }
 }

@@ -81,6 +81,7 @@ class LevelBuild:
     # Solo isometrica: el dibujo del suelo de las salas, ya en numeros de tile
     # de la maquina. Vacio en las demas vistas.
     fondo: List[int] = field(default_factory=list)
+    guion: int = 0                             # el de entrada, indice + 1
 
 
 @dataclass
@@ -111,6 +112,16 @@ class Build:
     font: Dict[str, int] = field(default_factory=dict)
     hud_palette: int = 0
     sin_table: List[int] = field(default_factory=list)
+    # --- los guiones, ya aplanados ---------------------------------------
+    #
+    # `guion_pasos` son todos los pasos de todos los guiones seguidos y
+    # `guion_ini` donde empieza cada uno (con un hueco de cierre al final, para
+    # saber tambien donde acaba el ultimo). `dialogo` son las lineas de texto ya
+    # partidas: dos por pagina, siempre, rellenando con vacio.
+    guion_pasos: List[tuple] = field(default_factory=list)
+    guion_ini: List[int] = field(default_factory=list)
+    guion_orden: List[str] = field(default_factory=list)   # nombres, en orden
+    dialogo: List[str] = field(default_factory=list)
 
     # --- lo rellena el sistema de destino (Neo Geo, Mega Drive, Amiga) ---
     sistema: object = None
@@ -424,7 +435,11 @@ def build_project(project: Project) -> Build:
             layers=[layer_index[n] for n in level.layers],
             music=music_index.get(level.music, 0),
             keys_needed=level.keys_needed,
+            guion=(list(project.guiones).index(level.guion) + 1
+                   if level.guion else 0),
         ))
+
+    guion_pasos, guion_ini, guion_orden, dialogo = _armar_guiones(project)
 
     return Build(
         project=project, rom=rom, tiles=tiles, tile_index=tile_index,
@@ -435,7 +450,77 @@ def build_project(project: Project) -> Build:
         enemy_shots=enemy_shots, prisoners=prisoners, generators=generators,
         music_order=music_order, music_title=music_title, music_boss=music_boss,
         sin_table=_sin_table(),
+        guion_pasos=guion_pasos, guion_ini=guion_ini, guion_orden=guion_orden,
+        dialogo=dialogo,
     )
+
+
+# --------------------------------------------------------------- los guiones
+
+def partir_texto(texto: str, cols: int = 36, filas: int = 2):
+    """Parte una linea de dialogo en paginas de `filas` x `cols`.
+
+    Lo hace el compilador y no el motor: partir por palabras necesita mirar
+    hacia adelante, y eso en un 68000 a 7 MHz -o en el Z80 de un driver de
+    sonido- se paga sesenta veces por segundo para siempre. Aqui se paga una
+    vez y en la maquina solo queda escribir dos cadenas.
+
+    Devuelve una lista de paginas, y cada pagina una lista de `filas` cadenas
+    (rellenadas con vacio si el texto no llega)."""
+    palabras = str(texto).upper().split()
+    lineas: List[str] = []
+    actual = ""
+    for palabra in palabras:
+        trozo = palabra[:cols]                 # una palabra mas larga que la
+        while len(palabra) > cols:             # linea se parte por lo sano
+            lineas.append(palabra[:cols])
+            palabra = palabra[cols:]
+            trozo = palabra[:cols]
+        if not actual:
+            actual = trozo
+        elif len(actual) + 1 + len(trozo) <= cols:
+            actual += " " + trozo
+        else:
+            lineas.append(actual)
+            actual = trozo
+    if actual:
+        lineas.append(actual)
+    if not lineas:
+        lineas = [""]
+    paginas = []
+    for i in range(0, len(lineas), filas):
+        pagina = lineas[i:i + filas]
+        while len(pagina) < filas:
+            pagina.append("")
+        # Rellenadas a lo ancho: escribir una linea borra lo que hubiera
+        # debajo, y asi ninguna maquina necesita una funcion de borrar fila.
+        paginas.append([linea.ljust(cols) for linea in pagina])
+    return paginas
+
+
+def _armar_guiones(project: Project):
+    """Aplana los guiones del proyecto a las tablas que lee el motor."""
+    pasos: List[tuple] = []
+    inicios: List[int] = []
+    orden: List[str] = []
+    dialogo: List[str] = []
+    codigo = {"fin": 0, "decir": 1, "esperar": 2, "poner": 3, "sumar": 4,
+              "si": 5, "saltar": 6, "sonido": 7, "dar": 8, "nivel": 9}
+    for nombre, guion in project.guiones.items():
+        orden.append(nombre)
+        inicios.append(len(pasos))
+        for paso in guion.pasos:
+            a, b, c = paso.a, paso.b, paso.c
+            if paso.op == "decir":
+                paginas = partir_texto(paso.texto)
+                a = len(dialogo) // 2          # la primera pagina de este texto
+                c = len(paginas)
+                for pagina in paginas:
+                    dialogo.extend(pagina)
+            pasos.append((codigo[paso.op], a, paso.cmp, b, c))
+        pasos.append((codigo["fin"], 0, 0, 0, 0))
+    inicios.append(len(pasos))                 # el hueco de cierre
+    return pasos, inicios, orden, dialogo
 
 
 # ------------------------------------------------------ ayudas para la salida

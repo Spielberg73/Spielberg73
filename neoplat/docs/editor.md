@@ -35,7 +35,9 @@ guías de pantalla, flechas para moverte (con <kbd>Shift</kbd> más rápido),
 Un **trazo entero cuenta como un solo paso de deshacer**, no uno por casilla.
 
 La **paleta** se construye desde tu propio `game.yaml`: sale un botón por cada
-símbolo de la leyenda (con su dibujo real) y otro por cada cosa que hayas
+símbolo de la leyenda (con su dibujo real; si la casilla es un **disparador**,
+además pone qué guion lanza, porque muchas veces es aire y no hay otra forma de
+distinguirla del hueco de al lado) y otro por cada cosa que hayas
 puesto en `spawns` —enemigos, objetos, plataformas móviles, rompibles,
 prisioneros y generadores—, más la salida del jugador. Si el juego tiene
 **escaleras** (`tipo: escalera` y `escalera_izquierda`), salen como un símbolo

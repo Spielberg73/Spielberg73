@@ -2,8 +2,79 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.27.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.28.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.28
+
+**Que pase algo: guiones, variables y cuadros de texto.** Hasta aqui el kit
+sabia describir **un mundo** -como se salta, que hay en el mapa, que pega- pero
+no habia forma de decir que **pase algo**: que al pisar una casilla se abra una
+puerta, que un cartel avise, que la segunda vez que pasas la cosa haya
+cambiado. Era la unica cosa que este README reconocia que no hacia, y ya la
+hace.
+
+**`variables:` es la memoria del juego.** Numeros con nombre, hasta 32, con su
+valor de salida. Son de la **partida** y no del nivel: sobreviven a cambiar de
+nivel y a perder una vida, que es lo que permite que el juego se acuerde de lo
+que hiciste dos niveles atras.
+
+**`guiones:` es lo que la mueve.** Una lista de pasos, no bloques que se
+arrastran: aqui el proyecto es texto a proposito -se lee, se compara, se mete en
+git y el editor lo reescribe sin tocar tus comentarios-, y un guion tambien. Los
+pasos son ocho: `decir`, `esperar`, `poner`, `sumar`, `si` (con `pasos:` y
+`si_no:`), `sonido`, `dar` e `ir_a_nivel`.
+
+Dos decisiones que se notan al jugar:
+
+  - **los pasos que no esperan corren todos en el mismo frame.** Poner tres
+    variables y dar un objeto cuesta un frame, no cuatro. Si cada paso durase
+    uno, abrir una puerta y avisar de ello tardaria un cuarto de segundo en
+    cosas que el jugador ni ve;
+  - **mientras hay guion, la partida no corre**: ni el jugador, ni los bichos,
+    ni el reloj. Es lo mismo que hace la parada del impacto al acertar un golpe,
+    y por la misma razon: un cuadro de texto mientras te matan por detras no es
+    un cuadro de texto, es un adorno.
+
+**Los disparadores.** Un simbolo de la leyenda con `guion:` lanza ese guion al
+**entrar** en la casilla -no mientras la pisas, o un cartel te hablaria sesenta
+veces por segundo- y con `una_vez: si` solo la primera vez de toda la partida.
+Un disparador puede ser ademas cualquier otra cosa: aire, suelo o plataforma. Y
+un nivel puede lanzar uno al empezar (`guion:` en el nivel), que es por donde un
+juego cuenta algo antes de dejarte jugar.
+
+**El cuadro de texto, en las siete maquinas.** Dos lineas de 36 caracteres en el
+marcador. Los 36 no son un capricho: es lo que cabe en la mas estrecha de las
+siete dejando margen, y el marcador es lo unico libre sin tapar el juego. El
+texto se parte por palabras **en el compilador** y en la ROM quedan las cadenas
+ya hechas, rellenadas a lo ancho: escribir una linea borra lo que hubiera debajo,
+asi que ninguna maquina necesita una funcion de borrar propia. Partir por
+palabras hay que hacerlo mirando hacia adelante, y eso en un 68000 a 7 MHz se
+pagaria sesenta veces por segundo para siempre; aqui se paga una vez.
+
+**El genero de aventura lo usa de verdad.** Sale con guion de bienvenida en cada
+nivel y un cartel en el segundo que sabe cuantas veces lo has leido: la primera
+explica y las demas se rien de ti. Es el ejemplo mas corto de para que sirve una
+variable.
+
+**El bot pasa los cuadros de texto**, y eso encontro un detalle del que no me
+habia dado cuenta: el cuadro avanza con el **flanco** de la tecla, asi que
+tenerla apretada no pasa de pagina. Es a proposito -si no, un texto de tres
+paginas se lo comeria la pulsacion con la que se acaba el anterior- pero un bot
+que dejaba el boton apretado se quedaba mirando la primera pagina para siempre.
+Ahora pulsa a golpes.
+
+**Y la traza de paridad mira los guiones**: por cual va, en que paso, que pagina
+de texto se ve y cuanto valen las variables. Sin eso, dos interpretes podrian
+decidir distinto mientras el jugador acabara en el mismo sitio, que es justo lo
+que pasa cuando el guion **para** la partida.
+
+### Un aviso que faltaba
+
+Un simbolo que este en la leyenda **y** en `spawns:` no dibuja nada: gana el
+spawn y la casilla se queda vacia. Ahora se avisa. Callarlo es dejar que alguien
+pase una tarde preguntandose por que su disparador no dispara, que es
+exactamente lo que paso escribiendo esto.
 
 ## 1.27
 

@@ -253,6 +253,18 @@ sonido:
   titulo: presentacion           # la de la pantalla de título
   jefe: acoso                    # manda mientras el jefe esté vivo
 
+variables:                       # la memoria del juego: sobrevive a los niveles
+  avisos: 0
+
+guiones:                         # y lo que la mueve
+  cartel:
+    - sumar: {avisos: 1}
+    - si: {avisos: 1}
+      pasos:
+        - decir: "CUIDADO CON EL FOSO."
+      si_no:
+        - decir: "TE LO DIJE."
+
 spawns: {s: seta, c: moneda}
 
 niveles:
@@ -358,9 +370,9 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.27.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
-| `neoplat-kit-1.27.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.27.zip` | el `ngplat.exe` y su LEEME |
+| `neoplat-docs-1.28.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
+| `neoplat-kit-1.28.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.28.zip` | el `ngplat.exe` y su LEEME |
 
 El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
 plantillas; no necesita Python ni nada instalado. Con **doble clic** —sin
@@ -746,8 +758,6 @@ Lo que aún no hace:
   dibuja, y sale gratis porque la vista está quieta; deslizándose habría que
   repintar la pantalla entera cada pocos píxeles y no cabe
   ([docs/atarist.md](docs/atarist.md)).
-- **Eventos guionizados**: hay cinco comportamientos de enemigo fijos y un jefe
-  por nivel (`jefe: si`); no hay forma de guionizar una secuencia.
 - **Zoom de sprites** (la Neo Geo lo permite; el motor no lo usa).
 
 ## Licencia

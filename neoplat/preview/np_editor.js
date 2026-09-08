@@ -1009,6 +1009,28 @@
       if (ancho() < 20 || alto() < 14) {
         problemas.push({ texto: "el nivel es mas pequeno que una pantalla", grave: true });
       }
+      /* Un disparador de los de `una_vez` que este debajo de la salida salta
+         antes de que el jugador haya podido hacer nada, y como no vuelve a
+         saltar en toda la partida, se pierde. Es un fallo silencioso: el juego
+         no se rompe, simplemente esa escena no se ve nunca. */
+      if (DATA.tiles.guion) {
+        for (var gy = 0; gy < f.length; gy++) {
+          var gx = f[gy].indexOf("P");
+          if (gx < 0) continue;
+          var debajoP = gy + 1 < f.length ? f[gy + 1][gx] : "";
+          [f[gy][gx], debajoP].forEach(function (c) {
+            var idx = DATA.tiles.chars.indexOf(c);
+            if (idx >= 0 && DATA.tiles.guion[idx] && DATA.tiles.una_vez
+                && DATA.tiles.una_vez[idx]) {
+              problemas.push({
+                texto: "el disparador de una sola vez esta en la salida: "
+                       + "saltara antes de que el jugador toque nada",
+                x: gx * TILE, y: gy * TILE
+              });
+            }
+          });
+        }
+      }
       editor.problemas = problemas;
       return problemas;
     }
@@ -2012,6 +2034,14 @@
              dibujadas en la sala -las paredes del fondo-. En la paleta sale en
              blanco, asi que hay que decirlo o parece un tile roto. */
           if (!cubo) etiqueta += " ya pintado";
+        }
+        /* Un disparador se ve igual que la casilla que sea -muchas veces es
+           aire- asi que en la paleta hay que decir que guion lanza, o no hay
+           forma de distinguir el cartel del hueco de al lado. */
+        var guion = DATA.tiles.guion ? DATA.tiles.guion[i] : 0;
+        if (guion && DATA.guion_nombres) {
+          etiqueta += ": " + (DATA.guion_nombres[guion - 1] || "guion");
+          if (DATA.tiles.una_vez && DATA.tiles.una_vez[i]) etiqueta += " (una vez)";
         }
         lista.push({ char: ch, etiqueta: etiqueta,
                      tipo: "tile", hoja: hoja, frame: cuadro });

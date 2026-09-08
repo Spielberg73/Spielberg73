@@ -1519,6 +1519,132 @@ Duraciones: `do4:2` dura el doble. Límites: 46 efectos, 14 músicas, 2 pistas
 por música (el tercer canal se reserva para los efectos) y notas entre `do1` y
 `do8` aproximadamente.
 
+## `variables` y `guiones`
+
+Hasta aquí el `game.yaml` describe **un mundo**: cómo se salta, qué hay en el
+mapa y qué pega. Lo que no dice es que **pase algo**: que al pisar una casilla
+se abra una puerta, que un cartel avise, que la segunda vez que pasas la cosa
+haya cambiado. Eso son los guiones, y su memoria son las variables.
+
+### `variables`: la memoria del juego
+
+```yaml
+variables:
+  puerta_abierta: 0
+  monedas: 0
+  visitas: 0
+```
+
+Un número con nombre y su valor de salida. Van de 0 a 65535 y caben **32**.
+
+Son de la **partida**, no del nivel: cambiar de nivel o perder una vida no se
+las lleva por delante. Sólo vuelven a su valor de salida al empezar una partida
+nueva. Es lo que permite que el juego se acuerde de lo que hiciste dos niveles
+atrás, que es de lo que va tener memoria.
+
+### `guiones`: lo que pasa
+
+```yaml
+guiones:
+  cartel:
+    - decir: "CUIDADO CON EL FOSO QUE HAY MAS ADELANTE."
+  la_puerta:
+    - si: {llave_de_oro: 1}
+      pasos:
+        - decir: "LA LLAVE ENCAJA."
+        - poner: {puerta_abierta: 1}
+        - sonido: control
+      si_no:
+        - decir: "ESTA CERRADA. FALTA LA LLAVE."
+```
+
+Un guion es una **lista de pasos**. No son bloques que se arrastran: el
+proyecto de NeoPlat es texto a propósito —se lee, se compara, se mete en git y
+el editor lo reescribe sin tocar tus comentarios— y un guion también.
+
+Los pasos que hay:
+
+| paso | qué hace |
+|---|---|
+| `decir: "TEXTO"` | cuadro de texto; la partida se para hasta que pulsas |
+| `esperar: 30` | espera esos frames (60 = un segundo) |
+| `poner: {var: 5}` | la variable pasa a valer eso |
+| `sumar: {var: 1}` | le suma eso (puede ser negativo) |
+| `si: {var: 1}` + `pasos:` + `si_no:` | mira una variable y elige rama |
+| `sonido: moneda` | dispara uno de los efectos de `sonido: efectos:` |
+| `dar: llave` | te da un objeto, como si lo hubieras cogido |
+| `ir_a_nivel: 2` | cambia de nivel |
+
+**Los pasos que no esperan corren todos en el mismo frame.** Poner tres
+variables y dar un objeto no cuesta cuatro frames: cuesta uno. Sólo paran
+`decir:` —hasta que pulsas— y `esperar:`. Si cada paso durase un frame, abrir
+una puerta y avisar de ello tardaría un cuarto de segundo en cosas que el
+jugador ni ve.
+
+**Mientras hay un guion en marcha la partida no corre**: ni el jugador, ni los
+bichos, ni el reloj. Es lo mismo que hace la parada del impacto al acertar un
+golpe, y por la misma razón: lo que para la partida tiene que pararla de verdad
+o no sirve de nada. Un cuadro de texto mientras te matan por detrás no es un
+cuadro de texto, es un adorno.
+
+En `si:` se puede comparar con algo que no sea la igualdad, poniéndolo entre
+comillas:
+
+```yaml
+    - si: {monedas: ">= 10"}
+      pasos:
+        - decir: "YA PUEDES PAGAR EL PEAJE."
+```
+
+Valen `=`, `!=`, `<`, `<=`, `>` y `>=`.
+
+### Cómo se lanza un guion
+
+De dos maneras:
+
+**Al pisar una casilla** —un disparador—, poniéndoselo a un símbolo de la
+leyenda:
+
+```yaml
+tiles:
+  leyenda:
+    'C': {tile: 12, tipo: vacio, guion: cartel}
+    'E': {tile: 13, tipo: vacio, guion: la_escena, una_vez: si}
+```
+
+El guion salta **al entrar** en la casilla, no mientras la pisas: si no, un
+cartel te hablaría sesenta veces por segundo. Con `una_vez: si` además sólo
+salta la primera vez en toda la partida, que es la diferencia entre un cartel
+—que puedes releer— y la escena en la que alguien te da una llave.
+
+Un disparador puede ser **además cualquier otra cosa**: `tipo: vacio` para que
+se pueda atravesar, pero también `solido` o `plataforma` si quieres que la
+casilla sea sólida y encima dispare.
+
+**Al empezar un nivel**, con `guion:` en el nivel:
+
+```yaml
+niveles:
+  - nombre: "EL VALLE"
+    guion: bienvenida
+    mapa: |
+      ...
+```
+
+### El cuadro de texto
+
+Dos líneas de 36 caracteres, en el marcador. No es una decisión de estilo: 36
+es lo que cabe en la más estrecha de las siete máquinas dejando margen, y el
+marcador es lo único que hay libre sin tapar el juego.
+
+El texto se parte **en el compilador**, no en la máquina: se corta por palabras
+en páginas de dos líneas y en la ROM quedan las cadenas ya hechas. Partir por
+palabras hay que hacerlo mirando hacia adelante, y eso en un 68000 a 7 MHz se
+pagaría sesenta veces por segundo para siempre. Aquí se paga una vez.
+
+Un `decir:` largo sale en varias páginas y se pasan de una en una con el botón.
+El texto sale siempre en mayúsculas, que es lo que tiene la fuente.
+
 ## `spawns`
 
 Relaciona símbolos del mapa con enemigos y objetos:

@@ -32,14 +32,20 @@ var LEYENDA = { ".": 0, "#": 1, "=": 2, "^": 3, "G": 4, "/": 5, "\\": 6, "!": 7,
                 "p": 13,
                 /* y la liana: se trepa en vertical y se coge en el aire.
                    Se escribe "|" y no "T" porque "T" ya es el tablon. */
-                "|": 14 };
-var TIPOS = [0, 1, 2, 3, 4, 6, 7, 8, 9, 9, 1, 1, 1, 1, 10];
+                "|": 14,
+                /* y el disparador de guiones: casilla vacia que lanza uno */
+                "D": 15 };
+var TIPOS = [0, 1, 2, 3, 4, 6, 7, 8, 9, 9, 1, 1, 1, 1, 10, 0];
 /* que objeto abre cada tile: el objeto mas uno, 0 = no es cerrojo */
-var NECESITA = [0, 0, 0, 0, 0, 0, 0, 0, 6, 7, 0, 0, 0, 0, 0];
+var NECESITA = [0, 0, 0, 0, 0, 0, 0, 0, 6, 7, 0, 0, 0, 0, 0, 0];
 /* lo que levanta cada tile (solo lo mira la vista isometrica) y con que cubo
    se dibuja: el indice en `bloques` mas uno, 0 = no se dibuja */
-var ALTOS =   [0, 0, 0, 0, 0, 0, 0, 0, 48, 48, 4, 16, 48, 48, 0];
-var BLOQUES = [0, 0, 0, 0, 0, 0, 0, 0,  1,  1, 1,  1,  1,  0,  0];
+var ALTOS =   [0, 0, 0, 0, 0, 0, 0, 0, 48, 48, 4, 16, 48, 48, 0, 0];
+var BLOQUES = [0, 0, 0, 0, 0, 0, 0, 0,  1,  1, 1,  1,  1,  0,  0, 0];
+/* El disparador ("D", el simbolo 15) lanza el primer guion; los demas no
+   lanzan nada. `una_vez` lo cambia cada prueba que lo necesite. */
+var GUIONES_DE_TILE = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
+var UNA_VEZ_DE_TILE = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
 function anim(frames, speed) {
   return { frames: frames, count: frames.length, speed: speed || 8, loop: 1 };
@@ -105,6 +111,13 @@ function datos(filas, opciones) {
     agresivos: opciones.agresivos === undefined ? 2 : opciones.agresivos,
     /* 1 = el golpe de un enemigo hace dano a otro enemigo */
     entre_ellos: opciones.entreEllos ? 1 : 0,
+    /* Los guiones: la misma tabla plana que genera el compilador. `pasos` son
+       todos los pasos seguidos, `guion_ini` donde empieza cada uno (con el
+       hueco de cierre) y `dialogo` las lineas ya partidas de dos en dos. */
+    pasos: opciones.pasos || [],
+    guion_ini: opciones.guionIni || [0],
+    dialogo: opciones.dialogo || [],
+    var_inicial: opciones.variables || [],
     /* 1 = el juego lleva bolsa (objetos de `efecto: llevar`) */
     bolsa_activa: opciones.bolsa ? 1 : 0,
     /* desde donde se mira: con "cenital" no hay gravedad y se anda en
@@ -293,6 +306,8 @@ function datos(filas, opciones) {
     }],
     tiles: { kind: TIPOS, gfx: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 0, 0],
              need: NECESITA, alto: ALTOS, bloque: BLOQUES,
+             /* que guion lanza cada casilla (indice + 1) y si es de una vez */
+             guion: GUIONES_DE_TILE, una_vez: UNA_VEZ_DE_TILE,
              sala: { tile: 0, ancho: 1, alto: 1, x: 0, y: 0 } },
     /* el cubo con el que se dibuja una casilla levantada: aqui solo hace
        falta que exista, porque las pruebas no dibujan nada */
@@ -3270,6 +3285,221 @@ prueba("empezar un nivel no cuenta como cambiar de pantalla", function () {
   assert.strictEqual(NP.F2I(vivo.x), casa,
                      "el tenaz ha reaparecido en x=" + NP.F2I(vivo.x)
                      + " y el mapa lo pone en " + casa);
+});
+
+
+/* ---------------------------------------------------- guiones y variables
+ *
+ * Un guion es lo que convierte un nivel en un juego: que al pisar una casilla
+ * pase algo, que un cartel avise, que la segunda vez la cosa haya cambiado.
+ * Estas pruebas son de las tres piezas: la memoria (las variables), el
+ * interprete (los pasos) y el cuadro de texto.
+ *
+ * Los codigos de los pasos son los de np_types.h:
+ *   0 fin  1 decir  2 esperar  3 poner  4 sumar  5 si  6 saltar
+ *   7 sonido  8 dar  9 nivel
+ */
+
+/* Un mapa llano con un disparador ("D") en el suelo, unas casillas a la
+   derecha de la salida. */
+function conDisparador(opciones) {
+  var filas = [], y;
+  for (y = 0; y < 13; y++) filas.push(".".repeat(24));
+  filas.push("#".repeat(24));
+  filas[12] = "..P...D" + ".".repeat(17);
+  opciones = opciones || {};
+  return mundo(filas, opciones);
+}
+
+/* Deja al jugador encima de la casilla `cx` y le hace mirar como si acabara de
+   llegar: asi el disparador cuenta que se **entra** en ella.
+
+   Dos frames: en el primero el disparador lanza el guion y en el segundo el
+   guion da su primer paso. Esa vuelta de retraso es de verdad -el guion se
+   mira al principio del frame y el disparador al final- y no se nota jugando,
+   pero las pruebas tienen que contar con ella. */
+function pisar(w, cx, cy) {
+  var a = w.data.player.actor, p = w.players[0];
+  p.x = NP.I2F(cx * 16 + 8 - (a.box_w >> 1));
+  p.y = NP.I2F(cy * 16 + 16 - a.box_h);
+  p.vx = 0; p.vy = 0;
+  w.pisadaX = -1; w.pisadaY = -1;
+  w.step(0);
+  w.step(0);
+  return p;
+}
+
+function texto(w) {
+  return [w.dialogoLinea(0), w.dialogoLinea(1)]
+    .map(function (l) { return (l || "").trim(); })
+    .filter(Boolean).join(" ");
+}
+
+prueba("las variables salen con el valor que dice el juego", function () {
+  var w = conDisparador({ variables: [7, 3] });
+  w.step(NP.IN.START);
+  assert.strictEqual(w.vars[0], 7);
+  assert.strictEqual(w.vars[1], 3);
+  assert.strictEqual(w.vars[2], 0, "las que no existen valen cero");
+});
+
+prueba("un guion pone y suma variables, y todo en el mismo frame", function () {
+  /* Cuatro pasos sin espera: si cada uno costara un frame, abrir una puerta y
+     avisar tardaria un cuarto de segundo en cosas que no se ven. */
+  var w = conDisparador({
+    variables: [0, 0],
+    pasos: [[3, 0, 0, 5, 0], [4, 0, 0, 2, 0], [3, 1, 0, 1, 0], [0, 0, 0, 0, 0]],
+    guionIni: [0, 4]
+  });
+  w.step(NP.IN.START);
+  pisar(w, 6, 12);
+  assert.strictEqual(w.vars[0], 7, "no ha puesto 5 y sumado 2");
+  assert.strictEqual(w.vars[1], 1);
+  /* Y en el mismo frame: al acabar los dos pasos de `pisar` el guion ya se ha
+     soltado. Si cada paso costara un frame, aqui seguiria en marcha. */
+  assert.strictEqual(w.guion, 0,
+                     "cuatro pasos sin espera han costado mas de un frame");
+});
+
+prueba("un cuadro de texto para la partida hasta que se pulsa", function () {
+  var w = conDisparador({
+    variables: [0],
+    pasos: [[1, 0, 0, 0, 1], [0, 0, 0, 0, 0]],
+    guionIni: [0, 2],
+    dialogo: ["HOLA", ""]
+  });
+  w.step(NP.IN.START);
+  var p = pisar(w, 6, 12);
+  assert.strictEqual(texto(w), "HOLA", "no sale el texto");
+  var x0 = NP.F2I(p.x);
+  correr(w, 30, NP.IN.RIGHT);
+  assert.strictEqual(NP.F2I(p.x), x0, "el jugador se mueve mientras habla");
+  w.step(NP.IN.ACTION);
+  w.step(0);
+  assert.strictEqual(w.guion, 0, "no se ha soltado al pulsar");
+  assert.strictEqual(texto(w), "", "sigue el cuadro puesto");
+  correr(w, 30, NP.IN.RIGHT);
+  assert.ok(NP.F2I(p.x) > x0, "no vuelve a andar cuando se acaba el guion");
+});
+
+prueba("un texto de varias paginas se pasa una a una", function () {
+  var w = conDisparador({
+    variables: [0],
+    pasos: [[1, 0, 0, 0, 2], [0, 0, 0, 0, 0]],
+    guionIni: [0, 2],
+    dialogo: ["UNO", "", "DOS", ""]
+  });
+  w.step(NP.IN.START);
+  pisar(w, 6, 12);
+  assert.strictEqual(texto(w), "UNO");
+  w.step(NP.IN.ACTION);
+  assert.strictEqual(texto(w), "DOS", "no ha pasado de pagina");
+  w.step(0);
+  w.step(NP.IN.ACTION);
+  w.step(0);
+  assert.strictEqual(w.guion, 0, "no se acaba al pasar la ultima");
+});
+
+prueba("`si` elige rama, y `si_no` la otra", function () {
+  /* El compilador aplana el si a un salto: "si no se cumple, salta N pasos".
+     Aqui va a mano el resultado de:
+         si: {v: 1}  pasos: [poner v=10]  si_no: [poner v=20]      */
+  function conV(v) {
+    var w = conDisparador({
+      variables: [v],
+      pasos: [[5, 0, 0, 1, 2],      /* si v == 1, si no salta 2 */
+              [3, 0, 0, 10, 0],     /*   poner v = 10 */
+              [6, 0, 0, 0, 1],      /*   saltar el si_no */
+              [3, 0, 0, 20, 0],     /* si_no: poner v = 20 */
+              [0, 0, 0, 0, 0]],
+      guionIni: [0, 5]
+    });
+    w.step(NP.IN.START);
+    pisar(w, 6, 12);
+    return w.vars[0];
+  }
+  assert.strictEqual(conV(1), 10, "con la condicion cierta no entra");
+  assert.strictEqual(conV(0), 20, "con la condicion falsa no va al si_no");
+});
+
+prueba("un disparador salta al entrar, no mientras lo pisas", function () {
+  var w = conDisparador({
+    variables: [0],
+    pasos: [[4, 0, 0, 1, 0], [0, 0, 0, 0, 0]],
+    guionIni: [0, 2]
+  });
+  w.step(NP.IN.START);
+  pisar(w, 6, 12);
+  assert.strictEqual(w.vars[0], 1, "no ha saltado al entrar");
+  correr(w, 60, 0);
+  assert.strictEqual(w.vars[0], 1,
+                     "ha vuelto a saltar sin salir de la casilla: " + w.vars[0]);
+  pisar(w, 3, 12);          /* salir */
+  pisar(w, 6, 12);          /* y volver a entrar */
+  assert.strictEqual(w.vars[0], 2, "no salta al volver a entrar");
+});
+
+prueba("con `una_vez` solo salta la primera vez de la partida", function () {
+  var w = conDisparador({
+    variables: [0],
+    pasos: [[4, 0, 0, 1, 0], [0, 0, 0, 0, 0]],
+    guionIni: [0, 2]
+  });
+  w.data.tiles.una_vez = w.data.tiles.una_vez.slice();
+  w.data.tiles.una_vez[15] = 1;
+  w.step(NP.IN.START);
+  pisar(w, 6, 12);
+  pisar(w, 3, 12);
+  pisar(w, 6, 12);
+  assert.strictEqual(w.vars[0], 1,
+                     "ha vuelto a saltar un disparador de una sola vez");
+});
+
+prueba("el guion del nivel se lanza al entrar", function () {
+  var w = conDisparador({
+    variables: [0],
+    pasos: [[3, 0, 0, 9, 0], [0, 0, 0, 0, 0]],
+    guionIni: [0, 2]
+  });
+  /* El mundo de las pruebas ya nace jugando, asi que se carga el nivel a mano:
+     es lo mismo que hace la partida al pulsar start. */
+  w.data.levels[0].guion = 1;
+  w.loadLevel(0);               /* carga el nivel y lanza el guion */
+  w.step(0);                    /* y aqui da su primer paso */
+  assert.strictEqual(w.vars[0], 9, "no se ha lanzado el guion de bienvenida");
+});
+
+prueba("las variables sobreviven a cambiar de nivel y a morir", function () {
+  /* Son la memoria de la **partida**: si se borraran al cargar un nivel, no
+     habria manera de acordarse de nada de lo que hiciste en el anterior. */
+  var w = conDisparador({
+    variables: [0],
+    pasos: [[3, 0, 0, 42, 0], [0, 0, 0, 0, 0]],
+    guionIni: [0, 2],
+    health: 1
+  });
+  w.step(NP.IN.START);
+  pisar(w, 6, 12);
+  assert.strictEqual(w.vars[0], 42);
+  w.loadLevel(0);
+  assert.strictEqual(w.vars[0], 42, "cargar un nivel se ha llevado la memoria");
+  w.playerDie(0);
+  correr(w, 200, 0);
+  assert.strictEqual(w.vars[0], 42, "morir se ha llevado la memoria");
+});
+
+prueba("`esperar` cuenta frames y no se salta", function () {
+  var w = conDisparador({
+    variables: [0],
+    pasos: [[2, 0, 0, 20, 0], [3, 0, 0, 1, 0], [0, 0, 0, 0, 0]],
+    guionIni: [0, 3]
+  });
+  w.step(NP.IN.START);
+  pisar(w, 6, 12);
+  correr(w, 10, 0);
+  assert.strictEqual(w.vars[0], 0, "no ha esperado");
+  correr(w, 20, 0);
+  assert.strictEqual(w.vars[0], 1, "no ha seguido despues de esperar");
 });
 
 /* ------------------------------------------- la vista isometrica

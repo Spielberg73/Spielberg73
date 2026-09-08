@@ -187,12 +187,40 @@ typedef struct {
     uint16_t sala_x, sala_y;
     uint8_t bloques_n;
     uint8_t bloques_abiertos;    /* cuantos cerrojos habia abiertos al montarla */
+    /* --- las variables y el guion que corre ------------------------------
+     *
+     * Las variables son la memoria de la partida: se ponen al empezar con lo
+     * que diga el game.yaml y sobreviven a cambiar de nivel y a perder una
+     * vida. Por eso no se tocan en np_world_load_level.
+     *
+     * `guion` es el que se esta ejecutando **mas uno** (0 = ninguno) y `paso`
+     * por donde va. Mientras hay guion, la partida no corre: eso es lo que
+     * hace que un cuadro de texto sea un cuadro de texto y no un adorno que
+     * pasa mientras te matan. */
+    uint16_t vars[NP_MAX_VARS];
+    uint16_t guion, paso;
+    uint16_t guion_espera;       /* frames que le quedan a un `esperar` */
+    uint16_t pagina;             /* la pagina de texto que se ve ahora */
+    uint16_t paginas;            /* cuantas le quedan al `decir` de turno */
+    /* Los disparadores de `una_vez:` que ya han saltado, por su casilla. Doce,
+       igual que los cerrojos: es un mapa, no un inventario. */
+    uint16_t gastados[NP_MAX_ABIERTOS];
+    uint8_t gastados_n;
+    /* En que casilla estaba el jugador el frame pasado, para que un disparador
+       salte al **entrar** y no sesenta veces por segundo mientras lo pisas. */
+    int16_t pisada_x, pisada_y;
 } NpWorld;
 
 void np_world_init(NpWorld *w);
 void np_world_load_level(NpWorld *w, uint16_t index);
 /* Un mando por jugador. Con un solo jugador, `input2` se ignora. */
 void np_world_step(NpWorld *w, uint16_t input, uint16_t input2);
+
+/* Lo que hay que ensenar del cuadro de texto: la linea `fila` (0 o 1) de la
+ * pagina que toca, ya rellenada a NP_DIALOGO_COLS columnas. Sin cuadro devuelve
+ * una linea de espacios, asi que escribirla siempre vale para pintar **y** para
+ * borrar, y ninguna maquina necesita saber nada mas. */
+const char *np_dialogo_linea(const NpWorld *w, uint8_t fila);
 
 /* Consultas que usa la capa grafica. */
 uint8_t np_tile_kind_at(const NpLevel *level, int32_t tx, int32_t ty);
