@@ -213,8 +213,8 @@ class TestColores(unittest.TestCase):
             self.assertLessEqual(valor, 0x0FFF)
 
     def test_cada_maquina_ve_su_propio_color(self):
-        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "jaguar",
-                       "atarist", "x68000"):
+        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "cd32",
+                       "jaguar", "atarist", "x68000"):
             visible = sistemas.obtener(nombre).color_visible((200, 12, 90))
             self.assertEqual(len(visible), 3)
             for canal in visible:
@@ -352,8 +352,8 @@ class TestListado(unittest.TestCase):
     """Lo que cuenta `ngplat sistemas` tiene que seguir siendo verdad."""
 
     def test_cada_maquina_dice_como_suena_y_que_hace_con_el_parallax(self):
-        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "jaguar",
-                       "atarist", "x68000"):
+        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "cd32",
+                       "jaguar", "atarist", "x68000"):
             sistema = sistemas.obtener(nombre)
             texto = " ".join(sistema.notas).lower()
             self.assertTrue(sistema.notas, "%s no cuenta nada de si" % nombre)
@@ -813,8 +813,8 @@ class TestProyectoGenerado(unittest.TestCase):
         """El ST ensena 200 lineas y las demas 224. Lo que **no** puede cambiar
         es el mundo: si el motor viera otra pantalla, el juego seria otro."""
         self.assertEqual(sistemas.obtener("atarist").pantalla, (320, 200))
-        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "jaguar",
-                       "x68000"):
+        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "cd32",
+                       "jaguar", "x68000"):
             self.assertEqual(sistemas.obtener(nombre).pantalla, (320, 224), nombre)
         cabecera = os.path.join(KIT, "engine", "include", "np_types.h")
         with open(cabecera, encoding="utf-8") as fh:
@@ -825,8 +825,8 @@ class TestProyectoGenerado(unittest.TestCase):
     def test_los_sistemas_describen_el_mismo_juego(self):
         """Cambiar de maquina no cambia el juego: niveles, enemigos y mapas."""
         referencia = None
-        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "jaguar",
-                       "atarist", "x68000"):
+        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "cd32",
+                       "jaguar", "atarist", "x68000"):
             build = cargar_demo(self.proyecto, nombre)
             resumen = [(n.name, n.width, n.height, n.cells, n.spawns)
                        for n in build.levels]
@@ -1018,8 +1018,8 @@ class TestNivelesAltos(unittest.TestCase):
     def test_un_nivel_alto_vale_en_todas_las_maquinas(self):
         """Lo que no se podia hacer y ahora se puede: el mismo nivel de 20x32
         pasa la revision de todas, sin avisos raros."""
-        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "jaguar",
-                       "atarist", "x68000"):
+        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "cd32",
+                       "jaguar", "atarist", "x68000"):
             with self.subTest(sistema=nombre):
                 build = self._proyecto("torre", 20, 32, nombre)
                 sistemas.obtener(nombre).comprobar(build)
@@ -1033,8 +1033,8 @@ class TestNivelesAltos(unittest.TestCase):
         raiz = os.path.join(self.tmp, "comando")
         if not os.path.isdir(raiz):
             crear_proyecto(raiz, "COMANDO", "TEST", genero="comando")
-        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "jaguar",
-                       "atarist", "x68000"):
+        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "cd32",
+                       "jaguar", "atarist", "x68000"):
             with self.subTest(sistema=nombre):
                 build = cargar_demo(raiz, nombre)
                 sistema = sistemas.obtener(nombre)
@@ -1052,8 +1052,8 @@ class TestNivelesAltos(unittest.TestCase):
         raiz = os.path.join(self.tmp, "mazmorra")
         if not os.path.isdir(raiz):
             crear_proyecto(raiz, "MAZMORRA", "TEST", genero="mazmorra")
-        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "jaguar",
-                       "atarist", "x68000"):
+        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "cd32",
+                       "jaguar", "atarist", "x68000"):
             with self.subTest(sistema=nombre):
                 build = cargar_demo(raiz, nombre)
                 self.assertTrue(build.generators,
@@ -1080,8 +1080,8 @@ class TestNivelesAltos(unittest.TestCase):
         raiz = os.path.join(self.tmp, "barrio")
         if not os.path.isdir(raiz):
             crear_proyecto(raiz, "BARRIO", "TEST", genero="barrio")
-        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "jaguar",
-                       "atarist", "x68000"):
+        for nombre in ("neogeo", "megadrive", "amiga", "amiga1200", "cd32",
+                       "jaguar", "atarist", "x68000"):
             with self.subTest(sistema=nombre):
                 build = cargar_demo(raiz, nombre)
                 sistema = sistemas.obtener(nombre)
@@ -1341,8 +1341,8 @@ class TestCompilacionReal(unittest.TestCase):
         objdump = self.cc.replace("-gcc", "-objdump")
         if not shutil.which(objdump):
             self.skipTest("no hay %s" % objdump)
-        for sistema in ("neogeo", "megadrive", "amiga", "amiga1200", "jaguar",
-                        "atarist", "x68000"):
+        for sistema in ("neogeo", "megadrive", "amiga", "amiga1200", "cd32",
+                        "jaguar", "atarist", "x68000"):
             build = cargar_demo(self.proyecto, sistema)
             out = os.path.join(self.tmp, "estatico-" + sistema)
             generar_para_sistema(build, out, sistemas.obtener(sistema), "202")

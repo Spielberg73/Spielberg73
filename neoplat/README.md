@@ -17,6 +17,7 @@ game.yaml + PNG  ──►  ngplat  ──┼──►  build/neogeo/         RO
                                 ├──►  build/megadrive/      cartucho .bin
                                 ├──►  build/amiga/          disquete .adf
                                 ├──►  build/amiga1200/      disquete .adf (AGA)
+                                ├──►  build/cd32/           CD .iso arrancable
                                 ├──►  build/jaguar/         cartucho .j64
                                 ├──►  build/atarist/        disquete .st
                                 └──►  build/x68000/         ejecutable .X y disquete .xdf
@@ -24,9 +25,11 @@ game.yaml + PNG  ──►  ngplat  ──┼──►  build/neogeo/         RO
 
 El juego lo describes una vez. Lo que cambia de una máquina a otra es cómo se
 dibuja y cómo suena, no lo que pasa: la simulación (`engine/core/np_world.c`)
-es la misma en las siete, así que un salto mide exactamente lo mismo en todas.
-Y las siete llevan un **68000** (el A1200 su 68EC020), que es lo que hace que el
-motor sea uno solo.
+es la misma en todas, así que un salto mide exactamente lo mismo en cada una.
+Y todas llevan un **68000** (el A1200 y el CD32 su 68EC020), que es lo que hace
+que el motor sea uno solo. Son **ocho destinos sobre siete máquinas**: el CD32
+es el mismo A1200 metido en una consola, así que comparte con él hasta el
+binario —lo único que cambia es que va en un CD y no en un disquete—.
 
 | | Neo Geo | Mega Drive | Amiga | Amiga 1200 | Jaguar | Atari ST | X68000 |
 |---|---|---|---|---|---|---|---|
@@ -56,6 +59,17 @@ no caben en la DMA de siempre: hacen falta las lecturas de 32 bits del AGA, y
 con ellas el puntero de pantalla salta de 32 en 32 píxeles y el resto lo pone el
 scroll fino extendido. Está medido en un A1200 emulado y se mueve píxel a píxel
 igual que el OCS; [docs/amiga.md](docs/amiga.md) lo cuenta.
+
+El **CD32** es esa misma máquina en una consola: mismo 68EC020, mismo AGA,
+mismos 2 MB de RAM chip. Por eso `--sistema cd32` produce **el mismo ejecutable
+byte a byte** que el A1200 y lo único que cambia es el envase: en vez de un
+disquete, un **ISO 9660** que la Kickstart monta como `CD0:` y arranca
+ejecutando `S/Startup-Sequence`. El mando tampoco pide nada nuevo: un pad de
+CD32 se lee como un joystick de dos botones —rojo para saltar y empezar, azul
+para atacar— que es justo lo que ya leía el Amiga. Para que el CD **arranque
+solo** en una consola de verdad hace falta añadirle `CD32.TM`, 2048 bytes de
+Commodore que no se pueden repartir con el kit: `make MARCA=/ruta/CD32.TM`. Sin
+él el ISO es válido y se lee, pero no arranca, y el compilador lo dice.
 
 El X68000 es el otro caso raro, por lo contrario: es la que más ayuda da (sus
 patrones son de 16×16, justo el tile del kit) y a la vez la que menos
@@ -371,9 +385,9 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.29.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
-| `neoplat-kit-1.29.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.29.zip` | el `ngplat.exe` y su LEEME |
+| `neoplat-docs-1.30.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
+| `neoplat-kit-1.30.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.30.zip` | el `ngplat.exe` y su LEEME |
 
 El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
 plantillas; no necesita Python ni nada instalado. Con **doble clic** —sin
@@ -492,7 +506,7 @@ neoplat/
 ├── examples/
 │   ├── bosque-magico/      juego de ejemplo listo para compilar
 │   └── cueva-de-hierro/    el mismo motor con seis colores y parallax en Amiga
-└── tests/                  485 pruebas + 242 de jugabilidad + 81 del editor +
+└── tests/                  506 pruebas + 242 de jugabilidad + 81 del editor +
                             bot que se pasa los niveles + emuladores y navegador
 ```
 

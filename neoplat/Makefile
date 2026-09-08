@@ -30,8 +30,12 @@ test-navegador: ejemplo
 #   Jaguar:      virtualjaguar_libretro.so, del mismo buildbot
 #   Atari ST:    hatari_libretro.so, del mismo buildbot, mas una imagen de TOS
 #                (EmuTOS vale) en /usr/local/share/neoplat/tos.img
+#   CD32:        el mismo core de PUAE, mas la Kickstart del CD32
+#                (kick40060.CD32 y su .ext) en la carpeta de NEOPLAT_ROMS_CD32,
+#                y el CD compilado con la marca: make MARCA=/ruta/CD32.TM
 # La Neo Geo va con el banco de pruebas del propio kit (pip3 install amitools).
 test-emulador: test-emulador-md test-emulador-amiga test-emulador-a1200 \
+               test-emulador-cd32 \
                test-emulador-neogeo test-emulador-jaguar test-emulador-st
 
 test-emulador-md:
@@ -50,6 +54,13 @@ test-emulador-a1200:
 	./ngplat compilar $(EJEMPLO) --sistema amiga1200 --make
 	$(PYTHON) tests/emulador_amiga.py \
 		$(EJEMPLO)/build/amiga1200/disco/BosqueMagico.adf capturas --modelo=A1200
+
+# El mismo juego del A1200, pero en un CD y en la consola. Se salta solo si no
+# estan la Kickstart del CD32 o la marca de Commodore dentro del ISO.
+test-emulador-cd32:
+	./ngplat compilar $(EJEMPLO) --sistema cd32 --make
+	$(PYTHON) tests/emulador_cd32.py \
+		$(EJEMPLO)/build/cd32/disco/BosqueMagico.iso capturas
 
 # La Neo Geo no necesita core de libretro: el banco de pruebas del kit trae el
 # 68000 (machine68k, de amitools) y el chip de video escrito en Python.
@@ -106,7 +117,8 @@ limpiar:
 	find . -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
 
 .PHONY: test test-rapido test-navegador test-emulador test-emulador-md \
-	test-emulador-amiga test-emulador-a1200 test-emulador-neogeo \
+	test-emulador-amiga test-emulador-a1200 test-emulador-cd32 \
+	test-emulador-neogeo \
 	test-emulador-jaguar \
 	test-emulador-st test-emulador-x68000 ejemplo ejemplo-todos paquetes \
 	paquetes-exe limpiar

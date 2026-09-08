@@ -252,15 +252,21 @@ El juego que has escrito vale igual para una Mega Drive, para un Amiga o para
 un Atari ST: solo cambia cómo se dibuja y cómo suena, no lo que pasa.
 
 ```bash
-../ngplat sistemas                       # las siete máquinas y sus límites
+../ngplat sistemas                       # todas las máquinas y sus límites
 ../ngplat compilar --sistema megadrive   # -> build/megadrive/rom/juego.bin
 ../ngplat compilar --sistema amiga       # -> build/amiga/disco/MiJuego.adf
 ../ngplat compilar --sistema amiga1200   # -> lo mismo, con AGA: 256 colores
+../ngplat compilar --sistema cd32        # -> build/cd32/disco/MiJuego.iso
 ../ngplat compilar --sistema jaguar      # -> build/jaguar/rom/MiJuego.j64
 ../ngplat compilar --sistema atarist     # -> build/atarist/disco/mijuego.st
 ```
 
-Para estas cuatro no hace falta ngdevkit, solo un compilador de 68000
+El CD32 es el mismo juego del A1200 en un CD: el ejecutable es idéntico y lo
+que cambia es el envase. Para que el CD arranque solo en una consola de verdad
+hay que añadirle la marca de Commodore (`make MARCA=/ruta/CD32.TM`), que no se
+puede repartir con el kit; sin ella el ISO vale igual pero no arranca.
+
+Para estas cinco no hace falta ngdevkit, solo un compilador de 68000
 cualquiera (`m68k-elf-gcc`, o el paquete `gcc-m68k-linux-gnu` de Debian y
 Ubuntu). Añade `--make` y te lo construye del tirón.
 

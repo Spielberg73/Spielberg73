@@ -218,6 +218,74 @@ Dos medidas, porque «se ve bonito» no demuestra nada:
 Las dos están en `tests/test_sistemas.py`, junto con la que arranca el disquete
 en un A1200 emulado y la que mide el parallax de doble plano.
 
+## El CD32: el mismo A1200 en una consola
+
+Por dentro no hay nada nuevo: 68EC020 a 14 MHz, AGA, 2 MB de RAM chip. Es un
+A1200 sin teclado, sin disquetera y con un lector de CD. Por eso
+`--sistema cd32` **no recompila nada distinto**: el ejecutable que va dentro
+del CD es byte a byte el mismo que el del disquete del A1200 —hay una prueba
+que lo comprueba—. Lo que cambia son dos cosas de fuera.
+
+### El envase: un ISO 9660
+
+La Kickstart del CD32 lleva dentro el sistema de ficheros de CD, así que
+arrancar un CD es igual que arrancar un disquete: monta `CD0:` y ejecuta
+`S/Startup-Sequence`. Nuestro CD lleva justo eso —el ejecutable y un
+`Startup-Sequence` de una línea que lo llama—, y lo monta `iso.py` sin
+depender de ninguna herramienta instalada.
+
+Lo que le dice a la máquina que ese disco es suyo son dos campos del
+descriptor principal:
+
+| | qué lleva |
+|---|---|
+| Identificador de sistema | `CDTV` (lo usan los dos, CDTV y CD32) |
+| Zona de uso de la aplicación | las opciones del sistema de ficheros y, entre ellas, la entrada `TM` |
+
+La entrada `TM` son doce bytes en big endian —`"TM"`, `0x0014`, el tamaño y el
+sector— que apuntan al **fichero de marca**. Y el disco queda así:
+
+```
+ 0-15   zona de sistema, en blanco
+ 16     descriptor principal (con la entrada TM)
+ 17     el mismo descriptor otra vez
+ 18     cierre del juego de descriptores
+ 19     tabla de caminos en big endian   (la que lee el Amiga)
+ ...    la misma en little endian        (la que leen los demás)
+ ...    CD32.TM
+ ...    los directorios y los ficheros
+```
+
+Es la misma forma que usaba ISOCD, la herramienta con la que se hicieron los
+CD32 de verdad; NeoPlat la escribe desde cero y las pruebas la releen con la
+norma en la mano (y, si está instalada, con una librería de ISO ajena).
+
+### La marca: 2048 bytes que no son nuestros
+
+`CD32.TM` es un sector de Commodore, y sin él una consola de verdad **no
+arranca el disco**. No se puede repartir con el kit, igual que no se puede
+repartir una Kickstart, así que lo pone quien compila:
+
+```bash
+make MARCA=/donde/lo/tengas/CD32.TM     # o déjalo al lado del Makefile
+```
+
+Sin marca el ISO se genera igual, es válido y se lee en cualquier ordenador
+—pero no arranca solo, y el compilador lo dice en vez de callárselo. Antes de
+meterlo, `iso.py` comprueba que mide 2048 bytes y que su huella SHA-1 es la que
+tiene que ser: un archivo equivocado da un error claro en vez de un CD mudo.
+
+### El mando
+
+El CD32 no tiene teclado, así que todo tiene que caber en el pad. Y cabe sin
+tocar el motor: un mando de CD32 enchufado al puerto se comporta como un
+joystick de dos botones, con el **rojo** en la línea de disparo de siempre
+(`CIAA_PRA`) y el **azul** en la del segundo botón (`POTGOR`). Eso es
+exactamente lo que ya leía `engine/amiga`: rojo salta y empieza la partida,
+azul ataca. Los otros cinco botones (verde, amarillo, play y los dos de pista)
+piden un protocolo de registro de desplazamiento y no hacen falta: ninguno de
+los nueve géneros usa más de dos botones.
+
 ## Que quepa en un frame
 
 El Amiga PAL da **50 frames por segundo, y cada frame son 312 líneas de

@@ -2,8 +2,51 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.29.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.30.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.30
+
+**Octava maquina: el Amiga CD32.** Por dentro no es una maquina nueva -es un
+A1200 sin teclado y con lector de CD: mismo 68EC020, mismo AGA, mismos 2 MB de
+RAM chip- y eso es justo lo que la hace barata y honesta: `--sistema cd32`
+produce **el mismo ejecutable byte a byte** que el disquete del A1200, y hay
+una prueba que lo comprueba. Lo que cambia es el envase.
+
+**El CD.** `iso.py` monta un ISO 9660 sin depender de ninguna herramienta
+instalada, igual que `adf.py` monta un disquete. Dentro va lo mismo que en el
+disquete -el ejecutable y un `S/Startup-Sequence` que lo llama-, porque la
+Kickstart del CD32 monta el CD como `CD0:` y lo arranca como si fuera un disco.
+
+Lo que le dice a la consola que ese disco es suyo son dos campos del descriptor
+principal: el identificador de sistema (`CDTV`, que usan los dos) y, en la zona
+de uso de la aplicacion, la entrada **`TM`**: doce bytes en big endian que
+apuntan al fichero de marca. El disco sale con la misma forma que usaba ISOCD
+-la herramienta con la que se hicieron los CD32 de verdad-, escrita aqui desde
+cero, y 21 pruebas nuevas la releen con la norma en la mano.
+
+**La marca (`CD32.TM`) la pone quien compila.** Son 2048 bytes de Commodore y
+sin ellos una consola de verdad no arranca el disco. No se pueden repartir con
+el kit, igual que no se puede repartir una Kickstart:
+
+```bash
+make MARCA=/donde/lo/tengas/CD32.TM     # o dejalo al lado del Makefile
+```
+
+Sin marca el ISO se genera igual y es un CD valido y legible, pero no arranca
+solo **y el compilador lo dice**. Antes de meterla se comprueba que mide 2048
+bytes y que su huella SHA-1 es la que tiene que ser: un archivo equivocado da
+un error claro en vez de un CD mudo.
+
+**El mando no pide nada.** Un pad de CD32 enchufado al puerto se lee como un
+joystick de dos botones -el rojo en la linea del disparo de siempre y el azul
+en la del segundo boton-, que es exactamente lo que ya leia `engine/amiga`:
+rojo salta y empieza la partida, azul ataca. Los otros cinco botones piden un
+protocolo de registro de desplazamiento y no hacen falta, porque ninguno de los
+nueve generos usa mas de dos.
+
+Y como siempre, el CD32 entra en las mismas comprobaciones que las demas
+maquinas: colores, niveles altos, limites y el juego de cada genero.
 
 ## 1.29
 

@@ -719,10 +719,12 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
                "en Atari ST el boton no dice disquete: %r" % etiquetas.get("atarist"))
         exigir(etiquetas.get("x68000") == "generar el ejecutable",
                "en el X68000 el boton no dice ejecutable: %r" % etiquetas.get("x68000"))
-        exigir(len(set(etiquetas.values())) == 4,
-               "el boton deberia decir cuatro cosas distintas: cartucho (Mega "
-               "Drive y Jaguar), disquete (Amiga y Atari ST), ROM (Neo Geo) y "
-               "ejecutable (X68000): %s" % etiquetas)
+        exigir(etiquetas.get("cd32") == "generar el CD",
+               "en el CD32 el boton no dice CD: %r" % etiquetas.get("cd32"))
+        exigir(len(set(etiquetas.values())) == 5,
+               "el boton deberia decir cinco cosas distintas: cartucho (Mega "
+               "Drive y Jaguar), disquete (Amiga, Amiga 1200 y Atari ST), ROM "
+               "(Neo Geo), ejecutable (X68000) y CD (CD32): %s" % etiquetas)
         # aqui el preview se abre como file://, asi que no hay ngplat con quien
         # hablar: el boton tiene que estar apagado y decir por que
         exigir(not panel["servidor"], "cree que hay servidor abriendo un archivo")
