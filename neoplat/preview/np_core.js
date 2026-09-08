@@ -12,6 +12,11 @@
   var FIX_ONE = 1 << FIX_SHIFT;
   var TILE = 16, TILE_SHIFT = 4;
   var SCREEN_W = 320, SCREEN_H = 224;
+  /* La camara de un juego de conducir. Las mismas cifras que np_types.h: si
+     una sola cambiara, el navegador y la consola dibujarian carreteras
+     distintas con el mismo game.yaml. */
+  var HORIZONTE = 88, CAMARA_ALTO = 48, FOCAL = 135;
+  var CAMARA_ATRAS = 24, CERCA = 16, TRAMOS_VISTA = 160, MAX_TRAMOS = 256;
   var SUBSTEP = 8 * FIX_ONE;
   var ENTITY_FALL = 8 * FIX_ONE;
   var DYING_TIME = 60, LEVEL_END_TIME = 90, GAME_OVER_TIME = 240;
@@ -573,6 +578,9 @@
     if (index >= this.data.levels.length) index = 0;
     this.levelIndex = index;
     this.level = this.data.levels[index];
+    /* La cinta de la carretera se saca del mapa aqui, una sola vez. Igual que
+       en np_world_load_level. */
+    if (this.carretera()) this.viaMontar();
     /* antes de colocar a nadie: cargar un nivel es empezarlo de cero */
     this.checkOn = 0; this.checkX = 0; this.checkY = 0;
     for (i = 0; i < MAX_PLAYERS; i++) this.resetPlayer(i);
@@ -1467,6 +1475,125 @@
     else pose = ANIM_RUN;
     animSet(p, pose);
     animTick(a, p);
+  };
+
+  /* --- la carretera en perspectiva ------------------------------------
+   *
+   * Gemelo de np_via_montar, np_via_suavizar, np_carretera y
+   * np_carretera_donde. Las mismas cuentas con los mismos enteros: la tabla de
+   * lineas que sale de aqui es la que dibuja el preview, y tiene que ser la
+   * misma que la que dibuja la Neo Geo. */
+  World.prototype.viaSuavizar = function (via) {
+    var anillo = [via[0], via[0], via[0], via[1], via[2]];
+    var i, j, suma, viejo = 0;
+    for (i = 0; i < MAX_TRAMOS; i++) {
+      suma = 0;
+      for (j = 0; j < 5; j++) suma += anillo[j];
+      via[i] = idiv(suma, 5);
+      anillo[viejo] = via[(i + 3 < MAX_TRAMOS) ? i + 3 : MAX_TRAMOS - 1];
+      viejo = (viejo + 1) % 5;
+    }
+  };
+
+  World.prototype.viaMontar = function () {
+    var nivel = this.level;
+    var filas = Math.min(nivel.cells_h, MAX_TRAMOS);
+    var centro = idiv(nivel.cells_w * TILE, 2), medio = TILE;
+    var fila, columna, mejorIni, mejorLargo, ini, tipo, calzada;
+    this.viaCentro = new Array(MAX_TRAMOS);
+    this.viaMedio = new Array(MAX_TRAMOS);
+    for (fila = 0; fila < filas; fila++) {
+      mejorIni = -1; mejorLargo = 0; ini = -1;
+      for (columna = 0; columna <= nivel.cells_w; columna++) {
+        tipo = (columna < nivel.cells_w)
+               ? this.tileKindAt(columna, fila) : TILE_LENTO;
+        calzada = (tipo !== TILE_LENTO && !blocks(tipo));
+        if (calzada) {
+          if (ini < 0) ini = columna;
+        } else if (ini >= 0) {
+          if (columna - ini > mejorLargo) { mejorLargo = columna - ini; mejorIni = ini; }
+          ini = -1;
+        }
+      }
+      if (mejorLargo > 0) {
+        centro = idiv((mejorIni * 2 + mejorLargo) * TILE, 2);
+        medio = idiv(mejorLargo * TILE, 2);
+      }
+      this.viaCentro[fila] = centro;
+      this.viaMedio[fila] = medio;
+    }
+    for (; fila < MAX_TRAMOS; fila++) {
+      this.viaCentro[fila] = centro;
+      this.viaMedio[fila] = medio;
+    }
+    this.viaSuavizar(this.viaCentro);
+    this.viaSuavizar(this.viaMedio);
+  };
+
+  World.prototype.camaraCarretera = function () {
+    var a = this.data.player.actor, p = this.players[0];
+    return [F2I(p.x) + idiv(a.box_w, 2),
+            F2I(p.y) + idiv(a.box_h, 2) + CAMARA_ATRAS];
+  };
+
+  function encoge(z) {
+    if (z < 1) z = 1;
+    return idiv(FOCAL * 256, z);
+  }
+
+  /* Rellena `lineas` (NpLinea por linea de pantalla) y devuelve la primera que
+     lleva carretera: de ahi para arriba es cielo. */
+  World.prototype.carreteraLineas = function (lineas) {
+    var cam, camX, camY, filaCamara, syAnt = SCREEN_H, cxAnt = 0, mxAnt = 0;
+    var i, primero = 1;
+    if (!this.carretera()) return SCREEN_H;
+    cam = this.camaraCarretera();
+    camX = cam[0]; camY = cam[1];
+    filaCamara = camY >> TILE_SHIFT;
+    for (i = 0; i < TRAMOS_VISTA; i++) {
+      var fila = filaCamara - i;
+      var z = i * TILE + CERCA;
+      var k = encoge(z);
+      var sy = HORIZONTE + ((CAMARA_ALTO * k) >> 8);
+      var cx, mx, y, alto, dcx, dmx, acx, amx, franja;
+      if (sy >= SCREEN_H) continue;
+      if (sy <= HORIZONTE) break;
+      if (fila < 0) fila = 0;
+      if (fila >= MAX_TRAMOS) fila = MAX_TRAMOS - 1;
+      cx = idiv(SCREEN_W, 2) + (((this.viaCentro[fila] - camX) * k) >> 8);
+      mx = (this.viaMedio[fila] * k) >> 8;
+      franja = (fila >> 1) & 1;
+      alto = syAnt - sy;
+      if (alto <= 0) continue;
+      if (primero) { cxAnt = cx; mxAnt = mx; primero = 0; }
+      dcx = idiv((cxAnt - cx) << 8, alto);
+      dmx = idiv((mxAnt - mx) << 8, alto);
+      acx = cx << 8; amx = mx << 8;
+      for (y = sy; y < syAnt; y++) {
+        lineas[y].centro = acx >> 8;
+        lineas[y].medio = amx >> 8;
+        lineas[y].franja = franja;
+        acx += dcx; amx += dmx;
+      }
+      syAnt = sy; cxAnt = cx; mxAnt = mx;
+    }
+    return syAnt;
+  };
+
+  /* Donde cae, y cuanto encoge, algo que esta en ese punto del mapa.
+     Devuelve null si queda detras de la camara o pasado el horizonte. */
+  World.prototype.carreteraDonde = function (x, y) {
+    var cam, z, k, sy, sx;
+    if (!this.carretera()) return null;
+    cam = this.camaraCarretera();
+    z = cam[1] - F2I(y);
+    if (z < CERCA) return null;
+    if (z > TRAMOS_VISTA * TILE) return null;
+    k = encoge(z);
+    sy = HORIZONTE + ((CAMARA_ALTO * k) >> 8);
+    if (sy <= HORIZONTE || sy >= SCREEN_H) return null;
+    sx = idiv(SCREEN_W, 2) + (((F2I(x) - cam[0]) * k) >> 8);
+    return { sx: sx, sy: sy, escala: k };
   };
 
   /* --- la vista de carretera: conducir --------------------------------

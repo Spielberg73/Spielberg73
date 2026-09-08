@@ -79,6 +79,40 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
  * es un tipo de suelo mas. */
 #define NP_TILE_LENTO   11
 
+/* --- la vista de carretera (los juegos de conducir) ----------------------
+ *
+ * La pantalla no ensena el mapa: ensena la carretera yendose al horizonte. La
+ * camara va **detras y por encima** del coche, mirando siempre hacia arriba
+ * del mapa, y lo que se dibuja es la proyeccion de la cinta de asfalto.
+ *
+ * La cuenta es la de toda la vida: algo que esta a distancia z de la camara,
+ * a una altura ALTO por debajo de ella, cae en la linea
+ *
+ *     sy = HORIZONTE + (ALTO * FOCAL / z)
+ *
+ * y lo que mide de ancho se encoge en la misma proporcion, FOCAL/z. A esa
+ * proporcion la llamamos `k` y es lo unico que hace falta: multiplica la
+ * distancia al eje de la carretera y multiplica su ancho.
+ *
+ * Las tres cifras no son ajustables desde el game.yaml **a proposito**: son la
+ * camara del genero, no una opcion. Cambiarlas cambia como se ve un juego de
+ * conducir, no como se juega, y con ocho maquinas que tienen que dibujar lo
+ * mismo, una camara distinta por juego es una pantalla distinta por maquina
+ * esperando a pasar. */
+#define NP_HORIZONTE    88       /* la linea del horizonte, de 224 */
+#define NP_CAMARA_ALTO  48       /* lo alto que va la camara sobre el asfalto */
+#define NP_FOCAL       135       /* la distancia focal, en pixeles */
+#define NP_CAMARA_ATRAS 24       /* lo que va la camara detras del coche */
+#define NP_CERCA        16       /* el primer tramo, a un tile de la camara */
+/* Cuantos tramos se miran hacia delante. Mas alla de estos la carretera cae en
+ * las dos lineas de encima del horizonte y no se distingue de una raya, asi
+ * que mirarlos seria pagar por nada. Son 160 casillas: 2560 pixeles, que es
+ * mas de lo que ve un juego de la epoca. */
+#define NP_TRAMOS_VISTA 160
+/* Y cuantos tramos caben en la cinta de un nivel: uno por fila del mapa, que
+ * como mucho son 256 (el limite de alto de un nivel). */
+#define NP_MAX_TRAMOS   256
+
 /* --- la vista isometrica (los juegos de tipo filmation) ------------------
  *
  * Ahi el mapa no es lo que se ve: es la **planta** de la sala, y cada casilla

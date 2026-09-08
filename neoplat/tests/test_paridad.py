@@ -7,6 +7,7 @@ esta prueba lo detecta.
 """
 
 import json
+import math
 import os
 import random
 import shutil
@@ -33,6 +34,7 @@ COL_VARS = 39             # las variables, en un solo numero
 COL_VERBO = 40            # el verbo elegido en una aventura grafica
 COL_MARCHA = 41           # la marcha que lleva metida el coche
 COL_TROMPO = 42           # y los frames que le quedan dando vueltas
+COL_CARRETERA = 43        # la carretera que se ve, entera, en una firma
 
 # El genero de aventura empieza con un cuadro de texto que cuenta de que va, y
 # hasta que no se pasa la partida no corre. Las pruebas que le dan un mando
@@ -54,6 +56,35 @@ BOTONES = [IN_RIGHT, IN_RIGHT, IN_RIGHT | IN_JUMP, IN_LEFT,
            IN_LEFT | IN_JUMP, IN_JUMP, IN_DOWN, 0, IN_START,
            IN_ACTION, IN_RIGHT | IN_ACTION, IN_LEFT | IN_ACTION,
            IN_UP | IN_ACTION, IN_UP]
+
+
+def _circuito() -> str:
+    """Un circuito para las pruebas: recta, curva a la derecha, ese y meta.
+
+    Se escribe aqui y no a mano en el yaml porque son ciento veinte filas y
+    porque asi las curvas son las que son -una pendiente que a punta no se pasa
+    y levantando el pie si-, y no las que salgan de contar puntos a ojo en un
+    editor de texto."""
+    ancho, largo, carril = 40, 120, 7
+    filas = []
+    for i in range(largo):
+        d = largo - 1 - i                    # distancia desde la salida
+        if d < 30:
+            centro = 20
+        elif d < 70:                          # una curva a la derecha
+            centro = 20 + int(round(8 * math.sin((d - 30) / 40.0 * math.pi)))
+        else:                                 # y una ese
+            centro = 20 + int(round(6 * math.sin((d - 70) / 25.0 * math.pi)))
+        filas.append("".join(
+            "#" if x in (0, ancho - 1)
+            else ("." if abs(x - centro) <= carril // 2 else ",")
+            for x in range(ancho)))
+    filas[0] = filas[0].replace(".", "G")     # la meta, al final del todo
+    ultima = list(filas[-1])
+    ultima[filas[-1].index(".") + carril // 2] = "P"
+    filas[-1] = "".join(ultima)
+    return ('  - nombre: "CIRCUITO"\n    mapa: |\n'
+            + "\n".join("      " + f for f in filas) + "\n")
 
 
 def _secuencia(semilla: int):
@@ -306,12 +337,20 @@ coche:
   trompo: 40
 
 jugador:''', 1)
-            # la hierba: el suelo del mapa deja de ser pared y pasa a frenar,
-            # que es lo que hace que salirse cueste tiempo en vez de matarte
+            # la hierba: lo que hay fuera del asfalto. No para -se pasa por
+            # encima- pero ahi no se corre, que es lo que hace que salirse
+            # cueste tiempo en vez de matarte
             marca = "    '#': {tile: 1, tipo: solido}"
             assert marca in texto, "la leyenda ya no trae el solido asi"
             texto = texto.replace(
                 marca, marca + "\n    ',': {tile: 1, tipo: hierba}", 1)
+            # Y el circuito: sin esto el nivel seria el del juego de
+            # plataformas -todo asfalto y sin bordes-, la carretera saldria
+            # recta en todos los frames y la proyeccion no se estaria
+            # comparando en lo unico donde hace algo, que es una curva.
+            marca = "\nniveles:\n"
+            assert marca in texto, "el andamiaje ya no escribe asi los niveles"
+            texto = texto[:texto.index(marca)] + marca + _circuito()
         if cinta:
             # y el mismo mirado desde arriba **pero saltando**: la vista de los
             # juegos de tortas, con la altura como tercera coordenada
@@ -938,6 +977,61 @@ jugador:''', 1)
         # y de frente contra la pared del final del mapa: un trompo
         self.assertTrue(any(int(c[COL_TROMPO]) for c in jugando),
                         "no se estrella contra nada en todo el recorrido")
+        # Y que la carretera que se ve **existe y se mueve**: sin esto la
+        # comparacion de arriba estaria dando por buenas dos firmas a cero, que
+        # es lo que sale cuando no se dibuja carretera ninguna.
+        firmas = [c[COL_CARRETERA] for c in jugando]
+        self.assertNotIn("00000000", firmas,
+                         "hay frames sin carretera que dibujar")
+        self.assertGreater(len(set(firmas)), 20,
+                           "la carretera no cambia: no se esta avanzando")
+
+    def test_la_carretera_que_se_ve_es_la_misma_en_los_dos(self):
+        """La tabla de lineas -por donde pasa el eje, cuanto mide de ancho y
+        que franja toca, en cada una de las 224 lineas- es lo unico que
+        necesitan las ocho maquinas para dibujar la carretera. Si el preview y
+        el motor en C no la sacaran identica, el juego que se prueba en el
+        navegador no seria el que sale de la ROM.
+
+        Aqui se conduce por una curva a proposito, que es donde la proyeccion
+        hace algo: en una recta las dos podrian estar equivocadas igual."""
+        entradas = [(IN_START, 0), (IN_START, 0), (0, 0)]
+        entradas += [(IN_ACTION, 0)] * 60
+        entradas += [(IN_ACTION | IN_JUMP, 0)]
+        entradas += [(IN_ACTION, 0)] * 120
+        entradas += [(IN_ACTION | IN_RIGHT, 0)] * 60      # a la derecha
+        entradas += [(IN_ACTION | IN_LEFT, 0)] * 120      # y a la izquierda
+        traza_c, traza_js = self._trazas_de("carretera", entradas, "curva")
+        self.assertEqual(traza_c, traza_js,
+                         "la carretera no se ve igual en el C y en el preview")
+
+        # Y que la proyeccion **hace algo**: el mismo circuito y los mismos
+        # frames, pero sin tocar el volante. Si las dos tiradas se vieran
+        # igual, la carretera estaria pintada siempre en el mismo sitio y esta
+        # prueba estaria comparando dos dibujos fijos.
+        recto = [(IN_START, 0), (IN_START, 0), (0, 0)]
+        recto += [(IN_ACTION, 0)] * 60
+        recto += [(IN_ACTION | IN_JUMP, 0)]
+        recto += [(IN_ACTION, 0)] * 300
+        traza_recto, _ = self._trazas_de("carretera", recto, "recto")
+
+        def firmas(traza):
+            return [c.split()[COL_CARRETERA] for c in traza
+                    if c.split()[5] == str(ESTADO_JUEGO)]
+
+        con_volante, sin_volante = firmas(traza_c), firmas(traza_recto)
+        self.assertNotIn("00000000", con_volante,
+                         "hay frames sin carretera que dibujar")
+        self.assertNotEqual(con_volante, sin_volante,
+                            "la carretera se ve igual gires o no gires")
+        # Y no es un frame suelto: son decenas. Se cuentan solo los frames en
+        # los que las dos tiradas siguen jugando, porque a partir de donde una
+        # se sale y la otra no, ni siquiera duran lo mismo.
+        distintos = sum(1 for a, b in zip(con_volante, sin_volante) if a != b)
+        self.assertGreater(distintos, 50,
+                           "girar apenas cambia lo que se ve (%d frames de %d)"
+                           % (distintos, min(len(con_volante),
+                                             len(sin_volante))))
 
     def test_misma_traza_con_la_serie_de_golpes(self):
         """Puno, puno y remate: el ultimo hace mas dano y tumba, y un tumbado

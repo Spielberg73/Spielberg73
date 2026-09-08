@@ -15,6 +15,29 @@
 #include "np_world.h"
 
 static NpWorld world;
+static NpLinea lineas[NP_SCREEN_H];
+
+/* La carretera de este frame en un solo numero: por donde pasa el eje, cuanto
+ * mide de ancho y que franja toca, linea a linea.
+ *
+ * Va a la traza porque es **lo que se ve**, y lo que se ve tiene que salir
+ * igual en las ocho maquinas y en el preview. Comparar las 224 lineas una a
+ * una haria una traza de un megabyte por partida; una firma las compara todas
+ * y ocupa una columna. Fuera de la vista de carretera vale cero. */
+static uint32_t carretera_firma(const NpWorld *w)
+{
+    uint32_t firma = 2166136261u;
+    uint16_t horizonte = np_carretera(w, lineas);
+    uint16_t y;
+    if (horizonte >= NP_SCREEN_H) return 0;
+    firma = (firma ^ horizonte) * 16777619u;
+    for (y = horizonte; y < NP_SCREEN_H; y++) {
+        firma = (firma ^ (uint32_t)(uint16_t)lineas[y].centro) * 16777619u;
+        firma = (firma ^ (uint32_t)(uint16_t)lineas[y].medio) * 16777619u;
+        firma = (firma ^ lineas[y].franja) * 16777619u;
+    }
+    return firma;
+}
 
 static uint32_t entity_hash(const NpWorld *w)
 {
@@ -76,7 +99,7 @@ int main(int argc, char **argv)
         np_world_step(&world, (uint16_t)input, (uint16_t)input2);
         printf("%lu %ld %ld %ld %ld %u %u %u %lu %ld %ld %u %u %u %08x"
                " %ld %ld %ld %ld %u %u %u %u %u %u %u %u %u %d %d %u %u %u %u"
-               " %lu %u %u %u %u %lu %u %u %u\n",
+               " %lu %u %u %u %u %lu %u %u %u %08x\n",
                (unsigned long)world.frame,
                (long)p0->x, (long)p0->y, (long)p0->vx, (long)p0->vy,
                (unsigned)world.state, (unsigned)p0->health,
@@ -116,7 +139,9 @@ int main(int argc, char **argv)
                   esto la traza no miraria el cambio ni el choque, y las dos
                   implementaciones podrian llevar marchas distintas mientras
                   el coche acabara en el mismo sitio. */
-               (unsigned)p0->marcha, (unsigned)p0->trompo);
+               (unsigned)p0->marcha, (unsigned)p0->trompo,
+               /* y la carretera que se ve, entera, en una firma */
+               carretera_firma(&world));
     }
     fclose(fh);
     return 0;

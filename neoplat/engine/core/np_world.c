@@ -451,6 +451,7 @@ static void np_anim_tick(const NpActorDef *def, uint8_t anim,
 /* ------------------------------------------------------------- ciclo de vida */
 
 static void np_camera_update(NpWorld *w);
+static void np_via_montar(NpWorld *w);
 static void np_tenaces_siguen(NpWorld *w, int32_t dx, int32_t dy);
 static void np_cambio_de_pantalla(NpWorld *w);
 static void np_vars_reset(NpWorld *w);
@@ -656,6 +657,9 @@ void np_world_load_level(NpWorld *w, uint16_t index)
     if (index >= np_level_count) index = 0;
     w->level_index = index;
     w->level = &np_levels[index];
+    /* La cinta de la carretera se saca del mapa aqui, una sola vez: a partir
+       de ahora el dibujo la lee y no vuelve a tocar el mapa. */
+    if (np_vista_carretera) np_via_montar(w);
     /* antes de colocar a nadie: cargar un nivel es empezarlo de cero */
     w->check_on = 0;
     w->check_x = 0;
@@ -3921,6 +3925,205 @@ static int np_alguien_en_pantalla(const NpWorld *w)
         return 1;
     }
     return 0;
+}
+
+/* ------------------------------------------- la carretera en perspectiva */
+/*
+ * Aqui se convierte el mapa -que es el trazado de la carretera visto desde
+ * arriba- en lo que se ve desde el coche. Dos pasos, y los dos viven aqui y no
+ * en cada maquina, que es lo que hace que las ocho dibujen la misma pantalla.
+ *
+ * El primero se hace **una vez al cargar el nivel**: recorrer el mapa fila a
+ * fila y apuntar por donde pasa el eje de la calzada y cuanto mide de ancho.
+ * El segundo se hace cada frame y es la proyeccion de siempre.
+ */
+
+/* Monta la cinta: por cada fila del mapa, el eje de la calzada y su medio
+ * ancho, los dos en pixeles.
+ *
+ * La calzada es lo que **no** es hierba ni pared: se busca el trozo seguido
+ * mas ancho de la fila y ese es el carril. Asi el que dibuja el mapa no tiene
+ * que aprenderse nada nuevo -pinta la carretera con las casillas de siempre- y
+ * lo que hay fuera puede ser cualquier cosa.
+ *
+ * Una fila sin carril (toda hierba, o toda pared) se queda con la de antes: en
+ * un tunel o bajo un puente la carretera sigue por donde iba. */
+/* Le quita los escalones a la cinta.
+ *
+ * El eje sale de columnas de casillas, asi que solo puede caer de dieciseis en
+ * dieciseis pixeles: dibujada tal cual, una curva se ve **dentada**, con un
+ * peldano por fila del mapa. Esto la reparte con una media de cinco tramos, y
+ * los peldanos de dieciseis se quedan en cuatro.
+ *
+ * Es un arreglo del **dibujo** y solo del dibujo: con quien se choca y donde
+ * empieza la hierba lo sigue diciendo el mapa, casilla a casilla, igual que en
+ * los otros nueve generos. Lo que se mueve aqui son unos pocos pixeles dentro
+ * de un carril que mide mas de cien, asi que la carretera que se ve y la que
+ * se pisa son la misma.
+ *
+ * Se hace en el sitio con un anillo de cinco: copiar la cinta entera costaria
+ * medio kilobyte de pila, y en el Atari ST la pila vive apretada. */
+static void np_via_suavizar(int16_t *via)
+{
+    int16_t anillo[5];
+    int32_t i, j, suma, viejo = 0;
+
+    /* El anillo empieza con la ventana del primer tramo: los dos de antes del
+       principio del mapa valen como el primero. */
+    anillo[0] = via[0];
+    anillo[1] = via[0];
+    anillo[2] = via[0];
+    anillo[3] = via[1];
+    anillo[4] = via[2];
+    for (i = 0; i < NP_MAX_TRAMOS; i++) {
+        suma = 0;
+        for (j = 0; j < 5; j++) suma += anillo[j];
+        via[i] = (int16_t)(suma / 5);
+        /* Y para el siguiente: sale el de dos atras -el mas viejo del anillo-
+           y entra el de tres adelante, que todavia no se ha pisado. */
+        anillo[viejo] = via[(i + 3 < NP_MAX_TRAMOS) ? i + 3 : NP_MAX_TRAMOS - 1];
+        viejo = (viejo + 1) % 5;
+    }
+}
+
+static void np_via_montar(NpWorld *w)
+{
+    const NpLevel *nivel = w->level;
+    int32_t filas = (int32_t)nivel->cells_h;
+    int32_t fila, columna;
+    int16_t centro = (int16_t)(nivel->cells_w * NP_TILE / 2);
+    int16_t medio = NP_TILE;
+
+    if (filas > NP_MAX_TRAMOS) filas = NP_MAX_TRAMOS;
+    for (fila = 0; fila < filas; fila++) {
+        int32_t mejor_ini = -1, mejor_largo = 0, ini = -1;
+        for (columna = 0; columna <= (int32_t)nivel->cells_w; columna++) {
+            uint8_t tipo = (columna < (int32_t)nivel->cells_w)
+                           ? np_tile_kind_at(nivel, columna, fila)
+                           : NP_TILE_LENTO;      /* el borde corta el trozo */
+            int calzada = (tipo != NP_TILE_LENTO && !np_blocks(tipo));
+            if (calzada) {
+                if (ini < 0) ini = columna;
+            } else if (ini >= 0) {
+                if (columna - ini > mejor_largo) {
+                    mejor_largo = columna - ini;
+                    mejor_ini = ini;
+                }
+                ini = -1;
+            }
+        }
+        if (mejor_largo > 0) {
+            centro = (int16_t)((mejor_ini * 2 + mejor_largo) * NP_TILE / 2);
+            medio = (int16_t)(mejor_largo * NP_TILE / 2);
+        }
+        w->via_centro[fila] = centro;
+        w->via_medio[fila] = medio;
+    }
+    /* Lo que quede detras del principio del mapa sigue recto: asi el horizonte
+       no se queda en blanco al llegar a la meta. */
+    for (; fila < NP_MAX_TRAMOS; fila++) {
+        w->via_centro[fila] = centro;
+        w->via_medio[fila] = medio;
+    }
+    np_via_suavizar(w->via_centro);
+    np_via_suavizar(w->via_medio);
+}
+
+/* Donde va la camara: detras del coche y mirando siempre hacia arriba del
+ * mapa. No gira nunca, y no hace falta: una carretera que tuerce se ve torcer
+ * porque lo que esta lejos se encoge hacia el centro de la pantalla, que es
+ * exactamente lo que hace la perspectiva. */
+static void np_camara_carretera(const NpWorld *w, int32_t *cx, int32_t *cy)
+{
+    const NpActorDef *a = &np_player_def.actor;
+    const NpPlayer *p = &w->players[0];
+    *cx = NP_F2I(p->x) + a->box_w / 2;
+    *cy = NP_F2I(p->y) + a->box_h / 2 + NP_CAMARA_ATRAS;
+}
+
+/* Lo que encoge algo que esta a distancia `z` de la camara, en 8.8: es
+ * FOCAL/z, y es lo unico que hace falta para proyectar. */
+static int32_t np_encoge(int32_t z)
+{
+    if (z < 1) z = 1;
+    return ((int32_t)NP_FOCAL << 8) / z;
+}
+
+uint16_t np_carretera(const NpWorld *w, NpLinea *lineas)
+{
+    int32_t cam_x, cam_y, fila_camara;
+    int32_t sy_ant = NP_SCREEN_H, cx_ant = 0, mx_ant = 0;
+    int32_t i;
+    int primero = 1;
+
+    if (!np_vista_carretera) return NP_SCREEN_H;
+    np_camara_carretera(w, &cam_x, &cam_y);
+    fila_camara = cam_y >> NP_TILE_SHIFT;
+
+    for (i = 0; i < NP_TRAMOS_VISTA; i++) {
+        int32_t fila = fila_camara - i;
+        int32_t z = i * NP_TILE + NP_CERCA;
+        int32_t k = np_encoge(z);
+        int32_t sy = NP_HORIZONTE + ((NP_CAMARA_ALTO * k) >> 8);
+        int32_t cx, mx, y, alto, dcx, dmx, acx, amx;
+        uint8_t franja;
+
+        if (sy >= NP_SCREEN_H) continue;   /* todavia por debajo de la pantalla */
+        if (sy <= NP_HORIZONTE) break;     /* ya se ha llegado al horizonte */
+        if (fila < 0) fila = 0;
+        if (fila >= NP_MAX_TRAMOS) fila = NP_MAX_TRAMOS - 1;
+
+        cx = NP_SCREEN_W / 2 + (((w->via_centro[fila] - cam_x) * k) >> 8);
+        mx = (w->via_medio[fila] * k) >> 8;
+        /* Las rayas van por la fila del mapa y no por la linea de pantalla:
+           asi corren hacia ti al avanzar -que es de lo que vive la sensacion
+           de velocidad- en vez de quedarse clavadas en la pantalla. */
+        franja = (uint8_t)((fila >> 1) & 1);
+
+        /* Y se rellenan las lineas que hay entre este tramo y el de antes,
+           repartiendo el eje y el ancho entre las dos: sin esto la calzada
+           saldria a escalones, porque un tramo de cerca ocupa medio centenar
+           de lineas de pantalla el solo. */
+        alto = sy_ant - sy;
+        /* Dos tramos de lejos caen en la misma linea: ahi no hay nada que
+           repartir, y dividir entre cero en un 68000 no es un numero raro,
+           es una excepcion que para la maquina en seco. */
+        if (alto <= 0) continue;
+        if (primero) { cx_ant = cx; mx_ant = mx; primero = 0; }
+        dcx = ((cx_ant - cx) << 8) / alto;
+        dmx = ((mx_ant - mx) << 8) / alto;
+        acx = cx << 8;
+        amx = mx << 8;
+        for (y = sy; y < sy_ant; y++) {
+            lineas[y].centro = (int16_t)(acx >> 8);
+            lineas[y].medio = (int16_t)(amx >> 8);
+            lineas[y].franja = franja;
+            acx += dcx;
+            amx += dmx;
+        }
+        sy_ant = sy;
+        cx_ant = cx;
+        mx_ant = mx;
+    }
+    return (uint16_t)sy_ant;
+}
+
+int np_carretera_donde(const NpWorld *w, np_fix x, np_fix y,
+                       int32_t *sx, int32_t *sy, int32_t *escala)
+{
+    int32_t cam_x, cam_y, z, k;
+
+    if (!np_vista_carretera) return 0;
+    np_camara_carretera(w, &cam_x, &cam_y);
+    z = cam_y - NP_F2I(y);
+    if (z < NP_CERCA) return 0;                 /* detras de la camara */
+    if (z > NP_TRAMOS_VISTA * NP_TILE) return 0;   /* mas alla del horizonte */
+    k = np_encoge(z);
+    *sy = NP_HORIZONTE + ((NP_CAMARA_ALTO * k) >> 8);
+    if (*sy <= NP_HORIZONTE || *sy >= NP_SCREEN_H) return 0;
+    *sx = NP_SCREEN_W / 2 + (((NP_F2I(x) - cam_x) * k) >> 8);
+    *escala = k;
+    return 1;
 }
 
 /* ------------------------------------------------- la pantalla y las salas */

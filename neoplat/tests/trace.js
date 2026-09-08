@@ -53,6 +53,27 @@ function varsFirma(world) {
   return firma >>> 0;
 }
 
+/* La carretera de este frame en un solo numero, igual que carretera_firma en
+   np_trace.c: por donde pasa el eje, cuanto mide de ancho y que franja toca,
+   linea a linea. Es lo que **se ve**, y tiene que salir igual aqui y en la
+   consola: comparar las 224 lineas una a una haria una traza de un megabyte
+   por partida, y una firma las compara todas en una columna. */
+var lineasCarretera = [];
+for (var _i = 0; _i < 224; _i++) lineasCarretera.push({centro: 0, medio: 0, franja: 0});
+
+function carreteraFirma(world) {
+  var firma = 2166136261, y;
+  var horizonte = world.carreteraLineas(lineasCarretera);
+  if (horizonte >= 224) return 0;
+  firma = Math.imul((firma ^ horizonte) >>> 0, 16777619) >>> 0;
+  for (y = horizonte; y < 224; y++) {
+    firma = Math.imul((firma ^ (lineasCarretera[y].centro & 0xFFFF)) >>> 0, 16777619) >>> 0;
+    firma = Math.imul((firma ^ (lineasCarretera[y].medio & 0xFFFF)) >>> 0, 16777619) >>> 0;
+    firma = Math.imul((firma ^ lineasCarretera[y].franja) >>> 0, 16777619) >>> 0;
+  }
+  return firma >>> 0;
+}
+
 function hex8(v) {
   var s = v.toString(16);
   while (s.length < 8) s = "0" + s;
@@ -83,7 +104,9 @@ inputs.forEach(function (par) {
     /* y la aventura grafica: que verbo esta elegido */
     world.verbo | 0,
     /* y el coche: que marcha lleva y si esta dando vueltas */
-    p0.marcha | 0, p0.trompo | 0
+    p0.marcha | 0, p0.trompo | 0,
+    /* y la carretera que se ve, entera, en una firma */
+    hex8(carreteraFirma(world))
   ].join(" "));
 });
 process.stdout.write(out.join("\n") + "\n");

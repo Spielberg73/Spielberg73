@@ -222,6 +222,19 @@ typedef struct {
     /* En que casilla estaba el jugador el frame pasado, para que un disparador
        salte al **entrar** y no sesenta veces por segundo mientras lo pisas. */
     int16_t pisada_x, pisada_y;
+    /* --- la cinta de la carretera ---------------------------------------
+     *
+     * Por donde pasa el eje de la calzada y cuanto mide de ancho, un tramo por
+     * fila del mapa y las dos cosas en pixeles. Se saca del mapa **una sola
+     * vez al cargar el nivel** (np_via_montar) y no se vuelve a tocar: leer el
+     * mapa por cada linea de pantalla serian mil quinientas consultas por
+     * frame, y en un 68000 eso es el frame entero.
+     *
+     * Fuera de la vista de carretera se quedan a cero y no los mira nadie.
+     * Van en palabras y no en bytes por lo mismo que la bolsa: el 68000 se
+     * para en seco si se lee una palabra en direccion impar. */
+    int16_t via_centro[NP_MAX_TRAMOS];
+    int16_t via_medio[NP_MAX_TRAMOS];
     /* El verbo elegido en una aventura grafica (NP_VERBO_*). Se cambia con el
        boton de saltar -que ahi no salta nada- y decide que guion contesta la
        casilla que senalas. Fuera de la vista de puntero vale cero y no lo mira
@@ -311,6 +324,42 @@ const uint8_t *np_orden_dibujo(const NpWorld *w, uint8_t *cuantas);
 const NpActorDef *np_dibujo(const NpWorld *w, uint8_t puesto,
                             int32_t *sx, int32_t *sy,
                             uint8_t *frame, uint8_t *flip);
+
+/* --- la carretera en perspectiva -----------------------------------------
+ *
+ * Una linea de pantalla de un juego de conducir: por donde pasa el eje de la
+ * calzada, cuanto mide de ancho ahi y que franja toca (las rayas que corren
+ * hacia ti, que son lo que hace que se note la velocidad).
+ *
+ * Esto es **todo** lo que necesita una maquina para dibujar la carretera, y es
+ * a proposito: la Mega Drive y el X68000 lo pintan con su scroll por linea, el
+ * Amiga y el CD32 con el copper, la Neo Geo con sprites encogidos, la Jaguar
+ * con el blitter y el Atari ST a mano. Cada una con lo suyo, pero **la misma
+ * tabla**, asi que la carretera cae en el mismo pixel en las ocho. Y el
+ * preview hace la misma cuenta, de modo que lo que se ve en el navegador es lo
+ * que se ve en la consola. */
+typedef struct {
+    int16_t centro;          /* el eje de la calzada, en pixeles de pantalla */
+    int16_t medio;           /* y su medio ancho ahi */
+    uint8_t franja;          /* 0 o 1: la raya que corre hacia ti */
+} NpLinea;
+
+/* Rellena la tabla de lineas de este frame, de NP_SCREEN_H entradas, y
+ * devuelve **la primera linea que lleva carretera**: de ahi para arriba es
+ * cielo y cada maquina pinta lo que quiera (un degradado, el mar, montanas).
+ *
+ * Solo tiene sentido en la vista de carretera; en las demas devuelve
+ * NP_SCREEN_H y no toca nada. */
+uint16_t np_carretera(const NpWorld *w, NpLinea *lineas);
+
+/* Donde cae en la pantalla, y cuanto encoge, algo que esta en esa fila del
+ * mapa: el coche de delante, una palmera, un cartel. `escala` sale en 8.8 (256
+ * = tamano natural) y es lo que hay que multiplicar por el dibujo.
+ *
+ * Devuelve 0 si eso queda detras de la camara o mas alla del horizonte, que es
+ * como decir que no hay que dibujarlo. */
+int np_carretera_donde(const NpWorld *w, np_fix x, np_fix y,
+                       int32_t *sx, int32_t *sy, int32_t *escala);
 
 /* Lo que corre el coche, en pixeles por frame (24.8). En la vista de carretera
  * el coche sube por el mapa, o sea con la `y` bajando, asi que su velocidad de
