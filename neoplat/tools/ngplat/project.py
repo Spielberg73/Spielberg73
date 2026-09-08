@@ -219,9 +219,14 @@ BEHAVIORS = {
     "perseguidor": "chaser", "chaser": "chaser", "perseguir": "chaser",
     "saltarin": "jumper", "saltarín": "jumper", "jumper": "jumper", "saltar": "jumper",
     "fijo": "static", "static": "static", "quieto": "static", "torreta": "static",
+    # el trafico: sube por la carretera por su carril, a lo suyo
+    "trafico": "trafico", "tráfico": "trafico", "coche": "trafico",
+    "traffic": "trafico", "rival": "trafico", "camion": "trafico",
+    "camión": "trafico", "adelantar": "trafico",
 }
 
-BEHAVIOR_ID = {"patrol": 0, "flyer": 1, "chaser": 2, "jumper": 3, "static": 4}
+BEHAVIOR_ID = {"patrol": 0, "flyer": 1, "chaser": 2, "jumper": 3, "static": 4,
+               "trafico": 5}
 
 ITEM_EFFECTS = {
     "puntos": "points", "points": "points", "score": "points", "moneda": "points",
@@ -471,6 +476,10 @@ class Coche:
     lento: float = 1.6            # lo que corre como mucho fuera del asfalto
     arrastre: float = 0.180       # lo que le roba por frame el suelo malo
     trompo: int = 90              # frames dando vueltas despues de un choque
+    # Lo que regala un control de paso. Es la moneda del genero: no se gana
+    # matando ni recogiendo, se gana **llegando**, y el premio es seguir
+    # jugando. Con `tiempo: 0` en el juego no hay crono y esto no hace nada.
+    control: int = 20             # segundos que da cruzar un control
 
 
 @dataclass
@@ -1115,6 +1124,9 @@ def _leer_coche(node: Node) -> Coche:
         arrastre=node.num(["arrastre", "tiron", "tirón", "frenazo"],
                           0.180, 0.005, 4.0),
         trompo=node.int_(["trompo", "choque", "vueltas"], 90, 0, 255),
+        control=node.int_(["control", "control_de_paso", "checkpoint",
+                           "tiempo_extra", "prorroga", "prórroga"],
+                          20, 0, 999),
     )
 
 

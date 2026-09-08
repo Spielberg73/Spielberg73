@@ -99,7 +99,7 @@ int main(int argc, char **argv)
         np_world_step(&world, (uint16_t)input, (uint16_t)input2);
         printf("%lu %ld %ld %ld %ld %u %u %u %lu %ld %ld %u %u %u %08x"
                " %ld %ld %ld %ld %u %u %u %u %u %u %u %u %u %d %d %u %u %u %u"
-               " %lu %u %u %u %u %lu %u %u %u %08x\n",
+               " %lu %u %u %u %u %lu %u %u %u %08x %u\n",
                (unsigned long)world.frame,
                (long)p0->x, (long)p0->y, (long)p0->vx, (long)p0->vy,
                (unsigned)world.state, (unsigned)p0->health,
@@ -141,7 +141,11 @@ int main(int argc, char **argv)
                   el coche acabara en el mismo sitio. */
                (unsigned)p0->marcha, (unsigned)p0->trompo,
                /* y la carretera que se ve, entera, en una firma */
-               carretera_firma(&world));
+               carretera_firma(&world),
+               /* y el crono, que en un juego de conducir no es un adorno: es
+                  la unica moneda que hay. Los controles de paso lo alargan y
+                  las dos implementaciones tienen que contar igual. */
+               (unsigned)world.time_left);
     }
     fclose(fh);
     return 0;

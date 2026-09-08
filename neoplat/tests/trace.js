@@ -106,7 +106,9 @@ inputs.forEach(function (par) {
     /* y el coche: que marcha lleva y si esta dando vueltas */
     p0.marcha | 0, p0.trompo | 0,
     /* y la carretera que se ve, entera, en una firma */
-    hex8(carreteraFirma(world))
+    hex8(carreteraFirma(world)),
+    /* y el crono: la unica moneda de un juego de conducir */
+    world.timeLeft | 0
   ].join(" "));
 });
 process.stdout.write(out.join("\n") + "\n");

@@ -8,6 +8,10 @@
  */
 
 #include "np_world.h"
+/* Del juego que se esta compilando solo hace falta una cosa aqui:
+ * NP_VISTA_CARRETERA, para poder **borrar al compilar** la vuelta que mueve el
+ * trafico en los nueve generos que no conducen. Ver np_trafico_paso. */
+#include "gamedata.h"
 
 #define NP_SUBSTEP     NP_I2F(8)     /* medio tile: evita atravesar paredes */
 #define NP_ENTITY_FALL NP_I2F(8)
@@ -452,6 +456,12 @@ static void np_anim_tick(const NpActorDef *def, uint8_t anim,
 
 static void np_camera_update(NpWorld *w);
 static void np_via_montar(NpWorld *w);
+#if NP_VISTA_CARRETERA
+static void np_via_seguir(NpWorld *w, NpEntity *e, const NpEnemyDef *d);
+#endif
+#if NP_VISTA_CARRETERA
+static void np_trafico_paso(NpWorld *w);
+#endif
 static void np_tenaces_siguen(NpWorld *w, int32_t dx, int32_t dy);
 static void np_cambio_de_pantalla(NpWorld *w);
 static void np_vars_reset(NpWorld *w);
@@ -3306,6 +3316,25 @@ static void np_enemy_update(NpWorld *w, NpEntity *e)
     }
 
     switch (d->behavior) {
+    /* El trafico va a lo suyo y se resuelve entero aqui: no tiene gravedad, no
+       choca con el escenario y no se cae por ningun borde, porque lo unico que
+       hace es subir por la carretera por su carril. Por eso sale por su
+       cuenta y no sigue con lo de abajo, que no le vale de nada.
+       Va **dentro del switch** y no antes: el reparto por comportamiento ya
+       estaba hecho, asi que aqui no cuesta nada, y antes costaba una
+       comparacion por bicho y por frame. */
+    case NP_AI_TRAFICO:
+        /* El trafico ya se ha movido, en su propia vuelta (np_trafico_paso):
+           aqui no queda nada que hacer.
+
+           Y esta linea es todo lo que puede haber aqui. Llamar desde dentro de
+           esta funcion a la que mueve el trafico costaba **1900 ciclos por
+           frame en la Neo Geo**, con o sin trafico en el juego: gcc se la mete
+           dentro -es estatica y se llama una sola vez-, np_enemy_update crece,
+           necesita mas registros y se encarecen **todos** los bichos de
+           **todos** los generos. Medido: 198744 ciclos antes y 200660 despues,
+           de los 200000 que da un frame. Por eso el trafico se mueve fuera. */
+        return;
     case NP_AI_PATROL:
         e->vx = e->facing ? d->speed : -d->speed;
         break;
@@ -3655,6 +3684,28 @@ static void np_check_touch(NpWorld *w, uint8_t quien)
     for (ty = ty0; ty <= ty1; ty++) {
         for (tx = tx0; tx <= tx1; tx++) {
             if (np_tile_kind_at(w->level, tx, ty) != NP_TILE_CHECK) continue;
+            /* En un juego de conducir un control de paso no es donde
+               reapareces: es donde te **regalan segundos**. Y por eso se mira
+               solo la fila y no la casilla: la linea de meta volante cruza la
+               carretera entera, y si contara casilla a casilla te daria tiempo
+               siete veces por pasar una sola vez. */
+            if (np_vista_carretera) {
+                if (w->check_on && w->check_y == (int16_t)ty) return;
+                w->check_on = 1;
+                w->check_x = (int16_t)tx;
+                w->check_y = (int16_t)ty;
+                w->sfx |= NP_SFX_CHECK;
+                if (np_time_limit && np_coche.control) {
+                    int32_t queda = (int32_t)w->time_left
+                                    + (int32_t)np_coche.control * 60;
+                    /* el crono no se guarda mas de lo que cabe: si no, un
+                       circuito con muchos controles lo desbordaria y el tiempo
+                       daria la vuelta a cero justo al ganarlo */
+                    if (queda > 0xFFFF) queda = 0xFFFF;
+                    w->time_left = (uint16_t)queda;
+                }
+                return;
+            }
             if (w->check_on && w->check_x == (int16_t)tx &&
                 w->check_y == (int16_t)ty)
                 return;
@@ -3725,6 +3776,27 @@ static void np_touch_entities(NpWorld *w)
             }
             {
                 const NpEnemyDef *d = &np_enemies[e->def];
+                /* El trafico no hace dano: hace **perder tiempo**. Chocar con
+                   un coche es un trompo, y los frames dando vueltas son lo que
+                   cuesta no haber elegido por que lado pasarlo. Un roce a paso
+                   de tortuga no cuenta, igual que con las vallas: solo frena.
+
+                   Va aqui dentro y no arriba del bucle a proposito: aqui ya se
+                   sabe que es un enemigo y `d` ya esta cargado, asi que a un
+                   juego que no es de carretera esto no le cuesta ni un ciclo.
+                   Arriba costaba una lectura y un salto por bicho y por
+                   jugador -ciento veintiocho por frame-, y con eso la Neo Geo
+                   se pasaba de los 200000 ciclos que da un frame. */
+                if (d->behavior == NP_AI_TRAFICO && np_vista_carretera) {
+                    if (!p->trompo && np_velocidad(p) > np_coche.lento) {
+                        p->trompo = (uint8_t)NP_MIN(np_coche.trompo, 255);
+                        p->vx = 0;
+                        p->vy = 0;
+                        p->marcha = 0;
+                        w->sfx |= NP_SFX_HURT;
+                    }
+                    continue;
+                }
                 /* En una pelea, rozar a alguien no hace dano: hace dano su
                    golpe. Es la diferencia entre un obstaculo y un rival, y sin
                    ella no hay forma de acercarse a nadie. Solo vale para los
@@ -4028,6 +4100,67 @@ static void np_via_montar(NpWorld *w)
     np_via_suavizar(w->via_centro);
     np_via_suavizar(w->via_medio);
 }
+
+/* El trafico: un coche que sube por la carretera **por su carril**.
+ *
+ * Lo unico que tiene de listo es que no se sale en las curvas: se coloca en el
+ * eje de la calzada mas lo que estaba separado de el cuando salio, asi que el
+ * que sale por el carril de la derecha va por la derecha toda la carretera. Y
+ * nada mas: no frena, no adelanta, no se aparta. Es un estorbo con una
+ * trayectoria, y esa es la gracia -lo que decides es por que lado pasarlo, no
+ * como pelearte con el-. */
+#if NP_VISTA_CARRETERA
+static void np_via_seguir(NpWorld *w, NpEntity *e, const NpEnemyDef *d)
+{
+    int32_t fila, salida;
+    np_fix desvio;
+
+    e->vx = 0;
+    e->vy = -d->speed;                  /* sube por el mapa, igual que tu */
+    e->y += e->vy;
+    e->facing = 1;
+
+    fila = NP_F2I(e->y) >> NP_TILE_SHIFT;
+    salida = NP_F2I(e->home_y) >> NP_TILE_SHIFT;
+    if (fila < 0) fila = 0;
+    if (fila >= NP_MAX_TRAMOS) fila = NP_MAX_TRAMOS - 1;
+    if (salida < 0) salida = 0;
+    if (salida >= NP_MAX_TRAMOS) salida = NP_MAX_TRAMOS - 1;
+    /* lo que se separo del eje al salir: ese es su carril, y lo mantiene */
+    desvio = e->home_x - NP_I2F(w->via_centro[salida]);
+    e->x = NP_I2F(w->via_centro[fila]) + desvio;
+}
+#endif
+
+/* La vuelta del trafico: mover todos los coches de la carretera.
+ *
+ * Va **aparte** del bucle de entidades de siempre, y no por gusto. Hacerlo
+ * desde dentro de np_enemy_update -que es lo natural y lo primero que se
+ * probo- costaba 1900 ciclos por frame en la Neo Geo **aunque el juego no
+ * tuviera trafico**: gcc mete np_via_seguir dentro de np_enemy_update, esa
+ * funcion crece, necesita mas registros y se encarecen todos los bichos de
+ * todos los generos. Un frame de la consola da 200000 ciclos y el juego de
+ * ejemplo ya gastaba 198744: con eso se pasaba, y un juego que se pasa del
+ * frame va a la mitad de velocidad.
+ *
+ * Aqui, en cambio, la vuelta entera cuesta una comparacion por frame en los
+ * nueve generos que no son este. */
+#if NP_VISTA_CARRETERA
+static void np_trafico_paso(NpWorld *w)
+{
+    uint8_t i;
+    for (i = 0; i < w->entity_count; i++) {
+        NpEntity *e = &w->entities[i];
+        const NpEnemyDef *d;
+        if (!e->active || e->kind != NP_KIND_ENEMY) continue;
+        d = &np_enemies[e->def];
+        if (d->behavior != NP_AI_TRAFICO) continue;
+        np_via_seguir(w, e, d);
+        np_anim_set(&e->anim, &e->anim_frame, &e->anim_timer, NP_ANIM_RUN);
+        np_anim_tick(&d->actor, e->anim, &e->anim_frame, &e->anim_timer);
+    }
+}
+#endif
 
 /* Donde va la camara: detras del coche y mirando siempre hacia arriba del
  * mapa. No gira nunca, y no hace falta: una carretera que tuerce se ve torcer
@@ -4852,6 +4985,12 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
         NpEntity *e = &w->entities[i];
         if (e->active && e->kind == NP_KIND_PLATFORM) np_platform_update(w, e);
     }
+    /* El trafico se mueve antes que el jugador, igual que las plataformas: lo
+       que hay delante ya esta en su sitio cuando tu llegas. En un juego que no
+       es de carretera esta linea no existe: se va al compilar. */
+#if NP_VISTA_CARRETERA
+    np_trafico_paso(w);
+#endif
 
     for (quien = 0; quien < NP_MAX_PLAYERS; quien++) {
         NpPlayer *p = &w->players[quien];

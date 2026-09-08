@@ -37,6 +37,8 @@
   /* suelo que no para pero frena: hierba, arena, el arcen de una carretera */
   var TILE_LENTO = 11;
   var AI_PATROL = 0, AI_FLYER = 1, AI_CHASER = 2, AI_JUMPER = 3;
+  /* el trafico de un juego de conducir: sube por su carril, a lo suyo */
+  var AI_TRAFICO = 5;
   /* Las fases del luchador, igual que NP_LUCHA_* en C. */
   var LUCHA_IR = 0, LUCHA_RONDAR = 1, LUCHA_PREPARAR = 2, LUCHA_GOLPEAR = 3,
       LUCHA_RECUPERAR = 4, LUCHA_REPLEGAR = 5;
@@ -1530,6 +1532,41 @@
     this.viaSuavizar(this.viaMedio);
   };
 
+  /* El trafico: sube por la carretera por su carril. Gemelo de
+     np_via_seguir. Lo unico que tiene de listo es que no se sale en las
+     curvas; ni frena, ni adelanta, ni se aparta. */
+  World.prototype.viaSeguir = function (e, d) {
+    var fila, salida, desvio;
+    e.vx = 0;
+    e.vy = -d.speed;
+    e.y += e.vy;
+    e.facing = 1;
+    fila = F2I(e.y) >> TILE_SHIFT;
+    salida = F2I(e.homeY) >> TILE_SHIFT;
+    if (fila < 0) fila = 0;
+    if (fila >= MAX_TRAMOS) fila = MAX_TRAMOS - 1;
+    if (salida < 0) salida = 0;
+    if (salida >= MAX_TRAMOS) salida = MAX_TRAMOS - 1;
+    desvio = e.homeX - I2F(this.viaCentro[salida]);
+    e.x = I2F(this.viaCentro[fila]) + desvio;
+  };
+
+  /* La vuelta del trafico: mover todos los coches. Gemela de np_trafico_paso,
+     y se llama en el mismo sitio del frame -justo despues de las plataformas y
+     antes del jugador-, que es lo que hace que las dos vayan iguales. */
+  World.prototype.traficoPaso = function () {
+    var i, e, d;
+    for (i = 0; i < this.entityCount; i++) {
+      e = this.entities[i];
+      if (!e.active || e.kind !== KIND_ENEMY) continue;
+      d = this.data.enemies[e.def];
+      if (d.behavior !== AI_TRAFICO) continue;
+      this.viaSeguir(e, d);
+      animSet(e, ANIM_RUN);
+      animTick(d.actor, e);
+    }
+  };
+
   World.prototype.camaraCarretera = function () {
     var a = this.data.player.actor, p = this.players[0];
     return [F2I(p.x) + idiv(a.box_w, 2),
@@ -2450,6 +2487,13 @@
       return;
     }
 
+    /* El trafico ya se ha movido en su propia vuelta (traficoPaso): aqui no
+       queda nada que hacer. Va fuera de aqui por lo mismo que en C -alli
+       costaba 1900 ciclos por frame en la Neo Geo aunque el juego no tuviera
+       trafico-, y sobre todo para que las dos implementaciones muevan las
+       cosas en el mismo orden dentro del frame. */
+    if (d.behavior === AI_TRAFICO) return;
+
     switch (d.behavior) {
       case AI_PATROL:
         e.vx = e.facing ? d.speed : -d.speed;
@@ -2747,6 +2791,22 @@
     for (ty = ty0; ty <= ty1; ty++) {
       for (tx = tx0; tx <= tx1; tx++) {
         if (this.tileVisto(tx, ty) !== TILE_CHECK) continue;
+        /* Conduciendo, un control de paso no es donde reapareces: es donde te
+           regalan segundos. Y se mira solo la fila, porque la linea cruza la
+           carretera entera. Igual que np_check_touch. */
+        if (this.carretera()) {
+          if (this.checkOn && this.checkY === ty) return;
+          this.checkOn = 1;
+          this.checkX = tx;
+          this.checkY = ty;
+          this.sfx |= SFX.CHECK;
+          if (this.data.time_limit && this.data.coche.control) {
+            var queda = this.timeLeft + this.data.coche.control * 60;
+            if (queda > 0xFFFF) queda = 0xFFFF;
+            this.timeLeft = queda;
+          }
+          return;
+        }
         if (this.checkOn && this.checkX === tx && this.checkY === ty) return;
         this.checkOn = 1;
         this.checkX = tx;
@@ -2796,6 +2856,18 @@
           continue;
         }
         if (e.kind === KIND_BREAKABLE) continue; /* hay que pegarle */
+        /* El trafico no hace dano: hace perder tiempo. Igual que en C. */
+        if (this.carretera() && e.kind === KIND_ENEMY
+            && this.data.enemies[e.def].behavior === AI_TRAFICO) {
+          if (!p.trompo && this.velocidad(p) > this.data.coche.lento) {
+            p.trompo = Math.min(this.data.coche.trompo, 255);
+            p.vx = 0;
+            p.vy = 0;
+            p.marcha = 0;
+            this.sfx |= SFX.HURT;
+          }
+          continue;
+        }
         if (e.kind === KIND_ENEMY_SHOT) continue;   /* se mira en su update */
         if (e.kind === KIND_PRISONER) { this.prisonerFree(e, p); continue; }
         /* lo que acabas de soltar no se recoge solo */
@@ -3356,6 +3428,9 @@
       var plat = this.entities[i];
       if (plat.active && plat.kind === KIND_PLATFORM) this.platformUpdate(plat);
     }
+    /* El trafico se mueve antes que el jugador, igual que las plataformas: lo
+       que hay delante ya esta en su sitio cuando tu llegas. Igual que en C. */
+    if (this.carretera()) this.traficoPaso();
 
     for (quien = 0; quien < MAX_PLAYERS; quien++) {
       var jugador = this.players[quien];

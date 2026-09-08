@@ -619,6 +619,7 @@ def coche_values(co) -> Dict[str, object]:
         "lento": to_fixed(co.lento),
         "arrastre": to_fixed(co.arrastre),
         "trompo": co.trompo,
+        "control": co.control,
     }
 
 

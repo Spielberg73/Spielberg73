@@ -522,6 +522,7 @@ typedef struct {
     np_fix lento;          /* lo que corre como mucho fuera del asfalto */
     np_fix arrastre;       /* y lo que le roba por frame el suelo malo */
     uint16_t trompo;       /* frames de trompo al estrellarse */
+    uint16_t control;      /* segundos que regala un control de paso */
 } NpCocheDef;
 extern const NpCocheDef np_coche;
 /* Cuantos enemigos pueden estar pegando a la vez. Es el numero que decide si

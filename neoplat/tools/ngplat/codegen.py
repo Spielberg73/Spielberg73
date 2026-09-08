@@ -114,6 +114,18 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     # es de cinta no compila con -Werror por una variable "asignada y no usada"
     header.append("#define NP_DIBUJO(orden, i) ((void)(orden), (i))")
     header.append("#endif")
+    # Y la carretera, tambien como macro y por lo mismo, solo que aqui no es
+    # el dibujo sino la simulacion: la vuelta que mueve el trafico se **borra
+    # al compilar** en los nueve generos que no la usan.
+    #
+    # No es purismo. Llamar a esa vuelta desde donde tocaba -el bucle de
+    # enemigos- cuesta 1900 ciclos por frame en la Neo Geo aunque el juego no
+    # tenga un solo coche: gcc se la mete dentro, la funcion crece, necesita
+    # mas registros y se encarecen todos los bichos de todos los generos. El
+    # juego de ejemplo ya gastaba 198744 de los 200000 que da un frame, asi que
+    # con eso se pasaba, y un juego que se pasa del frame va a la mitad.
+    header.append("#define NP_VISTA_CARRETERA %d"
+                  % (1 if project.view == "carretera" else 0))
     header.append("#define NP_LAYER_COUNT %d" % len(build.layers))
     header.append("#define NP_MUSIC_COUNT %d" % len(build.music_order))
     header.append("#define NP_SOUND_ENABLED %d"
@@ -172,7 +184,8 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("    %d,          /* el volante, a punta */" % cv["volante"])
     src.append("    %d, %d,      /* fuera del asfalto: tope y tiron */"
                % (cv["lento"], cv["arrastre"]))
-    src.append("    %d           /* frames de trompo */" % cv["trompo"])
+    src.append("    %d, %d       /* trompo, y lo que regala un control */"
+               % (cv["trompo"], cv["control"]))
     src.append("};")
     src.append("/* Cuantos enemigos pegan a la vez: el numero que hace que una")
     src.append("   pelea se juegue en vez de sufrirse. */")

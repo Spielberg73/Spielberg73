@@ -193,6 +193,12 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_AI_CHASER 2
 #define NP_AI_JUMPER 3
 #define NP_AI_STATIC 4
+/* El trafico de un juego de conducir: un coche que va a lo suyo. No te
+ * persigue ni te busca -no es un enemigo, es un estorbo-: sube por la
+ * carretera por **su carril** y a su velocidad, y esta ahi para que tengas que
+ * elegir por donde pasarlo. Tocarlo no quita vida: te hace un trompo, y eso
+ * cuesta tiempo, que es la unica moneda del genero. */
+#define NP_AI_TRAFICO 5
 
 /* Efectos de objeto; coinciden con ITEM_EFFECT_ID de project.py. */
 #define NP_ITEM_POINTS 0

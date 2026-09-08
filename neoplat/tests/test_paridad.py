@@ -35,6 +35,7 @@ COL_VERBO = 40            # el verbo elegido en una aventura grafica
 COL_MARCHA = 41           # la marcha que lleva metida el coche
 COL_TROMPO = 42           # y los frames que le quedan dando vueltas
 COL_CARRETERA = 43        # la carretera que se ve, entera, en una firma
+COL_CRONO = 44            # los frames que le quedan al reloj
 
 # El genero de aventura empieza con un cuadro de texto que cuenta de que va, y
 # hasta que no se pasa la partida no corre. Las pruebas que le dan un mando
@@ -58,7 +59,7 @@ BOTONES = [IN_RIGHT, IN_RIGHT, IN_RIGHT | IN_JUMP, IN_LEFT,
            IN_UP | IN_ACTION, IN_UP]
 
 
-def _circuito() -> str:
+def _circuito(trafico: bool = False) -> str:
     """Un circuito para las pruebas: recta, curva a la derecha, ese y meta.
 
     Se escribe aqui y no a mano en el yaml porque son ciento veinte filas y
@@ -80,6 +81,27 @@ def _circuito() -> str:
             else ("." if abs(x - centro) <= carril // 2 else ",")
             for x in range(ancho)))
     filas[0] = filas[0].replace(".", "G")     # la meta, al final del todo
+    if trafico:
+        # Dos controles de paso -lineas enteras que cruzan la carretera- y
+        # coches repartidos por el circuito, cada uno en su carril. Las filas
+        # se eligen a mano y no al azar: una prueba que compara dos motores
+        # tiene que dar siempre lo mismo.
+        # La linea del control cruza **de lado a lado**, arcenes incluidos:
+        # una meta volante no se cuela por la hierba. Si solo cubriera el
+        # asfalto, un coche que se sale en la curva la pasaria de largo sin
+        # cobrar el tiempo, que es justo lo que paso la primera vez.
+        for fila in (largo - 25, largo - 40):
+            filas[fila] = ("#" + "K" * (ancho - 2) + "#")
+        # El primer coche va en mitad del carril y cerca de la salida: asi el
+        # que va de frente sin tocar el volante choca con el, que es lo que
+        # prueba el trompo. Los otros tres estan repartidos por el circuito.
+        for fila, lado in ((largo - 11, 0), (largo - 55, 2),
+                           (largo - 75, -3), (largo - 100, 1)):
+            texto = list(filas[fila])
+            libres = [i for i, ch in enumerate(texto) if ch == "."]
+            centro = (libres[0] + libres[-1]) // 2
+            texto[centro + lado] = "r"
+            filas[fila] = "".join(texto)
     ultima = list(filas[-1])
     ultima[filas[-1].index(".") + carril // 2] = "P"
     filas[-1] = "".join(ultima)
@@ -152,6 +174,13 @@ class TestParidad(unittest.TestCase):
         # dos implementaciones se acumula y el coche llega a la curva a otra
         # velocidad, asi que es de las que mas falta hace comparar.
         cls.variantes["carretera"] = cls._preparar("scroll", carretera=True)
+        # La misma carretera con lo que la convierte en un juego: el crono,
+        # los controles de paso que regalan segundos y coches que adelantar.
+        # El trafico se coloca solo en su carril mirando la cinta, asi que en
+        # una curva las dos implementaciones tienen que ponerlo en el mismo
+        # pixel o el jugador chocaria en una y pasaria de largo en la otra.
+        cls.variantes["trafico"] = cls._preparar("scroll", carretera=True,
+                                                 trafico=True)
         # Y la cinta con la serie de golpes: puno, puno y remate. El remate
         # tumba, y un tumbado se mueve solo con el empujon que se llevo, asi
         # que si las dos no encadenaran igual, las entidades se separarian.
@@ -237,7 +266,7 @@ class TestParidad(unittest.TestCase):
                   cenital=False, nidos_dormidos=False, cinta=False,
                   combo=False, agarre=False, sin_llave=False,
                   sin_golpe=False, sin_relieve=False, sin_liana=False,
-                  guiones=False, carretera=False):
+                  guiones=False, carretera=False, trafico=False):
         proyecto_dir = os.path.join(
             cls.tmp, "juego-" + camara + ("-jefe" if jefe else "")
             + ("-dos" if dos else "") + ("-golpe" if golpe else "")
@@ -254,6 +283,7 @@ class TestParidad(unittest.TestCase):
             + ("-sinliana" if sin_liana else "")
             + ("-guiones" if guiones else "")
             + ("-carretera" if carretera else "")
+            + ("-trafico" if trafico else "")
             + ("-" + genero if genero != "plataformas" else ""))
         crear_proyecto(proyecto_dir, "PARIDAD", "TEST", genero=genero)
         yaml = os.path.join(proyecto_dir, "game.yaml")
@@ -350,7 +380,38 @@ jugador:''', 1)
             # comparando en lo unico donde hace algo, que es una curva.
             marca = "\nniveles:\n"
             assert marca in texto, "el andamiaje ya no escribe asi los niveles"
-            texto = texto[:texto.index(marca)] + marca + _circuito()
+            texto = texto[:texto.index(marca)] + marca + _circuito(trafico)
+        if trafico:
+            # El crono, los controles de paso que lo alargan y coches que
+            # adelantar. Las tres cosas corren cada frame en los dos motores.
+            # El andamiaje ya trae 'tiempo: 0': hay que cambiar esa linea, no
+            # anadir otra, o el lector se queda con la ultima y el crono no
+            # correria (que es justo lo que paso la primera vez).
+            marca = "  tiempo: 0"
+            assert marca in texto, "el andamiaje ya no trae el tiempo asi"
+            texto = texto.replace(marca, "  tiempo: 60", 1)
+            texto = texto.replace("  trompo: 40",
+                                  "  trompo: 40\n  control: 15", 1)
+            marca = "    '#': {tile: 1, tipo: solido}"
+            texto = texto.replace(
+                marca, marca + "\n    'K': {tile: 1, tipo: control}", 1)
+            # el coche de delante: usa el dibujo del primer enemigo y no pega,
+            # solo estorba
+            marca = "\nspawns:\n"
+            assert marca in texto, "el andamiaje ya no escribe asi los spawns"
+            texto = texto.replace(marca, marca + "  r: rival\n", 1)
+            marca = "\nenemigos:\n"
+            assert marca in texto, "el andamiaje ya no escribe asi los enemigos"
+            texto = texto.replace(marca, """
+enemigos:
+  rival:
+    sprite: graficos/enemigo.png
+    frame: [16, 16]
+    caja: [14, 14]
+    comportamiento: trafico
+    velocidad: 2.4
+    vida: 99
+""", 1)
         if cinta:
             # y el mismo mirado desde arriba **pero saltando**: la vista de los
             # juegos de tortas, con la altura como tercera coordenada
@@ -1032,6 +1093,69 @@ jugador:''', 1)
                            "girar apenas cambia lo que se ve (%d frames de %d)"
                            % (distintos, min(len(con_volante),
                                              len(sin_volante))))
+
+    def test_misma_traza_con_trafico_y_crono(self):
+        """El circuito entero: coches que adelantar, controles de paso que
+        regalan segundos y el reloj corriendo. El trafico se coloca solo en su
+        carril mirando la cinta de la carretera, asi que en una curva las dos
+        implementaciones tienen que ponerlo en el mismo pixel: si no, el
+        jugador chocaria en una y pasaria de largo en la otra."""
+        for semilla in (1, 7, 99):
+            self._comparar("trafico", semilla)
+
+    def test_el_control_de_paso_regala_tiempo(self):
+        """Lo que hace que un juego de conducir sea un juego: el reloj baja
+        solo y cruzar un control lo sube. Sin esto, el crono seria una cuenta
+        atras y ya, y llegar no valdria para nada."""
+        entradas = [(IN_START, 0), (IN_START, 0), (0, 0)]
+        entradas += [(IN_ACTION, 0)] * 60
+        entradas += [(IN_ACTION | IN_JUMP, 0)]
+        entradas += [(IN_ACTION, 0)] * 500
+        traza_c, traza_js = self._trazas_de("trafico", entradas, "control")
+        self.assertEqual(traza_c, traza_js,
+                         "el reloj no corre igual en el C y en el preview")
+        crono = [int(c.split()[COL_CRONO]) for c in traza_c
+                 if c.split()[5] == str(ESTADO_JUEGO)]
+        self.assertTrue(crono, "no se llega a jugar")
+        # el reloj baja solo, un frame por frame
+        bajadas = sum(1 for i in range(1, len(crono)) if crono[i] < crono[i - 1])
+        self.assertGreater(bajadas, 100, "el reloj no corre")
+        # y en algun momento **sube**: eso es un control de paso
+        subidas = [i for i in range(1, len(crono)) if crono[i] > crono[i - 1]]
+        self.assertTrue(subidas, "cruzar un control no da tiempo")
+        # y da lo que dice el game.yaml (15 segundos = 900 frames), ni mas ni
+        # menos: uno menos porque el mismo frame que lo da tambien descuenta
+        for i in subidas:
+            self.assertEqual(crono[i] - crono[i - 1], 15 * 60 - 1,
+                             "un control da %d frames y deberia dar 899"
+                             % (crono[i] - crono[i - 1]))
+        # y no lo da dos veces por cruzar una sola linea
+        self.assertLessEqual(len(subidas), 2,
+                             "los dos controles del circuito dan tiempo %d "
+                             "veces" % len(subidas))
+
+    def test_chocar_con_el_trafico_es_un_trompo(self):
+        """Un coche de delante no quita vida: te hace dar vueltas, y eso cuesta
+        tiempo, que es la unica moneda del genero. Aqui se va de frente a por
+        uno -sin tocar el volante- y se mira que el trompo sale y que la vida
+        se queda como estaba."""
+        entradas = [(IN_START, 0), (IN_START, 0), (0, 0)]
+        entradas += [(IN_ACTION, 0)] * 60
+        entradas += [(IN_ACTION | IN_JUMP, 0)]
+        entradas += [(IN_ACTION, 0)] * 400
+        traza_c, traza_js = self._trazas_de("trafico", entradas, "choque")
+        self.assertEqual(traza_c, traza_js,
+                         "el choque no sale igual en el C y en el preview")
+        columnas = [c.split() for c in traza_c]
+        jugando = [c for c in columnas if c[5] == str(ESTADO_JUEGO)]
+        trompos = [i for i in range(1, len(jugando))
+                   if int(jugando[i][COL_TROMPO])
+                   and not int(jugando[i - 1][COL_TROMPO])]
+        self.assertTrue(trompos, "no se choca con ningun coche")
+        # y la vida no se toca: chocar cuesta tiempo, no vidas
+        for i in trompos:
+            self.assertEqual(jugando[i][6], jugando[i - 1][6],
+                             "chocar con el trafico ha quitado vida")
 
     def test_misma_traza_con_la_serie_de_golpes(self):
         """Puno, puno y remate: el ultimo hace mas dano y tumba, y un tumbado
