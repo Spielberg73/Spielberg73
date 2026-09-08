@@ -68,6 +68,16 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
  * Bruce Lee- y desde ella se salta a donde sea. No frena a nadie: se pasa por
  * delante andando, como una escalera. */
 #define NP_TILE_CLIMB   10
+/* Casilla que **no para pero frena**: hierba, arena, barro, el arcen de una
+ * carretera. Se pasa por encima como si no hubiera nada, pero mientras estas
+ * ahi no puedes correr: la velocidad se te cae a la que aguante ese suelo.
+ *
+ * No es un pincho ni una pared: es la diferencia entre irse de una curva y
+ * estrellarse, y es lo que hace que salirse de la carretera cueste tiempo en
+ * vez de matarte. Fuera de la vista de carretera vale igual -un charco en un
+ * juego cenital, un arenal en uno de plataformas-, asi que no es de un genero:
+ * es un tipo de suelo mas. */
+#define NP_TILE_LENTO   11
 
 /* --- la vista isometrica (los juegos de tipo filmation) ------------------
  *

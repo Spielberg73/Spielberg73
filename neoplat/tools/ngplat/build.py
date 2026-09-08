@@ -605,6 +605,23 @@ def platform_values(build: ActorBuild) -> Dict[str, object]:
             "axis": PLATFORM_AXIS_ID[pl.axis]}
 
 
+def coche_values(co) -> Dict[str, object]:
+    """Los campos de NpCocheDef. Las velocidades pasan a coma 24.8 aqui, igual
+    que las de cualquier otro actor: en el motor no hay decimales."""
+    return {
+        "punta": to_fixed(co.punta),
+        "punta_corta": to_fixed(co.punta_corta),
+        "acelera": to_fixed(co.acelera),
+        "acelera_corta": to_fixed(co.acelera_corta),
+        "frena": to_fixed(co.frena),
+        "roce": to_fixed(co.roce),
+        "volante": to_fixed(co.volante),
+        "lento": to_fixed(co.lento),
+        "arrastre": to_fixed(co.arrastre),
+        "trompo": co.trompo,
+    }
+
+
 SUB_KIND_ID = {"": 0, "line": 1, "arc": 2}
 
 

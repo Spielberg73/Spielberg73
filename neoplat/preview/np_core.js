@@ -29,6 +29,8 @@
   /* cerrojo: frena como una pared hasta que llegas con el objeto que pide */
   var TILE_LOCK = 9;
   var TILE_CLIMB = 10;
+  /* suelo que no para pero frena: hierba, arena, el arcen de una carretera */
+  var TILE_LENTO = 11;
   var AI_PATROL = 0, AI_FLYER = 1, AI_CHASER = 2, AI_JUMPER = 3;
   /* Las fases del luchador, igual que NP_LUCHA_* en C. */
   var LUCHA_IR = 0, LUCHA_RONDAR = 1, LUCHA_PREPARAR = 2, LUCHA_GOLPEAR = 3,
@@ -126,7 +128,9 @@
         /* el repertorio de tortas: el golpe fuerte (patada o hombro), la
            carrera y el doble toque que la enciende */
         fuerte: 0, carrera: 0, toque: 0, toqueDir: 0,
-        stairs: 0, trepa: 0, stairDir: 1
+        stairs: 0, trepa: 0, stairDir: 1,
+        /* el coche: la marcha metida, el trompo y hacia donde gira */
+        marcha: 0, trompo: 0, ladeo: 0
       });
     }
     this.playerCount = data.players || 1;
@@ -216,7 +220,8 @@
        punteria y el empujon de los golpes son los mismos. Igual que
        np_vista_cenital en C, que tambien vale 1 con `vista: cinta`. */
     return !!(this.data.view === "cenital" || this.data.view === "cinta"
-              || this.data.view === "iso" || this.data.view === "puntero");
+              || this.data.view === "iso" || this.data.view === "puntero"
+              || this.data.view === "carretera");
   };
 
   /* La de puntero: la aventura grafica. Igual que np_vista_puntero. */
@@ -232,6 +237,13 @@
 
   World.prototype.cinta = function () {
     return !!(this.data.view === "cinta");
+  };
+
+  /* La de carretera: el juego de conducir. Igual que np_vista_carretera. Por
+     dentro es la cenital -el mapa es el trazado y el coche lo sube-, y por eso
+     `cenital()` tambien vale 1 con ella. */
+  World.prototype.carretera = function () {
+    return this.data.view === "carretera";
   };
 
   World.prototype.tileKindAt = function (tx, ty) {
@@ -550,6 +562,8 @@
     p.crouch = 0;
     this.whipOff(quien);
     p.stairs = 0; p.trepa = 0; p.stairDir = 1;
+    /* el coche sale de parado, con la corta metida y sin dar vueltas */
+    p.marcha = 0; p.trompo = 0; p.ladeo = 0;
     p.jumpsLeft = d.double_jump ? 1 : 0;
     p.anim = ANIM_IDLE; p.animFrame = 0; p.animTimer = 0;
   };
@@ -1452,6 +1466,110 @@
     else if (dy > 0 && !dx) pose = ANIM_DOWN;
     else pose = ANIM_RUN;
     animSet(p, pose);
+    animTick(a, p);
+  };
+
+  /* --- la vista de carretera: conducir --------------------------------
+   *
+   * Traduccion literal de np_player_update_carretera. El mundo sigue siendo el
+   * plano de la cenital -el mapa es el trazado y el coche lo sube-; lo que
+   * cambia es que no se anda, se acelera. La curva no esta programada: el
+   * coche va recto y si la carretera tuerce y no giras, te sales. */
+  World.prototype.velocidad = function (p) {
+    return -p.vy;                 /* sube por el mapa: su vy es negativa */
+  };
+
+  World.prototype.marchaPunta = function (p) {
+    var c = this.data.coche;
+    return p.marcha ? c.punta : c.punta_corta;
+  };
+
+  World.prototype.marchaEmpuje = function (p) {
+    var c = this.data.coche;
+    return p.marcha ? c.acelera : c.acelera_corta;
+  };
+
+  World.prototype.fueraDelAsfalto = function (p) {
+    var a = this.data.player.actor;
+    return this.boxTouches(p.x, p.y, a.box_w, a.box_h, TILE_LENTO);
+  };
+
+  World.prototype.playerUpdateCarretera = function (quien, input) {
+    var d = this.data.player, a = d.actor, p = this.players[quien];
+    var c = this.data.coche;
+    var dir = 0, velocidad, punta, fuera, manda;
+
+    if (p.trompo) { p.trompo--; input = 0; }
+    else if (p.stun) { p.stun--; input = 0; }
+    else {
+      if (input & IN.RIGHT) dir += 1;
+      if (input & IN.LEFT) dir -= 1;
+    }
+
+    if ((input & IN.JUMP) && !(this.prevInput[quien] & IN.JUMP))
+      p.marcha = p.marcha ? 0 : 1;
+
+    velocidad = this.velocidad(p);
+    punta = this.marchaPunta(p);
+    fuera = this.fueraDelAsfalto(p);
+    if (fuera && punta > c.lento) punta = c.lento;
+
+    if (p.trompo) {
+      velocidad = approach(velocidad, 0, c.frena);
+    } else if (input & IN.ACTION) {
+      velocidad += this.marchaEmpuje(p);
+      if (velocidad > punta) velocidad = punta;
+    } else if (input & IN.DOWN) {
+      velocidad -= c.frena;
+    } else {
+      velocidad -= c.roce;
+    }
+    if (fuera && velocidad > punta) {
+      velocidad -= c.arrastre;
+      if (velocidad < punta) velocidad = punta;
+    }
+    if (velocidad < 0) velocidad = 0;
+    p.vy = -velocidad;
+
+    /* El volante manda tanto mas cuanto mas corres: parado no gira. */
+    if (dir && c.punta > 0) {
+      manda = velocidad > c.punta ? c.punta : velocidad;
+      p.vx = idiv(c.volante * manda, c.punta);
+      if (dir < 0) p.vx = -p.vx;
+      p.facing = dir > 0 ? 1 : 0;
+    } else {
+      p.vx = 0;
+    }
+    p.ladeo = dir;
+
+    p.x = this.moveX(p.x, p.y, a.box_w, a.box_h, p.vx, moveOut);
+    var chocaX = moveOut.hit;
+    if (chocaX) p.vx = 0;
+    p.y = this.moveY(p.x, p.y, a.box_w, a.box_h, p.vy, 1, moveOut);
+    if (moveOut.hitDown || moveOut.hitUp) p.vy = 0;
+    /* El trompo, solo si ibas rapido: por debajo de lo que corres por la
+       hierba no te estrellas, te arrimas. `velocidad` es la de antes del
+       choque a proposito: lo que decide es a lo que ibas. */
+    if ((chocaX || moveOut.hitDown || moveOut.hitUp) && !p.trompo
+        && velocidad > c.lento) {
+      p.trompo = Math.min(c.trompo, 255);
+      p.vx = 0;
+      p.vy = 0;
+      p.marcha = 0;
+      this.sfx |= SFX.HURT;
+    }
+
+    p.onGround = 1;
+    p.jumpsLeft = 0;
+    p.stairs = 0;
+    p.trepa = 0;
+    p.crouch = 0;
+    p.aim = 6;                    /* mirando hacia arriba: es hacia donde va */
+    if (p.invuln) p.invuln--;
+    if (p.attackTimer) p.attackTimer--;
+    if (p.attackCd) p.attackCd--;
+
+    animSet(p, p.trompo ? ANIM_HURT : (dir ? ANIM_RUN : ANIM_IDLE));
     animTick(a, p);
   };
 
@@ -3122,6 +3240,7 @@
       else if (this.puntero()) this.playerUpdatePuntero(quien, mandos[quien]);
       else if (this.iso()) this.playerUpdateIso(quien, mandos[quien]);
       else if (this.cinta()) this.playerUpdateCinta(quien, mandos[quien]);
+      else if (this.carretera()) this.playerUpdateCarretera(quien, mandos[quien]);
       else if (this.cenital()) this.playerUpdateCenital(quien, mandos[quien]);
       else this.playerUpdate(quien, mandos[quien]);
     }

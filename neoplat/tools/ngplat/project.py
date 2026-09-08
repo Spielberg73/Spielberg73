@@ -195,6 +195,12 @@ TILE_KINDS = {
     # cerrojo: frena como una pared hasta que llegas con el objeto que pide
     "cerrojo": "lock", "lock": "lock", "puerta": "lock", "candado": "lock",
     "cerradura": "lock",
+    # suelo malo: no para, frena. La hierba de una carretera, un arenal, un
+    # charco de barro. Es lo que hace que salirse de la curva cueste tiempo
+    # en vez de matarte.
+    "lento": "lento", "hierba": "lento", "arena": "lento", "barro": "lento",
+    "arcen": "lento", "arcén": "lento", "cesped": "lento", "césped": "lento",
+    "gravilla": "lento", "charco": "lento", "rough": "lento", "slow": "lento",
 }
 
 TILE_KIND_ID = {"empty": 0, "solid": 1, "platform": 2, "hazard": 3, "goal": 4,
@@ -203,7 +209,9 @@ TILE_KIND_ID = {"empty": 0, "solid": 1, "platform": 2, "hazard": 3, "goal": 4,
                 # llegas con el objeto que pide, y entonces se abre para siempre
                 "lock": 9,
                 # la liana: se trepa en vertical y se coge en el aire
-                "climb": 10}
+                "climb": 10,
+                # el suelo malo: se pasa, pero ahi no se corre
+                "lento": 11}
 
 BEHAVIORS = {
     "patrulla": "patrol", "patrol": "patrol", "andar": "patrol", "walker": "patrol",
@@ -438,6 +446,31 @@ class Generator(Actor):
     score: int = 1000        # lo que vale destruirlo
     cooldown: int = 90       # frames entre bicho y bicho
     cap: int = 3             # cuantos suyos puede haber a la vez
+
+
+@dataclass
+class Coche:
+    """El coche de un juego de conducir: las unicas cifras del genero.
+
+    Las velocidades van en pixeles por frame, igual que las de cualquier otro
+    actor del kit, asi que se comparan de un vistazo: un coche a 6.0 corre
+    cuatro veces lo que un heroe a 1.5.
+
+    Las dos marchas no son una caja de cambios: son el reparto de los
+    recreativos. La corta empuja fuerte y se queda corta; la larga arranca
+    despacio y es la que corre. Con dos botones no cabe otra cosa, y con dos ya
+    hay juego: meter la larga demasiado pronto te deja clavado, y llevar la
+    corta en una recta es tirar el tiempo."""
+    punta: float = 6.0            # lo que corre con la marcha larga
+    punta_corta: float = 3.2      # y con la corta
+    acelera: float = 0.030        # lo que gana por frame con la larga
+    acelera_corta: float = 0.075  # y con la corta, que empuja mas
+    frena: float = 0.140          # lo que pierde por frame con el freno
+    roce: float = 0.020           # y lo que pierde solo, sin tocar nada
+    volante: float = 2.2          # lo que se mueve de lado, a punta
+    lento: float = 1.6            # lo que corre como mucho fuera del asfalto
+    arrastre: float = 0.180       # lo que le roba por frame el suelo malo
+    trompo: int = 90              # frames dando vueltas despues de un choque
 
 
 @dataclass
@@ -836,6 +869,7 @@ class Project:
     # 1 = el golpe de un enemigo hace dano a otro enemigo
     entre_ellos: bool
     view: str              # "lateral" (con gravedad) o "cenital" (desde arriba)
+    coche: Coche           # solo lo mira la vista de carretera
     amiga_modo: str        # "32colores" o "8colores"
     player: Player
     tileset: Tileset
@@ -1013,6 +1047,14 @@ VISTAS = {
     "ratón": "puntero", "aventura_grafica": "puntero",
     "aventura_gráfica": "puntero", "grafica": "puntero", "gráfica": "puntero",
     "point_and_click": "puntero", "senalar": "puntero", "señalar": "puntero",
+    # Y la carretera: el juego de conducir. La pantalla ensena la carretera
+    # yendose hacia el horizonte, pero por dentro el mundo es el mismo plano
+    # visto desde arriba de la cenital: el mapa es el trazado y el coche lo
+    # sube. Ver docs/generos.md.
+    "carretera": "carretera", "conducir": "carretera", "coches": "carretera",
+    "carreras": "carretera", "road": "carretera", "racer": "carretera",
+    "conduccion": "carretera", "conducción": "carretera",
+    "velocidad": "carretera", "circuito": "carretera",
 }
 
 
@@ -1037,11 +1079,43 @@ def _leer_vista(game: Node) -> str:
             hint="pon 'lateral' (de lado, con gravedad), 'cenital' "
                  "(desde arriba, en ocho direcciones), 'cinta' (desde arriba "
                  "pero saltando), 'isometrica' (una sala vista desde una "
-                 "esquina) o 'puntero' (una aventura grafica: se senala con un "
-                 "cursor y se elige verbo)",
+                 "esquina), 'puntero' (una aventura grafica: se senala con "
+                 "un cursor y se elige verbo) o 'carretera' (un juego de "
+                 "conducir: la carretera se va al horizonte)",
             where="juego",
         )
     return VISTAS[clave]
+
+
+def _leer_coche(node: Node) -> Coche:
+    """`coche:` -- el motor, el freno y el volante de un juego de conducir.
+
+    Entera es opcional: sin ella sale un coche que corre, frena y gira como el
+    de un recreativo de los ochenta, que es lo que hace falta para empezar a
+    jugar. Los limites de cada cifra no son por gusto: una punta de 20 pixeles
+    por frame se salta dos tiles enteros entre frame y frame y atravesaria las
+    vallas."""
+    if node is None:
+        return Coche()
+    return Coche(
+        punta=node.num(["punta", "top", "maxima", "máxima", "velocidad"],
+                       6.0, 0.5, 12.0),
+        punta_corta=node.num(["punta_corta", "corta", "primera"], 3.2, 0.3, 12.0),
+        acelera=node.num(["acelera", "aceleracion", "aceleración", "accel"],
+                         0.030, 0.002, 2.0),
+        acelera_corta=node.num(["acelera_corta", "aceleracion_corta",
+                                "empuje_corta"], 0.075, 0.002, 2.0),
+        frena=node.num(["frena", "freno", "frenada", "brake"], 0.140, 0.005, 4.0),
+        roce=node.num(["roce", "rozamiento", "friccion", "fricción"],
+                      0.020, 0.0, 2.0),
+        volante=node.num(["volante", "giro", "direccion", "dirección"],
+                         2.2, 0.1, 8.0),
+        lento=node.num(["lento", "hierba", "arcen", "arcén", "fuera"],
+                       1.6, 0.1, 8.0),
+        arrastre=node.num(["arrastre", "tiron", "tirón", "frenazo"],
+                          0.180, 0.005, 4.0),
+        trompo=node.int_(["trompo", "choque", "vueltas"], 90, 0, 255),
+    )
 
 
 def _leer_verbos(game: Node) -> List[str]:
@@ -2503,6 +2577,8 @@ def load_project(path: str) -> Project:
         "spawns", "simbolos", "símbolos", "backgrounds", "fondos", "capas",
         "sound", "sonido", "audio", "blocks", "cubos",
         "variables", "banderas", "memoria", "guiones", "scripts", "eventos",
+        # el coche de un juego de conducir
+        "coche", "car", "vehiculo", "vehículo",
     }
     extra_top = [key for key in data if key not in known_top]
     if extra_top:
@@ -2532,6 +2608,7 @@ def load_project(path: str) -> Project:
     return Project(
         root=root, title=title.upper()[:24], author=author[:24], system=sistema,
         lives=lives, players=players, camera=camera, view=view,
+        coche=_leer_coche(top.child("coche", "car", "vehiculo", "vehículo")),
         aggressive=aggressive,
         entre_ellos=entre_ellos,
         amiga_modo=amiga_modo,

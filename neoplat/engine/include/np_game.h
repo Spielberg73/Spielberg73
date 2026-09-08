@@ -485,6 +485,45 @@ extern const uint8_t np_vista_iso;
    Con esta a 1, np_vista_cenital tambien lo esta -se anda por un plano-, pero
    el jugador no choca con nada: un cursor pasa por encima de las paredes. */
 extern const uint8_t np_vista_puntero;
+/* Y la de carretera, la de los juegos de conducir: se ve la carretera desde
+   detras del coche, corriendo hacia el horizonte.
+
+   Por dentro **no es una vista nueva**: el mundo sigue siendo el plano visto
+   desde arriba de la vista cenital -el mapa es el trazado de la carretera y el
+   coche lo sube de abajo arriba-, y por eso np_vista_cenital tambien esta a 1.
+   Lo que cambia son dos cosas:
+
+     - como se conduce: no se anda, se **acelera**. Hay un motor con dos
+       marchas, un freno, un roce que te va parando solo y un volante que
+       manda tanto mas cuanto mas corres.
+     - como se dibuja: la pantalla no ensena el mapa, ensena la carretera en
+       perspectiva. Eso lo resuelve np_carretera_* y lo pinta cada maquina.
+
+   Y la curva no es una fuerza inventada: el coche va **recto por el mapa**, y
+   si la carretera tuerce y tu no giras, te sales. Cuanto mas corres, mas de
+   lado tienes que ir para seguirla, y por eso una curva cerrada a tope no se
+   puede tomar. Eso es todo el genero. */
+extern const uint8_t np_vista_carretera;
+
+/* El coche: lo que hace que conducir se note. Son las unicas cifras del
+   genero, y salen del game.yaml.
+
+   Las velocidades van en pixeles por frame en coma 24.8, igual que todas las
+   del kit, asi que se comparan con `velocidad:` de cualquier otro juego: un
+   coche a 6.0 corre cuatro veces lo que un heroe a 1.5. */
+typedef struct {
+    np_fix punta;          /* lo que corre con la marcha larga metida */
+    np_fix punta_corta;    /* y con la corta, que es la que sale de parado */
+    np_fix acelera;        /* lo que gana por frame con el pie a fondo (larga) */
+    np_fix acelera_corta;  /* y con la corta, que empuja mas */
+    np_fix frena;          /* lo que pierde por frame pisando el freno */
+    np_fix roce;           /* y lo que pierde solo, sin tocar nada */
+    np_fix volante;        /* lo que se mueve de lado, a punta */
+    np_fix lento;          /* lo que corre como mucho fuera del asfalto */
+    np_fix arrastre;       /* y lo que le roba por frame el suelo malo */
+    uint16_t trompo;       /* frames de trompo al estrellarse */
+} NpCocheDef;
+extern const NpCocheDef np_coche;
 /* Cuantos enemigos pueden estar pegando a la vez. Es el numero que decide si
    una pelea se juega o se sufre: con todos a la vez no hay hueco entre golpe y
    golpe, y con uno solo la calle esta vacia. Dos es lo de los recreativos. */

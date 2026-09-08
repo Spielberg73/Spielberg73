@@ -71,6 +71,19 @@ typedef struct {
     uint8_t carrera;
     uint8_t toque;
     int8_t toque_dir;
+    /* --- el coche (vista de carretera) ---------------------------------
+     *
+     * `marcha` es la que lleva metida: 0 la corta -la que sale de parado- y 1
+     * la larga, la que corre. Se cambia con el boton de saltar, que en un
+     * juego de conducir no salta nada.
+     *
+     * `trompo` son los frames que le quedan dando vueltas despues de
+     * estrellarse: mientras duran no se gobierna, y eso -no el dano- es lo que
+     * cuesta un choque. `ladeo` es hacia donde esta girando el volante ahora
+     * mismo (-1, 0 o +1), que es lo unico que necesita el dibujo. */
+    uint8_t marcha;
+    uint8_t trompo;
+    int8_t ladeo;
     uint8_t lives;           /* las vidas son de cada uno */
     uint8_t playing;         /* 0 = fuera (segundo jugador de una partida a uno,
                                 o el que se ha quedado sin vidas) */
@@ -298,6 +311,13 @@ const uint8_t *np_orden_dibujo(const NpWorld *w, uint8_t *cuantas);
 const NpActorDef *np_dibujo(const NpWorld *w, uint8_t puesto,
                             int32_t *sx, int32_t *sy,
                             uint8_t *frame, uint8_t *flip);
+
+/* Lo que corre el coche, en pixeles por frame (24.8). En la vista de carretera
+ * el coche sube por el mapa, o sea con la `y` bajando, asi que su velocidad de
+ * verdad es la de al reves; esto lo dice una sola vez para que el marcador, el
+ * dibujo y la fisica no lo cuenten cada uno a su manera. Fuera de esa vista
+ * vale lo que valga -nadie lo mira-. */
+np_fix np_velocidad(const NpPlayer *p);
 
 uint8_t np_actor_frame(const NpActorDef *def, uint8_t anim, uint8_t anim_frame);
 /* Si hay que dibujar al jugador `quien` (0 o 1): fuera de juego, en el titulo o

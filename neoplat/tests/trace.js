@@ -81,7 +81,9 @@ inputs.forEach(function (par) {
     /* y el guion: por cual va, en que paso, que pagina se ve y las variables */
     world.guion, world.paso, world.paginas, varsFirma(world),
     /* y la aventura grafica: que verbo esta elegido */
-    world.verbo | 0
+    world.verbo | 0,
+    /* y el coche: que marcha lleva y si esta dando vueltas */
+    p0.marcha | 0, p0.trompo | 0
   ].join(" "));
 });
 process.stdout.write(out.join("\n") + "\n");

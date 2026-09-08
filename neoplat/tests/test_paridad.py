@@ -31,6 +31,8 @@ COL_PASO = 37             # y por que paso
 COL_PAGINAS = 38          # paginas de texto que le quedan al cuadro
 COL_VARS = 39             # las variables, en un solo numero
 COL_VERBO = 40            # el verbo elegido en una aventura grafica
+COL_MARCHA = 41           # la marcha que lleva metida el coche
+COL_TROMPO = 42           # y los frames que le quedan dando vueltas
 
 # El genero de aventura empieza con un cuadro de texto que cuenta de que va, y
 # hasta que no se pasa la partida no corre. Las pruebas que le dan un mando
@@ -112,6 +114,13 @@ class TestParidad(unittest.TestCase):
         # coordenada, la altura, que ademas es la unica que no se ve en la
         # traza mas que por lo que mueve la `y`. Por eso hay que compararla.
         cls.variantes["cinta"] = cls._preparar("scroll", cinta=True)
+        # La carretera: conducir. Es la unica vista en la que el jugador no
+        # anda -acelera-, y las cuentas del motor (las dos marchas, el roce, el
+        # volante que manda segun la velocidad, el arrastre de la hierba y el
+        # trompo) corren enteras cada frame. Un decimal de diferencia entre las
+        # dos implementaciones se acumula y el coche llega a la curva a otra
+        # velocidad, asi que es de las que mas falta hace comparar.
+        cls.variantes["carretera"] = cls._preparar("scroll", carretera=True)
         # Y la cinta con la serie de golpes: puno, puno y remate. El remate
         # tumba, y un tumbado se mueve solo con el empujon que se llevo, asi
         # que si las dos no encadenaran igual, las entidades se separarian.
@@ -197,7 +206,7 @@ class TestParidad(unittest.TestCase):
                   cenital=False, nidos_dormidos=False, cinta=False,
                   combo=False, agarre=False, sin_llave=False,
                   sin_golpe=False, sin_relieve=False, sin_liana=False,
-                  guiones=False):
+                  guiones=False, carretera=False):
         proyecto_dir = os.path.join(
             cls.tmp, "juego-" + camara + ("-jefe" if jefe else "")
             + ("-dos" if dos else "") + ("-golpe" if golpe else "")
@@ -213,6 +222,7 @@ class TestParidad(unittest.TestCase):
             + ("-llano" if sin_relieve else "")
             + ("-sinliana" if sin_liana else "")
             + ("-guiones" if guiones else "")
+            + ("-carretera" if carretera else "")
             + ("-" + genero if genero != "plataformas" else ""))
         crear_proyecto(proyecto_dir, "PARIDAD", "TEST", genero=genero)
         yaml = os.path.join(proyecto_dir, "game.yaml")
@@ -279,6 +289,29 @@ niveles:
             # el mismo juego mirado desde arriba: sin gravedad, en ocho
             # direcciones y disparando hacia donde se mira
             texto = texto.replace("  vidas:", "  vista: cenital\n  vidas:", 1)
+        if carretera:
+            # el mismo mundo, conduciendo: el mapa es el trazado y el coche lo
+            # sube. Lo que hay que comparar es el motor -las dos marchas, el
+            # roce, el arrastre de la hierba y el trompo-, y todo eso corre en
+            # el jugador cada frame: si las dos implementaciones no hicieran las
+            # mismas cuentas con los mismos enteros, el coche llegaria a la
+            # curva con velocidades distintas y de ahi no se recupera.
+            texto = texto.replace("  vidas:", "  vista: carretera\n  vidas:", 1)
+            texto = texto.replace("\njugador:", '''
+coche:
+  punta: 6.0
+  punta_corta: 3.2
+  volante: 2.2
+  lento: 1.6
+  trompo: 40
+
+jugador:''', 1)
+            # la hierba: el suelo del mapa deja de ser pared y pasa a frenar,
+            # que es lo que hace que salirse cueste tiempo en vez de matarte
+            marca = "    '#': {tile: 1, tipo: solido}"
+            assert marca in texto, "la leyenda ya no trae el solido asi"
+            texto = texto.replace(
+                marca, marca + "\n    ',': {tile: 1, tipo: hierba}", 1)
         if cinta:
             # y el mismo mirado desde arriba **pero saltando**: la vista de los
             # juegos de tortas, con la altura como tercera coordenada
@@ -861,6 +894,50 @@ niveles:
         # y el salto llega alto: mas de lo que se anda en un frame
         self.assertGreater(max(ys) - min(ys), 16 * 256,
                            "el recorrido vertical es de menos de un tile")
+
+    def test_misma_traza_conduciendo(self):
+        """La carretera: aqui el jugador no anda, acelera. Cada frame se hacen
+        las mismas cuentas -la marcha, el empuje, el roce o el freno, el tope
+        de la marcha, el arrastre de la hierba y el volante partido por la
+        punta- y todas con enteros. Un solo redondeo distinto se acumula frame
+        a frame, asi que si las dos implementaciones no fueran la misma, las
+        trazas se separarian antes de la primera curva."""
+        for semilla in (1, 7, 99):
+            self._comparar("carretera", semilla)
+
+    def test_conduciendo_hay_marchas_y_trompos(self):
+        """Y que se conduce de verdad: sin esto la paridad compararia dos
+        coches parados y no comprobaria nada.
+
+        Con el mando aleatorio no sale -el acelerador hay que **mantenerlo**, y
+        una tirada al azar lo suelta cada dos por tres-, asi que aqui se
+        conduce a proposito: pie a fondo, se mete la larga y se sigue recto
+        hasta lo que haya delante. Se mira que las dos implementaciones cambian
+        de marcha en el mismo frame, corren lo mismo y se estrellan a la vez.
+        """
+        entradas = [(IN_START, 0), (IN_START, 0), (0, 0)]
+        entradas += [(IN_ACTION, 0)] * 60          # a fondo con la corta
+        entradas += [(IN_ACTION | IN_JUMP, 0)]     # y se mete la larga
+        entradas += [(IN_ACTION, 0)] * 500
+        traza_c, traza_js = self._trazas_de("carretera", entradas, "conducir")
+        self.assertEqual(traza_c, traza_js,
+                         "el motor en C y el preview no conducen igual")
+        columnas = [linea.split() for linea in traza_c]
+        jugando = [c for c in columnas if c[5] == str(ESTADO_JUEGO)]
+        self.assertTrue(jugando, "no se llega a jugar")
+        self.assertEqual(set(c[COL_MARCHA] for c in jugando), {"0", "1"},
+                         "no se cambia de marcha")
+        # la marcha corta da 3.2 px/frame (819 en 24.8) y ni uno mas
+        corta = [(-int(c[4])) for c in jugando if c[COL_MARCHA] == "0"]
+        self.assertEqual(max(corta), 819,
+                         "la marcha corta no se queda en su tope")
+        # y con la larga metida se pasa de ahi
+        larga = [(-int(c[4])) for c in jugando if c[COL_MARCHA] == "1"]
+        self.assertGreater(max(larga), 819,
+                           "con la larga no se corre mas que con la corta")
+        # y de frente contra la pared del final del mapa: un trompo
+        self.assertTrue(any(int(c[COL_TROMPO]) for c in jugando),
+                        "no se estrella contra nada en todo el recorrido")
 
     def test_misma_traza_con_la_serie_de_golpes(self):
         """Puno, puno y remate: el ultimo hace mas dano y tumba, y un tumbado

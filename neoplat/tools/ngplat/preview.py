@@ -18,8 +18,8 @@ from . import sonido as sonido_mod
 from .claves import tabla_para_el_editor
 from .project import VERBOS
 from .build import (Build, actor_def_values, attack_values, breakable_values,
-                    enemy_shot_values, enemy_values, generator_values,
-                    item_values, prisoner_values,
+                    coche_values, enemy_shot_values, enemy_values,
+                    generator_values, item_values, prisoner_values,
                     platform_values, player_values,
                     sub_values, tile_tables)
 from .paths import PREVIEW_DIR, TEMPLATES_DIR
@@ -376,6 +376,10 @@ def build_data(build: Build) -> Dict[str, object]:
                                  for o in build.items) else 0,
         # desde donde se mira: "lateral" (con gravedad) o "cenital"
         "view": project.view,
+        # el coche de un juego de conducir, ya en coma 24.8 igual que en la
+        # ROM: el gemelo tiene que hacer las mismas cuentas con los mismos
+        # numeros o la paridad se rompe en el primer decimal
+        "coche": coche_values(project.coche),
         # la aventura grafica: como se llaman los verbos y que guion contesta
         # cuando la casilla senalada no dice nada
         "verbos": list(project.verbos),

@@ -20,6 +20,7 @@ from .build import (
     enemy_shot_values, generator_values, prisoner_values, sub_values,
     tile_tables,
 )
+from .build import coche_values
 from .fixed import FIXED_ONE
 from .paths import ENGINE_DIR, TEMPLATES_DIR
 
@@ -139,7 +140,8 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     # para que el movimiento, la punteria y el empujon de los golpes sean los
     # de cenital sin repetir una linea.
     src.append("const uint8_t np_vista_cenital = %d;"
-               % (1 if project.view in ("cenital", "cinta", "iso", "puntero")
+               % (1 if project.view in ("cenital", "cinta", "iso", "puntero",
+                                        "carretera")
                   else 0))
     src.append("/* Y si ademas se salta (el 'yo contra el barrio'). */")
     src.append("const uint8_t np_vista_cinta = %d;"
@@ -152,6 +154,26 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("   cursor y se elige verbo; no hay fisica que correr. */")
     src.append("const uint8_t np_vista_puntero = %d;"
                % (1 if project.view == "puntero" else 0))
+    src.append("/* Y la de carretera: el juego de conducir. Por dentro es el")
+    src.append("   plano de la cenital -el mapa es el trazado y el coche lo")
+    src.append("   sube-, y lo que cambia es que no se anda: se acelera. */")
+    src.append("const uint8_t np_vista_carretera = %d;"
+               % (1 if project.view == "carretera" else 0))
+    cv = coche_values(project.coche)
+    src.append("/* El coche: motor, freno y volante. Solo lo mira la vista de")
+    src.append("   carretera; en los demas juegos esta y no cuesta nada. */")
+    src.append("const NpCocheDef np_coche = {")
+    src.append("    %d, %d,      /* lo que corre con cada marcha */"
+               % (cv["punta"], cv["punta_corta"]))
+    src.append("    %d, %d,      /* y lo que empuja cada una */"
+               % (cv["acelera"], cv["acelera_corta"]))
+    src.append("    %d, %d,      /* el freno y el roce */"
+               % (cv["frena"], cv["roce"]))
+    src.append("    %d,          /* el volante, a punta */" % cv["volante"])
+    src.append("    %d, %d,      /* fuera del asfalto: tope y tiron */"
+               % (cv["lento"], cv["arrastre"]))
+    src.append("    %d           /* frames de trompo */" % cv["trompo"])
+    src.append("};")
     src.append("/* Cuantos enemigos pegan a la vez: el numero que hace que una")
     src.append("   pelea se juegue en vez de sufrirse. */")
     src.append("const uint8_t np_agresivos = %d;" % project.aggressive)

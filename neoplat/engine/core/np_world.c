@@ -642,6 +642,9 @@ static void np_player_reset(NpWorld *w, uint8_t quien)
     p->stairs = 0;
     p->trepa = 0;
     p->stair_dir = 1;
+    p->marcha = 0;              /* el coche sale de parado, con la corta */
+    p->trompo = 0;
+    p->ladeo = 0;
     p->anim = NP_ANIM_IDLE;
     p->anim_frame = 0;
     p->anim_timer = 0;
@@ -2428,6 +2431,176 @@ static void np_player_update_puntero(NpWorld *w, uint8_t quien, uint16_t input)
         w->verbo = (uint8_t)((w->verbo + 1) % NP_VERBOS);
     else if ((input & NP_IN_ACTION) && !(w->prev_input[quien] & NP_IN_ACTION))
         np_puntero_actuar(w);
+}
+
+/* --- la vista de carretera: conducir --------------------------------------
+ *
+ * Un juego de conducir de los recreativos: la carretera se va hacia el
+ * horizonte, el coche esta abajo y lo unico que se hace es correr sin salirse.
+ *
+ * Por dentro el mundo **no cambia**: sigue siendo el plano visto desde arriba
+ * de la vista cenital. El mapa es el trazado de la carretera -cada fila un
+ * trozo- y el coche lo sube de abajo arriba, o sea con `y` bajando. Lo que
+ * cambia es que no se anda: se acelera.
+ *
+ * Y por eso la curva no hace falta inventarla. El coche va recto por el mapa;
+ * si la carretera tuerce y tu no giras, te sales. Para seguir una curva hay
+ * que moverse de lado tanto como tuerza la carretera **por cada frame**, y
+ * como la carretera se recorre mas deprisa cuanto mas corres, a punta hace
+ * falta mas volante del que hay. Ahi esta el genero entero: la curva que a
+ * media velocidad no es nada, a tope no se pasa.
+ *
+ * Los mandos, con los dos botones que tienen las ocho maquinas:
+ *
+ *   accion  ... el acelerador (mantenido)
+ *   abajo   ... el freno
+ *   saltar  ... la marcha, corta o larga
+ *   izq/der ... el volante
+ */
+
+/* Lo que corre el coche ahora mismo: sube por el mapa, asi que su velocidad
+ * en `y` es negativa y la velocidad "de verdad" es la de al reves. Sale a
+ * parte porque la miran el marcador, el dibujo y la propia fisica. */
+np_fix np_velocidad(const NpPlayer *p)
+{
+    return -p->vy;
+}
+
+/* El tope de esta marcha y lo que empuja: la corta sale de parado y la larga
+ * corre. Es el reparto de dos marchas de los recreativos, no una caja de
+ * cambios: con dos botones no cabe otra cosa, y con dos ya se juega. */
+static np_fix np_marcha_punta(const NpPlayer *p)
+{
+    return p->marcha ? np_coche.punta : np_coche.punta_corta;
+}
+
+static np_fix np_marcha_empuje(const NpPlayer *p)
+{
+    return p->marcha ? np_coche.acelera : np_coche.acelera_corta;
+}
+
+/* Si el coche esta pisando suelo malo (hierba, arena, arcen). Se mira la caja
+ * entera y no el centro: basta con sacar una rueda para que se note, que es
+ * lo que hace que apurar una curva sea apurarla. */
+static int np_fuera_del_asfalto(const NpWorld *w, const NpPlayer *p)
+{
+    const NpActorDef *a = &np_player_def.actor;
+    return np_box_touches(w, p->x, p->y, a->box_w, a->box_h, NP_TILE_LENTO);
+}
+
+static void np_player_update_carretera(NpWorld *w, uint8_t quien, uint16_t input)
+{
+    const NpPlayerDef *d = &np_player_def;
+    const NpActorDef *a = &d->actor;
+    NpPlayer *p = &w->players[quien];
+    np_fix velocidad, punta;
+    int dir = 0, hit_x = 0, hit_down = 0, hit_up = 0;
+    int fuera;
+
+    /* En trompo no se gobierna: ni acelerador, ni freno, ni volante. Lo unico
+       que corre es la cuenta atras y el roce, que te va parando. Eso es lo que
+       cuesta un choque: no vida, **tiempo**. */
+    if (p->trompo) {
+        p->trompo--;
+        input = 0;
+    } else if (p->stun) {
+        p->stun--;
+        input = 0;
+    } else {
+        if (input & NP_IN_RIGHT) dir += 1;
+        if (input & NP_IN_LEFT) dir -= 1;
+    }
+
+    /* La marcha, con el boton de saltar. Se cambia siempre que se pulsa: si
+       metes la larga parado, el coche arranca como un camion, y si metes la
+       corta a tope, se queda clavado en su tope. Las dos cosas son verdad y
+       las dos se aprenden en una curva. */
+    if ((input & NP_IN_JUMP) && !(w->prev_input[quien] & NP_IN_JUMP))
+        p->marcha = (uint8_t)(p->marcha ? 0 : 1);
+
+    velocidad = np_velocidad(p);
+    punta = np_marcha_punta(p);
+
+    /* Fuera del asfalto el tope es otro y ademas te roba velocidad: no te para
+       en seco -eso seria un muro-, te arrastra. */
+    fuera = np_fuera_del_asfalto(w, p);
+    if (fuera && punta > np_coche.lento) punta = np_coche.lento;
+
+    if (p->trompo) {
+        velocidad = np_approach(velocidad, 0, np_coche.frena);
+    } else if (input & NP_IN_ACTION) {
+        velocidad += np_marcha_empuje(p);
+        if (velocidad > punta) velocidad = punta;
+    } else if (input & NP_IN_DOWN) {
+        velocidad -= np_coche.frena;
+    } else {
+        velocidad -= np_coche.roce;
+    }
+    if (fuera && velocidad > punta) {
+        velocidad -= np_coche.arrastre;
+        if (velocidad < punta) velocidad = punta;
+    }
+    if (velocidad < 0) velocidad = 0;
+    p->vy = -velocidad;
+
+    /* El volante manda tanto mas cuanto mas corres: parado no gira, y a punta
+       gira lo que diga `volante:`. No es un adorno -es la regla que hace que
+       salir de un trompo cueste-, y es una regla de tres con la punta de la
+       marcha larga, que es la velocidad de referencia del coche.
+       Se hace con una division y no con un desplazamiento porque `punta` sale
+       del game.yaml y no tiene por que ser potencia de dos. */
+    if (dir && np_coche.punta > 0) {
+        np_fix manda = velocidad > np_coche.punta ? np_coche.punta : velocidad;
+        p->vx = (np_fix)(((int32_t)np_coche.volante * manda) / np_coche.punta);
+        if (dir < 0) p->vx = -p->vx;
+        p->facing = (uint8_t)(dir > 0);
+    } else {
+        p->vx = 0;
+    }
+    p->ladeo = (int8_t)dir;
+
+    /* Y ya esta: el coche se mueve por el mapa como cualquier otro actor de
+       una vista cenital. Chocar con algo solido -una valla, un arbol, el
+       quitamiedos- es el trompo. */
+    p->x = np_move_x(w, p->x, p->y, a->box_w, a->box_h, p->vx, &hit_x);
+    p->y = np_move_y(w, p->x, p->y, a->box_w, a->box_h, p->vy, 1,
+                     &hit_down, &hit_up);
+    if (hit_x) p->vx = 0;
+    if (hit_down || hit_up) p->vy = 0;   /* de frente se pierde todo */
+    /* Y el trompo, **solo si ibas rapido**: por debajo de lo que corres por la
+       hierba no te estrellas, te arrimas. Sin esta linea, un coche pegado al
+       quitamiedos con la izquierda apretada da vueltas sesenta veces por
+       segundo -toca la valla, trompo, sale de parado, vuelve a tocarla- y no
+       se sale de ahi en la vida.
+       `velocidad` es la de **antes** del choque a proposito: lo que decide si
+       te estrellas es a lo que ibas, no lo que te queda despues. */
+    if ((hit_x || hit_down || hit_up) && !p->trompo
+        && velocidad > np_coche.lento) {
+        p->trompo = (uint8_t)NP_MIN(np_coche.trompo, 255);
+        p->vx = 0;
+        p->vy = 0;
+        p->marcha = 0;             /* del trompo se sale de parado */
+        w->sfx |= NP_SFX_HURT;
+    }
+
+    /* Lo que valen las cosas que miran los dos modos. Aqui no hay suelo ni
+       salto, igual que en cenital. */
+    p->on_ground = 1;
+    p->jumps_left = 0;
+    p->stairs = 0;
+    p->trepa = 0;
+    p->crouch = 0;
+    p->aim = 6;                    /* mirando hacia arriba: es hacia donde va */
+    if (p->invuln) p->invuln--;
+    if (p->attack_timer) p->attack_timer--;
+    if (p->attack_cd) p->attack_cd--;
+
+    /* El dibujo: recto, girando a un lado (con el espejo de `facing`) o dando
+       vueltas. Quien no traiga esos fotogramas se queda con el de estar
+       quieto, asi que un juego sin arte propio se ve raro pero se juega. */
+    np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer,
+                p->trompo ? NP_ANIM_HURT : (dir ? NP_ANIM_RUN : NP_ANIM_IDLE));
+    np_anim_tick(a, p->anim, &p->anim_frame, &p->anim_timer);
 }
 
 static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
@@ -4490,6 +4663,8 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
             np_player_update_iso(w, quien, mandos[quien]);
         else if (np_vista_cinta)
             np_player_update_cinta(w, quien, mandos[quien]);
+        else if (np_vista_carretera)
+            np_player_update_carretera(w, quien, mandos[quien]);
         else if (np_vista_cenital)
             np_player_update_cenital(w, quien, mandos[quien]);
         else np_player_update(w, quien, mandos[quien]);

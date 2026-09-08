@@ -76,7 +76,7 @@ int main(int argc, char **argv)
         np_world_step(&world, (uint16_t)input, (uint16_t)input2);
         printf("%lu %ld %ld %ld %ld %u %u %u %lu %ld %ld %u %u %u %08x"
                " %ld %ld %ld %ld %u %u %u %u %u %u %u %u %u %d %d %u %u %u %u"
-               " %lu %u %u %u %u %lu %u\n",
+               " %lu %u %u %u %u %lu %u %u %u\n",
                (unsigned long)world.frame,
                (long)p0->x, (long)p0->y, (long)p0->vx, (long)p0->vy,
                (unsigned)world.state, (unsigned)p0->health,
@@ -111,7 +111,12 @@ int main(int argc, char **argv)
                (unsigned)world.paginas,
                (unsigned long)vars_firma(&world),
                /* y la aventura grafica: que verbo esta elegido */
-               (unsigned)world.verbo);
+               (unsigned)world.verbo,
+               /* y el coche: que marcha lleva y si esta dando vueltas. Sin
+                  esto la traza no miraria el cambio ni el choque, y las dos
+                  implementaciones podrian llevar marchas distintas mientras
+                  el coche acabara en el mismo sitio. */
+               (unsigned)p0->marcha, (unsigned)p0->trompo);
     }
     fclose(fh);
     return 0;
