@@ -985,6 +985,30 @@
     });
   }
 
+  /* El mismo dibujo pero **encogido o agrandado**, que es lo que hace falta en
+     una carretera: lo que esta lejos se ve pequeno. En las maquinas de verdad
+     esto no se hace asi -la Neo Geo y la Jaguar encogen por hardware, y las
+     demas llevan el dibujo ya hecho en varios tamanos-, pero el tamano que
+     sale es el mismo, porque el que manda es el que dice el motor. */
+  function drawFrameEscalado(sheetName, frame, x, y, ancho, alto, flip) {
+    var sheet = DATA.sheets[sheetName];
+    var img = images[sheetName];
+    if (!img) return;
+    var col = frame % sheet.per_row;
+    var row = (frame / sheet.per_row) | 0;
+    var sx = col * sheet.frame_w, sy = row * sheet.frame_h;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    if (flip) {
+      ctx.translate(x + ancho, y);
+      ctx.scale(-1, 1);
+      ctx.drawImage(img, sx, sy, sheet.frame_w, sheet.frame_h, 0, 0, ancho, alto);
+    } else {
+      ctx.drawImage(img, sx, sy, sheet.frame_w, sheet.frame_h, x, y, ancho, alto);
+    }
+    ctx.restore();
+  }
+
   function drawFrame(sheetName, frame, x, y, flip) {
     var sheet = DATA.sheets[sheetName];
     var img = images[sheetName];
@@ -1037,11 +1061,79 @@
     }
   }
 
+  /* --- la carretera ---------------------------------------------------
+   *
+   * Se pinta con la tabla de lineas que da el motor -por donde pasa el eje,
+   * cuanto mide de ancho y que franja toca-, que es exactamente lo que van a
+   * usar las ocho maquinas. Aqui son rectangulos de una linea de alto; alli
+   * seran el scroll por linea de la Mega Drive, el copper del Amiga o sprites
+   * encogidos en la Neo Geo. La cuenta es la misma, asi que la carretera cae
+   * en el mismo pixel en las nueve pantallas. */
+  var lineasCarretera = [];
+  for (var _l = 0; _l < NPCore.SCREEN_H; _l++)
+    lineasCarretera.push({ centro: 0, medio: 0, franja: 0 });
+
+  function drawCarretera() {
+    var col = DATA.carretera;
+    var horizonte = world.carreteraLineas(lineasCarretera);
+    var y, l, arcen, mitad;
+    if (horizonte >= NPCore.SCREEN_H) return;
+    for (y = horizonte; y < NPCore.SCREEN_H; y++) {
+      l = lineasCarretera[y];
+      /* la hierba, de lado a lado, y encima la calzada */
+      ctx.fillStyle = col.hierba[l.franja];
+      ctx.fillRect(0, y, NPCore.SCREEN_W, 1);
+      if (l.medio <= 0) continue;
+      ctx.fillStyle = col.arcen[l.franja];
+      ctx.fillRect(l.centro - l.medio, y, l.medio * 2, 1);
+      /* el arcen encoge con la distancia, igual que todo lo demas */
+      arcen = (col.ancho_arcen * l.medio / 64) | 0;
+      mitad = l.medio - arcen;
+      if (mitad > 0) {
+        ctx.fillStyle = col.asfalto[l.franja];
+        ctx.fillRect(l.centro - mitad, y, mitad * 2, 1);
+        /* y la raya del medio, discontinua: solo en una de las dos franjas */
+        if (l.franja && mitad > 6) {
+          ctx.fillStyle = col.raya;
+          ctx.fillRect(l.centro - 1, y, 2, 1);
+        }
+      }
+    }
+  }
+
   function drawActor(def, x, y, frame, flip) {
     drawFrame(def.sheet, frame, x, y, flip);
   }
 
+  /* Lo que hay en la carretera -el trafico, las palmeras, los carteles- se
+     dibuja **encogido segun lo lejos que este**, y de mas lejos a mas cerca
+     para que lo de delante tape a lo de detras. El motor dice donde cae y
+     cuanto encoge (carreteraDonde); aqui solo se pinta. */
+  function drawEntitiesCarretera() {
+    var lista = [], i, e, d, sitio;
+    for (i = 0; i < world.entityCount; i++) {
+      e = world.entities[i];
+      if (!e.active) continue;
+      sitio = world.carreteraDonde(e.x, e.y);
+      if (!sitio) continue;
+      lista.push({ e: e, sitio: sitio });
+    }
+    lista.sort(function (a, b) { return a.sitio.escala - b.sitio.escala; });
+    for (i = 0; i < lista.length; i++) {
+      e = lista[i].e;
+      sitio = lista[i].sitio;
+      d = world.entityDef(e).actor;
+      var ancho = (d.frame_w * sitio.escala) >> 8;
+      var alto = (d.frame_h * sitio.escala) >> 8;
+      if (ancho < 1 || alto < 1) continue;
+      drawFrameEscalado(d.sheet, NPCore.actorFrame(d, e.anim, e.animFrame),
+                        (sitio.sx - ancho / 2) | 0, (sitio.sy - alto) | 0,
+                        ancho, alto, !e.facing);
+    }
+  }
+
   function drawEntities() {
+    if (world.carretera()) { drawEntitiesCarretera(); return; }
     /* De mas lejos a mas cerca, como hacen las siete maquinas: se pide el
        orden y por cada puesto se pregunta que hay ahi y donde cae. Igual que
        el bucle unico de los seis np_video.c. */
@@ -1056,11 +1148,29 @@
     }
   }
 
+  /* Donde va el coche del jugador: **en un sitio fijo**, abajo del todo.
+     La camara le sigue, asi que en la pantalla no se mueve; lo que se mueve es
+     la carretera debajo. Lo unico que cambia es que se ladea al girar, que es
+     lo que hace que el volante se vea. */
+  function drawCocheJugador(def, p) {
+    var esc = 2;                       /* el coche se ve al doble: esta al lado */
+    var ancho = def.frame_w * esc, alto = def.frame_h * esc;
+    var x = (NPCore.SCREEN_W / 2 - ancho / 2 + p.ladeo * 3) | 0;
+    var y = (NPCore.SCREEN_H - 18 - alto) | 0;
+    drawFrameEscalado(def.sheet, NPCore.actorFrame(def, p.anim, p.animFrame),
+                      x, y, ancho, alto, !p.facing);
+  }
+
   function drawPlayer() {
     /* En la isometrica los jugadores ya van en la fila de arriba, colocados
        por profundidad: aqui no queda nada que pintar. */
     if (world.iso()) return;
     var def = DATA.player.actor;
+    if (world.carretera()) {
+      for (var q = 0; q < world.players.length; q++)
+        if (world.playerVisible(q)) drawCocheJugador(def, world.players[q]);
+      return;
+    }
     for (var i = 0; i < world.players.length; i++) {
       if (!world.playerVisible(i)) continue;
       var p = world.players[i];
@@ -1183,7 +1293,11 @@
     ctx.fillStyle = world.level.background || "#000000";
     ctx.fillRect(0, 0, NPCore.SCREEN_W, NPCore.SCREEN_H);
     drawLayers();
-    drawBackground();
+    /* En un juego de conducir la pantalla no ensena el mapa: ensena la
+       carretera yendose al horizonte. El mapa sigue estando -es el trazado- y
+       se sigue chocando con el, pero no se dibuja. */
+    if (world.carretera()) drawCarretera();
+    else drawBackground();
     drawEntities();
     drawPlayer();
     drawHud();

@@ -74,6 +74,11 @@ def _sheet_entry(path: str, frame_w: int, frame_h: int, sistema,
     }
 
 
+def _css(color) -> str:
+    """Un color del game.yaml como lo escribe una hoja de estilo."""
+    return "#%02x%02x%02x" % (color[0], color[1], color[2])
+
+
 def build_data(build: Build) -> Dict[str, object]:
     """Los mismos numeros que gamedata.c, en JSON."""
     project = build.project
@@ -380,6 +385,14 @@ def build_data(build: Build) -> Dict[str, object]:
         # ROM: el gemelo tiene que hacer las mismas cuentas con los mismos
         # numeros o la paridad se rompe en el primer decimal
         "coche": coche_values(project.coche),
+        # y los siete colores con los que se pinta la calzada, ya en CSS
+        "carretera": {
+            "asfalto": [_css(c) for c in project.asfalto.asfalto],
+            "arcen": [_css(c) for c in project.asfalto.arcen],
+            "hierba": [_css(c) for c in project.asfalto.hierba],
+            "raya": _css(project.asfalto.raya),
+            "ancho_arcen": project.asfalto.ancho_arcen,
+        },
         # la aventura grafica: como se llaman los verbos y que guion contesta
         # cuando la casilla senalada no dice nada
         "verbos": list(project.verbos),

@@ -454,6 +454,30 @@ class Generator(Actor):
 
 
 @dataclass
+class Carretera:
+    """Los colores de la carretera de un juego de conducir.
+
+    Van en pares porque la carretera se pinta a **franjas**: dos tonos que se
+    alternan cada dos tramos y corren hacia ti segun avanzas. Eso es lo que
+    hace que se note la velocidad, y es como se hacia en los recreativos: no
+    hay dibujo que mover, hay dos colores que se turnan.
+
+    Son siete colores y no un dibujo a proposito. Asi la carretera se pinta con
+    lo que da cada maquina -el scroll por linea de la Mega Drive, el copper del
+    Amiga, sprites encogidos en la Neo Geo- sin gastar ni un tile, y la misma
+    pantalla sale en las ocho."""
+    asfalto: Tuple[Tuple[int, int, int], Tuple[int, int, int]] = (
+        (74, 74, 82), (66, 66, 74))
+    arcen: Tuple[Tuple[int, int, int], Tuple[int, int, int]] = (
+        (208, 208, 216), (192, 32, 32))
+    hierba: Tuple[Tuple[int, int, int], Tuple[int, int, int]] = (
+        (58, 122, 66), (52, 112, 58))
+    raya: Tuple[int, int, int] = (232, 232, 240)
+    # lo que mide el arcen a cada lado, en pixeles de carretera
+    ancho_arcen: int = 8
+
+
+@dataclass
 class Coche:
     """El coche de un juego de conducir: las unicas cifras del genero.
 
@@ -879,6 +903,7 @@ class Project:
     entre_ellos: bool
     view: str              # "lateral" (con gravedad) o "cenital" (desde arriba)
     coche: Coche           # solo lo mira la vista de carretera
+    asfalto: Carretera     # y los colores con los que se pinta
     amiga_modo: str        # "32colores" o "8colores"
     player: Player
     tileset: Tileset
@@ -1127,6 +1152,38 @@ def _leer_coche(node: Node) -> Coche:
         control=node.int_(["control", "control_de_paso", "checkpoint",
                            "tiempo_extra", "prorroga", "prórroga"],
                           20, 0, 999),
+    )
+
+
+def _leer_carretera(node: Node) -> Carretera:
+    """`carretera:` -- los siete colores con los que se pinta la calzada.
+
+    Entera es opcional: sin ella sale una carretera gris con arcen rojo y
+    blanco sobre hierba, que es la de los recreativos de siempre."""
+    if node is None:
+        return Carretera()
+    base = Carretera()
+
+    def par(nombres, porde):
+        raw = node.raw(*nombres)
+        if raw is None:
+            return porde
+        if isinstance(raw, (list, tuple)) and len(raw) == 2 \
+                and not isinstance(raw[0], (int, float)):
+            return (parse_color(raw[0], "carretera"),
+                    parse_color(raw[1], "carretera"))
+        # un solo color: las dos franjas iguales, sin rayas
+        uno = parse_color(raw, "carretera")
+        return (uno, uno)
+
+    return Carretera(
+        asfalto=par(["asfalto", "calzada", "road"], base.asfalto),
+        arcen=par(["arcen", "arcén", "borde", "linea", "línea"], base.arcen),
+        hierba=par(["hierba", "cesped", "césped", "fuera", "campo"], base.hierba),
+        raya=parse_color(node.raw("raya", "central", "eje")
+                         or list(base.raya), "carretera"),
+        ancho_arcen=node.int_(["ancho_arcen", "arcen_ancho", "borde_ancho"],
+                              8, 0, 64),
     )
 
 
@@ -2508,11 +2565,12 @@ def load_project(path: str) -> Project:
                      (top.child("spawns", "simbolos", "símbolos").data or {}).items()}
     # Los enemigos con gravedad necesitan suelo debajo; los voladores no. Y
     # mirando desde arriba no lo necesita ninguno: ahi no hay de donde caerse.
-    # Mirando desde arriba -y en la cinta, que es la misma manera de andar- no
-    # hay de donde caerse: el suelo es toda la franja.
+    # Mirando desde arriba -y en la cinta, que es la misma manera de andar, y
+    # en una carretera, que tambien se mira desde arriba- no hay de donde
+    # caerse: el suelo es toda la franja.
     necesitan_suelo = {
-        name: (view not in ("cenital", "cinta", "iso") and enemy.gravity > 0
-               and enemy.behavior != "flyer")
+        name: (view not in ("cenital", "cinta", "iso", "carretera")
+               and enemy.gravity > 0 and enemy.behavior != "flyer")
         for name, enemy in enemies.items()
     }
     jefes = {name for name, enemy in enemies.items() if enemy.boss}
@@ -2591,6 +2649,8 @@ def load_project(path: str) -> Project:
         "variables", "banderas", "memoria", "guiones", "scripts", "eventos",
         # el coche de un juego de conducir
         "coche", "car", "vehiculo", "vehículo",
+        # y los colores con los que se pinta la carretera
+        "carretera", "road", "circuito",
     }
     extra_top = [key for key in data if key not in known_top]
     if extra_top:
@@ -2621,6 +2681,7 @@ def load_project(path: str) -> Project:
         root=root, title=title.upper()[:24], author=author[:24], system=sistema,
         lives=lives, players=players, camera=camera, view=view,
         coche=_leer_coche(top.child("coche", "car", "vehiculo", "vehículo")),
+        asfalto=_leer_carretera(top.child("carretera", "road", "circuito")),
         aggressive=aggressive,
         entre_ellos=entre_ellos,
         amiga_modo=amiga_modo,

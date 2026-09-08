@@ -2,8 +2,64 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.30.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.31.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.31
+
+**El decimo genero: la carretera.** Un juego de conducir de los recreativos: la
+carretera se va hacia el horizonte y lo unico que se hace es correr sin
+salirse.
+
+Por dentro **no es una vista nueva**. Es la cenital de siempre: el mapa es el
+trazado de la carretera visto desde arriba y el coche lo sube de abajo arriba.
+Lo que cambia es que no se anda, se **acelera**.
+
+Y por eso la curva no hay que inventarla. El coche va **recto por el mapa**; si
+la carretera tuerce y no giras, te sales. Para seguir una curva hay que moverse
+de lado tanto como tuerza la carretera **por frame**, y como a mas velocidad
+recorres mas carretera por frame, a punta hace falta mas volante del que hay.
+Medido: una curva de 0.47 de pendiente pide 2.83 pixeles de volante a 6.0
+px/frame -y solo hay 2.2-, pero a 3.5 pide 1.65 y se pasa. Ahi esta el genero
+entero, y no esta programado en ningun sitio.
+
+**El coche.** Dos marchas -la corta empuja y se queda corta, la larga arranca
+despacio y es la que corre-, acelerador, freno, roce, un volante que manda
+tanto mas cuanto mas corres, y el trompo. Cabe en el mando de las ocho
+maquinas sin inventarse nada: accion acelera, abajo frena, saltar cambia de
+marcha y la cruceta es el volante.
+
+**La perspectiva.** `np_carretera()` rellena una tabla de 224 entradas, una por
+linea de pantalla: por donde pasa el eje de la calzada, cuanto mide de ancho
+ahi y que franja toca. Eso es **todo** lo que necesita una maquina, y es a
+proposito: la Mega Drive y el X68000 la pintaran con su scroll por linea, el
+Amiga y el CD32 con el copper, la Neo Geo con sprites encogidos, la Jaguar con
+el blitter y el Atari ST a mano. La misma tabla, asi que la carretera cae en el
+mismo pixel en las ocho. El preview hace la misma cuenta.
+
+**El juego.** Trafico que adelantar -coches que van a lo suyo, por su carril, y
+lo que decides es por que lado pasarlos-, el trompo al chocar (que no quita
+vida: quita **tiempo**), y controles de paso que regalan segundos, que es la
+unica moneda que hay.
+
+**Una casilla nueva que no es del genero:** `lento` (hierba, arena, barro,
+arcen). No para, **frena**. Vale igual para un charco en un juego cenital.
+
+**Y una leccion que costo encontrar.** La primera version llamaba a la funcion
+que mueve el trafico desde el bucle de enemigos, que es donde tocaba. Con eso
+la Neo Geo pasaba de 198744 a 200660 ciclos por frame -y solo da 200000-, **con
+o sin trafico en el juego**: gcc mete la funcion dentro, esa funcion crece,
+necesita mas registros y se encarecen todos los bichos de todos los generos. Se
+probo a moverla de sitio dos veces y el coste la seguia: lo caro no era
+ejecutarla, era que la llamada estuviera ahi. Ahora se **borra al compilar**
+con `NP_VISTA_CARRETERA`, igual que el kit ya hacia con la vista de cinta, y
+los otros nueve generos no pagan un ciclo.
+
+**Lo que todavia no esta:** las ocho maquinas **no dibujan la carretera**. El
+motor la calcula y el preview la pinta, pero los ocho dibujantes siguen
+pintando el mapa, que en este genero es el trazado y no lo que se ve. Un juego
+de carretera compila y se juega igual, y el compilador **lo dice** al
+compilarlo. En el navegador -`ngplat probar`- se ve como tiene que verse.
 
 ## 1.30
 

@@ -310,6 +310,48 @@ class TestNivelesJugables(unittest.TestCase):
                             "sin la barra el arcon se abre igual: el puzle no "
                             "esta pidiendo nada\n" + resultado.stdout)
 
+    def _pilotar(self, destino):
+        """Pilota el circuito con node sobre el motor del preview y devuelve
+        lo que ha pasado."""
+        if not shutil.which("node"):
+            self.skipTest("node no esta instalado")
+        build = build_project(load_project(destino))
+        datos = build_data(build)
+        for hoja in datos["sheets"].values():
+            hoja["url"] = ""                 # pilotar no necesita los graficos
+        ruta = os.path.join(self.tmp, "datos-circuito.json")
+        with open(ruta, "w", encoding="utf-8") as fh:
+            json.dump(datos, fh)
+        salida = subprocess.run(
+            ["node", os.path.join(KIT, "tests", "pilotar.js"), ruta],
+            capture_output=True, text=True, check=True)
+        return json.loads(salida.stdout)
+
+    def test_el_circuito_de_carretera_se_puede_recorrer(self):
+        """El genero de conducir: que el trazado que sale del andamiaje se
+        puede recorrer entero, y a lo que corre el coche.
+
+        No lo juega el bot -un bot que sabe saltar y pegar no sabe conducir-,
+        asi que aqui se pilota a mano: pie a fondo, la marcha larga y el
+        volante puesto hacia donde va la calzada, que es lo que dice la cinta
+        del propio motor. Si el circuito tuviera una curva imposible, el coche
+        se saldria y no llegaria a la meta."""
+        destino = os.path.join(self.tmp, "circuito")
+        crear_proyecto(destino, "COSTA", "TEST", genero="carretera")
+        proyecto = load_project(destino)
+        self.assertEqual(proyecto.view, "carretera")
+        self.assertFalse(proyecto.warnings, proyecto.warnings)
+        mundo = self._pilotar(destino)
+        self.assertTrue(mundo["llega"],
+                        "el coche no llega a la meta del primer tramo: se "
+                        "queda en la fila %d de %d" % (mundo["fila"],
+                                                       mundo["filas"]))
+        self.assertGreater(mundo["punta"], 5.5,
+                           "no se llega ni a 5.5 px/frame: el circuito no deja "
+                           "correr")
+        self.assertGreater(mundo["controles"], 0,
+                           "no se cruza ningun control de paso")
+
     def test_el_proyecto_de_kungfu_tambien_se_termina(self):
         """El genero de kung-fu no se pasa andando hacia la derecha: la puerta
         pide todos los faroles y los faroles estan arriba, en las vigas y al

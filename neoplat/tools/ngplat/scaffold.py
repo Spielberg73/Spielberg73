@@ -6,7 +6,8 @@ import os
 from dataclasses import dataclass, replace
 from typing import Dict, List, Tuple
 
-from . import (art, art_aventura, art_barrio, art_comando, art_filmation,
+from . import (art, art_aventura, art_barrio, art_carretera, art_comando,
+               art_filmation,
                art_grafica, art_hierro, art_kungfu, art_mazmorra,
                art_sonido)
 from .errors import ProjectError
@@ -3364,6 +3365,40 @@ def _nivel_kungfu_2() -> List[str]:
                       list(_ENTRANAS_C), list(_ENTRANAS_D))
 
 
+_MUSICA_CARRETERA = """  musica:
+    # Dos canciones de conducir. La regla es una: **bajo a corcheas y sin
+    # parar**, porque lo que hay debajo de un juego de carretera es un motor
+    # que no se calla. Encima, una melodia que sube, que es lo que suena a
+    # carretera abierta.
+    costa:
+      velocidad: 8
+      pistas:
+        - |
+          mi5 - sol5 la5 - si5 do6 -
+          si5 - la5 sol5 - mi5 sol5 -
+          la5 - do6 re6 - do6 si5 -
+          la5 - sol5 mi5 - re5 mi5 -
+        - |
+          la2 la2 mi3 mi3 la2 la2 mi3 mi3
+          fa2 fa2 do3 do3 fa2 fa2 do3 do3
+          sol2 sol2 re3 re3 sol2 sol2 re3 re3
+          la2 la2 mi3 mi3 la2 la2 mi3 mi3
+    montana:
+      velocidad: 7
+      pistas:
+        - |
+          re5 - fa5 la5 - sol5 fa5 -
+          mi5 - sol5 do6 - si5 la5 -
+          fa5 - la5 do6 - re6 do6 -
+          la5 - sol5 fa5 - mi5 re5 -
+        - |
+          re2 re2 la2 la2 re2 re2 la2 la2
+          si1 si1 fa2 fa2 si1 si1 fa2 fa2
+          sol2 sol2 re3 re3 sol2 sol2 re3 re3
+          la2 la2 mi3 mi3 la2 la2 mi3 mi3
+"""
+
+
 _MUSICA_KUNGFU = """  musica:
     # Pentatonica: cinco notas y ninguna que roce con otra, que es lo que suena
     # a oriental sin tener que afinar nada raro. El bajo va a negras marcando
@@ -3404,6 +3439,162 @@ _MUSICA_KUNGFU = """  musica:
         - |
           la2 - la3 - mi3 - mi2 -
           re3 - re2 - la2 - - -
+"""
+
+
+def _circuito(tramos, ancho: int = 40, carril: int = 7) -> str:
+    """Un circuito, escrito fila a fila.
+
+    `tramos` es una lista de (cuantas filas, cuanto se desvia el eje). El eje
+    va de un desvio al siguiente **repartido**, asi que una curva no es un
+    escalon: es una pendiente. Y esa pendiente es la dificultad del tramo,
+    porque lo que hace falta para seguirla es volante por frame.
+
+    Se escribe aqui y no a mano porque son ciento y pico filas y porque asi las
+    curvas son las que son: con `punta: 6.0` y `volante: 2.2`, una pendiente de
+    media casilla por fila ya no se pasa a tope."""
+    filas = []
+    centro = ancho // 2
+    for largo, desvio in tramos:
+        destino = ancho // 2 + desvio
+        for i in range(largo):
+            c = centro + (destino - centro) * (i + 1) // largo
+            filas.append("".join(
+                "#" if x in (0, ancho - 1)
+                else ("." if abs(x - c) <= carril // 2 else ",")
+                for x in range(ancho)))
+        centro = destino
+    return filas
+
+
+def _nivel_carretera(nombre: str, tramos, controles, coches,
+                     fondo: str, musica: str = "") -> str:
+    """Un nivel de carretera: el trazado, los controles de paso y el trafico.
+
+    Los controles cruzan **de lado a lado**, arcenes incluidos: una meta
+    volante no se cuela por la hierba. Y el mapa se escribe al reves de como se
+    conduce -la primera fila es la meta y la ultima la salida-, porque el coche
+    sube por el mapa."""
+    filas = _circuito(tramos)
+    largo = len(filas)
+    ancho = len(filas[0])
+    for fila in controles:
+        filas[largo - 1 - fila] = "#" + "K" * (ancho - 2) + "#"
+    for fila, lado in coches:
+        texto = list(filas[largo - 1 - fila])
+        libres = [i for i, ch in enumerate(texto) if ch == "."]
+        if not libres:
+            continue
+        sitio = (libres[0] + libres[-1]) // 2 + lado
+        if 0 < sitio < ancho - 1:
+            texto[sitio] = "r"
+        filas[largo - 1 - fila] = "".join(texto)
+    filas[0] = "#" + "G" * (ancho - 2) + "#"
+    ultima = list(filas[-1])
+    ultima[filas[-1].index(".") + 3] = "P"
+    filas[-1] = "".join(ultima)
+    cabeza = ['  - nombre: "%s"' % nombre, '    fondo: "%s"' % fondo]
+    if musica:
+        cabeza.append("    musica: %s" % musica)
+    cabeza.append("    mapa: |")
+    return "\n".join(cabeza + ["      " + f for f in filas]) + "\n"
+
+
+GAME_YAML_CARRETERA = """# Proyecto NeoPlat de conducir: la carretera se va al horizonte.
+#
+#   ngplat probar     -> abre el preview jugable en el navegador
+#   ngplat compilar   -> genera el proyecto en C y las ROMs graficas
+#
+# Los mandos, que caben en cualquier mando de dos botones:
+#
+#   accion (X) ........ el acelerador. Hay que **mantenerlo**.
+#   abajo .............. el freno
+#   saltar (Z) ......... la marcha: corta para salir, larga para correr
+#   izquierda/derecha .. el volante
+#
+# Y la regla del genero, que no esta programada en ningun sitio: el coche va
+# **recto**. Si la carretera tuerce y tu no giras, te sales. Cuanto mas corres,
+# mas volante hace falta por frame para seguir la curva, asi que hay curvas que
+# a tope no se pasan. Levantar el pie no es perder tiempo: es no perderlo.
+
+juego:
+  titulo: "{titulo}"
+  autor: "{autor}"
+  vidas: 3
+  tiempo: 60           # segundos. Los controles de paso lo alargan.
+  vista: carretera
+  camara: scroll
+  fondo: "#4878c8"     # el cielo
+
+# El motor, el freno y el volante. Son las unicas cifras del genero.
+coche:
+  punta: 6.0           # lo que corre con la marcha larga
+  punta_corta: 3.2     # y con la corta
+  acelera: 0.030       # lo que gana por frame con la larga
+  acelera_corta: 0.075 # y con la corta, que empuja mas
+  frena: 0.140
+  roce: 0.020          # lo que pierde solo, sin tocar nada
+  volante: 2.2         # lo que se mueve de lado, a punta
+  lento: 1.6           # lo que corre como mucho fuera del asfalto
+  arrastre: 0.180      # y lo que le roba por frame la hierba
+  trompo: 90           # frames dando vueltas despues de un choque
+  control: 20          # segundos que regala cruzar un control de paso
+
+# Los siete colores con los que se pinta la calzada. Van en pares porque la
+# carretera se pinta a franjas que corren hacia ti: eso es lo que hace que se
+# note la velocidad, y es como se hacia en los recreativos.
+carretera:
+  asfalto: ["#4a4a52", "#42424a"]
+  arcen:   ["#d0d0d8", "#c02020"]
+  hierba:  ["#3a7a42", "#347038"]
+  raya:    "#e8e8f0"
+  ancho_arcen: 8
+
+jugador:
+  sprite: graficos/coche.png
+  frame: [16, 16]
+  caja: [12, 12]
+  vida: 1
+  animaciones:
+    quieto: {{frames: [0]}}      # recto
+    correr: {{frames: [1]}}      # girando
+    dano:   {{frames: [2]}}      # el trompo
+
+enemigos:
+  # El trafico: coches que van a lo suyo, por su carril y a su velocidad. No
+  # te persiguen -no son enemigos, son estorbos-: lo que decides es por que
+  # lado pasarlos.
+  rival:
+    sprite: graficos/rival.png
+    frame: [16, 16]
+    caja: [12, 12]
+    comportamiento: trafico
+    velocidad: 2.6
+    vida: 99
+    puntos: 0
+
+objetos:
+  # Sin objetos que recoger: aqui lo unico que se gana es tiempo, y se gana
+  # llegando. Se deja el hueco para que anadir uno sea escribirlo.
+  {{}}
+
+tiles:
+  imagen: graficos/tiles.png
+  leyenda:
+    '.': {{tile: 0, tipo: vacio}}      # el asfalto
+    ',': {{tile: 1, tipo: hierba}}     # fuera: no para, pero ahi no se corre
+    '#': {{tile: 2, tipo: solido}}     # el quitamiedos: chocar es un trompo
+    'K': {{tile: 3, tipo: control}}    # control de paso: regala segundos
+    'G': {{tile: 3, tipo: meta}}       # y la meta
+
+spawns:
+  r: rival
+
+sonido:
+{musica}
+
+niveles:
+{niveles}
 """
 
 
@@ -3913,7 +4104,8 @@ def _genero_castlevania(nombres: Dict[str, str]) -> Genero:
 
 
 GENEROS = ("plataformas", "castlevania", "comando", "mazmorra",
-           "barrio", "aventura", "filmation", "kungfu", "grafica")
+           "barrio", "aventura", "filmation", "kungfu", "grafica",
+           "carretera")
 
 # Como se llama cada cosa en cada estilo de dibujo.
 _NOMBRES = {
@@ -4154,6 +4346,13 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
         # estilo, que son de 16, no valen ni de sitio.
         dibujos = dict(dibujos)
         dibujos.update(art_kungfu.todos(estilo))
+    elif genero == "carretera":
+        # Aqui no sirve nada del estilo, y ademas hace falta menos que en
+        # ningun otro genero: la calzada, el arcen y la hierba **no son
+        # dibujos**, son siete colores que pinta el motor linea a linea. Lo
+        # unico que se dibuja es lo que va encima de la carretera.
+        dibujos = dict(dibujos)
+        dibujos.update(art_carretera.todos(estilo))
     for relativo, imagen in dibujos.items():
         ruta = os.path.join(destino, relativo)
         write_png(ruta, imagen)
@@ -4290,6 +4489,39 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
         contenido = GAME_YAML_KUNGFU.format(
             titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles,
             musica=_MUSICA_KUNGFU)
+        with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
+                  newline="\n") as fh:
+            fh.write(contenido)
+        creados.append("game.yaml")
+        with open(os.path.join(destino, ".gitignore"), "w", encoding="utf-8",
+                  newline="\n") as fh:
+            fh.write("build/\npreview.html\n.neoplat/\n")
+        creados.append(".gitignore")
+        return creados
+
+    if genero == "carretera":
+        # Dos tramos: la costa, que empieza recta para coger el punto al
+        # acelerador, y la montana, que va encadenada y no perdona.
+        niveles = (
+            _nivel_carretera(
+                "LA COSTA",
+                [(26, 0), (30, 7), (18, 0), (26, -8), (24, 0), (28, 6),
+                 (20, 0)],
+                controles=(45, 100),
+                coches=((14, 0), (38, 2), (62, -3), (88, 1), (120, -2)),
+                fondo="#4878c8", musica="costa")
+            + _nivel_carretera(
+                "LA MONTANA",
+                [(20, 0), (24, -9), (16, 4), (22, -7), (18, 6), (26, -5),
+                 (20, 3), (24, 0)],
+                controles=(40, 85, 130),
+                coches=((18, -2), (34, 1), (55, 3), (74, -1), (96, 2),
+                        (118, 0), (140, -3)),
+                fondo="#283860", musica="montana")
+        )
+        contenido = GAME_YAML_CARRETERA.format(
+            titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles,
+            musica=_MUSICA_CARRETERA)
         with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
                   newline="\n") as fh:
             fh.write(contenido)

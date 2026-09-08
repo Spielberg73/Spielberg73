@@ -161,6 +161,12 @@
     this.timeLeft = 0; this.prevInput = [0, 0];
     this.sfx = 0;                 /* eventos de sonido de este frame */
     this.keys = 0; this.hearts = 0; this.entityCount = 0;
+    /* La cinta de la carretera existe desde el principio, igual que en C, donde
+       son dos campos de la estructura y estan siempre. Crearla solo al cargar
+       un nivel de carretera dejaba el primer dibujado sin ella. */
+    this.viaCentro = [];
+    this.viaMedio = [];
+    for (var _t = 0; _t < MAX_TRAMOS; _t++) { this.viaCentro.push(0); this.viaMedio.push(0); }
     /* Cuantos enemigos pegan ahora mismo, los frames de parada al acertar y
        los que tiembla la camara. Igual que en NpWorld. */
     this.atacando = 0; this.congelado = 0; this.sacudida = 0;
@@ -1502,8 +1508,6 @@
     var filas = Math.min(nivel.cells_h, MAX_TRAMOS);
     var centro = idiv(nivel.cells_w * TILE, 2), medio = TILE;
     var fila, columna, mejorIni, mejorLargo, ini, tipo, calzada;
-    this.viaCentro = new Array(MAX_TRAMOS);
-    this.viaMedio = new Array(MAX_TRAMOS);
     for (fila = 0; fila < filas; fila++) {
       mejorIni = -1; mejorLargo = 0; ini = -1;
       for (columna = 0; columna <= nivel.cells_w; columna++) {
