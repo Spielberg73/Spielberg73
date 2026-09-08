@@ -78,6 +78,19 @@ paredes del fondo, que ya vienen en el dibujo de la sala— salen en blanco a
 propósito y se llaman "sólido (alto 48) ya pintado": el dibujo de fondo ya las
 enseña puestas en su sitio.
 
+### Una aventura gráfica se edita igual, pero lo que se pinta contesta
+
+Con `vista: puntero` el mapa sigue siendo un mapa de texto y se pinta con el
+mismo lápiz. Lo que cambia es lo que significan las casillas: aquí casi todas
+son `vacio` —un cursor no choca con nada— y lo que las distingue es **a qué
+verbo contestan**. Por eso en la paleta no salen por su tipo, que sería el
+mismo veinte veces, sino por los verbos que responden —«mirar, coger», «usar»—
+y las que no contestan a nada salen como «decorado».
+
+Los guiones se escriben en `game.yaml`, que el editor lee y reescribe sin tocar
+tus comentarios: un mueble grande son varias casillas con los mismos guiones, y
+moverlo es pintarlo en otro sitio.
+
 ## Nivel
 
 Nombre, color de fondo, música y qué capas de parallax usa. Y la gestión de
@@ -265,6 +278,12 @@ va a por **comida**, si la meta pide **llaves** que no tiene va a por una, y la
 meta la deja para el final. Si no llega, te dice por qué —«no hay camino andando
 hasta la llave», «se queda atascado»— y te lleva al punto donde se quedó. Es el
 mismo bot que usan las pruebas del kit.
+
+En una **aventura gráfica** ese bot no busca ningún camino —un cursor va a
+donde quiera—: va a cada casilla que contesta a algo y le prueba los cuatro
+verbos, una y otra vez, barajando el orden en cada vuelta. Es a lo bruto a
+propósito, porque es exactamente lo que hace un jugador cuando se atasca; si
+probándolo todo el juego no se acaba, es que no tiene solución.
 
 ## game.yaml
 

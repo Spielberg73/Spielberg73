@@ -372,10 +372,15 @@ def build_project(project: Project) -> Build:
         height = len(level.rows)
         cells: List[int] = []
         spawns: List[Tuple[int, int, int, int]] = []
+        # Lo que se dibuja debajo de un bicho, un objeto o la salida. Por
+        # defecto el '.' de la leyenda, y con `vacio:` en el nivel lo que diga:
+        # en un juego con dos sitios que no se parecen -papel pintado arriba,
+        # piedra abajo- el aire de uno no es el aire del otro.
+        vacio_nivel = tile_index.get(level.vacio, empty_index)
         for y, row in enumerate(level.rows):
             for x, ch in enumerate(row):
                 if ch in level.spawns or ch == "P":
-                    cells.append(empty_index)
+                    cells.append(vacio_nivel)
                     if ch == "P":
                         continue
                     name = level.spawns[ch]
@@ -505,7 +510,9 @@ def _armar_guiones(project: Project):
     orden: List[str] = []
     dialogo: List[str] = []
     codigo = {"fin": 0, "decir": 1, "esperar": 2, "poner": 3, "sumar": 4,
-              "si": 5, "saltar": 6, "sonido": 7, "dar": 8, "nivel": 9}
+              "si": 5, "saltar": 6, "sonido": 7, "dar": 8, "nivel": 9,
+              "llevar": 10, "quitar": 11,
+              "acabar": 12}
     for nombre, guion in project.guiones.items():
         orden.append(nombre)
         inicios.append(len(pasos))

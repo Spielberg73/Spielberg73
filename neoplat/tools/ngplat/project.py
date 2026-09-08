@@ -481,6 +481,16 @@ class TileDef:
     guion: str = ""
     # y si solo salta la primera vez en toda la partida
     una_vez: bool = False
+    # Los guiones de la aventura grafica: que contesta esta casilla a cada
+    # verbo (mirar, coger, usar, hablar). Un diccionario vacio -lo normal-
+    # quiere decir que la casilla es decorado y no contesta a nada.
+    verbos: Dict[str, str] = field(default_factory=dict)
+    # Y que se ve **debajo** cuando esa casilla se quita (`quitar:` en un
+    # guion): el simbolo de otra casilla de la leyenda. Vacio = lo que haya de
+    # aire, que es lo que se ve por el hueco de una puerta abierta. Es lo que
+    # hace que coger la llave de encima de la mesa deje la mesa, y no un
+    # agujero con forma de pared.
+    debajo: str = ""
 
 
 @dataclass
@@ -687,13 +697,39 @@ def _leer_pasos(raw, variables, items, eventos, niveles, where: str) -> List[Pas
         elif nombre in ("ir_a_nivel", "nivel", "level", "ir"):
             numero = _entero(valor, 1, max(niveles, 1), "ir_a_nivel", sitio)
             pasos.append(Paso("nivel", b=numero - 1))
+        elif nombre in ("llevar", "llevar_a", "colocar", "poner_en", "mover"):
+            x, y = _leer_casilla(valor, "llevar", sitio)
+            pasos.append(Paso("llevar", b=x, c=y))
+        elif nombre in ("quitar", "borrar", "coger_de", "vaciar"):
+            x, y = _leer_casilla(valor, "quitar", sitio)
+            pasos.append(Paso("quitar", b=x, c=y))
+        elif nombre in ("acabar", "fin_del_nivel", "terminar", "fin"):
+            pasos.append(Paso("acabar"))
         else:
             raise ProjectError(
                 "no conozco el paso '%s'" % clave,
                 hint="los que hay son: decir, esperar, poner, sumar, si, "
-                     "sonido, dar e ir_a_nivel",
+                     "sonido, dar, ir_a_nivel, llevar, quitar y acabar",
                 where=sitio)
     return pasos
+
+
+def _leer_casilla(valor, quien, where):
+    """`llevar: [12, 5]` -> (12, 5). Una casilla del mapa, en casillas.
+
+    En casillas y no en pixeles porque el mapa se escribe en casillas: si el
+    sitio al que quieres llevar al jugador es la sexta letra de la tercera
+    fila, eso es lo que hay que poder escribir sin multiplicar nada."""
+    if isinstance(valor, dict):
+        x = valor.get("x", valor.get("columna"))
+        y = valor.get("y", valor.get("fila"))
+        valor = [x, y]
+    if not isinstance(valor, (list, tuple)) or len(valor) != 2:
+        raise ProjectError(
+            "'%s' quiere una casilla del mapa: columna y fila" % quien,
+            hint="por ejemplo: %s: [12, 5]" % quien, where=where)
+    return (_entero(valor[0], 0, 1023, quien, where),
+            _entero(valor[1], 0, 1023, quien, where))
 
 
 def _entero(valor, minimo, maximo, quien, where):
@@ -756,6 +792,13 @@ class Level:
     keys_needed: int = 0                              # llaves que pide la meta
     start: Tuple[int, int] = (0, 0)
     guion: str = ""                                   # el que se lanza al entrar
+    # Que se dibuja **debajo** de las casillas que llevan un bicho, un objeto o
+    # la salida 'P': el simbolo de la leyenda que va ahi. Vacio = '.', que es
+    # lo de siempre. Hace falta en cuanto un juego tiene dos sitios que no se
+    # parecen -una habitacion con papel pintado y un sotano de piedra-: ahi el
+    # aire de uno no es el aire del otro, y la casilla del cursor se veia con
+    # el papel pintado en mitad de la pared de piedra.
+    vacio: str = ""
 
 
 @dataclass
@@ -811,6 +854,11 @@ class Project:
     variables: Dict[str, int]
     guiones: Dict[str, "Guion"]
     levels: List[Level]
+    # Como se llaman los cuatro verbos en el marcador, en el idioma del juego,
+    # y el guion que contesta cuando la casilla senalada no dice nada. Los dos
+    # solo los mira la vista de puntero.
+    verbos: List[str] = field(default_factory=lambda: list(VERBOS_POR_DEFECTO))
+    guion_nada: str = ""
     warnings: List[str] = field(default_factory=list)
 
     def spawn_names(self) -> List[str]:
@@ -920,6 +968,29 @@ CAMARAS = {
 }
 
 
+# --- los verbos de la aventura grafica ------------------------------------
+#
+# Cuatro, y en este orden, porque es el orden en el que se piensa: primero se
+# mira, luego se coge, luego se usa y al final se pregunta. El motor los tiene
+# numerados igual (NP_VERBO_*) y el boton pasa de uno al siguiente en bucle.
+VERBOS = ("mirar", "coger", "usar", "hablar")
+
+# Como salen escritos en el marcador. Se pueden cambiar en `juego: verbos:`
+# para poner el idioma que sea, y son seis letras como mucho: es lo que cabe
+# delante de la bolsa en la linea de arriba.
+VERBOS_POR_DEFECTO = ("MIRAR", "COGER", "USAR", "HABLAR")
+
+VERBO_ALIAS = {
+    "mirar": "mirar", "ver": "mirar", "examinar": "mirar", "look": "mirar",
+    "observar": "mirar", "leer": "mirar",
+    "coger": "coger", "tomar": "coger", "recoger": "coger", "agarrar": "coger",
+    "take": "coger", "get": "coger", "llevarse": "coger",
+    "usar": "usar", "abrir": "usar", "accionar": "usar", "use": "usar",
+    "tocar": "usar", "empujar": "usar",
+    "hablar": "hablar", "preguntar": "hablar", "talk": "hablar",
+    "hablar_con": "hablar", "charlar": "hablar",
+}
+
 VISTAS = {
     "lateral": "lateral", "side": "lateral", "plataformas": "lateral",
     "perfil": "lateral", "de_lado": "lateral",
@@ -936,6 +1007,12 @@ VISTAS = {
     "isometrica": "iso", "isométrica": "iso", "iso": "iso",
     "filmation": "iso", "isometrico": "iso", "isométrico": "iso",
     "tresd": "iso", "3d": "iso", "habitaciones": "iso",
+    # Y la de puntero: la aventura grafica. No se anda por el escenario, se
+    # senala: un cursor, cuatro verbos y lo que conteste cada casilla.
+    "puntero": "puntero", "cursor": "puntero", "raton": "puntero",
+    "ratón": "puntero", "aventura_grafica": "puntero",
+    "aventura_gráfica": "puntero", "grafica": "puntero", "gráfica": "puntero",
+    "point_and_click": "puntero", "senalar": "puntero", "señalar": "puntero",
 }
 
 
@@ -959,11 +1036,35 @@ def _leer_vista(game: Node) -> str:
             "no entiendo la vista '%s'" % texto,
             hint="pon 'lateral' (de lado, con gravedad), 'cenital' "
                  "(desde arriba, en ocho direcciones), 'cinta' (desde arriba "
-                 "pero saltando) o 'isometrica' (una sala vista desde una "
-                 "esquina)",
+                 "pero saltando), 'isometrica' (una sala vista desde una "
+                 "esquina) o 'puntero' (una aventura grafica: se senala con un "
+                 "cursor y se elige verbo)",
             where="juego",
         )
     return VISTAS[clave]
+
+
+def _leer_verbos(game: Node) -> List[str]:
+    """`verbos: [MIRAR, COGER, USAR, HABLAR]` -- como se llaman en el marcador.
+
+    Son siempre los mismos cuatro y en el mismo orden: lo unico que se cambia
+    aqui es **como se escriben**, para que una aventura en castellano diga
+    MIRAR y una en ingles LOOK. Seis letras como mucho, que es lo que cabe."""
+    raw = game.raw("verbos", "verbs", "acciones")
+    if raw is None:
+        return list(VERBOS_POR_DEFECTO)
+    if not isinstance(raw, (list, tuple)) or len(raw) != len(VERBOS):
+        raise ProjectError(
+            "'verbos' son cuatro nombres: mirar, coger, usar y hablar",
+            hint="por ejemplo: verbos: [MIRAR, COGER, USAR, HABLAR]",
+            where="juego")
+    nombres = []
+    for valor in raw:
+        nombre = str(valor).strip().upper()[:6]
+        if not nombre:
+            raise ProjectError("hay un verbo sin nombre", where="juego")
+        nombres.append(nombre)
+    return nombres
 
 
 def _leer_camara(game: Node) -> str:
@@ -1624,6 +1725,8 @@ def _read_tiles(node: Node, root: str) -> Tuple[Tileset, Dict[str, TileDef]]:
             needs = ""
             alto, bloque, pintado = 0, "", False
             guion, una_vez = "", False
+            verbos: Dict[str, str] = {}
+            debajo = ""
             if isinstance(value, dict):
                 sub = Node(value, sub_where)
                 index = sub.int_(["tile", "indice", "índice", "id"], 0, minimum=0)
@@ -1640,6 +1743,18 @@ def _read_tiles(node: Node, root: str) -> Tuple[Tileset, Dict[str, TileDef]]:
                 guion = sub.str_(["guion", "guión", "script", "dispara"], "") or ""
                 una_vez = sub.bool_(["una_vez", "una vez", "solo_una_vez",
                                      "once"], False)
+                # Y lo que contesta la casilla a cada verbo, que es como se
+                # escribe una aventura grafica: la misma puerta dice una cosa
+                # al mirarla y hace otra al abrirla.
+                # lo que se ve debajo si la casilla se quita
+                debajo = sub.str_(["debajo", "detras", "detrás", "bajo",
+                                   "encima_de"], "") or ""
+                for clave_verbo, valor_verbo in value.items():
+                    verbo = VERBO_ALIAS.get(
+                        str(clave_verbo).strip().lower().replace(" ", "_"))
+                    if verbo is None:
+                        continue
+                    verbos[verbo] = str(valor_verbo).strip()
             elif not isinstance(value, (int, float, list, tuple)):
                 sub = Node(value, sub_where)
                 index = sub.int_(["tile", "indice", "índice", "id"], 0, minimum=0)
@@ -1647,7 +1762,7 @@ def _read_tiles(node: Node, root: str) -> Tuple[Tileset, Dict[str, TileDef]]:
             if index < 0:
                 raise ProjectError("el numero de tile no puede ser negativo", where=sub_where)
             tiles[char] = TileDef(char, index, kind, needs, alto, bloque, pintado,
-                                  guion, una_vez)
+                                  guion, una_vez, verbos, debajo)
         tiles.setdefault(".", TileDef(".", 0, "empty"))
         tiles.setdefault(" ", TileDef(" ", 0, "empty"))
     return Tileset(image=image, size=size, sala_tile=sala_tile,
@@ -1846,7 +1961,8 @@ def _read_levels(raw_levels: Any, tiles: Dict[str, TileDef], spawn_names: List[s
                  music_names: Optional[List[str]] = None,
                  jefes: Optional[set] = None,
                  llaves: Optional[Dict[str, int]] = None,
-                 guion_names: Optional[List[str]] = None) -> List[Level]:
+                 guion_names: Optional[List[str]] = None,
+                 vista: str = "lateral") -> List[Level]:
     if not raw_levels:
         raise ProjectError(
             "el juego no tiene niveles",
@@ -1920,10 +2036,21 @@ def _read_levels(raw_levels: Any, tiles: Dict[str, TileDef], spawn_names: List[s
                 hint="definelo en la seccion 'guiones:'",
                 where=where,
             )
+        vacio = node.str_(["vacio", "vacío", "debajo", "bajo_spawns",
+                           "fondo_de_spawns"], "") or ""
+        if vacio and vacio not in tiles:
+            raise ProjectError(
+                "el nivel dice que debajo de los spawns va '%s', que no esta "
+                "en la leyenda" % vacio,
+                hint="pon el simbolo de una casilla de 'tiles: leyenda:'",
+                where=where,
+            )
         level = Level(name=name, rows=rows, spawns=spawns, background=background,
-                      layers=usadas, music=musica, keys_needed=piden, guion=guion)
+                      layers=usadas, music=musica, keys_needed=piden, guion=guion,
+                      vacio=vacio)
         _validate_level(level, tiles, spawn_names, where, warnings,
-                        necesitan_suelo or {}, jefes or set(), llaves or {})
+                        necesitan_suelo or {}, jefes or set(), llaves or {},
+                        vista)
         levels.append(level)
     return levels
 
@@ -1935,7 +2062,8 @@ def _validate_level(level: Level, tiles: Dict[str, TileDef], spawn_names: List[s
                     where: str, warnings: List[str],
                     necesitan_suelo: Optional[Dict[str, bool]] = None,
                     jefes: Optional[set] = None,
-                    llaves: Optional[Dict[str, int]] = None) -> None:
+                    llaves: Optional[Dict[str, int]] = None,
+                    vista: str = "lateral") -> None:
     height = len(level.rows)
     width = len(level.rows[0])
     if width < 20 or height < 14:
@@ -2017,8 +2145,10 @@ def _validate_level(level: Level, tiles: Dict[str, TileDef], spawn_names: List[s
     has_goal = any(
         tiles[ch].kind == "goal" for row in level.rows for ch in row if ch in tiles
     )
-    # un jefe tambien termina el nivel, asi que ahi no hace falta meta
-    if not has_goal and not hay_jefe:
+    # Un jefe tambien termina el nivel, asi que ahi no hace falta meta. Y en
+    # una aventura grafica no hay meta que pisar: el nivel se acaba cuando lo
+    # dice un guion (`acabar:`), que es la unica manera de terminar algo ahi.
+    if not has_goal and not hay_jefe and vista != "puntero":
         warnings.append(
             "%s ('%s') no tiene tile de meta ni jefe: el nivel no se puede terminar"
             % (where, level.name)
@@ -2162,6 +2292,11 @@ def load_project(path: str) -> Project:
     entre_ellos = game.bool_(["entre_ellos", "fuego_amigo", "se_pegan",
                               "friendly_fire"], False)
     view = _leer_vista(game)
+    # Los verbos de la aventura grafica y el guion que contesta cuando la
+    # casilla senalada no dice nada. En cualquier otra vista no los mira nadie.
+    verbos_nombres = _leer_verbos(game)
+    guion_nada = game.str_(["sin_efecto", "nada", "no_pasa_nada",
+                            "por_defecto"], "") or ""
     amiga_modo = _leer_modo_amiga(game)
     sistema = (game.str_(["system", "sistema", "maquina", "máquina"], "neogeo") or "neogeo")
     bg = game.raw("background", "fondo", "color_fondo")
@@ -2323,13 +2458,40 @@ def load_project(path: str) -> Project:
                 % (char, tile.guion),
                 hint="definelo en la seccion 'guiones:'",
                 where="tiles.leyenda['%s']" % char)
+    for char, tile in tiles.items():
+        for verbo, nombre in tile.verbos.items():
+            if nombre and nombre not in guiones:
+                raise ProjectError(
+                    "el tile '%s' contesta a '%s' con el guion '%s', que no "
+                    "esta definido" % (char, verbo, nombre),
+                    hint="definelo en la seccion 'guiones:'",
+                    where="tiles.leyenda['%s']" % char)
+        if tile.debajo and tile.debajo not in tiles:
+            raise ProjectError(
+                "el tile '%s' dice que debajo esta '%s', que no esta en la "
+                "leyenda" % (char, tile.debajo),
+                hint="pon el simbolo de otra casilla de 'tiles: leyenda:'",
+                where="tiles.leyenda['%s']" % char)
+        if tile.verbos and view != "puntero":
+            warnings.append(
+                "el tile '%s' tiene verbos (mirar, coger, usar, hablar) y el "
+                "juego no es de vista 'puntero': ahi no los mira nadie" % char)
+    if guion_nada and guion_nada not in guiones:
+        raise ProjectError(
+            "'sin_efecto' apunta al guion '%s', que no esta definido"
+            % guion_nada,
+            hint="definelo en la seccion 'guiones:'", where="juego")
+    if view == "puntero" and not any(tile.verbos for tile in tiles.values()):
+        warnings.append(
+            "es una aventura grafica y ninguna casilla contesta a ningun "
+            "verbo: pon 'mirar:', 'coger:', 'usar:' o 'hablar:' en la leyenda")
     levels = _read_levels(
         top.raw("levels", "niveles"), tiles,
         list(enemies) + list(items) + list(platforms) + list(breakables)
         + list(prisoners) + list(generators),
         global_spawns, default_bg, warnings, necesitan_suelo, list(layers),
         list(sound.musica), jefes=jefes, llaves=llaves,
-        guion_names=list(guiones),
+        guion_names=list(guiones), vista=view,
     )
 
     known_top = {
@@ -2379,5 +2541,6 @@ def load_project(path: str) -> Project:
         prisoners=prisoners, generators=generators,
         layers=layers, sound=sound, variables=variables, guiones=guiones,
         levels=levels,
+        verbos=verbos_nombres, guion_nada=guion_nada,
         warnings=warnings,
     )

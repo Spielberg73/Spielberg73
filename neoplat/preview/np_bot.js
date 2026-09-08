@@ -32,6 +32,9 @@
     if (data.view === "cinta") return jugarCinta(NPCore, data, nivel, opciones);
     if (data.view === "iso") return jugarIso(NPCore, data, nivel, opciones);
     if (data.view === "cenital") return jugarCenital(NPCore, data, nivel, opciones);
+    /* Y una aventura grafica no se juega andando: se senala. Ese bot no busca
+       camino -el cursor va donde quiera- sino que prueba los verbos. */
+    if (data.view === "puntero") return jugarPuntero(NPCore, data, nivel, opciones);
     /* Y un juego con lianas tampoco: lo que hay que coger esta arriba y la
        puerta no se abre hasta tenerlo, asi que no vale con ir a la derecha. */
     if (data.player.climb_speed > 0)
@@ -1152,6 +1155,131 @@
     }
     return { ok: false, motivo: "no llega a la meta a tiempo",
              muertes: muertes, avance: cx, x: cx };
+  }
+
+  /* --- el bot de la aventura grafica ----------------------------------
+   *
+   * Aqui no hay camino que buscar: el cursor va a donde quiera en linea recta
+   * y no choca con nada. Lo que hay que probar es otra cosa -si el juego se
+   * puede **resolver**- y eso se prueba de la unica manera honrada: yendo a
+   * cada casilla que contesta a algo y probandole los cuatro verbos, una y
+   * otra vez, hasta que el nivel se acaba o se acaba el tiempo.
+   *
+   * Es a lo bruto a proposito. Un jugador de aventuras hace exactamente esto
+   * cuando se atasca, y si probandolo todo tampoco sale, es que el juego no
+   * tiene solucion y eso es justo lo que hay que avisar. */
+  function jugarPuntero(NPCore, data, nivel, opciones) {
+    var w = NPCore.create(data);
+    w.step(NPCore.IN.START);
+    if (nivel) w.loadLevel(nivel);
+    var pa = data.player.actor;
+    var limite = opciones.frames || 40000;
+    var frames = 0;
+    var verbos = (data.tiles.verbo || []);
+
+    function paso(input) {
+      w.step(input);
+      frames++;
+      return w.state === NPCore.STATE.LEVEL_END
+          || w.state === NPCore.STATE.FINISHED;
+    }
+
+    /* Los cuadros de texto se pasan con el **flanco** del boton, asi que hay
+       que soltarlo entre pagina y pagina. */
+    function pasarTexto() {
+      var vueltas = 0;
+      while (w.guion && frames < limite && vueltas++ < 400)
+        if (paso((vueltas & 1) ? NPCore.IN.ACTION : 0)) return true;
+      return false;
+    }
+
+    /* Lleva el cursor hasta la casilla (tx, ty). Como `paso`, devuelve true
+       **solo si el nivel se ha acabado por el camino**: llegar es lo normal y
+       no es noticia. Confundir las dos cosas daba por terminado el juego en
+       cuanto el cursor tocaba el primer sitio interesante. */
+    function irA(tx, ty) {
+      var destinoX = tx * 16 + 8 - (pa.box_w >> 1);
+      var destinoY = ty * 16 + 8 - (pa.box_h >> 1);
+      var vueltas = 0;
+      while (frames < limite && vueltas++ < 600) {
+        var p = w.players[0], input = 0;
+        var px = NPCore.F2I(p.x), py = NPCore.F2I(p.y);
+        if (px < destinoX - 1) input |= NPCore.IN.RIGHT;
+        else if (px > destinoX + 1) input |= NPCore.IN.LEFT;
+        if (py < destinoY - 1) input |= NPCore.IN.DOWN;
+        else if (py > destinoY + 1) input |= NPCore.IN.UP;
+        if (!input) return false;             /* ha llegado */
+        if (paso(input)) return true;
+      }
+      return false;
+    }
+
+    function ponerVerbo(v) {
+      var vueltas = 0;
+      while (w.verbo !== v && vueltas++ < 8) {
+        if (paso(NPCore.IN.JUMP)) return true;
+        if (paso(0)) return true;
+      }
+      return false;
+    }
+
+    /* Las casillas que contestan a algo, en el orden en el que se leen. */
+    function interesantes() {
+      var sitios = [], x, y, v;
+      for (y = 0; y < w.level.cells_h; y++) {
+        for (x = 0; x < w.level.cells_w; x++) {
+          var tile = w.level.cells[y * w.level.cells_w + x];
+          for (v = 0; v < verbos.length; v++)
+            if ((verbos[v] || [])[tile]) { sitios.push([x, y]); break; }
+        }
+      }
+      return sitios;
+    }
+
+    if (!interesantes().length)
+      return { ok: false, frames: frames, muertes: 0, avance: 0,
+               motivo: "ninguna casilla contesta a ningun verbo" };
+
+    /* Baraja la lista de sitios con una cuenta fija -sin Math.random-, para
+       que dos vueltas no prueben las casillas en el mismo orden y la prueba
+       siga saliendo igual todas las veces.
+     *
+     * Hace falta por una razon concreta: si en una habitacion hay una puerta
+     * **antes** que el puzle -en el sotano del ejemplo, la escalera esta una
+     * fila por encima del arcon-, un bot que vaya siempre en orden de mapa
+     * sube por la escalera antes de llegar al arcon, y vuelta a empezar. Es lo
+     * mismo que le pasa a una persona que entra siempre por la misma puerta. */
+    function barajar(lista, semilla) {
+      var i, j, tmp, r = semilla;
+      for (i = lista.length - 1; i > 0; i--) {
+        r = (r * 1103515245 + 12345) & 0x7FFFFFFF;
+        j = r % (i + 1);
+        tmp = lista[i]; lista[i] = lista[j]; lista[j] = tmp;
+      }
+      return lista;
+    }
+
+    var vuelta, i, v, sitios;
+    for (vuelta = 0; vuelta < 12 && frames < limite; vuelta++) {
+      /* La lista se rehace en cada vuelta: una puerta puede haber cambiado la
+         habitacion entera, y las casillas de la de antes ya no estan. */
+      sitios = interesantes();
+      /* La primera vuelta va en orden de mapa -si el juego esta bien puesto,
+         se resuelve en esa- y las demas barajadas. */
+      if (vuelta) barajar(sitios, vuelta * 7919 + 13);
+      for (i = 0; i < sitios.length && frames < limite; i++) {
+        if (irA(sitios[i][0], sitios[i][1]))
+          return { ok: true, frames: frames, muertes: 0, avance: vuelta + 1 };
+        for (v = 0; v < verbos.length; v++) {
+          if (ponerVerbo(v) || paso(NPCore.IN.ACTION) || paso(0)
+              || pasarTexto())
+            return { ok: true, frames: frames, muertes: 0, avance: vuelta + 1 };
+        }
+      }
+    }
+    return { ok: false, frames: frames, muertes: 0, avance: 0,
+             motivo: "ha probado los cuatro verbos en todas las casillas que "
+                     + "contestan y el nivel no se acaba" };
   }
 
   /* El buscacaminos de lado se exporta aparte: lo usan las pruebas del kit

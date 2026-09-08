@@ -209,6 +209,11 @@ typedef struct {
     /* En que casilla estaba el jugador el frame pasado, para que un disparador
        salte al **entrar** y no sesenta veces por segundo mientras lo pisas. */
     int16_t pisada_x, pisada_y;
+    /* El verbo elegido en una aventura grafica (NP_VERBO_*). Se cambia con el
+       boton de saltar -que ahi no salta nada- y decide que guion contesta la
+       casilla que senalas. Fuera de la vista de puntero vale cero y no lo mira
+       nadie. */
+    uint8_t verbo;
 } NpWorld;
 
 void np_world_init(NpWorld *w);

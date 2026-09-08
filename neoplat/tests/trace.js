@@ -35,11 +35,12 @@ function entityHash(w) {
   return hash >>> 0;
 }
 
-/* Lo que lleva la bolsa en un solo numero, igual que np_bolsa_firma en C. */
+/* Lo que lleva la bolsa -y el verbo elegido- en un solo numero, igual que
+   np_bolsa_firma en C. */
 function bolsaFirma(world) {
   var firma = 0, i;
   for (i = 0; i < world.bolsa.length; i++) firma = (firma * 256) + world.bolsa[i];
-  return firma;
+  return (firma * 256) + (world.verbo | 0);
 }
 
 /* Las variables en un solo numero, igual que vars_firma en np_trace.c. */
@@ -78,7 +79,9 @@ inputs.forEach(function (par) {
     /* y la aventura: lo que llevas encima y cuantas casillas has abierto */
     bolsaFirma(world), world.abiertos.length,
     /* y el guion: por cual va, en que paso, que pagina se ve y las variables */
-    world.guion, world.paso, world.paginas, varsFirma(world)
+    world.guion, world.paso, world.paginas, varsFirma(world),
+    /* y la aventura grafica: que verbo esta elegido */
+    world.verbo | 0
   ].join(" "));
 });
 process.stdout.write(out.join("\n") + "\n");

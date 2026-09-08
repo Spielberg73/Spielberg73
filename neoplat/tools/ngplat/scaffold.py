@@ -7,7 +7,7 @@ from dataclasses import dataclass, replace
 from typing import Dict, List, Tuple
 
 from . import (art, art_aventura, art_barrio, art_comando, art_filmation,
-               art_hierro, art_kungfu, art_mazmorra,
+               art_grafica, art_hierro, art_kungfu, art_mazmorra,
                art_sonido)
 from .errors import ProjectError
 from .png import write_png
@@ -1087,19 +1087,22 @@ niveles:
 
 
 def _nivel_yaml(nombre: str, filas: List[str], fondo: str, capas: str = "",
-                musica: str = "", llaves: int = 0, guion: str = "") -> str:
+                musica: str = "", llaves: int = 0, guion: str = "",
+                vacio: str = "") -> str:
     cuerpo = "\n".join("      " + fila for fila in filas)
     linea_capas = "    fondos: [%s]\n" % capas if capas else ""
     linea_musica = "    musica: %s\n" % musica if musica else ""
     linea_llaves = "    llaves: %d\n" % llaves if llaves else ""
     linea_guion = "    guion: %s\n" % guion if guion else ""
+    # que se dibuja debajo de la salida y de los bichos (por defecto, el '.')
+    linea_vacio = "    vacio: \"%s\"\n" % vacio if vacio else ""
     return (
         "  - nombre: \"%s\"\n"
         "    fondo: \"%s\"\n"
-        "%s%s%s%s"
+        "%s%s%s%s%s"
         "    mapa: |\n%s\n"
         % (nombre, fondo, linea_capas, linea_musica, linea_llaves, linea_guion,
-           cuerpo)
+           linea_vacio, cuerpo)
     )
 
 # --------------------------------------------------------- el barrio
@@ -2340,6 +2343,399 @@ niveles:
 
 
 
+
+# ------------------------------------------------------ aventura grafica
+#
+# El noveno genero, y el unico en el que no se anda por el escenario: se
+# **senala**. El jugador es un cursor, el mando lleva cuatro verbos -mirar,
+# coger, usar y hablar- y todo lo que pasa lo dicen los guiones.
+#
+# Por eso este game.yaml es raro comparado con los otros ocho: no tiene
+# enemigos, ni ataque, ni gravedad, ni meta. Lo que tiene es una habitacion
+# escrita casilla a casilla y una lista de guiones tan larga como el juego.
+
+_MUSICA_GRAFICA = """  musica:
+    # Una aventura grafica no suena a accion: suena a casa vacia. Notas largas,
+    # muy separadas y un bajo que aparece cada dos compases, que es lo que deja
+    # sitio para leer sin que la musica te meta prisa.
+    estudio:
+      velocidad: 12
+      pistas:
+        - |
+          la4 - - - do5 - - -
+          mi5 - - - re5 - - -
+          do5 - - - si4 - - -
+          la4 - - - - - - -
+        - |
+          la2 - - - - - - -
+          mi2 - - - - - - -
+          fa2 - - - - - - -
+          mi2 - - - - - - -
+    sotano:
+      velocidad: 14
+      pistas:
+        - |
+          re4 - - - fa4 - - -
+          la4 - - - sol4 - - -
+          fa4 - - - mi4 - - -
+          re4 - - - - - - -
+        - |
+          re2 - - - - - - -
+          la2 - - - - - - -
+          sib2 - - - - - - -
+          la2 - - - - - - -
+    presentacion:
+      velocidad: 10
+      pistas:
+        - |
+          la4 - do5 - mi5 - la5 -
+          sol5 - mi5 - do5 - - -
+        - |
+          la2 - - - mi3 - - -
+          fa2 - - - mi2 - - -
+  titulo: presentacion
+"""
+
+
+GAME_YAML_GRAFICA = """# Proyecto NeoPlat de aventura grafica: se senala, no se anda.
+#
+#   ngplat probar     -> abre el preview jugable en el navegador
+#   ngplat compilar   -> genera el proyecto en C y las ROMs graficas
+#
+# Es el genero mas distinto de los nueve, y en tres cosas:
+#
+#   1. el jugador es **un cursor**. No pesa, no choca, no cobra y no puede
+#      morir: se mueve por la pantalla con la cruceta y ya esta;
+#   2. hay **cuatro verbos** -mirar, coger, usar y hablar-. El boton de saltar
+#      pasa al siguiente y el de accion lo aplica a la casilla que senalas. El
+#      verbo elegido sale escrito arriba, delante de lo que llevas encima;
+#   3. lo que contesta cada cosa lo dicen los **guiones**. Cada casilla de la
+#      leyenda puede llevar uno por verbo, y si no lleva ninguno contesta el
+#      guion de `sin_efecto:`.
+#
+# Y por eso aqui no hay enemigos, ni ataque, ni gravedad, ni tile de meta: el
+# nivel se acaba cuando un guion dice `acabar:`. Un juego de este genero es
+# **una habitacion bien escrita**, y se escribe casi entero en `guiones:`.
+
+juego:
+  titulo: "{titulo}"
+  autor: "{autor}"
+  vista: puntero       # se senala con un cursor: la aventura grafica
+  vidas: 1             # no se puede morir; una vida es la que sobra
+  tiempo: 0
+  camara: pantallas    # cada habitacion es una pantalla entera
+  amiga: 32colores
+  fondo: "#101018"
+  # Como se llaman los verbos en el marcador. Cambialos y el juego habla otro
+  # idioma; son cuatro y en este orden, que es el que recorre el boton.
+  verbos: [MIRAR, COGER, USAR, HABLAR]
+  # Y lo que se contesta cuando la casilla senalada no dice nada. Sin esto el
+  # juego se queda callado la mitad de las veces, que es lo peor que le puede
+  # pasar a una aventura.
+  sin_efecto: nada
+
+jugador:
+  # El cursor. `velocidad:` es lo unico que importa aqui: ni salto, ni
+  # gravedad, ni friccion -no las mira nadie en esta vista-.
+  sprite: graficos/heroe.png
+  frame: [16, 16]
+  caja: [12, 12]       # la casilla que senalas es la del centro de la caja
+  velocidad: 2.4
+  vida: 1
+  animaciones:
+    quieto: {{frames: [0], velocidad: 30}}
+    correr: {{frames: [1, 2], velocidad: 6}}
+
+tiles:
+  imagen: graficos/tiles.png
+  # La leyenda de una aventura grafica no dice **que frena**: eso da igual, un
+  # cursor pasa por encima de todo. Dice **que contesta cada cosa**. Por eso
+  # casi todas son 'vacio' y lo que llevan es un guion por verbo.
+  leyenda:
+    '.': {{tile: 0, tipo: vacio}}        # el papel de la pared
+    'z': {{tile: 1, tipo: vacio}}        # el zocalo
+    '_': {{tile: 2, tipo: vacio}}        # la tarima
+    # La puerta de la calle son cuatro casillas, y las cuatro contestan lo
+    # mismo: un mueble grande es varias casillas y el jugador no tiene por que
+    # saberlo.
+    '1': {{tile: 3, tipo: vacio, mirar: mirar_puerta, usar: usar_puerta}}
+    '2': {{tile: 4, tipo: vacio, mirar: mirar_puerta, usar: usar_puerta}}
+    '3': {{tile: 5, tipo: vacio, mirar: mirar_puerta, usar: usar_puerta}}
+    '4': {{tile: 6, tipo: vacio, mirar: mirar_puerta, usar: usar_puerta}}
+    '5': {{tile: 7, tipo: vacio, mirar: mirar_puerta, usar: usar_puerta}}
+    '6': {{tile: 8, tipo: vacio, mirar: mirar_puerta, usar: usar_puerta}}
+    'V': {{tile: 9, tipo: vacio, mirar: mirar_ventana, usar: usar_ventana}}
+    'N': {{tile: 10, tipo: vacio, mirar: mirar_ventana, usar: usar_ventana}}
+    'C': {{tile: 11, tipo: vacio, mirar: mirar_ventana, usar: usar_ventana}}
+    'D': {{tile: 12, tipo: vacio, mirar: mirar_ventana, usar: usar_ventana}}
+    # El cuadro es el unico con quien se puede hablar, y por eso es el unico
+    # que lleva las cuatro respuestas.
+    'q': {{tile: 13, tipo: vacio, mirar: mirar_cuadro, hablar: hablar_cuadro}}
+    'w': {{tile: 14, tipo: vacio, mirar: mirar_cuadro, hablar: hablar_cuadro}}
+    'e': {{tile: 15, tipo: vacio, mirar: mirar_cuadro, hablar: hablar_cuadro}}
+    'r': {{tile: 16, tipo: vacio, mirar: mirar_cuadro, hablar: hablar_cuadro}}
+    'E': {{tile: 17, tipo: vacio, mirar: mirar_libros, coger: coger_libros}}
+    'y': {{tile: 18, tipo: vacio, mirar: mirar_mesa}}
+    'u': {{tile: 19, tipo: vacio, mirar: mirar_mesa}}
+    'i': {{tile: 20, tipo: vacio, mirar: mirar_mesa}}
+    'o': {{tile: 21, tipo: vacio, mirar: mirar_mesa}}
+    # La llave, encima de la mesa. `debajo:` es lo que se ve cuando el guion la
+    # quita del mapa: la mesa pelada, no un agujero.
+    'K': {{tile: 22, tipo: vacio, debajo: 'u', mirar: mirar_llave, coger: coger_llave}}
+    'F': {{tile: 23, tipo: vacio, debajo: '.', mirar: mirar_farol, coger: coger_farol}}
+    'T': {{tile: 24, tipo: vacio, mirar: mirar_trampilla, usar: usar_trampilla}}
+    't': {{tile: 25, tipo: vacio, mirar: mirar_trampilla, usar: usar_trampilla}}
+    # --- el sotano
+    '#': {{tile: 26, tipo: vacio}}       # sillares
+    '-': {{tile: 27, tipo: vacio}}       # losas
+    'S': {{tile: 28, tipo: vacio, mirar: mirar_escalera, usar: usar_escalera}}
+    'a': {{tile: 29, tipo: vacio, mirar: mirar_cofre, usar: usar_cofre}}
+    's': {{tile: 30, tipo: vacio, mirar: mirar_cofre, usar: usar_cofre}}
+    'd': {{tile: 31, tipo: vacio, mirar: mirar_cofre, usar: usar_cofre}}
+    'f': {{tile: 32, tipo: vacio, mirar: mirar_cofre, usar: usar_cofre}}
+    'L': {{tile: 33, tipo: vacio, debajo: '#', mirar: mirar_barra, coger: coger_barra}}
+    'B': {{tile: 34, tipo: vacio, mirar: mirar_barril, usar: usar_barril}}
+    'X': {{tile: 35, tipo: vacio, mirar: mirar_telarana, coger: coger_telarana}}
+
+objetos:
+  # Los tres que se pueden llevar. No se ponen nunca en el mapa: los da un
+  # guion cuando coges la casilla donde estan dibujados. Existen para que el
+  # marcador escriba lo que llevas encima, que en una aventura es la mitad de
+  # la informacion.
+  llave:
+    sprite: graficos/llave.png
+    frame: [16, 16]
+    caja: [12, 10]
+    efecto: llevar
+    marcador: LLAVE
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 20}}
+  farol:
+    sprite: graficos/farol.png
+    frame: [16, 16]
+    caja: [10, 14]
+    efecto: llevar
+    marcador: FAROL
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 20}}
+  barra:
+    sprite: graficos/barra.png
+    frame: [16, 16]
+    caja: [14, 8]
+    efecto: llevar
+    marcador: BARRA
+    animaciones:
+      quieto: {{frames: [0, 1], velocidad: 20}}
+
+# --- la memoria del juego ------------------------------------------------
+#
+# En una aventura grafica las variables no son un adorno: **son el juego**. Lo
+# que puedes hacer en cada momento depende de lo que ya hayas hecho, y eso se
+# escribe aqui. Sobreviven a cambiar de habitacion, que es justo lo que hace
+# falta para que bajar al sotano con el farol sirva de algo.
+variables:
+  llave: 0             # la llevas encima
+  farol: 0
+  barra: 0
+  abuelo: 0            # cuantas veces le has hablado al cuadro
+
+guiones:
+  # Lo que se contesta cuando senalas una pared. Escrito una vez, en el idioma
+  # del juego, en vez de sesenta veces repartidas por el mapa.
+  nada:
+    - decir: "AHI NO HAY NADA QUE HACER."
+
+  bienvenida:
+    - decir: "EL ESTUDIO DEL ABUELO. LA CARTA DECIA QUE MIRARAS EN EL SOTANO."
+    - decir: "MUEVE EL CURSOR CON LA CRUCETA. EL BOTON B CAMBIA DE VERBO Y EL A LO APLICA."
+
+  mirar_puerta:
+    - decir: "LA PUERTA DE LA CALLE. FUERA SIGUE LLOVIENDO."
+  usar_puerta:
+    - decir: "NO PIENSO IRME SIN VER QUE HAY AHI ABAJO."
+
+  mirar_ventana:
+    - decir: "LLUEVE SOBRE EL JARDIN. NO SE VE NADA MAS."
+  usar_ventana:
+    - decir: "ESTA CLAVADA DESDE ANTES DE QUE YO NACIERA."
+
+  mirar_cuadro:
+    - decir: "EL ABUELO, PINTADO EN 1898. NO PARECE CONTENTO."
+  # Un cuadro que se acuerda de cuantas veces le has hablado. Es el ejemplo mas
+  # corto de para que sirve una variable, y de paso es quien da la pista.
+  hablar_cuadro:
+    - sumar: {{abuelo: 1}}
+    - si: {{abuelo: 1}}
+      pasos:
+        - decir: "LE HABLAS AL CUADRO. EL CUADRO NO CONTESTA. ES UN CUADRO."
+      si_no:
+        - si: {{llave: 0}}
+          pasos:
+            - decir: "TE PARECE OIR: 'LO QUE BUSCAS ESTA ENCIMA DE MI MESA'."
+          si_no:
+            - decir: "TE PARECE OIR: 'BAJA DE UNA VEZ, MUCHACHO'."
+
+  mirar_libros:
+    - decir: "LIBROS DE NAVEGACION. Y POLVO DE VEINTE ANOS."
+  coger_libros:
+    - decir: "PESAN DEMASIADO Y NO DICEN NADA QUE NO SEPAS."
+
+  mirar_mesa:
+    - decir: "LA MESA DEL ABUELO. EL CAJON NO ABRE."
+
+  mirar_llave:
+    - decir: "UNA LLAVE PEQUENA, DE LATON."
+  # Coger algo son cuatro pasos: apuntarlo en una variable, meterlo en la
+  # bolsa, **quitarlo del mapa** para que deje de estar dibujado ahi, y
+  # decirlo. El `si` de arriba es para que no se pueda coger dos veces.
+  coger_llave:
+    - si: {{llave: 0}}
+      pasos:
+        - poner: {{llave: 1}}
+        - dar: llave
+        - quitar: [12, 9]
+        - sonido: moneda
+        - decir: "TE GUARDAS LA LLAVE."
+      si_no:
+        - decir: "YA LA LLEVAS ENCIMA."
+
+  mirar_farol:
+    - decir: "UN FAROL DE ACEITE, ENCENDIDO. ALGUIEN ESTUVO AQUI HACE POCO."
+  coger_farol:
+    - si: {{farol: 0}}
+      pasos:
+        - poner: {{farol: 1}}
+        - dar: farol
+        - quitar: [15, 5]
+        - sonido: moneda
+        - decir: "DESCUELGAS EL FAROL. AHORA TIENES LUZ."
+      si_no:
+        - decir: "YA LO LLEVAS ENCIMA."
+
+  mirar_trampilla:
+    - decir: "UNA TRAMPILLA EN LA TARIMA. BAJA AL SOTANO."
+  # El puzle entero del primer cuarto, en un guion: hace falta la llave para
+  # abrirla y el farol para atreverse a bajar.
+  usar_trampilla:
+    - si: {{llave: 0}}
+      pasos:
+        - decir: "ESTA CERRADA CON LLAVE."
+      si_no:
+        - si: {{farol: 0}}
+          pasos:
+            - decir: "AHI ABAJO NO SE VE NADA. NECESITAS ALGO DE LUZ."
+          si_no:
+            - decir: "LA LLAVE ENTRA. ABRES LA TRAMPILLA Y BAJAS."
+            - ir_a_nivel: 2
+
+  # --- el sotano
+  bienvenida_sotano:
+    - decir: "EL SOTANO. HUELE A MADERA MOJADA Y A CUERDA VIEJA."
+
+  mirar_escalera:
+    - decir: "LOS PELDANOS POR LOS QUE HAS BAJADO."
+  usar_escalera:
+    - decir: "SUBES OTRA VEZ AL ESTUDIO."
+    - ir_a_nivel: 1
+
+  mirar_barra:
+    - decir: "UNA BARRA DE HIERRO, COLGADA DE DOS CLAVOS."
+  coger_barra:
+    - si: {{barra: 0}}
+      pasos:
+        - poner: {{barra: 1}}
+        - dar: barra
+        - quitar: [3, 5]
+        - sonido: moneda
+        - decir: "TE LLEVAS LA BARRA."
+      si_no:
+        - decir: "YA LA LLEVAS ENCIMA."
+
+  mirar_barril:
+    - decir: "UN BARRIL VACIO. SUENA A HUECO."
+  usar_barril:
+    - decir: "LO EMPUJAS. DETRAS NO HAY MAS QUE PARED."
+
+  mirar_telarana:
+    - decir: "UNA TELARANA. LA ARANA SE FUE HACE ANOS."
+  coger_telarana:
+    - decir: "NI HABLAR."
+
+  mirar_cofre:
+    - decir: "EL ARCON DEL ABUELO, CERRADO CON UN CANDADO."
+  # Y el final: `acabar:` es la unica manera de terminar algo en este genero.
+  # Como es el ultimo nivel, ahi se acaba el juego.
+  usar_cofre:
+    - si: {{barra: 0}}
+      pasos:
+        - decir: "EL CANDADO NO CEDE CON LAS MANOS."
+      si_no:
+        - decir: "HACES PALANCA Y EL CANDADO SALTA."
+        - decir: "DENTRO ESTA EL MAPA QUE EL ABUELO NO LLEGO A ENSENARTE."
+        - sonido: meta
+        - acabar: si
+
+# Sonido. En una aventura grafica lo que hay que oir es poco y a tiempo: coger
+# algo y abrir algo. Todo lo demas lo cuenta el texto.
+sonido:
+  efectos:
+    empezar: {{notas: "la4 do5 mi5 la5", velocidad: 8}}
+    moneda:  {{notas: "mi5 la5", velocidad: 5}}
+    vida:    {{notas: "la4 do5 mi5", velocidad: 6}}
+    control: {{notas: "do5 mi5", velocidad: 5}}
+    salto:   {{tipo: barrido, desde: 200, hasta: 400, duracion: 5}}
+    golpe:   {{tipo: ruido, duracion: 10, tono: 12}}
+    muerte:  {{notas: "la4 fa4 re4 la3", velocidad: 9}}
+    meta:    {{notas: "la4 do5 mi5 la5 do6", velocidad: 7}}
+{musica}
+niveles:
+{niveles}"""
+
+
+# El estudio: una habitacion entera en veinte casillas por catorce. La pared
+# llega hasta la fila 9, la 10 es el zocalo y de la 11 abajo es tarima; todo lo
+# que se apoya en el suelo ocupa las filas 9 y 10, que es donde acaba la pared.
+def _nivel_grafica_1() -> List[str]:
+    return [
+        "....................",
+        "....................",
+        "....qw......VN......",
+        "....er......CD......",
+        "....................",
+        "..EEE..........F....",
+        "..EEE...............",
+        "....................",
+        "12..................",
+        "34.........yK.......",
+        "56zzzzzzzzziozzzzzzz",
+        "____________________",
+        "_______Tt______P____",
+        "____________________",
+    ]
+
+
+# El sotano: piedra, una escalera a la derecha, el arcon al fondo y la barra
+# colgada de la pared. Menos cosas que arriba a proposito: es el sitio donde se
+# resuelve, no donde se explora.
+def _nivel_grafica_2() -> List[str]:
+    return [
+        "X###################",
+        "####################",
+        "####################",
+        "####################",
+        "####################",
+        "###L################",
+        "####################",
+        "##################S#",
+        "########as########S#",
+        "########df########S#",
+        "-------------B----S-",
+        "--------------------",
+        "-----P--------------",
+        "--------------------",
+    ]
+
+
 # ------------------------------------------------------------- filmation
 #
 # Un juego isometrico no se dibuja: se **construye**. El mapa no es lo que se
@@ -3517,7 +3913,7 @@ def _genero_castlevania(nombres: Dict[str, str]) -> Genero:
 
 
 GENEROS = ("plataformas", "castlevania", "comando", "mazmorra",
-           "barrio", "aventura", "filmation", "kungfu")
+           "barrio", "aventura", "filmation", "kungfu", "grafica")
 
 # Como se llama cada cosa en cada estilo de dibujo.
 _NOMBRES = {
@@ -3622,6 +4018,23 @@ def _genero_kungfu(nombres: Dict[str, str], estilo: str) -> Genero:
     )
 
 
+def _genero_grafica(nombres: Dict[str, str], estilo: str) -> Genero:
+    """La aventura grafica: se senala con un cursor y se elige verbo.
+
+    Como los de comando, mazmorra, barrio y filmation, trae su plantilla entera
+    en vez de armarse a trozos: aqui no sirve **nada** de la fisica de saltar,
+    ni el ataque, ni los enemigos. De este objeto solo se usa como se llama y
+    que promete, que es lo que sale en el menu de `ngplat nuevo`.
+    """
+    return replace(
+        _genero_plataformas(nombres, estilo),
+        nombre="grafica",
+        titulo="aventura grafica",
+        resumen=("se senala, no se anda: un cursor, cuatro verbos y una "
+                 "habitacion que contesta."),
+    )
+
+
 def genero_de(nombre: str, estilo: str) -> Genero:
     nombres = _NOMBRES[estilo]
     if nombre == "castlevania":
@@ -3638,6 +4051,8 @@ def genero_de(nombre: str, estilo: str) -> Genero:
         return _genero_filmation(nombres, estilo)
     if nombre == "kungfu":
         return _genero_kungfu(nombres, estilo)
+    if nombre == "grafica":
+        return _genero_grafica(nombres, estilo)
     return _genero_plataformas(nombres, estilo)
 
 
@@ -3729,6 +4144,11 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
         # entero de otra manera.
         dibujos = dict(dibujos)
         dibujos.update(art_filmation.todos(estilo))
+    elif genero == "grafica":
+        # Aqui no sirve nada del estilo: no hay heroe, ni bichos, ni tiles de
+        # plataformas. Hay una habitacion y un cursor.
+        dibujos = dict(dibujos)
+        dibujos.update(art_grafica.todos(estilo))
     elif genero == "kungfu":
         # El heroe de este genero es de 32x32 y los bichos tambien: los del
         # estilo, que son de 16, no valen ni de sitio.
@@ -3778,6 +4198,29 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
         contenido = GAME_YAML_BARRIO.format(
             titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles,
             musica=_MUSICA_BARRIO)
+        with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
+                  newline="\n") as fh:
+            fh.write(contenido)
+        creados.append("game.yaml")
+        with open(os.path.join(destino, ".gitignore"), "w", encoding="utf-8",
+                  newline="\n") as fh:
+            fh.write("build/\npreview.html\n.neoplat/\n")
+        creados.append(".gitignore")
+        return creados
+
+    if genero == "grafica":
+        # Dos habitaciones de una pantalla cada una: el estudio y el sotano. Se
+        # pasa de una a otra por la trampilla, y solo con la llave y el farol.
+        niveles = (
+            _nivel_yaml("EL ESTUDIO", _nivel_grafica_1(), "#101018",
+                        musica="estudio", guion="bienvenida", vacio="_")
+            + _nivel_yaml("EL SOTANO", _nivel_grafica_2(), "#0c0c14",
+                          musica="sotano", guion="bienvenida_sotano",
+                          vacio="-")
+        )
+        contenido = GAME_YAML_GRAFICA.format(
+            titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles,
+            musica=_MUSICA_GRAFICA)
         with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
                   newline="\n") as fh:
             fh.write(contenido)

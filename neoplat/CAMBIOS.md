@@ -2,8 +2,68 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.28.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.29.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.29
+
+**El noveno genero: la aventura grafica.** Se senala, no se anda. El jugador
+deja de ser un heroe y pasa a ser **un cursor**: no pesa, no choca, no cobra y
+no puede morir. Se mueve por la pantalla con la cruceta, se elige un verbo con
+un boton y se aplica a lo que senalas con el otro. Es la primera vista del kit
+en la que **el mando lleva un estado**: lo que pasa al pulsar depende del verbo
+que tengas puesto, y por eso mirar una puerta y abrirla son dos cosas
+distintas sobre la misma casilla.
+
+**Cuatro verbos: `mirar`, `coger`, `usar` y `hablar`.** Cuatro y no doce: con
+doce, la mitad no se usa nunca y el juego se convierte en probarlos todos, que
+es lo que mato al genero. Se llaman como tu quieras (`juego: verbos: [MIRAR,
+COGER, USAR, HABLAR]`), salen escritos en el marcador delante de lo que llevas
+encima, y el boton de saltar -que aqui no tiene nada que saltar- pasa al
+siguiente en bucle.
+
+**Las casillas contestan.** Cada simbolo de la leyenda puede llevar un guion
+por verbo:
+
+```yaml
+'K': {tile: 20, tipo: vacio, debajo: 'u', mirar: mirar_llave, coger: coger_llave}
+```
+
+Y cuando la casilla senalada no dice nada contesta el juego por ella, con el
+guion de `juego: sin_efecto:`: escrito una vez, en el idioma del juego, en vez
+de sesenta veces repartidas por el mapa.
+
+**Tres pasos nuevos de guion**, que es donde vive este genero entero:
+
+  - `quitar: [x, y]` borra una casilla del mapa. Es la otra mitad de coger
+    algo: la llave que te llevas deja de estar dibujada en la mesa. Lo que se
+    ve en su sitio lo dice `debajo:` en la leyenda -la mesa pelada, no un
+    agujero con forma de pared-;
+  - `llevar: [x, y]` pone al jugador en otra casilla. Es la puerta: senalas,
+    se abre y apareces en la otra punta del mapa;
+  - `acabar: si` termina el nivel. Aqui no hay casilla de meta que pisar, asi
+    que es la unica manera de terminar algo -y con el ultimo nivel, de
+    terminar el juego-.
+
+**El juego de ejemplo: `ngplat nuevo --genero grafica`.** Dos habitaciones -el
+estudio del abuelo y el sotano-, un retrato con el que se puede hablar, un
+farol, una llave, una trampilla que pide las dos cosas y un arcon que no cede
+con las manos. Se juega entero y se resuelve; el bot del kit lo comprueba en
+cada vuelta de pruebas, y otra prueba quita la barra del sotano para
+asegurarse de que sin ella **no** se acaba: si tambien se acabara, el puzle no
+estaria pidiendo nada.
+
+**El bot aprendio a jugar a esto.** El de "¿se puede terminar?" no busca aqui
+ningun camino -un cursor va a donde quiera- sino que va a cada casilla que
+contesta a algo y le prueba los cuatro verbos, una y otra vez, barajando el
+orden en cada vuelta. Es a lo bruto a proposito: es exactamente lo que hace un
+jugador cuando se atasca, y si probandolo todo el juego no se acaba, es que no
+tiene solucion.
+
+Y como siempre: el mismo `game.yaml` compila para las siete maquinas, el
+preview del navegador y el motor en C deciden lo mismo frame a frame (la traza
+de paridad mira ademas que verbo esta puesto), y hay 242 pruebas de
+jugabilidad y 52 de paridad detras.
 
 ## 1.28
 

@@ -170,6 +170,45 @@ class TestBarraDeVidaQueSeGasta(unittest.TestCase):
         self.assertEqual(self.lineas["titulo"].strip(), "")
         self.assertEqual(self.lineas["p1 fuera"].strip(), "")
 
+class TestElVerboEnElMarcador(unittest.TestCase):
+    """La linea de arriba en una aventura grafica.
+
+    Ahi lo primero que hay que ver es **el verbo**: es lo que estas a punto de
+    hacer, y sin verlo el juego se convierte en adivinar. Detras va la bolsa,
+    que es la otra mitad de lo que sabe el jugador. Como el resto del
+    marcador, se comprueba compilando el motor de verdad y mirando lo que
+    escribe."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not shutil.which("gcc"):
+            raise unittest.SkipTest("no hay gcc para compilar el motor")
+        cls.tmp = tempfile.mkdtemp(prefix="neoplat-verbos-")
+        cls.lineas = _lineas(_compilar(cls.tmp, "verbos", genero="grafica"),
+                             "verbos")
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(getattr(cls, "tmp", ""), ignore_errors=True)
+
+    def test_cada_verbo_sale_con_su_nombre(self):
+        for i, nombre in enumerate(("MIRAR", "COGER", "USAR", "HABLAR")):
+            self.assertEqual(self.lineas["verbo %d" % i].strip(), nombre,
+                             "el verbo %d sale como %r"
+                             % (i, self.lineas["verbo %d" % i]))
+
+    def test_detras_del_verbo_va_la_bolsa(self):
+        """Y las dos cosas caben: el verbo ocupa seis columnas y la bolsa
+        empieza en la septima."""
+        linea = self.lineas["bolsa"]
+        self.assertTrue(linea.startswith("USAR  "),
+                        "la linea no empieza por el verbo: %r" % linea)
+        self.assertIn("LLAVE", linea, linea)
+        self.assertIn("FAROL", linea, linea)
+        self.assertLessEqual(len(linea.rstrip()), 20,
+                             "la linea se sale de las veinte columnas: %r" % linea)
+
+
 
 class TestBarraDeVida(unittest.TestCase):
     """La vida del jugador en el marcador.

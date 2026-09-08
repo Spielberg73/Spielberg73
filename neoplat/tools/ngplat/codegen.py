@@ -12,6 +12,7 @@ import os
 import shutil
 from typing import Dict, List, Sequence
 
+from .project import VERBOS
 from .sonido import EVENTOS
 from .build import (
     ANIM_SLOTS, Build, actor_def_values, attack_values, breakable_values,
@@ -138,7 +139,8 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     # para que el movimiento, la punteria y el empujon de los golpes sean los
     # de cenital sin repetir una linea.
     src.append("const uint8_t np_vista_cenital = %d;"
-               % (1 if project.view in ("cenital", "cinta", "iso") else 0))
+               % (1 if project.view in ("cenital", "cinta", "iso", "puntero")
+                  else 0))
     src.append("/* Y si ademas se salta (el 'yo contra el barrio'). */")
     src.append("const uint8_t np_vista_cinta = %d;"
                % (1 if project.view == "cinta" else 0))
@@ -146,6 +148,10 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("   la cenital y salta como la cinta, pero con relieve. */")
     src.append("const uint8_t np_vista_iso = %d;"
                % (1 if project.view == "iso" else 0))
+    src.append("/* Y la de puntero: la aventura grafica. Se senala con un")
+    src.append("   cursor y se elige verbo; no hay fisica que correr. */")
+    src.append("const uint8_t np_vista_puntero = %d;"
+               % (1 if project.view == "puntero" else 0))
     src.append("/* Cuantos enemigos pegan a la vez: el numero que hace que una")
     src.append("   pelea se juegue en vez de sufrirse. */")
     src.append("const uint8_t np_agresivos = %d;" % project.aggressive)
@@ -219,6 +225,9 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("const uint8_t np_tile_bloque[] = {")
     src.append(_array([indice_cubos.get(t.bloque, -1) + 1 for t in build.tiles]))
     src.append("};")
+    # El dibujo que se ve por el hueco de una puerta abierta: el del primer
+    # tile vacio de la leyenda (que es el cielo o el suelo de fondo).
+    vacio = next((graphics[i] for i, k in enumerate(kinds) if k == 0), 0)
     # Los disparadores: que guion lanza cada casilla (indice + 1) y si es de
     # los que solo saltan una vez en toda la partida.
     indice_guiones = {n: i for i, n in enumerate(build.guion_orden)}
@@ -229,11 +238,42 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("const uint8_t np_tile_una_vez[] = {")
     src.append(_array([1 if t.una_vez else 0 for t in build.tiles]))
     src.append("};")
+    # Y la aventura grafica: que guion contesta cada casilla a cada verbo. Una
+    # fila por verbo y un puntero a cada una, porque cuantos tiles hay lo sabe
+    # este archivo y no la cabecera.
+    src.append("/* Aventura grafica: el guion que contesta cada casilla a cada")
+    src.append("   verbo (mirar, coger, usar, hablar). Cero = no contesta. */")
+    for numero, verbo in enumerate(VERBOS):
+        src.append("static const uint8_t np_tile_verbo%d[] = {" % numero)
+        src.append(_array([indice_guiones.get(t.verbos.get(verbo, ""), -1) + 1
+                           for t in build.tiles]))
+        src.append("};")
+    src.append("const uint8_t *const np_tile_verbo[NP_VERBOS] = {")
+    src.append("    " + ", ".join("np_tile_verbo%d" % i
+                                  for i in range(len(VERBOS))))
+    src.append("};")
+    src.append("/* El guion de \"aqui no hay nada que hacer\", el que contesta")
+    src.append("   cuando la casilla no dice nada. Cero = no contesta nadie. */")
+    src.append("const uint8_t np_guion_nada = %d;"
+               % (indice_guiones.get(project.guion_nada, -1) + 1))
+    src.append("/* Como se llama cada verbo en el marcador. */")
+    src.append("const char np_verbo_names[NP_VERBOS][7] = {")
+    src.append("    " + ", ".join(_c_string(n[:6]) for n in project.verbos))
+    src.append("};")
+    # Lo que se ve debajo de una casilla que se quita. Son numeros de tile del
+    # propio tileset -no de la leyenda- para que el que dibuja no tenga que
+    # mirar dos tablas: le sale el dibujo de una vez.
+    orden_tiles = {t.char: i for i, t in enumerate(build.tiles)}
+    src.append("/* Lo que se ve debajo de una casilla que se quita (aventura")
+    src.append("   grafica). Por defecto, lo mismo que una puerta abierta. */")
+    src.append("const uint16_t np_tile_debajo[] = {")
+    src.append(_array([graphics[orden_tiles[t.debajo]] if t.debajo in orden_tiles
+                       else vacio for t in build.tiles]))
+    src.append("};")
     src.append("const uint16_t np_tile_count = %d;" % len(kinds))
     # El dibujo que se ve por el hueco de una puerta abierta: el del primer
     # tile vacio de la leyenda (que es el cielo o el suelo de fondo). Sin esto
     # una puerta abierta se seguiria viendo cerrada.
-    vacio = next((graphics[i] for i, k in enumerate(kinds) if k == 0), 0)
     src.append("const uint16_t np_tile_gfx_vacio = %d;" % vacio)
     src.append("")
 
@@ -321,8 +361,12 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
         src.append(_anim_arrays("np_enemy%d" % i, enemy))
     src.append("const NpEnemyDef np_enemies[] = {")
     if not build.enemies:
+        # Los veintidos ceros de un enemigo que no existe. Van uno a uno y no
+        # a medias: gcc con -Werror no deja un inicializador incompleto, y un
+        # juego sin enemigos -una aventura grafica, por ejemplo- es lo que hace
+        # que esta linea se compile de verdad alguna vez.
         src.append("    { %s, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 0,"
-                   "      0, 0, 0, 0, 0, 0 }" % _actor_vacio())
+                   "      0, 0, 0, 0, 0, 0, 0, 0 }" % _actor_vacio())
     for i, enemy in enumerate(build.enemies):
         ev = enemy_values(enemy)
         src.append("    {")

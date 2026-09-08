@@ -2043,6 +2043,17 @@
           etiqueta += ": " + (DATA.guion_nombres[guion - 1] || "guion");
           if (DATA.tiles.una_vez && DATA.tiles.una_vez[i]) etiqueta += " (una vez)";
         }
+        /* Y en una aventura grafica, a que verbos contesta. Ahi todas las
+           casillas son 'vacio' -un cursor no choca con nada- asi que puestas
+           en la paleta por su tipo saldrian las veinte iguales, y lo unico que
+           las distingue es lo que contestan. */
+        if (DATA.view === "puntero" && DATA.tiles.verbo) {
+          var dice = [];
+          (DATA.verbos || []).forEach(function (nombre, v) {
+            if ((DATA.tiles.verbo[v] || [])[i]) dice.push(nombre.toLowerCase());
+          });
+          etiqueta = dice.length ? dice.join(", ") : "decorado";
+        }
         lista.push({ char: ch, etiqueta: etiqueta,
                      tipo: "tile", hoja: hoja, frame: cuadro });
       });

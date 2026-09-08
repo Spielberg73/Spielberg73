@@ -46,6 +46,17 @@ var BLOQUES = [0, 0, 0, 0, 0, 0, 0, 0,  1,  1, 1,  1,  1,  0,  0, 0];
    lanzan nada. `una_vez` lo cambia cada prueba que lo necesite. */
 var GUIONES_DE_TILE = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
 var UNA_VEZ_DE_TILE = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+/* La aventura grafica: que guion contesta cada casilla a cada verbo. Por
+   defecto ninguna contesta nada; cada prueba pone la fila que necesita. Las
+   cuatro filas son mirar, coger, usar y hablar, en ese orden. */
+var VERBOS_DE_TILE = [
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+];
+/* y que dibujo se ve debajo de cada casilla si un guion la quita */
+var DEBAJO_DE_TILE = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
 function anim(frames, speed) {
   return { frames: frames, count: frames.length, speed: speed || 8, loop: 1 };
@@ -124,7 +135,12 @@ function datos(filas, opciones) {
        ocho direcciones */
     view: opciones.iso ? "iso"
         : (opciones.cinta ? "cinta"
-        : (opciones.cenital ? "cenital" : "lateral")),
+        : (opciones.puntero ? "puntero"
+        : (opciones.cenital ? "cenital" : "lateral"))),
+    /* La aventura grafica: como se llaman los verbos, que guion contesta cada
+       casilla a cada uno y el de "aqui no hay nada". */
+    verbos: opciones.verbos || ["MIRAR", "COGER", "USAR", "HABLAR"],
+    guion_nada: opciones.guionNada || 0,
     player: {
       actor: jugador,
       speed: fx(opciones.speed || 1.6), accel: fx(0.3), friction: fx(0.35),
@@ -308,6 +324,10 @@ function datos(filas, opciones) {
              need: NECESITA, alto: ALTOS, bloque: BLOQUES,
              /* que guion lanza cada casilla (indice + 1) y si es de una vez */
              guion: GUIONES_DE_TILE, una_vez: UNA_VEZ_DE_TILE,
+             /* que guion contesta cada casilla a cada verbo (mirar, coger,
+                usar, hablar) y que se ve debajo si se quita */
+             verbo: opciones.verbosDeTile || VERBOS_DE_TILE,
+             debajo: opciones.debajoDeTile || DEBAJO_DE_TILE,
              sala: { tile: 0, ancho: 1, alto: 1, x: 0, y: 0 } },
     /* el cubo con el que se dibuja una casilla levantada: aqui solo hace
        falta que exista, porque las pruebas no dibujan nada */
@@ -3791,6 +3811,250 @@ prueba("los cubos se dibujan por profundidad y el jugador entra en la fila",
   assert.ok(orden.indexOf(64) > 0 && orden.indexOf(64) < orden.length - 1,
             "el jugador sale el primero o el ultimo de la fila: no esta "
             + "colocado por profundidad");
+});
+
+/* ------------------------------------------------ la aventura grafica
+ *
+ * Aqui el jugador es un cursor: no pesa, no choca y no puede morir. Lo que se
+ * prueba es lo unico que decide algo en esta vista -que verbo esta puesto,
+ * que casilla se senala y que guion contesta- y las dos cosas que solo pasan
+ * aqui: quitar una casilla del mapa y llevarse al cursor a otra.
+ */
+
+/* Una habitacion vacia con una casilla que contesta ("D") en el centro. El
+   cursor sale abajo a la izquierda, lejos de ella. */
+function habitacion(opciones) {
+  var filas = [], y;
+  opciones = opciones || {};
+  opciones.puntero = true;
+  for (y = 0; y < 14; y++) filas.push(".".repeat(20));
+  filas[6] = "..........D.........";
+  filas[12] = "..P.................";
+  return mundo(filas, opciones);
+}
+
+/* Lleva el cursor a la casilla (cx, cy) a base de mando, como lo haria una
+   persona: sin tocarle la posicion a mano. Devuelve los frames que ha
+   tardado. */
+function senalar(w, cx, cy) {
+  var a = w.data.player.actor;
+  var destinoX = cx * 16 + 8 - (a.box_w >> 1);
+  var destinoY = cy * 16 + 8 - (a.box_h >> 1);
+  var i;
+  for (i = 0; i < 400; i++) {
+    var p = w.players[0], input = 0;
+    var px = NP.F2I(p.x), py = NP.F2I(p.y);
+    if (px < destinoX - 1) input |= NP.IN.RIGHT;
+    else if (px > destinoX + 1) input |= NP.IN.LEFT;
+    if (py < destinoY - 1) input |= NP.IN.DOWN;
+    else if (py > destinoY + 1) input |= NP.IN.UP;
+    if (!input) return i;
+    w.step(input);
+  }
+  return i;
+}
+
+/* Pulsa el boton de accion una vez (hay que soltarlo: cuenta el flanco). */
+function actuar(w) {
+  w.step(NP.IN.ACTION);
+  w.step(0);
+}
+
+/* Y el de saltar, que en esta vista pasa al verbo siguiente. */
+function otroVerbo(w) {
+  w.step(NP.IN.JUMP);
+  w.step(0);
+}
+
+prueba("el cursor se mueve en ocho direcciones y no choca con nada", function () {
+  var filas = [], y;
+  for (y = 0; y < 14; y++) filas.push("#".repeat(20));   /* todo solido */
+  filas[12] = "##P#################";
+  var w = mundo(filas, { puntero: true });
+  var p = w.players[0], antes = p.x;
+  correr(w, 20, NP.IN.RIGHT);
+  assert.ok(NP.F2I(p.x) > NP.F2I(antes) + 20,
+            "el cursor se ha quedado clavado en la pared: en esta vista no se "
+            + "choca con nada");
+  /* y en diagonal se mueve en los dos ejes a la vez */
+  var x0 = p.x, y0 = p.y;
+  correr(w, 10, NP.IN.RIGHT | NP.IN.UP);
+  assert.ok(p.x > x0 && p.y < y0, "no se mueve en diagonal");
+});
+
+prueba("el cursor no se sale del mapa", function () {
+  var w = habitacion();
+  correr(w, 600, NP.IN.LEFT | NP.IN.UP);
+  assert.strictEqual(NP.F2I(w.players[0].x), 0);
+  assert.strictEqual(NP.F2I(w.players[0].y), 0);
+  correr(w, 900, NP.IN.RIGHT | NP.IN.DOWN);
+  var a = w.data.player.actor;
+  assert.strictEqual(NP.F2I(w.players[0].x), 20 * 16 - a.box_w);
+  assert.strictEqual(NP.F2I(w.players[0].y), 14 * 16 - a.box_h);
+});
+
+prueba("el boton de saltar pasa de verbo y da la vuelta", function () {
+  var w = habitacion();
+  assert.strictEqual(w.verbo, 0, "no empieza en 'mirar'");
+  otroVerbo(w);
+  assert.strictEqual(w.verbo, 1);
+  otroVerbo(w); otroVerbo(w);
+  assert.strictEqual(w.verbo, 3);
+  otroVerbo(w);
+  assert.strictEqual(w.verbo, 0, "el cuarto verbo no vuelve al primero");
+});
+
+prueba("tener el boton apretado no pasa cuatro verbos", function () {
+  /* El verbo cambia con el flanco. Sin eso, tocar el boton medio segundo
+     daria treinta vueltas a la lista y el jugador no elegiria nada. */
+  var w = habitacion();
+  correr(w, 30, NP.IN.JUMP);
+  assert.strictEqual(w.verbo, 1);
+});
+
+prueba("senalar una casilla lanza el guion de su verbo", function () {
+  /* La casilla "D" contesta con el guion 1 al mirar y con el 2 al usar. */
+  var verbos = VERBOS_DE_TILE.map(function (fila) { return fila.slice(); });
+  verbos[0][15] = 1;
+  verbos[2][15] = 2;
+  var w = habitacion({
+    verbosDeTile: verbos,
+    pasos: [[1, 0, 0, 0, 1], [0, 0, 0, 0, 0],
+            [1, 1, 0, 0, 1], [0, 0, 0, 0, 0]],
+    guionIni: [0, 2, 4],
+    dialogo: ["UN CUADRO", "", "LO DESCUELGAS", ""]
+  });
+  senalar(w, 10, 6);
+  actuar(w);
+  assert.strictEqual(texto(w), "UN CUADRO", "mirar no contesta lo suyo");
+  /* se pasa el cuadro, se cambia a 'usar' y se vuelve a senalar */
+  w.step(NP.IN.ACTION); w.step(0);
+  otroVerbo(w); otroVerbo(w);
+  assert.strictEqual(w.verbo, 2);
+  actuar(w);
+  assert.strictEqual(texto(w), "LO DESCUELGAS",
+                     "la misma casilla contesta lo mismo con otro verbo");
+});
+
+prueba("una casilla que no contesta a ese verbo saca el guion de 'nada'",
+       function () {
+  var verbos = VERBOS_DE_TILE.map(function (fila) { return fila.slice(); });
+  verbos[0][15] = 1;                     /* solo contesta a 'mirar' */
+  var w = habitacion({
+    verbosDeTile: verbos, guionNada: 2,
+    pasos: [[1, 0, 0, 0, 1], [0, 0, 0, 0, 0],
+            [1, 1, 0, 0, 1], [0, 0, 0, 0, 0]],
+    guionIni: [0, 2, 4],
+    dialogo: ["UN CUADRO", "", "AHI NO HAY NADA", ""]
+  });
+  senalar(w, 10, 6);
+  otroVerbo(w);                          /* 'coger', que no contesta */
+  actuar(w);
+  assert.strictEqual(texto(w), "AHI NO HAY NADA");
+  /* y una pared cualquiera contesta lo mismo */
+  w.step(NP.IN.ACTION); w.step(0);
+  senalar(w, 3, 3);
+  actuar(w);
+  assert.strictEqual(texto(w), "AHI NO HAY NADA");
+});
+
+prueba("los disparadores de pisar no saltan con el cursor por encima",
+       function () {
+  /* "D" lleva ademas un disparador de los de pisar (GUIONES_DE_TILE). En una
+     vista de puntero eso no cuenta: si contara, pasar el cursor por encima de
+     media pantalla lanzaria guiones sin tocar un boton. */
+  var w = habitacion({
+    pasos: [[1, 0, 0, 0, 1], [0, 0, 0, 0, 0]],
+    guionIni: [0, 2],
+    dialogo: ["NO DEBERIA SALIR", ""]
+  });
+  senalar(w, 10, 6);
+  correr(w, 4, 0);
+  assert.strictEqual(w.guion, 0, "el cursor ha pisado un disparador");
+});
+
+prueba("un guion quita una casilla del mapa y deja lo que hay debajo",
+       function () {
+  /* Coger algo es esto: el guion la borra y en su sitio se ve lo que diga
+     `debajo:`. La casilla "D" (simbolo 15) ensena el dibujo 7. */
+  var verbos = VERBOS_DE_TILE.map(function (fila) { return fila.slice(); });
+  verbos[1][15] = 1;                     /* contesta a 'coger' */
+  var debajo = DEBAJO_DE_TILE.slice();
+  debajo[15] = 7;
+  var w = habitacion({
+    verbosDeTile: verbos, debajoDeTile: debajo,
+    /* quitar la casilla (10, 6) y decirlo */
+    pasos: [[11, 0, 0, 10, 6], [1, 0, 0, 0, 1], [0, 0, 0, 0, 0]],
+    guionIni: [0, 3],
+    dialogo: ["TE LO LLEVAS", ""]
+  });
+  var antes = w.tileGfxAt(10, 6);
+  senalar(w, 10, 6);
+  otroVerbo(w);                          /* 'coger' */
+  actuar(w);
+  assert.strictEqual(texto(w), "TE LO LLEVAS");
+  assert.notStrictEqual(w.tileGfxAt(10, 6), antes,
+                        "la casilla cogida se sigue dibujando igual");
+  assert.strictEqual(w.tileGfxAt(10, 6), 7,
+                     "no se ve lo que dice 'debajo:'");
+  /* y ya no contesta: lo que te has llevado no esta */
+  w.step(NP.IN.ACTION); w.step(0);
+  actuar(w);
+  assert.strictEqual(w.guion, 0,
+                     "la casilla cogida sigue contestando");
+});
+
+prueba("el paso 'llevar' pone al cursor en otra casilla", function () {
+  var verbos = VERBOS_DE_TILE.map(function (fila) { return fila.slice(); });
+  verbos[0][15] = 1;
+  var w = habitacion({
+    verbosDeTile: verbos,
+    pasos: [[10, 0, 0, 2, 2], [0, 0, 0, 0, 0]],   /* llevar a (2, 2) */
+    guionIni: [0, 2]
+  });
+  senalar(w, 10, 6);
+  actuar(w);
+  var a = w.data.player.actor, p = w.players[0];
+  assert.strictEqual(NP.F2I(p.x), 2 * 16 + ((16 - a.box_w) >> 1));
+  assert.strictEqual(NP.F2I(p.y), 2 * 16 + 16 - a.box_h);
+});
+
+prueba("el paso 'acabar' termina el nivel", function () {
+  var verbos = VERBOS_DE_TILE.map(function (fila) { return fila.slice(); });
+  verbos[0][15] = 1;
+  var w = habitacion({
+    verbosDeTile: verbos,
+    pasos: [[12, 0, 0, 0, 0], [0, 0, 0, 0, 0]],
+    guionIni: [0, 2]
+  });
+  senalar(w, 10, 6);
+  actuar(w);
+  assert.strictEqual(w.state, NP.STATE.LEVEL_END,
+                     "en esta vista no hay meta que pisar: 'acabar' es la "
+                     + "unica manera de terminar un nivel");
+});
+
+prueba("en una aventura grafica no se puede morir", function () {
+  /* Una habitacion llena de pinchos. En cualquier otra vista esto seria una
+     muerte al primer frame; aqui un cursor pasa por encima. */
+  var filas = [], y;
+  for (y = 0; y < 14; y++) filas.push("^".repeat(20));
+  filas[12] = "^^P^^^^^^^^^^^^^^^^^";
+  var w = mundo(filas, { puntero: true });
+  correr(w, 120, NP.IN.RIGHT);
+  assert.strictEqual(w.state, NP.STATE.PLAY);
+  assert.strictEqual(w.players[0].health, w.data.player.health);
+  assert.strictEqual(w.players[0].lives, w.data.lives);
+});
+
+prueba("el verbo se ve en la linea de lo que llevas", function () {
+  /* El marcador de las siete maquinas escribe esa linea con np_extras_bar, y
+     el preview con lo mismo: si el verbo no estuviera ahi, el jugador no
+     sabria que esta a punto de hacer. */
+  var w = habitacion();
+  assert.strictEqual((w.data.verbos || [])[w.verbo], "MIRAR");
+  otroVerbo(w);
+  assert.strictEqual((w.data.verbos || [])[w.verbo], "COGER");
 });
 
 var fallos = 0;

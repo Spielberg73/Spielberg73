@@ -196,6 +196,9 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #define NP_PASO_SONIDO  7        /* dispara un efecto de los del game.yaml */
 #define NP_PASO_DAR     8        /* da un objeto, como si lo hubieras cogido */
 #define NP_PASO_NIVEL   9        /* cambia de nivel */
+#define NP_PASO_LLEVAR 10        /* pone al jugador en una casilla */
+#define NP_PASO_QUITAR 11        /* borra una casilla del mapa (ya no esta) */
+#define NP_PASO_ACABAR 12        /* se acabo el nivel (y con el ultimo, el juego) */
 
 /* Como se compara en un `si`. */
 #define NP_CMP_IGUAL    0
@@ -219,6 +222,23 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 #ifndef NP_DIALOGO_FILA
 #define NP_DIALOGO_FILA 1
 #endif
+
+/* --- los verbos de la aventura grafica ------------------------------------
+ *
+ * En una aventura de puntero no se salta ni se pega: se **elige que hacer** y
+ * se senala donde. Los cuatro verbos son los de siempre, los que caben en la
+ * cabeza de cualquiera sin leer instrucciones: mirar una cosa, cogerla, usarla
+ * y hablar con quien sea. Cada casilla del mapa puede llevar un guion por
+ * verbo, y eso -y no un tipo de tile nuevo- es lo que hace que la misma puerta
+ * conteste una cosa al mirarla y otra al abrirla.
+ *
+ * Cuatro y no doce: con doce verbos la mitad no se usa nunca y el juego se
+ * convierte en probarlos todos, que es lo que mato al genero. */
+#define NP_VERBO_MIRAR  0
+#define NP_VERBO_COGER  1
+#define NP_VERBO_USAR   2
+#define NP_VERBO_HABLAR 3
+#define NP_VERBOS       4
 
 /* Cuantos pasos seguidos se ejecutan en un frame antes de cortar. Es la red
  * contra un guion que se llame a si mismo dando vueltas: mejor que se note que

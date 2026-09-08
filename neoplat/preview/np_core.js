@@ -71,7 +71,11 @@
   var DIALOGO_COLS = 36, DIALOGO_FILAS = 2;
   var PASO_FIN = 0, PASO_DECIR = 1, PASO_ESPERAR = 2, PASO_PONER = 3;
   var PASO_SUMAR = 4, PASO_SI = 5, PASO_SALTAR = 6, PASO_SONIDO = 7;
-  var PASO_DAR = 8, PASO_NIVEL = 9;
+  var PASO_DAR = 8, PASO_NIVEL = 9, PASO_LLEVAR = 10, PASO_QUITAR = 11;
+  var PASO_ACABAR = 12;
+  /* Los verbos de la aventura grafica, en el mismo orden que np_types.h. */
+  var VERBO_MIRAR = 0, VERBO_COGER = 1, VERBO_USAR = 2, VERBO_HABLAR = 3;
+  var VERBOS = 4;
   var CMP_IGUAL = 0, CMP_DISTINTO = 1, CMP_MENOR = 2, CMP_MENOR_IG = 3;
   var CMP_MAYOR = 4, CMP_MAYOR_IG = 5;
   /* por donde va y viene una plataforma movil */
@@ -136,6 +140,8 @@
     this.pagina = 0; this.paginas = 0;
     this.gastados = [];
     this.pisadaX = -1; this.pisadaY = -1;
+    /* el verbo elegido en una aventura grafica (0 = mirar) */
+    this.verbo = 0;
     /* las casillas de cerrojo ya abiertas en este nivel */
     this.abiertos = [];
     this.score = 0; this.frame = 0;
@@ -210,7 +216,12 @@
        punteria y el empujon de los golpes son los mismos. Igual que
        np_vista_cenital en C, que tambien vale 1 con `vista: cinta`. */
     return !!(this.data.view === "cenital" || this.data.view === "cinta"
-              || this.data.view === "iso");
+              || this.data.view === "iso" || this.data.view === "puntero");
+  };
+
+  /* La de puntero: la aventura grafica. Igual que np_vista_puntero. */
+  World.prototype.puntero = function () {
+    return this.data.view === "puntero";
   };
 
   /* La isometrica: se anda por la planta de una sala y se salta de cubo en
@@ -238,13 +249,18 @@
   /* Lo mismo, pero contando los cerrojos ya abiertos: una puerta abierta es
      aire y hay que verla como aire desde todos los sitios que miran el
      escenario. Igual que np_tile_visto. */
+  /* Una casilla que ya no esta: un cerrojo abierto o algo que se ha cogido en
+     una aventura grafica. Las dos comparten lista, igual que np_casilla_ida. */
+  World.prototype.casillaIda = function (casilla) {
+    for (var i = 0; i < this.abiertos.length; i++)
+      if (this.abiertos[i] === casilla) return true;
+    return false;
+  };
+
   World.prototype.tileVisto = function (tx, ty) {
     var kind = this.tileKindAt(tx, ty);
     if (kind !== TILE_LOCK) return kind;
-    var casilla = ty * this.level.cells_w + tx;
-    for (var i = 0; i < this.abiertos.length; i++)
-      if (this.abiertos[i] === casilla) return TILE_EMPTY;
-    return kind;
+    return this.casillaIda(ty * this.level.cells_w + tx) ? TILE_EMPTY : kind;
   };
 
   World.prototype.tileGfxAt = function (tx, ty) {
@@ -258,6 +274,10 @@
     if (this.abiertos.length && this.tileKindAt(tx, ty) === TILE_LOCK
         && this.tileVisto(tx, ty) === TILE_EMPTY)
       return this.data.tiles.gfx_vacio || 0;
+    /* Y lo que ya se ha cogido en una aventura grafica: deja de dibujarse. */
+    if (this.abiertos.length && this.puntero()
+        && this.casillaIda(ty * lv.cells_w + tx))
+      return (this.data.tiles.debajo || [])[lv.cells[ty * lv.cells_w + tx]];
     return this.data.tiles.gfx[lv.cells[ty * lv.cells_w + tx]];
   };
 
@@ -1313,6 +1333,72 @@
 
   /* El jugador mirando desde arriba: ocho direcciones, sin gravedad y sin
      suelo. Traduccion literal de np_player_update_cenital. */
+  /* --- la aventura grafica: el cursor -------------------------------
+   *
+   * Gemelo de np_player_update_puntero. Aqui el jugador es un puntero: no
+   * pesa, no choca, no cobra y no pega. Se mueve, elige verbo y senala. */
+
+  /* La casilla que senala el cursor: la de su centro, igual que en C. */
+  World.prototype.punteroCasilla = function () {
+    var a = this.data.player.actor, p = this.players[0];
+    return [(F2I(p.x) + (a.box_w >> 1)) >> TILE_SHIFT,
+            (F2I(p.y) + (a.box_h >> 1)) >> TILE_SHIFT];
+  };
+
+  World.prototype.punteroActuar = function () {
+    var celda = this.punteroCasilla(), tx = celda[0], ty = celda[1];
+    var guion = 0, casilla, tile;
+    if (tx >= 0 && ty >= 0 && tx < this.level.cells_w
+        && ty < this.level.cells_h) {
+      casilla = ty * this.level.cells_w + tx;
+      tile = this.level.cells[casilla];
+      if (!this.casillaIda(casilla))
+        guion = ((this.data.tiles.verbo || [])[this.verbo] || [])[tile] || 0;
+    }
+    if (!guion) guion = this.data.guion_nada || 0;
+    this.guionLanzar(guion);
+  };
+
+  World.prototype.playerUpdatePuntero = function (quien, input) {
+    var d = this.data.player, a = d.actor, p = this.players[quien];
+    var dx = 0, dy = 0, tope;
+
+    if (input & IN.RIGHT) dx += 1;
+    if (input & IN.LEFT) dx -= 1;
+    if (input & IN.DOWN) dy += 1;
+    if (input & IN.UP) dy -= 1;
+
+    p.vx = pasoCenital(d.speed, dx, dx && dy);
+    p.vy = pasoCenital(d.speed, dy, dx && dy);
+    p.x += p.vx;
+    p.y += p.vy;
+
+    /* El cursor pasa por encima de las paredes pero no se sale del mapa. */
+    tope = this.level.width * TILE - a.box_w;
+    if (tope < 0) tope = 0;
+    p.x = clamp(p.x, 0, I2F(tope));
+    tope = this.level.height * TILE - a.box_h;
+    if (tope < 0) tope = 0;
+    p.y = clamp(p.y, 0, I2F(tope));
+
+    p.onGround = 1;
+    p.jumpsLeft = 0;
+    p.stairs = 0;
+    p.trepa = 0;
+    p.crouch = 0;
+    if (dx) p.facing = dx > 0 ? 1 : 0;
+    animSet(p, (dx || dy) ? ANIM_RUN : ANIM_IDLE);
+    animTick(a, p);
+
+    if (quien) return;
+
+    /* El boton de saltar pasa al verbo siguiente; el de accion senala. */
+    if ((input & IN.JUMP) && !(this.prevInput[quien] & IN.JUMP))
+      this.verbo = (this.verbo + 1) % VERBOS;
+    else if ((input & IN.ACTION) && !(this.prevInput[quien] & IN.ACTION))
+      this.punteroActuar();
+  };
+
   World.prototype.playerUpdateCenital = function (quien, input) {
     var d = this.data.player, a = d.actor, p = this.players[quien];
     var dx = 0, dy = 0, pose;
@@ -2923,6 +3009,37 @@
           this.paso = 0;
           this.loadLevel(b);
           return true;
+        case PASO_LLEVAR: {
+          /* Poner al jugador en una casilla: la puerta de una aventura
+             grafica. Gemelo del NP_PASO_LLEVAR de np_world.c. */
+          var pa = this.data.player.actor, k;
+          for (k = 0; k < MAX_PLAYERS; k++) {
+            var pl = this.players[k];
+            if (!pl.playing) continue;
+            pl.x = I2F(b * TILE + ((TILE - pa.box_w) >> 1));
+            pl.y = I2F(c * TILE + TILE - pa.box_h);
+            pl.vx = 0;
+            pl.vy = 0;
+          }
+          this.pisadaX = -1;
+          this.pisadaY = -1;
+          this.cameraUpdate();
+          break;
+        }
+        case PASO_ACABAR:
+          /* Se acabo el nivel: la unica manera de terminar algo en una
+             aventura grafica. Gemelo del NP_PASO_ACABAR de np_world.c. */
+          this.guion = 0;
+          this.paso = 0;
+          this.finishLevel();
+          return true;
+        case PASO_QUITAR: {
+          /* Quitar una casilla del mapa: deja de dibujarse y de contestar. */
+          var casilla = c * this.level.cells_w + b;
+          if (!this.casillaIda(casilla) && this.abiertos.length < MAX_ABIERTOS)
+            this.abiertos.push(casilla);
+          break;
+        }
         default:
           this.guion = 0;
           this.paso = 0;
@@ -2940,6 +3057,8 @@
     var guiones = (this.data.guion_ini || []).length - 1;
 
     if (this.guion || guiones <= 0) return;
+    /* Con el puntero no hay disparadores de pisar. Igual que en C. */
+    if (this.puntero()) return;
     if (!p.playing || p.dying) return;
 
     tx = (F2I(p.x) + (a.box_w >> 1)) >> TILE_SHIFT;
@@ -3000,6 +3119,7 @@
          que en np_play_step: asi la serie va igual en las dos. */
       if (jugador.comboTimer) jugador.comboTimer--;
       if (jugador.dying) this.playerFalling(quien);
+      else if (this.puntero()) this.playerUpdatePuntero(quien, mandos[quien]);
       else if (this.iso()) this.playerUpdateIso(quien, mandos[quien]);
       else if (this.cinta()) this.playerUpdateCinta(quien, mandos[quien]);
       else if (this.cenital()) this.playerUpdateCenital(quien, mandos[quien]);
@@ -3054,6 +3174,10 @@
       }
     }
     if (this.state !== STATE.PLAY) return;
+
+    /* En una aventura grafica no se puede perder: ni pinchos, ni caidas, ni
+       reloj. El nivel se acaba cuando lo diga un guion. Igual que en C. */
+    if (this.puntero()) return;
 
     for (quien = 0; quien < MAX_PLAYERS; quien++) {
       var q = this.players[quien];

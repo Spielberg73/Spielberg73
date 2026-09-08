@@ -21,16 +21,19 @@ que tipo de juego quieres hacer?
   7) filmation     una habitacion vista desde una esquina: cubos y salas
   8) kung-fu       un templo de pantallas fijas: faroles, lianas y dos que
                    te siguen
+  9) aventura grafica  se senala, no se anda: un cursor, cuatro verbos y una
+                   habitacion que contesta
 
 elige [1]:
 ```
 
 El género no es un adorno: cambia la física del salto, el arma, si puedes
-pisar enemigos y hasta el mapa del primer nivel. Los dos últimos cambian más
-aún: se ven **desde arriba**, así que no hay gravedad ni saltos y se anda en
-ocho direcciones (mira [«un juego visto desde
+pisar enemigos y hasta el mapa del primer nivel. Algunos cambian más aún: el
+tercero y el cuarto se ven **desde arriba**, así que no hay gravedad ni saltos
+y se anda en ocho direcciones (mira [«un juego visto desde
 arriba»](#un-juego-visto-desde-arriba) y [«una mazmorra»](#una-mazmorra) al
-final). Si ya lo tienes claro, pásalo
+final), y el noveno no se anda siquiera: se **señala** (mira [«una aventura
+gráfica»](#una-aventura-gráfica)). Si ya lo tienes claro, pásalo
 directo y se salta el menú:
 
 ```bash
@@ -849,6 +852,99 @@ misma.
 Como en el resto de géneros, el bot comprueba que los dos niveles se pueden
 terminar, y hay un control que **quita la liana** de la segunda pantalla y
 exige que entonces no se llegue al farol de arriba.
+
+## Una aventura gráfica
+
+```bash
+./ngplat nuevo lacasa --genero grafica
+```
+
+Éste no se parece a ninguno de los ocho anteriores, y en una cosa: **aquí no se
+anda**. El jugador es un cursor. No pesa, no choca, no cobra y no puede morir;
+lo único que hace es moverse por la pantalla y señalar.
+
+```yaml
+juego:
+  vista: puntero
+  verbos: [MIRAR, COGER, USAR, HABLAR]
+  sin_efecto: nada
+```
+
+**El mando lleva un verbo puesto.** El botón de saltar —que aquí no tiene nada
+que saltar— pasa al siguiente de los cuatro, en bucle, y el de acción se lo
+aplica a la casilla que estés señalando. El verbo sale escrito arriba, delante
+de lo que llevas encima, porque sin verlo el juego se convierte en adivinar.
+
+Es la primera vista del kit donde **lo que pasa al pulsar depende de algo que
+llevas tú**, y de ahí sale el género entero: la misma puerta contesta una cosa
+al mirarla y hace otra al abrirla.
+
+**Las casillas contestan.** En la leyenda, un guion por verbo:
+
+```yaml
+tiles:
+  leyenda:
+    'q': {tile: 13, tipo: vacio, mirar: mirar_cuadro, hablar: hablar_cuadro}
+    'K': {tile: 22, tipo: vacio, debajo: 'u', mirar: mirar_llave, coger: coger_llave}
+```
+
+Un mueble grande son varias casillas y todas llevan los mismos guiones: el
+cuadro son cuatro tiles y el jugador no tiene por qué enterarse. Y cuando la
+casilla que señalas no contesta a ese verbo, contesta el juego por ella con el
+guion de `sin_efecto:`, escrito una vez y en tu idioma.
+
+**Coger algo son cuatro pasos**, y aquí se ve para qué sirven los guiones:
+
+```yaml
+  coger_llave:
+    - si: {llave: 0}
+      pasos:
+        - poner: {llave: 1}       # el juego se acuerda
+        - dar: llave              # va a la bolsa, y se ve en el marcador
+        - quitar: [12, 9]         # y deja de estar dibujada en la mesa
+        - sonido: moneda
+        - decir: "TE GUARDAS LA LLAVE."
+      si_no:
+        - decir: "YA LA LLEVAS ENCIMA."
+```
+
+`quitar:` borra la casilla del mapa: deja de dibujarse y deja de contestar. Lo
+que se ve en su sitio es lo que diga su `debajo:` —ahí, `'u'`, que es la mitad
+derecha de la mesa—, y por eso al coger la llave queda la mesa pelada y no un
+agujero con forma de pared.
+
+**El puzle entero cabe en un guion**, porque un puzle de aventura es una
+condición:
+
+```yaml
+  usar_trampilla:
+    - si: {llave: 0}
+      pasos:
+        - decir: "ESTA CERRADA CON LLAVE."
+      si_no:
+        - si: {farol: 0}
+          pasos:
+            - decir: "AHI ABAJO NO SE VE NADA. NECESITAS ALGO DE LUZ."
+          si_no:
+            - decir: "LA LLAVE ENTRA. ABRES LA TRAMPILLA Y BAJAS."
+            - ir_a_nivel: 2
+```
+
+**Y se acaba con `acabar:`**, porque aquí no hay casilla de meta que pisar: al
+abrir el arcón del sótano con la barra, el último guion dice `acabar: si` y,
+por ser el último nivel, se acabó el juego.
+
+El ejemplo son dos habitaciones —el estudio del abuelo y el sótano—, un retrato
+con el que se puede hablar (y que se acuerda de cuántas veces le has hablado),
+un farol, una llave, una trampilla que pide las dos cosas y un arcón que no
+cede con las manos.
+
+El bot del kit también juega a esto, pero de otra manera: como no hay camino
+que buscar, va a cada casilla que contesta a algo y le prueba los cuatro
+verbos, una y otra vez, barajando el orden. Es lo mismo que hace una persona
+cuando se atasca, y si probándolo todo el juego no se acaba, es que no tiene
+solución. Hay además un control que **quita la barra** del sótano y exige que
+entonces el arcón no se abra.
 
 ## Cuando algo falla
 

@@ -154,7 +154,7 @@ calle está vacía. Dos es lo de los recreativos.
 
 ```yaml
 juego:
-  vista: cenital       # lateral (por defecto), cenital, cinta o isometrica
+  vista: cenital       # lateral (por defecto), cenital, cinta, isometrica o puntero
 ```
 
 **`lateral`** es lo de siempre: hay gravedad, se salta, se mira a un lado o a
@@ -321,6 +321,69 @@ Mega Drive cada cubo cuesta unas 8 de las 262 líneas de un frame, así que a
 partir de unos quince por habitación el juego empieza a perder el retrazo y se
 va a 30. Las paredes del fondo ya no cuentan —van pintadas en `sala:`—, y con
 eso una habitación normal se queda en cinco o seis cubos y sobra sitio.
+
+#### La vista de puntero: la aventura gráfica
+
+**`puntero`** es la de las aventuras gráficas, y es la más distinta de las
+cinco: aquí no se anda por el escenario, se **señala**.
+
+| | las otras cuatro | puntero |
+|---|---|---|
+| el jugador | un héroe: pesa, choca, cobra y se muere | **un cursor**: no pesa, no choca, no cobra y no puede morir |
+| el mando | mueve al héroe | mueve el cursor, y además **elige verbo** |
+| el botón de saltar | salta (o tira una granada) | pasa al **verbo siguiente** |
+| el de acción | pega o dispara | **aplica el verbo** a la casilla que señalas |
+| lo que te para | una pared, un bicho, un pincho | **lo que no sabes todavía** |
+| cómo se acaba el nivel | pisando la meta o matando al jefe | con un guion que dice `acabar:` |
+| los disparadores de pisar | saltan al entrar en la casilla | **no saltan**: pasar el cursor por encima no es entrar |
+
+La casilla que señalas es la del **centro de la caja** del cursor, así que la
+caja (`caja:` en `jugador:`) es lo que decide dónde apunta la flecha: dibújala
+con la punta arriba a la izquierda y ponle una caja pequeña.
+
+```yaml
+juego:
+  vista: puntero
+  verbos: [MIRAR, COGER, USAR, HABLAR]   # cómo se llaman en el marcador
+  sin_efecto: nada                       # el guion de "ahí no hay nada que hacer"
+```
+
+**Los cuatro verbos** son siempre los mismos y en ese orden —es el que recorre
+el botón—; lo único que se cambia en `verbos:` es cómo se escriben, para que
+una aventura en castellano diga MIRAR y una en inglés LOOK. Seis letras como
+mucho, que es lo que cabe en el marcador delante de lo que llevas encima.
+
+Cuatro y no doce: con doce verbos la mitad no se usa nunca y el juego se
+convierte en probarlos todos, que es lo que mató al género.
+
+**Lo que contesta cada cosa** lo dice la leyenda, un guion por verbo:
+
+```yaml
+tiles:
+  leyenda:
+    '.': {tile: 0, tipo: vacio}          # la pared: no contesta a nada
+    'q': {tile: 13, tipo: vacio, mirar: mirar_cuadro, hablar: hablar_cuadro}
+    'K': {tile: 20, tipo: vacio, debajo: 'u', mirar: mirar_llave, coger: coger_llave}
+```
+
+Un mueble grande son varias casillas y todas llevan los mismos guiones: el
+jugador no tiene por qué saber que la puerta son seis tiles. Y `tipo:` casi
+siempre es `vacio`, porque aquí no frena nada: un cursor pasa por encima de
+todo.
+
+`debajo:` es el símbolo de otra casilla de la leyenda, y es lo que se ve cuando
+un guion **quita** ésta del mapa (ver `quitar:`). Sin él se ve el hueco de
+siempre —el primer tile vacío de la leyenda—, y coger la llave de encima de la
+mesa dejaría un agujero con forma de pared.
+
+Cuando la casilla señalada no contesta a ese verbo, contesta el juego por ella
+con el guion de `sin_efecto:`. Escrito una vez, en el idioma del juego, en vez
+de sesenta veces repartidas por el mapa.
+
+**Lo que no hay en esta vista**: no hay gravedad, ni ataque, ni enemigos que
+merezca la pena poner, ni pinchos que pinchen, ni reloj, ni casilla de meta.
+Perder no es una posibilidad; lo único que puede pasar es que no sepas seguir.
+Por eso un juego de este género se escribe casi entero en `guiones:`.
 
 #### El salto
 
@@ -1574,6 +1637,9 @@ Los pasos que hay:
 | `sonido: moneda` | dispara uno de los efectos de `sonido: efectos:` |
 | `dar: llave` | te da un objeto, como si lo hubieras cogido |
 | `ir_a_nivel: 2` | cambia de nivel |
+| `llevar: [12, 5]` | pone al jugador en esa casilla (la puerta de una aventura gráfica) |
+| `quitar: [12, 9]` | borra esa casilla del mapa: deja de dibujarse y de contestar |
+| `acabar: si` | termina el nivel, como si hubieras pisado la meta |
 
 **Los pasos que no esperan corren todos en el mismo frame.** Poner tres
 variables y dar un objeto no cuesta cuatro frames: cuesta uno. Sólo paran
@@ -1598,9 +1664,17 @@ comillas:
 
 Valen `=`, `!=`, `<`, `<=`, `>` y `>=`.
 
+Los tres últimos pasos son de la vista de puntero, aunque funcionan en
+cualquiera. `quitar:` es la otra mitad de coger algo —la primera es `dar:`—: la
+casilla deja de dibujarse (se ve lo que diga su `debajo:`) y deja de contestar
+a los verbos, y vuelve a estar al empezar el nivel otra vez. Caben doce
+casillas quitadas por nivel, las mismas que cerrojos abiertos. `acabar:` es la
+única manera de terminar un nivel donde no hay meta que pisar, y con el último
+nivel termina el juego.
+
 ### Cómo se lanza un guion
 
-De dos maneras:
+De tres maneras:
 
 **Al pisar una casilla** —un disparador—, poniéndoselo a un símbolo de la
 leyenda:
@@ -1630,6 +1704,17 @@ niveles:
     mapa: |
       ...
 ```
+
+**Y al señalar una casilla con un verbo**, en la vista de puntero:
+
+```yaml
+tiles:
+  leyenda:
+    'q': {tile: 13, tipo: vacio, mirar: mirar_cuadro, hablar: hablar_cuadro}
+```
+
+Ésta es la única de las tres que depende del mando: el guion que sale es el del
+verbo que tengas puesto. Ver *La vista de puntero*, más arriba.
 
 ### El cuadro de texto
 

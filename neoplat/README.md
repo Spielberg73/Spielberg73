@@ -128,6 +128,7 @@ el nivel de partida.
 | `aventura` | una **aventura de pantallas**, al estilo Dizzy. Aquí **no se pega**: el botón suelta lo que llevas, y en la bolsa caben tres cosas. Lo que te para no es un bicho sino un **cerrojo** —una puerta, una hoguera, una pared— que solo se abre si apareces con lo suyo; al abrirlo se gasta el objeto y el paso se queda abierto. Y el salto **no se manda en el aire**: al despegar decides hacia dónde vas y hasta caer no se cambia |
 | `filmation` | una **habitación vista desde una esquina**, al estilo Knight Lore. El mapa ya no es lo que se ve: es la **planta** de la sala, y cada casilla lleva una **altura** —0 es suelo, 16 un cubo al que se sube de un salto, 32 dos alturas y 48 una pared—. Con ese número se escribe el escenario entero. El mando va a los ejes del mapa (en pantalla salen en diagonal), el salto **no se manda en el aire** y la cámara enseña la sala en la que estás y **salta** a la siguiente al cruzar. Saltar es la forma de esquivar: por encima de un pincho o de un bicho no pasa nada |
 | `kungfu` | un **templo de pantallas fijas**, al estilo Bruce Lee. Vas apagando **faroles** —la puerta no se abre hasta que estén todos— con **dos tipos detrás** que no son de la pantalla sino tuyos: al cambiar de cuadro vuelven a entrar por el borde por el que entras tú, así que correr no los quita. Y **se pegan entre ellos**, o sea que cruzarlos es una jugada. Se **trepa por lianas** —a una liana te agarras en el aire, se sube recta y desde ella se salta a donde sea— y el botón en el aire saca la **patada voladora**, que llega al doble y duele el doble |
+| `grafica` | una **aventura gráfica**, de las de señalar: aquí no se anda, se **señala**. El jugador es un **cursor** que no pesa, no choca, no cobra y no puede morir; el botón de saltar pasa entre **cuatro verbos** —mirar, coger, usar y hablar— y el de acción se lo aplica a la casilla que apuntas. Cada cosa de la habitación contesta **una cosa distinta a cada verbo**, y lo que te para no es un bicho: es lo que todavía no sabes. El ejemplo son dos habitaciones —un estudio y un sótano—, un retrato con el que se habla, un farol, una llave, una trampilla que pide las dos cosas y un arcón que no cede con las manos |
 
 Si prefieres decirlo de una:
 
@@ -370,9 +371,9 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.28.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
-| `neoplat-kit-1.28.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.28.zip` | el `ngplat.exe` y su LEEME |
+| `neoplat-docs-1.29.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
+| `neoplat-kit-1.29.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.29.zip` | el `ngplat.exe` y su LEEME |
 
 El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
 plantillas; no necesita Python ni nada instalado. Con **doble clic** —sin
@@ -413,6 +414,7 @@ archivo nuevo y que el `.exe` se quede sin él; así salta antes de repartirlo.
 | `ngplat nuevo <carpeta> --genero aventura` | Una aventura tipo Dizzy: cuatro pantallas por nivel, una bolsa de tres cosas, puertas que piden lo suyo y el salto sin control |
 | `ngplat nuevo <carpeta> --genero filmation` | Un castillo isométrico tipo Knight Lore: seis salas por nivel, cubos a los que subirse, un talismán que abre la puerta del final y un editor que edita habitaciones |
 | `ngplat nuevo <carpeta> --genero kungfu` | Un templo tipo Bruce Lee: cuatro pantallas por nivel, faroles que apagar, lianas por las que trepar, la patada voladora y dos perseguidores que te siguen de sala en sala y se pegan entre ellos |
+| `ngplat nuevo <carpeta> --genero grafica` | Una aventura gráfica de señalar: un cursor, cuatro verbos, dos habitaciones que contestan a cada uno y un puzle de llave, farol y palanca |
 | `ngplat nuevo <carpeta> --estilo hierro` | Lo mismo, pero dibujado con seis colores y listo para el doble plano del Amiga |
 | `ngplat comprobar [proyecto]` | Valida el `game.yaml` y dice cuánto ocupa el juego |
 | `ngplat probar [proyecto]` | Abre el preview y el editor, y se queda sirviéndolo |
@@ -490,7 +492,7 @@ neoplat/
 ├── examples/
 │   ├── bosque-magico/      juego de ejemplo listo para compilar
 │   └── cueva-de-hierro/    el mismo motor con seis colores y parallax en Amiga
-└── tests/                  430 pruebas + 129 de jugabilidad + 81 del editor +
+└── tests/                  485 pruebas + 242 de jugabilidad + 81 del editor +
                             bot que se pasa los niveles + emuladores y navegador
 ```
 
@@ -533,7 +535,7 @@ consola, y da igual en cuál.
 make test           # herramientas, validación, generación de C y paridad C/JS
 make test-emulador  # arranca la ROM y el disquete en emuladores de verdad
 make test-navegador # abre el preview y el editor en Chromium
-node tests/comportamiento.js   # 142 pruebas de jugabilidad
+node tests/comportamiento.js   # 242 pruebas de jugabilidad
 make ejemplo-todos             # compila el ejemplo para las siete máquinas
 ```
 

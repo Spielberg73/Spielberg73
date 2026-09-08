@@ -1123,13 +1123,21 @@
        estos juegos es **la** informacion: sin mirar la bolsa no se sabe si la
        puerta de delante se abre o hay que dar media vuelta. Igual que
        np_extras_bar en C. */
-    if (DATA.bolsa_activa) {
+    if (DATA.bolsa_activa || DATA.view === "puntero") {
       var bolsa = "", n;
-      for (n = 0; n < world.bolsa.length; n++) {
-        if (!world.bolsa[n]) continue;
-        bolsa += (bolsa ? " " : "") + (DATA.items[world.bolsa[n] - 1].label || "");
+      /* En una aventura grafica lo primero de la linea es el verbo: es lo que
+         estas a punto de hacer, y sin verlo el juego es adivinar. */
+      if (DATA.view === "puntero") {
+        var verbo = (DATA.verbos || [])[world.verbo] || "";
+        text(20, 2, verbo + "      ".slice(verbo.length));
       }
-      text(20, 2, bolsa);
+      if (DATA.bolsa_activa) {
+        for (n = 0; n < world.bolsa.length; n++) {
+          if (!world.bolsa[n]) continue;
+          bolsa += (bolsa ? " " : "") + (DATA.items[world.bolsa[n] - 1].label || "");
+        }
+        text(DATA.view === "puntero" ? 27 : 20, 2, bolsa);
+      }
     }
     /* La vida, igual que np_life_bar en C: los llenos son los golpes que
        quedan y los puntos los perdidos. Con `vida: 1` no sale (no hay nada que

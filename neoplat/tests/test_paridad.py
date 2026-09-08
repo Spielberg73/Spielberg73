@@ -30,6 +30,7 @@ COL_GUION = 36            # por que guion va (0 = ninguno)
 COL_PASO = 37             # y por que paso
 COL_PAGINAS = 38          # paginas de texto que le quedan al cuadro
 COL_VARS = 39             # las variables, en un solo numero
+COL_VERBO = 40            # el verbo elegido en una aventura grafica
 
 # El genero de aventura empieza con un cuadro de texto que cuenta de que va, y
 # hasta que no se pasa la partida no corre. Las pruebas que le dan un mando
@@ -182,6 +183,13 @@ class TestParidad(unittest.TestCase):
         # que si los dos interpretes no fueran paso a paso iguales, uno seguiria
         # jugando mientras el otro lee y se separarian en el acto.
         cls.variantes["guiones"] = cls._preparar("scroll", guiones=True)
+        # La aventura grafica: el cursor, los cuatro verbos y las casillas que
+        # contestan. Aqui no hay fisica que comparar -un cursor no cae ni
+        # choca- pero si hay algo que no habia en ninguna otra vista: **el
+        # mando decide que guion se lanza**. Un boton cambia de verbo y el otro
+        # senala, asi que si los dos motores no llevaran el mismo verbo en el
+        # mismo frame, uno miraria la puerta mientras el otro la abre.
+        cls.variantes["grafica"] = cls._preparar("pantallas", genero="grafica")
 
     @classmethod
     def _preparar(cls, camara, jefe=False, dos=False, golpe=False, llave=False,
@@ -214,7 +222,7 @@ class TestParidad(unittest.TestCase):
         # anadir otra, o el lector se queda con la ultima
         # El genero de aventura sale ya con la camara de pantallas: es media
         # gracia del genero, asi que ahi no se cambia.
-        if genero in ("aventura", "filmation", "kungfu"):
+        if genero in ("aventura", "filmation", "kungfu", "grafica"):
             assert "  camara: pantallas" in texto, \
                 "el genero '%s' ya no trae la camara de pantallas" % genero
         elif True:
@@ -670,6 +678,39 @@ niveles:
         paso y cuanto valen las variables."""
         for semilla in (3, 17, 88):
             self._comparar("guiones", semilla)
+
+    def test_misma_traza_en_la_aventura_grafica(self):
+        """La vista de puntero mete una cosa que no hay en ninguna otra: lo que
+        pasa al pulsar **depende de un estado que lleva el propio mando**, el
+        verbo. Cambiar de verbo, senalar una casilla, lanzar el guion que le
+        toca a ese verbo y quitar del mapa lo que se coge son cuatro decisiones
+        por frame, y la traza mira las cuatro (el verbo va en su columna y en
+        la firma de la bolsa, y las casillas quitadas en la de abiertos)."""
+        for semilla in (5, 23, 71):
+            self._comparar("grafica", semilla)
+
+    def test_el_verbo_cambia_lo_que_pasa(self):
+        """Control del anterior: la misma casilla, dos verbos distintos.
+
+        Se va al cuadro del estudio y se pulsa accion con 'mirar' puesto; luego
+        lo mismo pero pasando antes al verbo 'hablar'. Los dos motores tienen
+        que contestar lo mismo **y** las dos partidas tienen que salir
+        distintas: si acabaran iguales, el verbo no estaria decidiendo nada."""
+        # El cursor sale en la fila 12, columna 15; el cuadro esta en las
+        # casillas 4 y 5 de las filas 2 y 3. A 2.4 pixeles por frame son 75
+        # frames a la izquierda y 65 hacia arriba, con margen.
+        ir = ([(IN_START, 0)] * 3 + PASAR_TEXTO * 2
+              + [(IN_LEFT, 0)] * 80 + [(IN_UP, 0)] * 70)
+        mirar = ir + [(IN_ACTION, 0), (0, 0)] * 12
+        # tres toques del boton de saltar para pasar de 'mirar' a 'hablar'
+        hablar = ir + [(IN_JUMP, 0), (0, 0)] * 3 + [(IN_ACTION, 0), (0, 0)] * 12
+        mirar_c, mirar_js = self._trazas_de("grafica", mirar, "verbo-mirar")
+        hablar_c, hablar_js = self._trazas_de("grafica", hablar, "verbo-hablar")
+        self.assertEqual(mirar_c, mirar_js)
+        self.assertEqual(hablar_c, hablar_js)
+        self.assertNotEqual(mirar_c, hablar_c,
+                            "mirar el cuadro y hablarle acaban igual: el verbo "
+                            "no esta eligiendo guion")
 
     def test_misma_traza_en_el_kungfu(self):
         """El genero de kung-fu mete cuatro cosas en el bucle: agarrarse a una

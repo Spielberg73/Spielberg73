@@ -274,6 +274,42 @@ class TestNivelesJugables(unittest.TestCase):
                             "sin los objetos tambien se pasan las puertas")
         self.assertNotIn("ok   nivel 1", resultado.stdout, resultado.stdout)
 
+    def test_el_proyecto_de_aventura_grafica_tambien_se_termina(self):
+        """La aventura grafica no se termina andando: se resuelve. El bot va a
+        cada casilla que contesta a algo y le prueba los cuatro verbos, que es
+        lo que hace un jugador cuando se atasca. Si probandolo todo el juego no
+        se acaba, es que no tiene solucion -y eso hay que saberlo antes de
+        mandarle el juego a nadie-."""
+        destino = os.path.join(self.tmp, "grafica")
+        crear_proyecto(destino, "LA CASA", "TEST", genero="grafica")
+        resultado = self._jugar(destino)
+        self.assertEqual(resultado.returncode, 0,
+                         "el bot no puede terminar la aventura grafica:\n"
+                         + resultado.stdout)
+
+    def test_sin_la_barra_el_arcon_no_se_abre(self):
+        """Control del anterior: el sotano sin la barra colgada de la pared.
+
+        Todo lo demas se queda igual -el arcon, la escalera, el barril- y el
+        juego deja de tener final: el candado no cede con las manos. Si asi
+        tambien se acabara, la prueba de arriba no estaria probando el puzle,
+        estaria probando que hay un guion que acaba el nivel."""
+        destino = os.path.join(self.tmp, "grafica-sin-barra")
+        crear_proyecto(destino, "SINBARRA", "TEST", genero="grafica")
+        yaml = os.path.join(destino, "game.yaml")
+        with open(yaml, encoding="utf-8") as fh:
+            texto = fh.read()
+        # la barra es la 'L' de la pared del sotano: se quita del mapa y ya
+        marca = "      ###L################"
+        self.assertIn(marca, texto, "el sotano ya no trae la barra ahi")
+        texto = texto.replace(marca, "      ####################", 1)
+        with open(yaml, "w", encoding="utf-8") as fh:
+            fh.write(texto)
+        resultado = self._jugar(destino)
+        self.assertNotEqual(resultado.returncode, 0,
+                            "sin la barra el arcon se abre igual: el puzle no "
+                            "esta pidiendo nada\n" + resultado.stdout)
+
     def test_el_proyecto_de_kungfu_tambien_se_termina(self):
         """El genero de kung-fu no se pasa andando hacia la derecha: la puerta
         pide todos los faroles y los faroles estan arriba, en las vigas y al

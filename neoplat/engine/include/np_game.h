@@ -381,6 +381,28 @@ extern const uint16_t np_var_count;
 extern const uint8_t np_tile_guion[];
 /* Y si ese disparador es de los de una sola vez en toda la partida. */
 extern const uint8_t np_tile_una_vez[];
+/* --- la aventura grafica -------------------------------------------------
+ *
+ * Que guion lanza cada casilla con cada verbo: `np_tile_verbo[verbo][tile]` es
+ * el guion **mas uno**, y cero quiere decir que con ese verbo esa casilla no
+ * contesta nada. Es la tabla entera del genero: mirar la puerta, abrirla y
+ * hablarle son tres guiones distintos de la misma casilla, y el motor solo
+ * tiene que elegir fila.
+ *
+ * Cuando el hueco esta a cero se lanza `np_guion_nada` (tambien indice mas
+ * uno), que es el "aqui no hay nada que hacer" del juego: escrito una vez, en
+ * el idioma del juego, y no sesenta veces repartidas por el mapa. */
+extern const uint8_t *const np_tile_verbo[NP_VERBOS];
+/* Lo que se ve **debajo** de una casilla que se quita: su numero de tile ya
+   resuelto. Por defecto es el mismo hueco que deja una puerta abierta, y con
+   `debajo:` en la leyenda es lo que diga: coger la llave de encima de la mesa
+   deja la mesa, y no un agujero con forma de pared. */
+extern const uint16_t np_tile_debajo[];
+extern const uint8_t np_guion_nada;
+/* Como se llama cada verbo en el marcador. Sale del game.yaml para que un
+   juego en castellano diga MIRAR y no LOOK: son cinco letras cada uno, que es
+   lo que cabe delante de la bolsa en la linea de arriba. */
+extern const char np_verbo_names[NP_VERBOS][7];
 extern const NpLayer np_layers[];
 extern const uint8_t np_tile_kind[];     /* tipo de cada tile del proyecto */
 /* Que objeto abre cada tile de cerrojo: el objeto **mas uno**, o cero si esa
@@ -455,6 +477,14 @@ extern const uint8_t np_vista_cinta;
    esta -se anda por un plano, no de lado-, pero np_vista_cinta no: aquello es
    una pelea y esto es una habitacion. */
 extern const uint8_t np_vista_iso;
+/* Y la de puntero, la de las aventuras graficas: aqui no hay heroe ni
+   gravedad ni enemigos. Lo que se mueve por la pantalla es un cursor, se
+   elige un verbo con el boton de saltar y se senala con el de accion; lo que
+   pasa entonces lo dice el guion de esa casilla. Es la unica vista en la que
+   la partida no puede acabar mal: no hay pinchos ni reloj, solo lo que sepas.
+   Con esta a 1, np_vista_cenital tambien lo esta -se anda por un plano-, pero
+   el jugador no choca con nada: un cursor pasa por encima de las paredes. */
+extern const uint8_t np_vista_puntero;
 /* Cuantos enemigos pueden estar pegando a la vez. Es el numero que decide si
    una pelea se juega o se sufre: con todos a la vez no hay hueco entre golpe y
    golpe, y con uno solo la calle esta vacia. Dos es lo de los recreativos. */

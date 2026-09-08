@@ -16,6 +16,7 @@ from typing import Dict, List
 from . import gfx, sistemas
 from . import sonido as sonido_mod
 from .claves import tabla_para_el_editor
+from .project import VERBOS
 from .build import (Build, actor_def_values, attack_values, breakable_values,
                     enemy_shot_values, enemy_values, generator_values,
                     item_values, prisoner_values,
@@ -331,6 +332,17 @@ def build_data(build: Build) -> Dict[str, object]:
             "guion": [({n: i for i, n in enumerate(build.guion_orden)}
                        .get(t.guion, -1) + 1) for t in build.tiles],
             "una_vez": [1 if t.una_vez else 0 for t in build.tiles],
+            # lo que se ve debajo de una casilla que se quita, ya en numero de
+            # tile: igual que np_tile_debajo
+            "debajo": [({t2.char: t2.index for t2 in build.tiles}
+                        .get(t.debajo, next((u.index for u in build.tiles
+                                             if u.kind == "empty"), 0)))
+                       for t in build.tiles],
+            # la aventura grafica: que guion contesta cada casilla a cada
+            # verbo (mirar, coger, usar, hablar), indice + 1
+            "verbo": [[({n: i for i, n in enumerate(build.guion_orden)}
+                        .get(t.verbos.get(verbo, ""), -1) + 1)
+                       for t in build.tiles] for verbo in VERBOS],
             "bloque": [({c.name: i for i, c in enumerate(build.blocks)}
                         .get(t.bloque, -1) + 1) for t in build.tiles],
             # y donde esta el dibujo del suelo de una sala isometrica dentro
@@ -364,6 +376,11 @@ def build_data(build: Build) -> Dict[str, object]:
                                  for o in build.items) else 0,
         # desde donde se mira: "lateral" (con gravedad) o "cenital"
         "view": project.view,
+        # la aventura grafica: como se llaman los verbos y que guion contesta
+        # cuando la casilla senalada no dice nada
+        "verbos": list(project.verbos),
+        "guion_nada": (list(project.guiones).index(project.guion_nada) + 1
+                       if project.guion_nada else 0),
         "amiga_modo": project.amiga_modo,
         "sistema": sistema.nombre,
         # lo que aguanta la maquina, para que el editor de dibujos pueda avisar

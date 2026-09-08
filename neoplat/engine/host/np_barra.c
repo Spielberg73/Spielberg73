@@ -98,9 +98,40 @@ static void extras(void)
     }
 }
 
+/* La misma linea en una aventura grafica, donde lo primero que hay que ver es
+ * **el verbo**: lo que estas a punto de hacer. Detras va la bolsa, que es la
+ * otra mitad de lo que sabe el jugador. */
+static void verbos(void)
+{
+    NpWorld w;
+    NpLevel nivel;
+    unsigned v, i;
+    char barra[NP_EXTRAS_BAR + 6];
+
+    for (i = 0; i < sizeof(NpWorld); i++) ((unsigned char *)&w)[i] = 0;
+    nivel = np_levels[0];
+    nivel.keys_needed = 0;
+    w.level = &nivel;
+    for (v = 0; v < NP_VERBOS; v++) {
+        w.verbo = (uint8_t)v;
+        w.bolsa[0] = 0;
+        w.bolsa[1] = 0;
+        np_extras_bar(barra, &w);
+        printf("verbo %u [%s]\n", v, barra);
+    }
+    /* y con dos cosas encima, que es como se juega de verdad */
+    w.verbo = NP_VERBO_USAR;
+    w.bolsa[0] = 1;
+    w.bolsa[1] = 2;
+    np_extras_bar(barra, &w);
+    printf("bolsa [%s]\n", barra);
+}
+
 int main(int argc, char **argv)
 {
-    if (argc > 1 && argv[1][0] == 'e') extras();
+    /* 've' de verbos: 'vida' tambien empieza por 'v' */
+    if (argc > 1 && argv[1][0] == 'v' && argv[1][1] == 'e') verbos();
+    else if (argc > 1 && argv[1][0] == 'e') extras();
     else if (argc > 1) vida();
     else jefe();
     return 0;

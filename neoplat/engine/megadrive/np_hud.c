@@ -151,6 +151,14 @@ void np_hud_draw(const NpWorld *w)
         uint8_t i;
         for (i = 10; i < 30; i++) np_ventana(i, 2, 0);
         ultimo_estado = w->state;
+        /* Esa fila la comparten el mensaje de estado, la barra del jefe y la
+           linea de lo que llevas: borrando veinte columnas se lleva por
+           delante media barra y media linea, asi que las dos se marcan sucias
+           y vuelven en el frame siguiente. Sin esto, cambiar de estado dejaba
+           "LIVES 1" y un trozo de "COGER FAROL" para el resto del nivel. */
+        ultimo_jefe = 0xFF;
+        ultimas_llaves = 0xFFFFFFFFu;
+        ultima_bolsa = 0xFFFFFFFFu;
     }
     switch (w->state) {
     case NP_STATE_TITLE:
@@ -195,6 +203,17 @@ void np_hud_draw(const NpWorld *w)
                 ultima_bolsa = 0xFFFFFFFFu;
                 ultima_vida = 0xFFFFFFFFu;
                 ultimo_estado = 0xFFFF;
+                /* Y el tanteo, las vidas y el reloj, que en esta maquina viven
+                   en la **misma fila** que la primera linea del cuadro: la
+                   ventana del VDP son tres filas y el cuadro se come dos. Sin
+                   esto, el primer cartel del juego borraba "SCORE 000000" y no
+                   volvia nunca -el marcador solo repinta lo que cambia, y un
+                   tanteo que no sube no cambia-. */
+                rotulos = 0;
+                ultimo_tanteo = 0xFFFFFFFFu;
+                ultimas_vidas = 0xFFFF;
+                ultimas_vidas2 = 0xFFFF;
+                ultimo_tiempo = 0xFFFF;
             }
         }
     }

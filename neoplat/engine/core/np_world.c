@@ -57,16 +57,31 @@ uint8_t np_tile_kind_at(const NpLevel *level, int32_t tx, int32_t ty)
  *
  * Se mira la lista de abiertos **solo** cuando la casilla es un cerrojo, que
  * es una entre mil: en un juego sin cerrojos esto no cuesta nada. */
+static int np_casilla_ida(const NpWorld *w, uint16_t casilla);
+
 static uint8_t np_tile_visto(const NpWorld *w, int32_t tx, int32_t ty)
 {
     uint8_t kind = np_tile_kind_at(w->level, tx, ty);
     uint16_t casilla;
-    uint8_t i;
     if (kind != NP_TILE_LOCK) return kind;
     casilla = (uint16_t)(ty * (int32_t)w->level->cells_w + tx);
+    return np_casilla_ida(w, casilla) ? NP_TILE_EMPTY : kind;
+}
+
+/* Una casilla que ya no esta. Son dos cosas con la misma lista: un cerrojo que
+ * se ha abierto y -en una aventura grafica- algo que se ha cogido. Comparten
+ * `abiertos` a proposito: las dos son "esta casilla ya no cuenta", las dos son
+ * de este nivel y las dos caben de sobra en doce huecos. Una lista mas seria
+ * otro trozo de RAM y otro sitio donde equivocarse.
+ *
+ * Solo se pregunta cuando hay alguna apuntada, que en casi todos los juegos es
+ * nunca. */
+static int np_casilla_ida(const NpWorld *w, uint16_t casilla)
+{
+    uint8_t i;
     for (i = 0; i < w->abiertos_n; i++)
-        if (w->abiertos[i] == casilla) return NP_TILE_EMPTY;
-    return kind;
+        if (w->abiertos[i] == casilla) return 1;
+    return 0;
 }
 
 uint16_t np_tile_gfx_at(const NpWorld *w, int32_t tx, int32_t ty)
@@ -85,6 +100,12 @@ uint16_t np_tile_gfx_at(const NpWorld *w, int32_t tx, int32_t ty)
     if (w->abiertos_n && np_tile_kind_at(level, tx, ty) == NP_TILE_LOCK
         && np_tile_visto(w, tx, ty) == NP_TILE_EMPTY)
         return np_tile_gfx_vacio;
+    /* Y lo que ya se ha cogido en una aventura grafica: la llave que te
+       llevas deja de estar dibujada en la mesa, que es lo minimo que uno
+       espera despues de cogerla. */
+    if (w->abiertos_n && np_vista_puntero
+        && np_casilla_ida(w, (uint16_t)(ty * (int32_t)level->cells_w + tx)))
+        return np_tile_debajo[level->cells[ty * level->cells_w + tx]];
     return np_tile_gfx[level->cells[ty * level->cells_w + tx]];
 }
 
@@ -131,6 +152,15 @@ void np_tile_gfx_column(const NpWorld *w, int32_t tx, int32_t ty,
     if (w->abiertos_n) {
         for (i = 0; i < count; i++) {
             int32_t fila = primera + (int32_t)i;
+            if (np_vista_puntero && fila >= 0
+                && fila < (int32_t)level->cells_h
+                && np_casilla_ida(w, (uint16_t)(fila * (int32_t)level->cells_w
+                                                + tx))) {
+                /* eso ya te lo has llevado: se ve lo que hubiera debajo */
+                out[i] = np_tile_debajo[level->cells[fila * level->cells_w
+                                                     + tx]];
+                continue;
+            }
             if (np_tile_kind_at(level, tx, fila) != NP_TILE_LOCK) continue;
             if (np_tile_visto(w, tx, fila) == NP_TILE_EMPTY)
                 out[i] = np_tile_gfx_vacio;
@@ -2303,6 +2333,103 @@ static void np_player_update_iso(NpWorld *w, uint8_t quien, uint16_t input)
     np_anim_tick(a, p->anim, &p->anim_frame, &p->anim_timer);
 }
 
+/* --- la aventura grafica: el cursor ---------------------------------------
+ *
+ * Aqui el jugador no es un heroe: es un puntero. No pesa, no choca, no cobra y
+ * no pega. Lo unico que hace es moverse por la pantalla, elegir un verbo y
+ * senalar una casilla; lo que pasa entonces lo dice el guion que esa casilla
+ * tenga puesto para ese verbo.
+ *
+ * Es la vista mas barata de las cinco -no hay fisica que correr- y a proposito:
+ * lo que cuesta en una aventura no son los ciclos, es el texto, y ese ya estaba
+ * hecho desde los guiones.
+ */
+
+/* La casilla que senala el cursor: la de su centro. La punta de la flecha no
+   sirve -cada juego dibuja el cursor a su manera- y el centro sale igual en el
+   motor y en el navegador sin ponerse de acuerdo en nada mas. */
+static void np_puntero_casilla(const NpWorld *w, int32_t *tx, int32_t *ty)
+{
+    const NpActorDef *a = &np_player_def.actor;
+    const NpPlayer *p = &w->players[0];
+    *tx = (NP_F2I(p->x) + a->box_w / 2) >> NP_TILE_SHIFT;
+    *ty = (NP_F2I(p->y) + a->box_h / 2) >> NP_TILE_SHIFT;
+}
+
+/* Senalar: se busca el guion de la casilla para el verbo de turno y se lanza.
+   Si esa casilla no contesta a ese verbo, contesta el juego entero por ella
+   (`np_guion_nada`), que es lo que evita que medio mapa tenga que llevar un
+   "aqui no hay nada" escrito a mano. */
+static void np_puntero_actuar(NpWorld *w)
+{
+    int32_t tx, ty;
+    uint8_t guion = 0;
+    np_puntero_casilla(w, &tx, &ty);
+    if (tx >= 0 && ty >= 0 && tx < (int32_t)w->level->cells_w
+        && ty < (int32_t)w->level->cells_h) {
+        uint16_t casilla = (uint16_t)((uint32_t)ty * w->level->cells_w
+                                      + (uint32_t)tx);
+        uint16_t tile = w->level->cells[casilla];
+        if (!np_casilla_ida(w, casilla))
+            guion = np_tile_verbo[w->verbo][tile];
+    }
+    if (!guion) guion = np_guion_nada;
+    np_guion_lanzar(w, guion);
+}
+
+static void np_player_update_puntero(NpWorld *w, uint8_t quien, uint16_t input)
+{
+    const NpPlayerDef *d = &np_player_def;
+    const NpActorDef *a = &d->actor;
+    NpPlayer *p = &w->players[quien];
+    int dx = 0, dy = 0;
+    int32_t tope;
+
+    if (input & NP_IN_RIGHT) dx += 1;
+    if (input & NP_IN_LEFT) dx -= 1;
+    if (input & NP_IN_DOWN) dy += 1;
+    if (input & NP_IN_UP) dy -= 1;
+
+    p->vx = np_paso_cenital(d->speed, dx, dx && dy);
+    p->vy = np_paso_cenital(d->speed, dy, dx && dy);
+    p->x += p->vx;
+    p->y += p->vy;
+
+    /* El cursor pasa por encima de las paredes -senalar una pared es parte del
+       juego- pero no se sale del mapa: fuera no hay dibujo al que apuntar. */
+    tope = (int32_t)w->level->width * NP_TILE - (int32_t)a->box_w;
+    if (tope < 0) tope = 0;
+    p->x = NP_CLAMP(p->x, 0, NP_I2F(tope));
+    tope = (int32_t)w->level->height * NP_TILE - (int32_t)a->box_h;
+    if (tope < 0) tope = 0;
+    p->y = NP_CLAMP(p->y, 0, NP_I2F(tope));
+
+    /* Un cursor no esta ni en el suelo ni en el aire, pero hay cosas que
+       preguntan (la pose, el marcador): siempre plantado y sin saltos. */
+    p->on_ground = 1;
+    p->jumps_left = 0;
+    p->stairs = 0;
+    p->trepa = 0;
+    p->crouch = 0;
+    if (dx) p->facing = (uint8_t)(dx > 0);
+    np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer,
+                (dx || dy) ? NP_ANIM_RUN : NP_ANIM_IDLE);
+    np_anim_tick(a, p->anim, &p->anim_frame, &p->anim_timer);
+
+    /* El verbo y lo que se senala son de la partida y no de cada mando: una
+       aventura grafica se juega a uno, y si hay dos cursores el que manda es
+       el primero. */
+    if (quien) return;
+
+    /* El boton de saltar no tiene nada que saltar: pasa al verbo siguiente.
+       Es el reparto mas corto que existe -dos botones, cuatro verbos- y el que
+       cabe en el mando de las siete maquinas sin inventarse nada. */
+    if ((input & NP_IN_JUMP) && !(w->prev_input[quien] & NP_IN_JUMP))
+        w->verbo = (uint8_t)((w->verbo + 1) % NP_VERBOS);
+    else if ((input & NP_IN_ACTION) && !(w->prev_input[quien] & NP_IN_ACTION))
+        np_puntero_actuar(w);
+}
+
 static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
 {
     const NpPlayerDef *d = &np_player_def;
@@ -4212,6 +4339,50 @@ static int np_guion_update(NpWorld *w, uint16_t input)
             w->paso = 0;
             np_world_load_level(w, (uint16_t)paso->b);
             return 1;
+        case NP_PASO_LLEVAR: {
+            /* Poner al jugador en una casilla. En una aventura grafica esa es
+               la puerta: senalas, se abre y apareces en la otra punta del
+               mapa. La camara se recoloca aqui mismo y no al acabar el guion,
+               para que lo que se diga despues se lea sobre el sitio nuevo. */
+            const NpActorDef *pa = &np_player_def.actor;
+            uint8_t i;
+            for (i = 0; i < NP_MAX_PLAYERS; i++) {
+                NpPlayer *pl = &w->players[i];
+                if (!pl->playing) continue;
+                pl->x = NP_I2F((int32_t)paso->b * NP_TILE
+                               + (NP_TILE - (int32_t)pa->box_w) / 2);
+                pl->y = NP_I2F((int32_t)paso->c * NP_TILE + NP_TILE
+                               - (int32_t)pa->box_h);
+                pl->vx = 0;
+                pl->vy = 0;
+            }
+            /* Donde acaba de aparecer no ha pisado todavia: asi el disparador
+               que haya debajo cuenta como una entrada y no como estar quieto. */
+            w->pisada_x = -1;
+            w->pisada_y = -1;
+            np_camera_update(w);
+            break;
+        }
+        case NP_PASO_ACABAR:
+            /* Se acabo el nivel. Es la unica manera de terminar algo en una
+               aventura grafica -alli no hay casilla de meta que pisar- y por
+               eso pasa por la misma puerta que la meta de siempre: si es el
+               ultimo nivel, se acabo el juego. */
+            w->guion = 0;
+            w->paso = 0;
+            np_finish_level(w);
+            return 1;
+        case NP_PASO_QUITAR: {
+            /* Quitar una casilla del mapa: se apunta y deja de dibujarse y de
+               contestar. Es la mitad de "coger" en una aventura grafica -la
+               otra mitad es el `dar` que la mete en la bolsa- y cabe en la
+               misma lista que los cerrojos abiertos. */
+            uint16_t casilla = (uint16_t)((uint32_t)paso->c * w->level->cells_w
+                                          + (uint32_t)paso->b);
+            if (!np_casilla_ida(w, casilla) && w->abiertos_n < NP_MAX_ABIERTOS)
+                w->abiertos[w->abiertos_n++] = casilla;
+            break;
+        }
         default:                 /* NP_PASO_FIN y lo que no se entienda */
             w->guion = 0;
             w->paso = 0;
@@ -4237,6 +4408,10 @@ static void np_disparadores(NpWorld *w)
     uint8_t guion;
 
     if (w->guion || !np_guion_count) return;
+    /* Con el puntero no hay disparadores de pisar: un cursor pasa por encima
+       de todo el mapa y saltarian todos seguidos. Ahi las cosas pasan cuando
+       senalas, que es de lo que va el genero. */
+    if (np_vista_puntero) return;
     if (!p->playing || p->dying) return;
 
     tx = (NP_F2I(p->x) + a->box_w / 2) >> NP_TILE_SHIFT;
@@ -4309,6 +4484,8 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
            en cada vista: asi la serie va igual se mire desde donde se mire. */
         if (p->combo_timer) p->combo_timer--;
         if (p->dying) np_player_falling(w, quien);
+        else if (np_vista_puntero)
+            np_player_update_puntero(w, quien, mandos[quien]);
         else if (np_vista_iso)
             np_player_update_iso(w, quien, mandos[quien]);
         else if (np_vista_cinta)
@@ -4374,6 +4551,11 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
 
 
     if (w->state != NP_STATE_PLAY) return;
+
+    /* En una aventura grafica no se puede perder: un cursor no pisa pinchos, no
+       se cae del mapa y no se le acaba el tiempo. El nivel se acaba cuando lo
+       diga un guion, que es la unica manera de acabar algo aqui. */
+    if (np_vista_puntero) return;
 
     for (quien = 0; quien < NP_MAX_PLAYERS; quien++) {
         NpPlayer *p = &w->players[quien];
@@ -4470,7 +4652,10 @@ uint32_t np_bolsa_firma(const NpWorld *w)
     uint32_t firma = 0;
     uint8_t i;
     for (i = 0; i < NP_BOLSA; i++) firma = (firma << 8) | w->bolsa[i];
-    return firma;
+    /* Y el verbo, que en una aventura grafica va en la misma linea: sin esto
+       se cambiaba de verbo y el marcador seguia ensenando el de antes. Cabe
+       porque son tres huecos de bolsa y un verbo, cuatro bytes justos. */
+    return (firma << 8) | w->verbo;
 }
 
 /* La linea de "lo que llevas": llaves y municion, "KEYS 01/03 AMMO 05" (en
@@ -4505,9 +4690,17 @@ void np_extras_bar(char *out, const NpWorld *w)
     /* Y en una aventura, lo que llevas encima. Ocupa la linea entera porque en
        estos juegos es **la** informacion: sin mirar la bolsa no se sabe si la
        puerta de delante se puede abrir o hay que dar media vuelta. */
-    if (np_bolsa_activa) {
+    if (np_bolsa_activa || np_vista_puntero) {
         uint8_t hueco, columna = 0;
-        for (hueco = 0; hueco < NP_BOLSA; hueco++) {
+        /* En una aventura grafica lo primero de la linea es **el verbo**: es
+           lo que estas a punto de hacer, y sin verlo el juego se convierte en
+           adivinar. Detras va la bolsa, con lo que quepa en la linea. */
+        if (np_vista_puntero) {
+            const char *verbo = np_verbo_names[w->verbo];
+            for (i = 0; i < 6 && verbo[i]; i++) out[i] = verbo[i];
+            columna = 7;
+        }
+        for (hueco = 0; np_bolsa_activa && hueco < NP_BOLSA; hueco++) {
             const char *nombre;
             if (!w->bolsa[hueco]) continue;
             nombre = np_item_names[w->bolsa[hueco] - 1];
