@@ -4076,6 +4076,11 @@ static void np_via_suavizar(int16_t *via)
     }
 }
 
+#if NP_VISTA_CARRETERA
+static void np_carretera_tabla(const NpWorld *w);
+#endif
+static int32_t np_encoge(int32_t z);
+
 static void np_via_montar(NpWorld *w)
 {
     const NpLevel *nivel = w->level;
@@ -4130,7 +4135,66 @@ static void np_via_montar(NpWorld *w)
     }
     w->via_ancho = (int16_t)(mejor_ancho * NP_TILE / 2);
     if (!w->via_ancho) w->via_ancho = NP_TILE;   /* un mapa sin carretera */
+#if NP_VISTA_CARRETERA
+    np_carretera_tabla(w);
+#endif
 }
+
+#if NP_VISTA_CARRETERA
+/* La tabla por linea: lo ancha que se ve la calzada y a que franja pertenece.
+ *
+ * No depende de la camara -depende de la perspectiva, que no cambia-, asi que
+ * se calcula **una vez al cargar el nivel** y ya no se toca. De eso vive que
+ * las ocho maquinas puedan dibujar la carretera sin dibujarla.
+ *
+ * La Mega Drive no la necesita: alli las franjas van dentro de la imagen que
+ * trae el compilador y lo que se rota es la paleta. La necesitan las maquinas
+ * que pintan las bandas **con el haz**: el copper del Amiga, del A1200 y del
+ * CD32 escriben el color de la calzada, del arcen y de la hierba en cada
+ * linea, y para eso hay que saber que franja toca en cada una.
+ *
+ * Es la misma cuenta que hace el compilador para dibujar la textura
+ * (tools/ngplat/carretera.py) y que hace el preview (carreteraTabla), y
+ * tests/test_carretera.py compara las tres linea a linea. */
+int16_t np_carretera_medio[NP_SCREEN_H];
+uint8_t np_carretera_banda[NP_SCREEN_H];
+
+static void np_carretera_tabla(const NpWorld *w)
+{
+    int32_t sy_ant = NP_SCREEN_H, mx_ant = 0;
+    int32_t i, y;
+    int primero = 1;
+
+    for (y = 0; y < NP_SCREEN_H; y++) {
+        np_carretera_medio[y] = 0;
+        np_carretera_banda[y] = 0;
+    }
+    for (i = 0; i < NP_TRAMOS_VISTA; i++) {
+        int32_t z = i * NP_TILE + NP_CERCA;
+        int32_t k = np_encoge(z);
+        int32_t sy = NP_HORIZONTE + ((NP_CAMARA_ALTO * k) >> 8);
+        int32_t mx, alto, dmx, amx;
+        uint8_t franja;
+
+        if (sy >= NP_SCREEN_H) continue;
+        if (sy <= NP_HORIZONTE) break;
+        mx = (w->via_ancho * k) >> 8;
+        alto = sy_ant - sy;
+        if (alto <= 0) continue;
+        if (primero) { mx_ant = mx; primero = 0; }
+        franja = (uint8_t)(i & (NP_CARRETERA_FRANJAS - 1));
+        dmx = ((mx_ant - mx) << 8) / alto;
+        amx = mx << 8;
+        for (y = sy; y < sy_ant; y++) {
+            np_carretera_medio[y] = (int16_t)(amx >> 8);
+            np_carretera_banda[y] = franja;
+            amx += dmx;
+        }
+        sy_ant = sy;
+        mx_ant = mx;
+    }
+}
+#endif /* NP_VISTA_CARRETERA */
 
 /* El trafico: un coche que sube por la carretera **por su carril**.
  *

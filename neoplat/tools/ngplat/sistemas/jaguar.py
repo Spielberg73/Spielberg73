@@ -170,6 +170,11 @@ class Jaguar(Sistema):
         ancho_px, alto_px = build.info.get("ventana", VENTANA_ANCHA)
         alto_tiles, ancho_tiles = alto_px // 16, ancho_px // 16
         alta = (ancho_px, alto_px) == VENTANA_ALTA
+        # Conduciendo, el mapa **no se dibuja**: es el trazado de la carretera,
+        # no lo que se ve, y mide lo que mida el circuito. Medirlo contra el
+        # mapa de bits no significa nada ahi.
+        if not self.dibuja_el_mapa(build):
+            return avisos
         for nivel in build.levels:
             if nivel.height > alto_tiles:
                 self.error(

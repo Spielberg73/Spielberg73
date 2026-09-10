@@ -58,6 +58,23 @@ class Sistema:
     # los dos tonos de una pareja le caen en el mismo color a esta maquina, la
     # paleta rota igual pero en pantalla no se mueve nada.
     bits_de_color = 8
+    # Como quiere esta maquina la imagen de la carretera. Hay dos maneras de
+    # que las franjas corran hacia ti y cada una le conviene a unas maquinas:
+    #
+    #   False  la imagen trae las cuatro franjas dibujadas, con cuatro colores
+    #          por cosa, y la maquina **rota la paleta** un paso por frame.
+    #          Es lo que hace la Mega Drive: cuatro palabras a la CRAM.
+    #   True   la imagen es lisa -un color por cosa- y la maquina pinta las
+    #          bandas **con el haz**, escribiendo el color de cada linea. Es lo
+    #          que hace el copper del Amiga, y ademas es lo unico que cabe:
+    #          doce huecos de paleta no entran en los siete de un plano del
+    #          doble plano, y cuatro si.
+    carretera_lisa = False
+    # Y con cuantos bits por canal guarda **los colores de la carretera**, que
+    # no siempre son los de la maquina: en AGA la paleta es de 24 bits pero los
+    # tonos de la carretera van en 12, porque el copper los escribe linea a
+    # linea y un color de 24 bits cuesta el doble de escrituras.
+    bits_de_carretera = 0                # 0: los mismos que bits_de_color
     titulo = "sistema generico"
     cpu = "68000"
     pantalla: Tuple[int, int] = (320, 224)
@@ -102,6 +119,10 @@ class Sistema:
         capa = getattr(build, "asfalto", None)
         if capa is None or not capa.franjas or capa.palette is None:
             return []
+        if self.carretera_lisa:
+            # Con la textura lisa los tonos no estan en la paleta: los escribe
+            # la maquina linea a linea, y se miran en build.tonos.
+            return self._avisos_de_tonos(capa)
         maximo = (1 << self.bits_de_color) - 1
 
         def cuantizar(rgb):
@@ -118,6 +139,25 @@ class Sistema:
                     "(%d bits por canal): las franjas no se veran correr. "
                     "Separalos mas en 'carretera:' del game.yaml"
                     % (nombre, self.titulo, self.bits_de_color))
+        return avisos
+
+    def _avisos_de_tonos(self, capa) -> List[str]:
+        """Lo mismo, pero mirando los tonos que la maquina va a escribir."""
+        bits = self.bits_de_carretera or self.bits_de_color
+        maximo = (1 << bits) - 1
+        avisos = []
+        nombres = ("hierba", "arcen", "asfalto", "raya")
+        for nombre, pareja in zip(nombres, capa.tonos):
+            if nombre == "raya":
+                continue                 # la raya es un solo color a proposito
+            tonos = {tuple((c * maximo + 127) // 255 for c in rgb[:3])
+                     for rgb in pareja}
+            if len(tonos) < 2:
+                avisos.append(
+                    "los dos tonos de '%s' le caen en el mismo color a %s "
+                    "(%d bits por canal): las franjas no se veran correr. "
+                    "Separalos mas en 'carretera:' del game.yaml"
+                    % (nombre, self.titulo, bits))
         return avisos
 
     @staticmethod

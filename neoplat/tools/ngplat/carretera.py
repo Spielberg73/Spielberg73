@@ -148,6 +148,58 @@ def textura(ancho_via: int, colores, ancho_arcen: int = 8) -> Image:
     return Image(ANCHO, SCREEN_H, px)
 
 
+# --- la otra manera: una textura lisa y las bandas con el haz -------------
+#
+# Hay maquinas que pueden cambiar de color **en mitad de la pantalla**: el
+# copper del Amiga, del A1200 y del CD32 escribe registros de color linea a
+# linea sin gastar CPU. A esas no les hace falta que las franjas vengan
+# dibujadas: les sale mas barato pintar la carretera con **un color por cosa**
+# -calzada, arcen, hierba, raya- y decidir en cada linea que tono toca.
+#
+# Y no es solo mas barato: es lo unico que cabe. Las cuatro franjas por cosa
+# son doce huecos de paleta, y un plano del doble plano del Amiga OCS tiene
+# siete. Asi la carretera entra en siete colores con sitio de sobra, que es
+# justo lo que dice el `carretera:` del game.yaml.
+#
+# Los indices son fijos porque el motor los necesita para saber que registro
+# escribir en cada linea (ver np_carretera_huecos).
+LISO_HIERBA = 0
+LISO_ARCEN = 1
+LISO_ASFALTO = 2
+LISO_RAYA = 3
+LISO_COSAS = ("hierba", "arcen", "asfalto", "raya")
+
+
+def textura_lisa(ancho_via: int, colores, ancho_arcen: int = 8) -> Image:
+    """La misma carretera, pero con **un solo color por cosa**.
+
+    `colores` es un color por nombre de LISO_COSAS. Los tonos de cada franja no
+    estan aqui: los pone la maquina linea a linea. La raya del medio se dibuja
+    en todas las lineas donde cabe, y es la maquina la que la borra -pintandola
+    del color de la calzada- en las franjas donde no toca.
+    """
+    filas = lineas(ancho_via)
+    px: List[RGBA] = [(0, 0, 0, 0)] * (ANCHO * SCREEN_H)
+    centro = ANCHO // 2
+    for y, (medio, _franja) in enumerate(filas):
+        base = y * ANCHO
+        if medio <= 0:
+            continue                     # cielo: transparente, como en la otra
+        borde = (ancho_arcen * medio) // 64
+        mitad = medio - borde
+        for x in range(ANCHO):
+            d = x - centro
+            if d < -medio or d >= medio:
+                px[base + x] = colores["hierba"]
+            elif d < -mitad or d >= mitad:
+                px[base + x] = colores["arcen"]
+            elif -2 <= d < 2 and mitad > 6:
+                px[base + x] = colores["raya"]
+            else:
+                px[base + x] = colores["asfalto"]
+    return Image(ANCHO, SCREEN_H, px)
+
+
 def fase(avance: int) -> int:
     """Que franja toca ahora: cuanto ha avanzado el coche, en tramos.
 

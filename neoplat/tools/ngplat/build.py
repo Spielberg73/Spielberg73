@@ -61,6 +61,9 @@ class LayerBuild:
     # franjas de la calzada, del arcen y de la hierba. Rotarlas es lo que hace
     # que las rayas corran hacia ti. Ver carretera.py.
     franjas: List[List[int]] = field(default_factory=list)
+    # Solo con la textura lisa: los dos tonos de cada cosa, en 24 bits, en el
+    # mismo orden que `franjas`. La maquina los escribe linea a linea.
+    tonos: List[List[Tuple[int, int, int]]] = field(default_factory=list)
     dibujos: List[List[int]] = field(default_factory=list)   # indices de paleta
 
 
@@ -311,7 +314,7 @@ def _azul_para_separar(azul: int, i: int) -> int:
     return min(255, azul + i)
 
 
-def _capa_de_carretera(project: Project) -> LayerBuild:
+def _capa_de_carretera(project: Project, lisa: bool = False) -> LayerBuild:
     """La carretera en perspectiva, dibujada aqui y troceada como una capa.
 
     El ancho de la calzada sale del mapa, igual que lo saca el motor: se mira
@@ -367,7 +370,21 @@ def _capa_de_carretera(project: Project) -> LayerBuild:
             (c[0], c[1], _azul_para_separar(c[2], i), 255)
             for i, c in enumerate(colores[nombre])
         ]
-    imagen = carretera_mod.textura(medio, colores, col.ancho_arcen)
+    if lisa:
+        # Un color por cosa y las bandas las pinta la maquina linea a linea.
+        # Se coge el primer tono de cada pareja porque **da igual**: la maquina
+        # va a escribir ese registro en cada linea de todas formas. Lo que no
+        # da igual es que sean cuatro colores distintos, para que caigan en
+        # cuatro huecos de paleta distintos y se puedan escribir por separado.
+        planos = {
+            "hierba": col.hierba[0] + (255,),
+            "arcen": col.arcen[0] + (255,),
+            "asfalto": col.asfalto[0] + (255,),
+            "raya": col.raya + (255,),
+        }
+        imagen = carretera_mod.textura_lisa(medio, planos, col.ancho_arcen)
+    else:
+        imagen = carretera_mod.textura(medio, colores, col.ancho_arcen)
     capa = Layer(name="__carretera__", image="", speed_x=1.0, speed_y=0.0,
                  offset_y=0, repeat=True)
     build = _trocear_capa(capa, imagen, "carretera")
@@ -376,10 +393,23 @@ def _capa_de_carretera(project: Project) -> LayerBuild:
     # esos cuatro colores un paso por frame. Sin esto habria que buscarlos en
     # la maquina, y buscar colores en un 68000 en mitad de un frame no es
     # forma de gastar un frame.
-    build.franjas = [
-        [build.palette.index_of(c[:3]) for c in colores[nombre]]
-        for nombre in ("asfalto", "arcen", "hierba")
-    ]
+    if lisa:
+        # Aqui los huecos son cuatro, uno por cosa, en el orden que espera el
+        # motor (carretera.LISO_COSAS). Y ademas hacen falta los **dos tonos**
+        # de cada pareja, porque la maquina los escribe linea a linea y no
+        # estan en la imagen: van en build.tonos, en 24 bits, y cada sistema
+        # los pasa a su formato de color.
+        build.franjas = [[build.palette.index_of(planos[nombre][:3])]
+                         for nombre in carretera_mod.LISO_COSAS]
+        build.tonos = [
+            list(col.hierba), list(col.arcen), list(col.asfalto),
+            [col.raya, col.raya],
+        ]
+    else:
+        build.franjas = [
+            [build.palette.index_of(c[:3]) for c in colores[nombre]]
+            for nombre in ("asfalto", "arcen", "hierba")
+        ]
     return build
 
 
@@ -387,11 +417,17 @@ def _sin_table() -> List[int]:
     return [to_fixed(math.sin(2 * math.pi * i / SIN_STEPS)) for i in range(SIN_STEPS)]
 
 
-def build_project(project: Project) -> Build:
+def build_project(project: Project, carretera_lisa: bool = False) -> Build:
     """Lee graficos, tiles, niveles y sonido, sin atarse a ninguna maquina.
 
     El empaquetado para el hardware (formato de los tiles, paletas, ROMs) lo
     hace despues el sistema de destino: ver tools/ngplat/sistemas/.
+
+    La unica cosa que hay que saber antes de tiempo es `carretera_lisa`, y es
+    porque la imagen de la carretera se dibuja **aqui**: hay maquinas que la
+    quieren con las cuatro franjas dentro -y rotan la paleta- y otras que la
+    quieren lisa -un color por cosa- y pintan las bandas con el haz. Ver
+    Sistema.carretera_lisa y carretera.textura_lisa.
     """
     rom = gfx.RomData()          # lo usa Neo Geo; los demas sistemas lo ignoran
 
@@ -438,7 +474,7 @@ def build_project(project: Project) -> Build:
     # parallax por error. En los demas generos no se genera y no ocupa nada.
     asfalto = None
     if project.view == "carretera":
-        asfalto = _capa_de_carretera(project)
+        asfalto = _capa_de_carretera(project, carretera_lisa)
         layers.append(asfalto)
 
     player = _load_actor(project.player, "jugador", project.root)

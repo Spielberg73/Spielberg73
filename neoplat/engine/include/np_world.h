@@ -376,6 +376,31 @@ uint16_t np_carretera(const NpWorld *w, int16_t *centro);
 #define NP_CARRETERA_FRANJAS 4
 uint8_t np_carretera_fase(const NpWorld *w);
 
+/* La tabla por linea, para las maquinas que pintan las bandas **con el haz**.
+ *
+ * Hay dos maneras de que las franjas corran, y cada maquina usa la suya:
+ *
+ *   - la que puede rotar la paleta y deslizar una imagen por linea -la Mega
+ *     Drive- se lo lleva todo hecho en la imagen del compilador: cuatro
+ *     colores por cosa, rotarlos y listo;
+ *   - la que puede cambiar de color **en mitad de la pantalla** -el copper del
+ *     Amiga, del A1200 y del CD32- no necesita cuatro colores: necesita saber
+ *     que franja toca en cada linea y escribir el color de esa linea. Le sale
+ *     mas barato, y ademas le cabe en los siete colores de un plano del doble
+ *     plano, donde no cabrian doce.
+ *
+ * Las dos salen de la misma cuenta. Esto es la segunda: lo ancha que se ve la
+ * calzada en cada linea (`medio`, en pixeles a cada lado del eje) y a que
+ * franja pertenece (0..NP_CARRETERA_FRANJAS-1, a la que hay que sumarle la
+ * fase del frame). No cambia entre frames: se llena al cargar el nivel.
+ *
+ * Solo existen en un juego de carretera: fuera de el, np_world.c no las
+ * define y nadie las nombra. Se declaran sin guardar porque este archivo se
+ * lee **antes** que gamedata.h en alguna maquina, y ahi NP_VISTA_CARRETERA
+ * todavia no vale nada. */
+extern int16_t np_carretera_medio[NP_SCREEN_H];
+extern uint8_t np_carretera_banda[NP_SCREEN_H];
+
 /* Donde va el coche del jugador en la pantalla: **en un sitio fijo**, abajo.
  *
  * La camara le sigue, asi que en la pantalla el coche no se mueve; lo que se

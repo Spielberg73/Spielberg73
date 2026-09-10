@@ -183,5 +183,16 @@ extern const uint32_t np_colores[NP_COLORES];    /* 0x00RRGGBB, sin redondear */
 extern const uint16_t np_colores[32];            /* 4 bits por canal */
 #endif
 extern const uint8_t np_font_data[];             /* fuente de 8x8, un bit por pixel */
+#if NP_VISTA_CARRETERA
+/* La carretera: los dos tonos de cada cosa -hierba, arcen, calzada y raya- y
+   el registro de color de cada una. Aqui las franjas no vienen dibujadas: el
+   copper escribe el tono que toca en cada linea. */
+#if NP_AGA
+extern const uint32_t np_carretera_tonos[4][2];
+#else
+extern const uint16_t np_carretera_tonos[4][2];
+#endif
+extern const uint16_t np_carretera_regs[4];
+#endif
 
 #endif /* NP_AMIGA_H */

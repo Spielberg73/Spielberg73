@@ -159,8 +159,8 @@ def cargar_demo(path: str, sistema: str = ""):
     Sin `sistema` se usa el del propio game.yaml (Neo Geo, si no dice otra cosa).
     """
     proyecto = load_project(path)
-    build = build_project(proyecto)
     maquina = sistemas.obtener(sistema or proyecto.system)
+    build = build_project(proyecto, maquina.carretera_lisa)
     maquina.preparar(build)
     return build
 

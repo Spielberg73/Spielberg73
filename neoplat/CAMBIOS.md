@@ -2,8 +2,61 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.32.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.33.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.33
+
+**El Amiga dibuja la carretera** —y con ella el A1200 y el CD32, que llevan el
+mismo dibujante—. Es la segunda de las ocho, y la que obliga a plantear el
+género de otra manera, porque el Amiga no puede hacer lo que hace la Mega
+Drive… y a cambio puede hacer algo mejor.
+
+**Dos maneras de que las franjas corran, y cada máquina usa la suya.** La Mega
+Drive se lleva la calzada con las cuatro franjas **dibujadas dentro** —cuatro
+colores por cosa— y rota la paleta. Eso son doce huecos de paleta, y un plano
+del doble plano del Amiga OCS tiene siete: no cabe. Pero el copper del Amiga
+puede cambiar de color **en mitad de la pantalla**, así que allí la carretera
+va **lisa** —un color por cosa: hierba, arcén, calzada y raya— y las bandas las
+pinta el haz, línea a línea. Sale más barato *y* cabe. Lo elige cada sistema
+con `Sistema.carretera_lisa`, y el compilador dibuja una textura u otra.
+
+**El motor da la tabla que hace falta.** `np_carretera_medio[]` y
+`np_carretera_banda[]`: por cada línea de pantalla, lo ancha que se ve la
+calzada y a qué franja pertenece. No depende de la cámara, así que se calcula
+una vez al cargar el nivel. Es la misma cuenta que hace el compilador para
+dibujar la textura y la que hace el preview.
+
+**Y el doble plano, que es lo que lo hace posible.** La carretera va en el
+plano de atrás y los coches en el de delante. Si compartieran plano el coche
+saldría a escalones —una tajada por cada línea con su desplazamiento—, que es
+justo lo que la Mega Drive evita usando sprites.
+
+Por frame: por cada línea de pantalla con carretera, una espera del copper y
+seis escrituras —el módulo (cuánto se corre la imagen de una línea a la
+siguiente), el scroll fino y cuatro colores—. Ni un píxel que dibujar.
+
+**Un fallo viejo que salió por el camino.** El doble plano del Amiga tenía la
+lista del copper mal medida: la sección del juego escribe dos pares de
+registros y `NP_COP_JUEGO_PTR` daba tres por hechos, así que `np_punteros`
+escribía dos palabras corridas y, de la línea del marcador para abajo, el
+copper se ponía a escribir registros que no tocaban —colores incluidos—.
+Afectaba a **cualquier** juego en `amiga: 8colores`, no solo a los de conducir.
+
+**Y el mapa de bits, a medida.** Un juego de conducir se lleva ahora una
+ventana de 512 × 256, que es lo que mide la carretera: los dos planos ocupan
+96 KB de RAM chip en vez de los 132 de la ventana ancha. En un A500 eso es la
+diferencia entre arrancar y no arrancar —medido: con la ventana ancha, AROS
+contesta «file is not executable» y se queda en el shell—.
+
+**Lo que todavía no está:** en el Amiga la carretera se ve, pero **los coches
+encima no**. Están pintados en el plano de delante y ese plano no sale en la
+zona del juego, aunque el marcador —que es el mismo plano con otro puntero— sí.
+Descartado que sea dónde cae el coche o la comprobación de visibilidad:
+forzándolo a un píxel fijo tampoco aparece. Está anotado en `np_video.c`.
+
+También: la Jaguar ya no rechaza un circuito por alto, igual que ya hacían la
+Mega Drive y el Amiga. Conduciendo, el mapa es el trazado y no lo que se ve.
 
 ## 1.32
 

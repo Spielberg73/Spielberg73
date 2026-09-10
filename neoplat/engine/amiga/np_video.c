@@ -65,11 +65,61 @@ static uint8_t np_abiertos_pintados;
 #define NP_COP_ESPERA    (NP_COP_HUD_PTR + NP_PLANOS * 4)
 #endif
 #define NP_COP_JUEGO     (NP_COP_ESPERA + 2)
+/* La seccion del juego escribe BPLCON1 y BPL1MOD, y **solo en un plano** el
+   BPL2MOD: en doble plano ese registro es del plano de atras y ya se puso
+   arriba, para todo el frame. O sea dos pares de palabras en doble plano y
+   tres en uno solo, y los punteros empiezan detras.
+   Dar seis por hecho costaba caro: np_punteros escribia dos palabras corridas
+   sobre la lista y a partir de la linea del marcador el copper se ponia a
+   escribir registros que no tocaban -colores, entre otros-. */
+#if NP_DOBLE_PLANO
+#define NP_COP_JUEGO_PTR (NP_COP_JUEGO + 4)
+#else
 #define NP_COP_JUEGO_PTR (NP_COP_JUEGO + 6)
+#endif
 #define NP_COP_FIN       (NP_COP_JUEGO_PTR + NP_PLANOS * 4)
-#define NP_COP_LARGO     (NP_COP_FIN + 2)
 
 #define NP_LINEA_ARRIBA 0x2C                      /* primera linea visible  */
+
+#if NP_VISTA_CARRETERA
+/* --- la carretera, linea a linea ----------------------------------------
+ *
+ * ESTADO: la carretera se dibuja bien -comprobado en un A500 emulado con
+ * AROS: la calzada en perspectiva, la curva, las franjas corriendo y la raya
+ * discontinua-. Lo que **todavia no sale** son los coches encima. Estan
+ * pintados en el plano de delante (np_bitmap) y ese plano no se ve en la zona
+ * del juego, aunque el marcador -que es el mismo plano, con otro puntero- si.
+ * Comprobado que no es np_player_visible ni el sitio donde cae el coche:
+ * forzandolo a un pixel fijo tampoco aparece. Queda por mirar.
+ *
+ *
+ * Conduciendo, la lista del copper lleva una seccion mas: una entrada por
+ * cada linea de pantalla que tiene carretera. Cada entrada es una espera y
+ * seis escrituras, y con eso queda dibujada la carretera entera:
+ *
+ *   BPL2MOD   cuanto se corre la imagen de una linea a la siguiente. El
+ *             modulo se le suma al puntero al acabar la linea, asi que
+ *             escribirlo aqui mueve **la linea de abajo**.
+ *   BPLCON1   los pixeles sueltos que no caben en el modulo (0 a 15).
+ *   y cuatro colores: hierba, arcen, calzada y raya. Aqui las franjas no
+ *             vienen dibujadas -la imagen lleva un color por cosa- y lo que
+ *             las hace correr es escribir un tono u otro en cada linea.
+ *
+ * Empieza en NP_HORIZONTE porque por encima no hay carretera: la imagen esta
+ * en blanco y se ve el cielo, que es el color 0.
+ */
+#define NP_CARR_Y0      NP_HORIZONTE
+#define NP_CARR_LINEAS  (NP_SCREEN_H - NP_CARR_Y0)
+#define NP_CARR_PASO    14                        /* palabras de una entrada */
+/* La primera linea de pantalla que cae por debajo de la 255 del monitor. El
+   copper compara ocho bits, asi que a partir de ahi hay que esperar primero a
+   que acabe la 255 o las esperas de abajo se cumplen solas y de golpe. */
+#define NP_CARR_CORTE   (256 - NP_LINEA_ARRIBA)
+#define NP_COP_CARRETERA NP_COP_FIN
+#define NP_COP_LARGO    (NP_COP_CARRETERA + NP_CARR_LINEAS * NP_CARR_PASO + 4)
+#else
+#define NP_COP_LARGO     (NP_COP_FIN + 2)
+#endif
 
 /* Cuantos pixeles salta de una vez el puntero de bitplane. */
 #if NP_AGA
@@ -171,6 +221,50 @@ static void np_copper_punteros(uint16_t *sitio, uint32_t direccion, uint16_t pas
     }
 }
 
+#if NP_VISTA_CARRETERA
+/* Arma la seccion de la carretera: las esperas y los numeros de registro, que
+ * no cambian nunca. Lo que cambia cada frame son los seis valores de cada
+ * entrada, y los escribe np_copper_carretera.
+ *
+ * La espera va en la columna 0x0C, o sea al principio de la linea y **antes**
+ * de que empiece a leerse el bitplane (DDFSTRT esta en 0x38). Ahi todavia no
+ * hay DMA de video comiendose las ranuras, cabe de sobra escribir seis
+ * registros, y ademas es el unico sitio donde las tres cosas cuadran a la vez:
+ * el color y el scroll fino valen para **esta** linea, y el modulo se suma al
+ * acabar la linea, o sea que coloca **la de abajo**.
+ */
+static void np_montar_carretera(uint16_t *p)
+{
+    uint16_t y;
+    for (y = NP_CARR_Y0; y < NP_SCREEN_H; y++) {
+        uint16_t linea = (uint16_t)(NP_LINEA_ARRIBA + y);
+        uint8_t i;
+        if (y == NP_CARR_CORTE) {
+            /* que se acabe la linea 255 del monitor, y a partir de aqui la
+               cuenta del copper vuelve a empezar por cero */
+            *p++ = 0xFFDF; *p++ = 0xFFFE;
+        }
+        *p++ = (uint16_t)(((linea & 0xFF) << 8) | 0x0D);
+        *p++ = 0xFFFE;
+        *p++ = 0x010A; *p++ = (uint16_t)(NP_PASO_FILA - 40);   /* BPL2MOD */
+        *p++ = 0x0102; *p++ = 0x0000;                          /* BPLCON1 */
+        for (i = 0; i < 4; i++) {
+            *p++ = (uint16_t)(0x0180 + np_carretera_regs[i] * 2);
+            *p++ = 0x0000;
+        }
+    }
+}
+
+/* Donde empieza la entrada de la linea `y`, contando el corte de la 255. */
+static uint16_t *np_carretera_entrada(uint16_t y)
+{
+    uint16_t n = (uint16_t)(y - NP_CARR_Y0);
+    uint16_t sitio = (uint16_t)(NP_COP_CARRETERA + n * NP_CARR_PASO);
+    if (y >= NP_CARR_CORTE) sitio += 2;
+    return np_copper + sitio;
+}
+#endif /* NP_VISTA_CARRETERA */
+
 static void np_montar_copper(void)
 {
     uint16_t *p = np_copper;
@@ -255,6 +349,10 @@ static void np_montar_copper(void)
     np_copper_punteros(p, NP_DIR(np_bitmap), NP_BYTES_FILA, 0x00E0);
     p += NP_PLANOS * 4;
 
+#if NP_VISTA_CARRETERA
+    np_montar_carretera(p);
+    p += NP_CARR_LINEAS * NP_CARR_PASO + 2;
+#endif
     *p++ = 0xFFFF; *p++ = 0xFFFE;                        /* fin de la lista */
 }
 
@@ -296,6 +394,26 @@ static void np_blit_tile_en(uint32_t base, uint16_t tile, int32_t x, int32_t y)
     BLTDPT = destino;
     BLTSIZE = (uint16_t)(((NP_TILE * NP_PLANOS) << 6) | 1);
 }
+
+#if NP_VISTA_CARRETERA
+/* Deja en blanco un cuadro de 16x16 del plano de delante. Conduciendo, borrar
+   el rastro de un coche no es repintar el escenario -no hay- sino dejar el
+   hueco transparente para que se vea la carretera, que va en el otro plano.
+   Dos palabras de ancho porque un coche casi nunca cae en un multiplo de 16. */
+static void np_borrar_cuadro(int32_t x, int32_t y)
+{
+    uint32_t destino = NP_DIR(np_bitmap) + (uint32_t)y * NP_PASO_FILA
+                     + (uint32_t)((x / 16) * 2);
+    np_esperar_blitter();
+    BLTCON0 = 0x0100;                  /* solo D, y con minterm 0: D = 0 */
+    BLTCON1 = 0x0000;
+    BLTAFWM = 0xFFFF;
+    BLTALWM = 0xFFFF;
+    BLTDMOD = (uint16_t)(NP_BYTES_FILA - 4);
+    BLTDPT = destino;
+    BLTSIZE = (uint16_t)(((NP_TILE * NP_PLANOS) << 6) | 2);
+}
+#endif
 
 static void np_blit_tile(uint16_t tile, int32_t x, int32_t y)
 {
@@ -365,6 +483,16 @@ static void np_redibujar_todo(const NpWorld *w)
  * gratis: el scroll de los dos planos es independiente por hardware, y esa es
  * justo la razon de existir de este modo.
  */
+/* El plano de delante en blanco. Conduciendo ahi no hay escenario: solo los
+   coches, que se pintan y se borran por su rastro. */
+static void np_limpiar_juego(void)
+{
+    uint32_t *p = (uint32_t *)(void *)np_bitmap;
+    uint32_t i;
+    np_esperar_blitter();
+    for (i = 0; i < NP_MAPA_ALTO * NP_PASO_FILA / 4; i++) *p++ = 0;
+}
+
 static void np_limpiar_fondo(void)
 {
     uint32_t *p = (uint32_t *)(void *)np_fondo_bitmap;
@@ -431,6 +559,98 @@ static uint16_t np_mover_fondo(const NpWorld *w)
     return (uint16_t)(sx & 15);
 }
 #endif /* NP_DOBLE_PLANO */
+
+#if NP_VISTA_CARRETERA
+/* --- la carretera, cada frame -------------------------------------------
+ *
+ * La imagen de la carretera se pinta **una vez** al entrar en el nivel, y no
+ * se vuelve a tocar un pixel. Lo unico que se hace por frame es rellenar la
+ * seccion del copper: por cada linea de pantalla, cuanto se corre la imagen y
+ * de que tono va cada cosa. Seis palabras por linea.
+ */
+#define NP_CARR_ANCHO   (NP_CARRETERA_EJE * 2)
+#define NP_CARR_MARGEN  (NP_CARR_ANCHO - NP_SCREEN_W)   /* lo que se puede correr */
+
+static int16_t np_carretera_centro[NP_SCREEN_H];
+
+/* Pinta la carretera en el plano de atras. Una vez por nivel. */
+static void np_pintar_carretera(void)
+{
+    const NpLayer *capa = &np_layers[np_carretera_capa];
+    int32_t c, r;
+    np_limpiar_fondo();
+    for (c = 0; c < (int32_t)capa->cols; c++) {
+        for (r = 0; r < (int32_t)capa->rows; r++) {
+            int32_t y = r * NP_TILE;
+            if (y + NP_TILE > NP_MAPA_ALTO) continue;
+            np_blit_tile_en(NP_DIR(np_fondo_bitmap),
+                            capa->tiles[r * capa->cols + c],
+                            c * NP_TILE, y);
+        }
+    }
+    np_esperar_blitter();
+}
+
+/* La columna de la imagen que tiene que salir en el pixel 0 de la pantalla.
+ *
+ * La imagen tiene el eje en su columna NP_CARRETERA_EJE, asi que para que el
+ * eje salga en la columna `centro` hay que empezar a mirar en EJE - centro.
+ * Y hay tope: la imagen mide 512 y la pantalla 320, o sea que se puede correr
+ * 192 pixeles y ni uno mas. En una curva muy cerrada el eje se sale por ahi y
+ * la carretera se queda pegada al borde en vez de irse: es lo que hay con una
+ * imagen de ancho fijo, y a esas alturas la calzada ya casi no se ve. */
+static int32_t np_carretera_columna(uint16_t y, uint16_t horizonte)
+{
+    int32_t off;
+    if (y < horizonte) return 0;
+    off = NP_CARRETERA_EJE - np_carretera_centro[y];
+    if (off < 0) off = 0;
+    if (off > NP_CARR_MARGEN) off = NP_CARR_MARGEN;
+    return off;
+}
+
+static void np_copper_carretera(const NpWorld *w)
+{
+    uint16_t horizonte = np_carretera(w, np_carretera_centro);
+    uint8_t fase = np_carretera_fase(w);
+    uint16_t y;
+    int32_t grueso, grueso_sig;
+
+    /* El puntero del plano de atras se coloca ya con el desplazamiento de la
+       primera linea con carretera: de ahi para abajo lo llevan los modulos. */
+    grueso = (np_carretera_columna(NP_CARR_Y0, horizonte) + 15) & ~15;
+    np_copper_punteros(np_copper + NP_COP_FONDO_PTR,
+                       NP_DIR(np_fondo_bitmap) + (uint32_t)(grueso / 8),
+                       NP_BYTES_FILA, 0x00E4);
+
+    for (y = NP_CARR_Y0; y < NP_SCREEN_H; y++) {
+        uint16_t *e = np_carretera_entrada(y);
+        int32_t off = np_carretera_columna(y, horizonte);
+        uint8_t banda = (uint8_t)((np_carretera_banda[y] + fase)
+                                  & (NP_CARRETERA_FRANJAS - 1));
+        uint8_t tono = (uint8_t)(banda >> 1);
+        if (y + 1 < NP_SCREEN_H)
+            grueso_sig = (np_carretera_columna((uint16_t)(y + 1), horizonte) + 15) & ~15;
+        else
+            grueso_sig = grueso;
+        /* el modulo se suma al acabar la linea: lo que dice es cuanto se corre
+           **la de abajo** respecto a esta */
+        e[3] = (uint16_t)(NP_PASO_FILA - 40 + (grueso_sig - grueso) / 8);
+        /* y lo que no cabe en el modulo -de 0 a 15 pixeles- lo pone el scroll
+           fino, que retrasa el plano: por eso el grueso se redondea hacia
+           arriba y el fino es lo que sobra */
+        e[5] = np_scroll_fino(0, (uint16_t)(grueso - off));
+        e[7] = np_carretera_tonos[0][tono];          /* hierba */
+        e[9] = np_carretera_tonos[1][tono];          /* arcen */
+        e[11] = np_carretera_tonos[2][tono];         /* calzada */
+        /* La raya del medio es discontinua: se ve en una franja de cada dos.
+           Donde no toca se pinta del color de la calzada y desaparece. */
+        e[13] = (banda & 1) ? np_carretera_tonos[3][0]
+                            : np_carretera_tonos[2][tono];
+        grueso = grueso_sig;
+    }
+}
+#endif /* NP_VISTA_CARRETERA */
 
 /* --- un frame ----------------------------------------------------------- */
 
@@ -509,6 +729,24 @@ static void np_repintar_rastros(const NpWorld *w)
     np_rastro_count = 0;
 }
 
+#if NP_VISTA_CARRETERA
+/* Borra por donde pasaron los coches el frame anterior. Conduciendo no hay
+   escenario que repintar: se deja el hueco transparente y por ahi se ve la
+   carretera, que va en el plano de atras. */
+static void np_borrar_rastros(void)
+{
+    uint8_t n;
+    for (n = 0; n < np_rastro_count; n++) {
+        const NpRastro *r = &np_rastros[n];
+        int32_t x, y;
+        for (y = r->y; y < r->y + r->alto; y += NP_TILE)
+            for (x = r->x; x < r->x + r->ancho; x += NP_TILE)
+                np_borrar_cuadro(x, y);
+    }
+    np_rastro_count = 0;
+}
+#endif
+
 static void np_apuntar_rastro(int32_t x, int32_t y, int16_t ancho, int16_t alto)
 {
     if (np_rastro_count >= NP_MAX_RASTROS) return;
@@ -570,6 +808,29 @@ void np_video_frame(const NpWorld *w)
     uint8_t sala_nueva = 0;
     (void)sala_nueva;                 /* solo lo mira la vista isometrica */
 
+#if NP_VISTA_CARRETERA
+    /* Conduciendo, el escenario **no se dibuja**: el mapa es el trazado de la
+       carretera, no lo que se ve. Lo que hay en el plano de atras es la
+       carretera en perspectiva, y en cada frame solo se rellena la seccion del
+       copper que la desliza y le pone los colores linea a linea. El plano de
+       delante se queda para los coches, que asi no salen a escalones. */
+    if (w->level != np_nivel_actual) {
+        np_nivel_actual = w->level;
+        np_copper[NP_COP_COLOR0] = w->level->background;   /* el cielo */
+        np_pintar_carretera();
+        np_limpiar_juego();
+        np_base_tile = 0;
+        np_rastro_count = 0;
+    } else {
+        np_borrar_rastros();
+    }
+    np_copper_carretera(w);
+    (void)ultima_columna;
+    (void)columna;
+    (void)np_sala_pintada_x;
+    (void)np_sala_pintada_y;
+    (void)direccion;
+#else
     if (w->level != np_nivel_actual || w->abiertos_n != np_abiertos_pintados
         || (np_vista_iso && (w->sala_x != np_sala_pintada_x
                              || w->sala_y != np_sala_pintada_y))) {
@@ -619,6 +880,7 @@ void np_video_frame(const NpWorld *w)
             }
         }
     }
+#endif /* NP_VISTA_CARRETERA */
 
     /* De mas lejos a mas cerca: en la vista de cinta los actores se pisan a
        cada rato y hay que pintarlos por la linea del suelo. En las demas
@@ -631,7 +893,42 @@ void np_video_frame(const NpWorld *w)
        el vblank y el juego entero se vaya a la mitad de velocidad. Medido: la
        melodia pasa de 16 notas de 16 a 4. */
     orden = np_orden_dibujo(w, &cuantas);
-#if NP_VISTA_ISO
+#if NP_VISTA_CARRETERA
+    /* Los actores van en **coordenadas de pantalla**: el plano de delante no
+       se mueve, asi que el mapa de bits es la pantalla y no hay camara que
+       restar despues. La fila 0 del mapa de bits sale en la linea NP_HUD_ALTO,
+       que es donde acaba el marcador. */
+    for (i = 0; i < cuantas; i++) {
+        const NpEntity *e = &w->entities[NP_DIBUJO(orden, i)];
+        const NpActorDef *def;
+        int32_t sx, sy;
+        if (!e->active) continue;
+        if (e->hurt && (w->frame & 1)) continue;
+        def = np_entity_def(e);
+        sx = NP_F2I(e->x) - def->box_x - w->cam_x;
+        sy = NP_F2I(e->y) - def->box_y - w->cam_y - NP_HUD_ALTO;
+        if (sx < 0 || sx + def->cols * NP_TILE >= NP_MAPA_ANCHO) continue;
+        if (sy < 0 || sy + def->rows * NP_TILE > NP_MAPA_ALTO) continue;
+        np_pintar_actor(def, sx, sy, np_actor_frame(def, e->anim, e->anim_frame),
+                        (uint8_t)!e->facing, 0);
+    }
+    for (i = 0; i < NP_MAX_PLAYERS; i++) {
+        const NpActorDef *def = &np_player_def.actor;
+        const NpPlayer *p = &w->players[i];
+        int32_t cx, cy;
+        if (!np_player_visible(w, i)) continue;
+        /* El coche va en un sitio fijo abajo: la camara le sigue, asi que en
+           la pantalla no se mueve. Lo dice el motor para que caiga en el mismo
+           pixel en las ocho maquinas. Y sin espejo: el coche se ve de culo, y
+           espejarlo cambiaria de asiento a los dos que van dentro. */
+        np_carretera_coche(w, i, &cx, &cy);
+        cy -= NP_HUD_ALTO;
+        if (cx < 0 || cx + def->cols * NP_TILE >= NP_MAPA_ANCHO) continue;
+        if (cy < 0 || cy + def->rows * NP_TILE > NP_MAPA_ALTO) continue;
+        np_pintar_actor(def, cx, cy,
+                        np_actor_frame(def, p->anim, p->anim_frame), 0, 0);
+    }
+#elif NP_VISTA_ISO
     for (i = 0; i < cuantas; i++) {
         const NpActorDef *def;
         int32_t sx, sy;
@@ -676,6 +973,15 @@ void np_video_frame(const NpWorld *w)
     }
 #endif
 
+#if NP_VISTA_CARRETERA
+    /* El plano de delante no se mueve: los coches ya se han pintado en el
+       pixel de pantalla que les tocaba. Los punteros van al principio y el
+       scroll fino, a cero. El de atras -la carretera- lo lleva el copper linea
+       a linea, asi que aqui no hay nada mas que hacer. */
+    np_punteros(NP_DIR(np_bitmap));
+    np_copper[NP_COP_HUD + 1] = 0;
+    np_copper[NP_COP_JUEGO + 1] = 0;
+#else
     /* Scroll: los punteros van al pixel de arriba a la izquierda de lo que se
        ve, y lo que no llega a un salto entero lo pone el scroll fino.
        El salto es de 16 pixeles (dos bytes) en OCS y de 32 (cuatro) en AGA,
@@ -697,6 +1003,7 @@ void np_video_frame(const NpWorld *w)
         np_copper[NP_COP_JUEGO + 1] = np_scroll_fino(suelto, suelto);
 #endif
     }
+#endif /* NP_VISTA_CARRETERA */
 
 #if NP_HUD_ENABLED
     np_hud_draw(w);

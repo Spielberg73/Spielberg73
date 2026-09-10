@@ -130,7 +130,12 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     # La columna de la imagen de la carretera por la que pasa el eje de la
     # calzada, y cuantos grupos de cuatro franjas hay (calzada, arcen, hierba).
     header.append("#define NP_CARRETERA_EJE %d" % (carretera_mod.ANCHO // 2))
-    header.append("#define NP_CARRETERA_GRUPOS 3")
+    # Con la textura lisa los huecos son cuatro -uno por cosa- en vez de doce,
+    # y hay ademas dos tonos por cosa que la maquina escribe linea a linea.
+    lisa = bool(build.asfalto and build.asfalto.tonos)
+    header.append("#define NP_CARRETERA_LISA %d" % (1 if lisa else 0))
+    header.append("#define NP_CARRETERA_GRUPOS %d" % (4 if lisa else 3))
+    header.append("#define NP_CARRETERA_HUECOS_POR_GRUPO %d" % (1 if lisa else 4))
     header.append("extern const uint8_t np_carretera_huecos[];")
     header.append("#define NP_LAYER_COUNT %d" % len(build.layers))
     header.append("#define NP_MUSIC_COUNT %d" % len(build.music_order))

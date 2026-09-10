@@ -556,6 +556,61 @@ bucle. El juego se queda con la máquina entera (apaga las interrupciones y la
 DMA en `np_amiga_init`) y no la devuelve: se sale apagando o reiniciando, como
 los juegos de la época.
 
+## La carretera: el copper la pinta línea a línea
+
+En un juego de conducir (`vista: carretera`) el Amiga hace algo que la Mega
+Drive no puede, y a cambio no puede hacer lo que hace ella.
+
+La calzada en perspectiva la trae hecha el compilador —512 × 224— y se pinta
+**una vez** en el plano de atrás al empezar el nivel. Después, cada frame sólo
+rellena la sección del copper: por cada línea de pantalla con carretera, una
+espera y seis escrituras.
+
+- `BPL2MOD`: cuánto se corre la imagen de una línea a la siguiente. El módulo
+  se le suma al puntero al acabar la línea, así que escribirlo aquí mueve **la
+  de abajo**.
+- `BPLCON1`: los píxeles sueltos que no caben en el módulo (0 a 15).
+- y **cuatro colores**: hierba, arcén, calzada y raya.
+
+### Por qué aquí la carretera va lisa
+
+La Mega Drive se lleva la imagen con las cuatro franjas dibujadas dentro
+—cuatro colores por cosa— y hace correr las rayas rotando la paleta. Eso son
+doce huecos de paleta. Un plano del doble plano del OCS tiene **siete**: no
+cabe.
+
+Pero el copper puede cambiar de color en mitad de la pantalla. Así que aquí la
+imagen lleva **un solo color por cosa** y es el haz el que pinta las bandas,
+escribiendo en cada línea el tono que le toca. Cuatro colores en vez de doce, y
+cuatro escrituras por línea en vez de doce por frame. Lo elige el sistema con
+`Sistema.carretera_lisa`; qué franja toca en cada línea lo dice el motor en
+`np_carretera_banda[]`.
+
+### Y por qué hace falta el doble plano
+
+La carretera se desliza línea a línea y los coches no. Si compartieran plano,
+el coche saldría **a escalones**: una tajada por cada línea con su
+desplazamiento. Con dos planos la carretera se mueve debajo y el coche se queda
+quieto encima, que es lo que la Mega Drive consigue usando sprites. Por eso un
+juego de conducir se compila siempre a doble plano, lo diga el `game.yaml` o
+no.
+
+### El mapa de bits, a medida
+
+Un juego de conducir se lleva una ventana de 512 × 256 —lo que mide la
+carretera— en vez de la ventana ancha de 704 × 256. Los dos planos ocupan
+entonces 96 KB de RAM chip en vez de 132. En un A500 eso no es una optimización
+elegante: es la diferencia entre arrancar y no arrancar. Con la ventana ancha,
+AROS contesta **`file is not executable`** y se queda en el shell, que es lo
+que dice AmigaDOS cuando LoadSeg no encuentra sitio.
+
+### Lo que todavía no está
+
+La carretera se ve, pero **los coches encima no**. Están pintados en el plano
+de delante y ese plano no sale en la zona del juego, aunque el marcador —que es
+el mismo plano, con otro puntero— sí. Descartado que sea dónde cae el coche o
+la comprobación de visibilidad. Está anotado en `engine/amiga/np_video.c`.
+
 ## Si algo se ve raro
 
 - **Gráficos revueltos o con los colores mezclados**: el orden de los planos en

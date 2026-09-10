@@ -41,6 +41,13 @@ from .base import Limites, Salida, Sistema, registrar
 # La eleccion no se pregunta: la decide el nivel mas alto del juego.
 VENTANA_ANCHA = (704, 256)
 VENTANA_ALTA = (352, 512)
+# Conduciendo, el mapa de bits no es una ventana sobre el escenario: es **la
+# carretera**, que el compilador dibuja de 512 x 224 y que aqui se pinta entera
+# una vez. Asi que mide lo que mide ella, ni mas ni menos. Y con eso los dos
+# planos -la carretera detras y los coches delante- ocupan 96 KB de RAM chip
+# en vez de los 132 que costaria la ventana ancha: en un A500 eso es la
+# diferencia entre arrancar y no arrancar.
+VENTANA_CARRETERA = (512, 256)
 ALTO_MAX_TILES = VENTANA_ANCHA[1] // gfx_amiga.TILE_PX      # 16 casillas
 ALTO_MAX_TILES_ALTA = VENTANA_ALTA[1] // gfx_amiga.TILE_PX  # 32
 ANCHO_MAX_TILES_ALTA = VENTANA_ALTA[0] // gfx_amiga.TILE_PX # 22
@@ -58,6 +65,15 @@ MAX_TILES = 1024                            # 160 KB de dibujos: de sobra en chi
 class Amiga(Sistema):
     nombre = "amiga"
     bits_de_color = 4          # OCS: cuatro bits por canal
+    # El copper puede cambiar de color en mitad de la pantalla, asi que la
+    # carretera se lleva lisa -un color por cosa- y las bandas se pintan linea
+    # a linea. Ademas es lo unico que cabe: doce huecos de paleta no entran en
+    # los siete de un plano del doble plano, y cuatro si.
+    carretera_lisa = True
+    dibuja_carreteras = True
+    # Los tonos de la carretera van siempre en doce bits, tambien en AGA: ver
+    # _tonos_c. Asi que el aviso de tonos que se funden se mira con cuatro.
+    bits_de_carretera = 4
     toca_muestras = True          # Paula las lee de la RAM chip por DMA
     titulo = "Commodore Amiga (OCS/ECS)"
     cpu = "68000 a 7 MHz"
@@ -113,6 +129,14 @@ class Amiga(Sistema):
     def preparar(self, build: Build) -> None:
         build.sistema = self
         doble = build.project.amiga_modo == "8colores"
+        # Un juego de conducir va **siempre** a doble plano, lo diga el
+        # game.yaml o no: la carretera se desliza linea a linea y los actores
+        # no. Si compartieran plano, el coche saldria cortado en escalones,
+        # una tajada por cada linea con su desplazamiento. Con dos planos la
+        # carretera se mueve debajo y el coche se queda quieto encima, que es
+        # justo lo que hace la Mega Drive con sus sprites.
+        if build.project.view == "carretera":
+            doble = True
         planos = self.planos_doble if doble else self.planos_llenos
         color_hud = self.hud_doble if doble else self.hud_lleno
         banco = gfx_amiga.BancoAmiga(planos=planos)
@@ -164,6 +188,13 @@ class Amiga(Sistema):
                 capa.tiles = [nuevos[i] for i in capa.tiles]
                 capa.palette_index = 0
                 capa.dibujos = []
+                # Los huecos de la carretera hay que llevarlos por el mismo
+                # camino: el motor los usa para saber que registro de color
+                # escribir en cada linea, y despues de fundir las paletas ya
+                # no valen los de antes.
+                if capa.franjas:
+                    capa.franjas = [[mapa.get(h, h) for h in grupo]
+                                    for grupo in capa.franjas]
         else:
             for capa in build.layers:
                 capa.tiles = [0] * len(capa.tiles)
@@ -209,7 +240,10 @@ class Amiga(Sistema):
         # juego de los de siempre no se entera; uno que se sube se lleva el
         # mapa estrecho y alto sin tener que pedirlo.
         alto_max = max([n.height for n in build.levels] or [0])
-        ventana = VENTANA_ALTA if alto_max > ALTO_MAX_TILES else VENTANA_ANCHA
+        if build.project.view == "carretera":
+            ventana = VENTANA_CARRETERA
+        else:
+            ventana = VENTANA_ALTA if alto_max > ALTO_MAX_TILES else VENTANA_ANCHA
 
         build.info = {
             "banco": banco,
@@ -246,6 +280,11 @@ class Amiga(Sistema):
         alto_tiles = alto_px // gfx_amiga.TILE_PX
         ancho_tiles = ancho_px // gfx_amiga.TILE_PX
         alta = (ancho_px, alto_px) == VENTANA_ALTA
+        # Conduciendo, el mapa **no se dibuja**: es el trazado de la carretera,
+        # no lo que se ve, y mide lo que mida el circuito. Medirlo contra el
+        # mapa de bits no significa nada ahi.
+        if not self.dibuja_el_mapa(build):
+            return avisos
         for nivel in build.levels:
             if nivel.height > alto_tiles:
                 self.error(
@@ -412,7 +451,7 @@ def _graficos_c(build: Build, banco: gfx_amiga.BancoAmiga) -> str:
         _c_bytes(bytes(banco.mascaras)),
         "};",
         "",
-    ] + _colores_c(build, colores) + [
+    ] + _colores_c(build, colores) + _tonos_c(build) + [
         "",
         "/* Fuente del marcador: ocho bytes por caracter. */",
         "const uint8_t np_font_data[NP_FONT_COUNT * 8] = {",
@@ -421,6 +460,45 @@ def _graficos_c(build: Build, banco: gfx_amiga.BancoAmiga) -> str:
         "",
     ]
     return "\n".join(partes)
+
+
+def _tonos_c(build: Build) -> List[str]:
+    """Los dos tonos de cada cosa de la carretera, y en que registro van.
+
+    En el Amiga las franjas no vienen dibujadas: la imagen de la carretera
+    lleva **un solo color por cosa** -hierba, arcen, calzada y raya- y el
+    copper escribe el tono que toca en cada linea de pantalla. Aqui van esos
+    tonos, ya en el formato de color de la maquina, y los registros donde hay
+    que escribirlos.
+
+    Los registros son los del plano de atras: en doble plano el plano de
+    delante gasta los colores 0 a 7 y el de atras del 8 al 15, asi que el
+    color `n` de la carretera es el registro 8 + n. Ver COLOR() en np_amiga.h.
+    """
+    capa = build.asfalto
+    if capa is None or not capa.tonos:
+        return []
+    filas = ["", "/* La carretera: los dos tonos de cada cosa -hierba, arcen,",
+             " * calzada y raya- y el registro de color de cada una. El copper",
+             " * escribe uno u otro en cada linea, y por ahi corren las rayas.",
+             " *",
+             " * Van en doce bits (cuatro por canal) tambien en el A1200 y en el",
+             " * CD32, donde el resto de la paleta es de veinticuatro. Es a",
+             " * proposito: un color de 24 bits se escribe en **dos veces**, con",
+             " * BPLCON3 en medio, y aqui eso serian diez escrituras por linea de",
+             " * pantalla en vez de cuatro. Lo que se pierde son los cuatro bits",
+             " * de abajo de un tono de asfalto, que no los ve nadie; lo que se",
+             " * gana es que la carretera quepa en el hueco de una linea. */",
+             "const uint16_t np_carretera_tonos[4][2] = {"]
+    for pareja in capa.tonos:
+        filas.append("    { 0x%04x, 0x%04x },"
+                     % (gfx_amiga.amiga_color(tuple(pareja[0])),
+                        gfx_amiga.amiga_color(tuple(pareja[1]))))
+    filas.append("};")
+    filas.append("const uint16_t np_carretera_regs[4] = { %s };"
+                 % ", ".join(str(COLORES_POR_PLANO + grupo[0])
+                             for grupo in capa.franjas))
+    return filas
 
 
 def _colores_c(build: Build, colores: List[int]) -> List[str]:
