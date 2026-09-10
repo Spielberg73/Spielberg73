@@ -116,6 +116,9 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
  * nivel. Es el tamano de la cuenta con la que se busca el ancho que mas se
  * repite. */
 #define NP_MAX_ANCHO    64
+/* Lo que se deja por debajo del coche del jugador: el morro no pega con el
+ * borde de la pantalla, que quedaria raro, ni tapa la carretera de delante. */
+#define NP_CARRETERA_MARGEN 14
 
 /* --- la vista isometrica (los juegos de tipo filmation) ------------------
  *

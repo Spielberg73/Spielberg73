@@ -274,7 +274,16 @@ static void np_pintar_carretera(void)
 }
 
 /* Las cuatro entradas de paleta de cada cosa -calzada, arcen, hierba- rotadas
- * un paso. Con eso las franjas corren hacia ti sin mover un pixel.
+ * un paso. Con eso las franjas deberian correr hacia ti sin mover un pixel.
+ *
+ * OJO: **esto todavia no se ve**. La carretera se dibuja bien y se desliza
+ * bien, pero rotar la paleta no cambia nada en pantalla, y no esta explicado.
+ * Lo comprobado hasta ahora: la funcion esta en la ROM y se llama cada frame;
+ * la capa dice paleta 0; escribir **las quince entradas de la paleta 0** con
+ * un rojo chillon, cada frame, tampoco cambia nada, mientras que
+ * np_color_de_fondo -que escribe la entrada 0 por el mismo camino- si
+ * funciona. Asi que lo que falla no son los indices ni la rotacion: es que
+ * estas escrituras a CRAM no llegan. Queda por mirar.
  *
  * Los colores viven en la paleta de la capa; se leen de np_palettes tal cual y
  * se vuelven a escribir corridos. Cuales son los cuatro huecos de cada cosa lo
@@ -352,8 +361,15 @@ void np_video_frame(const NpWorld *w)
         np_pintar_carretera();
         np_md_reg(0x0B, 0x03);      /* modo 3: scroll horizontal por linea */
     }
-    np_scroll_carretera(w);
+    /* La paleta **antes** que la tabla de scroll, y no al reves.
+       Aqui se acaba de entrar por el retrazo y el hueco de vblank es corto:
+       la tabla de scroll son 448 palabras y se lo come entero, asi que lo que
+       venga detras cae ya con la pantalla dibujandose. Y escribir colores con
+       el haz en marcha no es un color raro en una linea: sale mal y **se
+       queda** mal, porque la escritura no llega donde se pedia. Doce colores
+       primero, que es lo que cabe de sobra, y luego lo largo. */
     np_paleta_carretera(np_carretera_fase(w));
+    np_scroll_carretera(w);
     (void)ultima_columna;
     (void)ultimos_abiertos;
     (void)columna;
@@ -425,10 +441,23 @@ void np_video_frame(const NpWorld *w)
         const NpActorDef *def = &np_player_def.actor;
         const NpPlayer *p = &w->players[i];
         if (!np_player_visible(w, i)) continue;
+#if NP_VISTA_CARRETERA
+        /* Conduciendo, el coche va en un sitio fijo abajo: la camara le sigue,
+           asi que en la pantalla no se mueve. Lo dice el motor para que caiga
+           en el mismo pixel en las ocho maquinas. */
+        {
+            int32_t cx, cy;
+            np_carretera_coche(w, i, &cx, &cy);
+            np_dibujar_actor(def, cx, cy,
+                             np_actor_frame(def, p->anim, p->anim_frame),
+                             (uint8_t)!p->facing);
+        }
+#else
         np_dibujar_actor(def, NP_F2I(p->x) - def->box_x - w->cam_x,
                          NP_F2I(p->y) - def->box_y - w->cam_y,
                          np_actor_frame(def, p->anim, p->anim_frame),
                          (uint8_t)!p->facing);
+#endif
     }
 #endif
 

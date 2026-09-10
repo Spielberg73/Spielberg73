@@ -4250,6 +4250,21 @@ uint8_t np_carretera_fase(const NpWorld *w)
     return (uint8_t)(((uint32_t)(-fila)) % NP_CARRETERA_FRANJAS);
 }
 
+void np_carretera_coche(const NpWorld *w, uint8_t quien,
+                        int32_t *sx, int32_t *sy)
+{
+    const NpActorDef *a = &np_player_def.actor;
+    const NpPlayer *p = &w->players[quien];
+    int32_t ancho = a->cols * NP_TILE;
+    int32_t alto = a->rows * NP_TILE;
+    /* Centrado, apoyado sobre el borde de abajo con un margen, y ladeado tres
+       pixeles hacia donde gira el volante. A dos jugadores, uno a cada lado. */
+    int32_t centro = NP_SCREEN_W / 2 + p->ladeo * 3;
+    if (np_player_count > 1) centro += quien ? ancho : -ancho;
+    *sx = centro - ancho / 2;
+    *sy = NP_SCREEN_H - NP_CARRETERA_MARGEN - alto;
+}
+
 int np_carretera_donde(const NpWorld *w, np_fix x, np_fix y,
                        int32_t *sx, int32_t *sy, int32_t *escala)
 {

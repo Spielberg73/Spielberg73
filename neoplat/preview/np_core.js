@@ -19,6 +19,7 @@
   var CAMARA_ATRAS = 24, CERCA = 16, TRAMOS_VISTA = 160, MAX_TRAMOS = 256;
   var MAX_ANCHO = 64;       /* lo mas ancha que puede ser una calzada, en casillas */
   var CARRETERA_FRANJAS = 4;
+  var CARRETERA_MARGEN = 14;   /* lo que se deja bajo el coche */
   var SUBSTEP = 8 * FIX_ONE;
   var ENTITY_FALL = 8 * FIX_ONE;
   var DYING_TIME = 60, LEVEL_END_TIME = 90, GAME_OVER_TIME = 240;
@@ -1669,6 +1670,17 @@
   };
 
   /* Que franja toca este frame. Gemelo de np_carretera_fase. */
+  /* Donde va el coche del jugador: en un sitio fijo, abajo. Gemelo de
+     np_carretera_coche. La camara le sigue, asi que en la pantalla no se
+     mueve; lo que se mueve es la carretera debajo. */
+  World.prototype.carreteraCoche = function (quien) {
+    var a = this.data.player.actor, p = this.players[quien];
+    var ancho = a.cols * TILE, alto = a.rows * TILE;
+    var centro = idiv(SCREEN_W, 2) + p.ladeo * 3;
+    if (this.data.players > 1) centro += quien ? ancho : -ancho;
+    return [centro - idiv(ancho, 2), SCREEN_H - CARRETERA_MARGEN - alto];
+  };
+
   World.prototype.carreteraFase = function () {
     var fila = F2I(this.players[0].y) >> TILE_SHIFT;
     return ((-fila) % CARRETERA_FRANJAS + CARRETERA_FRANJAS) % CARRETERA_FRANJAS;

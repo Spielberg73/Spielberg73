@@ -1155,13 +1155,12 @@
      La camara le sigue, asi que en la pantalla no se mueve; lo que se mueve es
      la carretera debajo. Lo unico que cambia es que se ladea al girar, que es
      lo que hace que el volante se vea. */
-  function drawCocheJugador(def, p) {
-    var esc = 2;                       /* el coche se ve al doble: esta al lado */
-    var ancho = def.frame_w * esc, alto = def.frame_h * esc;
-    var x = (NPCore.SCREEN_W / 2 - ancho / 2 + p.ladeo * 3) | 0;
-    var y = (NPCore.SCREEN_H - 18 - alto) | 0;
-    drawFrameEscalado(def.sheet, NPCore.actorFrame(def, p.anim, p.animFrame),
-                      x, y, ancho, alto, !p.facing);
+  function drawCocheJugador(def, p, quien) {
+    /* Donde va lo dice el motor (np_carretera_coche), para que caiga en el
+       mismo pixel aqui y en las ocho maquinas. */
+    var sitio = world.carreteraCoche(quien);
+    drawFrame(def.sheet, NPCore.actorFrame(def, p.anim, p.animFrame),
+              sitio[0], sitio[1], !p.facing);
   }
 
   function drawPlayer() {
@@ -1171,7 +1170,7 @@
     var def = DATA.player.actor;
     if (world.carretera()) {
       for (var q = 0; q < world.players.length; q++)
-        if (world.playerVisible(q)) drawCocheJugador(def, world.players[q]);
+        if (world.playerVisible(q)) drawCocheJugador(def, world.players[q], q);
       return;
     }
     for (var i = 0; i < world.players.length; i++) {

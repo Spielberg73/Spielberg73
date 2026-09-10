@@ -376,6 +376,18 @@ uint16_t np_carretera(const NpWorld *w, int16_t *centro);
 #define NP_CARRETERA_FRANJAS 4
 uint8_t np_carretera_fase(const NpWorld *w);
 
+/* Donde va el coche del jugador en la pantalla: **en un sitio fijo**, abajo.
+ *
+ * La camara le sigue, asi que en la pantalla el coche no se mueve; lo que se
+ * mueve es la carretera debajo. Lo unico que cambia es que se ladea al girar,
+ * que es lo que hace que el volante se vea.
+ *
+ * Lo dice el motor y no cada maquina por lo de siempre: para que el coche caiga
+ * en el mismo pixel en las ocho y en el preview. Devuelve la esquina de arriba
+ * a la izquierda del dibujo. */
+void np_carretera_coche(const NpWorld *w, uint8_t quien,
+                        int32_t *sx, int32_t *sy);
+
 /* Donde cae en la pantalla, y cuanto encoge, algo que esta en esa fila del
  * mapa: el coche de delante, una palmera, un cartel. `escala` sale en 8.8 (256
  * = tamano natural) y es lo que hay que multiplicar por el dibujo.
