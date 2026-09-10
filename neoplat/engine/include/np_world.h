@@ -234,7 +234,21 @@ typedef struct {
      * Van en palabras y no en bytes por lo mismo que la bolsa: el 68000 se
      * para en seco si se lee una palabra en direccion impar. */
     int16_t via_centro[NP_MAX_TRAMOS];
-    int16_t via_medio[NP_MAX_TRAMOS];
+    /* Y lo que mide de ancho la calzada, **la misma en todo el circuito**.
+     *
+     * No es una simplificacion por vagancia: es lo que hace que la carretera se
+     * pueda dibujar en las ocho maquinas. Con el ancho fijo, lo que mide la
+     * calzada en cada linea de pantalla deja de cambiar de un frame a otro y la
+     * carretera solo se **desliza de lado**, linea a linea. Eso lo saben hacer
+     * todas por hardware -el scroll por linea de la Mega Drive y el X68000, el
+     * copper del Amiga, la lista de objetos de la Jaguar- y sale gratis. Con el
+     * ancho cambiando habria que redibujarla entera cada frame, y eso no cabe
+     * en un frame de 68000.
+     *
+     * Se queda con la calzada mas ancha que se haya dibujado en el mapa, asi
+     * que un circuito que se estreche en una curva se ve recto ahi -pero se
+     * sigue pisando lo que dice el mapa, casilla a casilla-. */
+    int16_t via_ancho;
     /* El verbo elegido en una aventura grafica (NP_VERBO_*). Se cambia con el
        boton de saltar -que ahi no salta nada- y decide que guion contesta la
        casilla que senalas. Fuera de la vista de puntero vale cero y no lo mira
@@ -327,30 +341,40 @@ const NpActorDef *np_dibujo(const NpWorld *w, uint8_t puesto,
 
 /* --- la carretera en perspectiva -----------------------------------------
  *
- * Una linea de pantalla de un juego de conducir: por donde pasa el eje de la
- * calzada, cuanto mide de ancho ahi y que franja toca (las rayas que corren
- * hacia ti, que son lo que hace que se note la velocidad).
+ * La carretera **no se dibuja** en la maquina: se dibuja una sola vez, al
+ * compilar, y en cada frame solo se **desliza linea a linea**. Esto es lo que
+ * hace que quepa en las ocho.
  *
- * Esto es **todo** lo que necesita una maquina para dibujar la carretera, y es
- * a proposito: la Mega Drive y el X68000 lo pintan con su scroll por linea, el
- * Amiga y el CD32 con el copper, la Neo Geo con sprites encogidos, la Jaguar
- * con el blitter y el Atari ST a mano. Cada una con lo suyo, pero **la misma
- * tabla**, asi que la carretera cae en el mismo pixel en las ocho. Y el
- * preview hace la misma cuenta, de modo que lo que se ve en el navegador es lo
- * que se ve en la consola. */
-typedef struct {
-    int16_t centro;          /* el eje de la calzada, en pixeles de pantalla */
-    int16_t medio;           /* y su medio ancho ahi */
-    uint8_t franja;          /* 0 o 1: la raya que corre hacia ti */
-} NpLinea;
+ * Se puede porque la calzada mide lo mismo en todo el circuito (ver
+ * np_via_ancho): con eso, lo ancha que se ve en cada linea de pantalla no
+ * cambia nunca, y lo unico que cambia entre frames es **por donde pasa**. Asi
+ * que la imagen de la carretera es fija -la genera el compilador con esta
+ * misma cuenta, y hay una prueba que compara linea a linea- y aqui solo se
+ * dice donde cae el eje en cada linea.
+ *
+ * Deslizar una imagen linea a linea lo saben hacer todas por hardware: el
+ * scroll por linea de la Mega Drive y el X68000, el copper del Amiga y el
+ * CD32, la lista de objetos de la Jaguar. En el Atari ST y en la Neo Geo
+ * cuesta mas, pero tampoco hay que dibujar nada: hay que mover lo que ya esta.
+ *
+ * Rellena `centro` -una entrada por linea de pantalla- con la columna en la
+ * que cae el eje de la calzada, y devuelve **la primera linea que lleva
+ * carretera**: de ahi para arriba es cielo.
+ *
+ * Fuera de la vista de carretera devuelve NP_SCREEN_H y no toca nada. */
+uint16_t np_carretera(const NpWorld *w, int16_t *centro);
 
-/* Rellena la tabla de lineas de este frame, de NP_SCREEN_H entradas, y
- * devuelve **la primera linea que lleva carretera**: de ahi para arriba es
- * cielo y cada maquina pinta lo que quiera (un degradado, el mar, montanas).
+/* Y que franja toca este frame: 0..NP_CARRETERA_FRANJAS-1.
  *
- * Solo tiene sentido en la vista de carretera; en las demas devuelve
- * NP_SCREEN_H y no toca nada. */
-uint16_t np_carretera(const NpWorld *w, NpLinea *lineas);
+ * Las rayas que corren hacia ti -de lo que vive la sensacion de velocidad- no
+ * se dibujan: la imagen lleva cuatro franjas con cuatro colores distintos y lo
+ * que se mueve es **la paleta**. Esto dice cuanto hay que rotarla, y son
+ * cuatro registros de color por frame en cualquier maquina.
+ *
+ * Es como se hacia en la epoca, y es la unica forma de que unas rayas que
+ * corren no cuesten un frame entero. */
+#define NP_CARRETERA_FRANJAS 4
+uint8_t np_carretera_fase(const NpWorld *w);
 
 /* Donde cae en la pantalla, y cuanto encoge, algo que esta en esa fila del
  * mapa: el coche de delante, una palmera, un cartel. `escala` sale en 8.8 (256

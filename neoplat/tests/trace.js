@@ -59,18 +59,16 @@ function varsFirma(world) {
    consola: comparar las 224 lineas una a una haria una traza de un megabyte
    por partida, y una firma las compara todas en una columna. */
 var lineasCarretera = [];
-for (var _i = 0; _i < 224; _i++) lineasCarretera.push({centro: 0, medio: 0, franja: 0});
+for (var _i = 0; _i < 224; _i++) lineasCarretera.push(0);
 
 function carreteraFirma(world) {
   var firma = 2166136261, y;
   var horizonte = world.carreteraLineas(lineasCarretera);
   if (horizonte >= 224) return 0;
   firma = Math.imul((firma ^ horizonte) >>> 0, 16777619) >>> 0;
-  for (y = horizonte; y < 224; y++) {
-    firma = Math.imul((firma ^ (lineasCarretera[y].centro & 0xFFFF)) >>> 0, 16777619) >>> 0;
-    firma = Math.imul((firma ^ (lineasCarretera[y].medio & 0xFFFF)) >>> 0, 16777619) >>> 0;
-    firma = Math.imul((firma ^ lineasCarretera[y].franja) >>> 0, 16777619) >>> 0;
-  }
+  firma = Math.imul((firma ^ world.carreteraFase()) >>> 0, 16777619) >>> 0;
+  for (y = horizonte; y < 224; y++)
+    firma = Math.imul((firma ^ (lineasCarretera[y] & 0xFFFF)) >>> 0, 16777619) >>> 0;
   return firma >>> 0;
 }
 

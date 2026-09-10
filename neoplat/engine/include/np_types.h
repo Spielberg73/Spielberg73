@@ -112,6 +112,10 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 /* Y cuantos tramos caben en la cinta de un nivel: uno por fila del mapa, que
  * como mucho son 256 (el limite de alto de un nivel). */
 #define NP_MAX_TRAMOS   256
+/* Y lo mas ancha que puede ser una calzada, en casillas: el ancho maximo de un
+ * nivel. Es el tamano de la cuenta con la que se busca el ancho que mas se
+ * repite. */
+#define NP_MAX_ANCHO    64
 
 /* --- la vista isometrica (los juegos de tipo filmation) ------------------
  *

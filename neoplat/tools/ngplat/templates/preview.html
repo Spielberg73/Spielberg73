@@ -1069,33 +1069,36 @@
    * seran el scroll por linea de la Mega Drive, el copper del Amiga o sprites
    * encogidos en la Neo Geo. La cuenta es la misma, asi que la carretera cae
    * en el mismo pixel en las nueve pantallas. */
-  var lineasCarretera = [];
-  for (var _l = 0; _l < NPCore.SCREEN_H; _l++)
-    lineasCarretera.push({ centro: 0, medio: 0, franja: 0 });
+  var centroCarretera = [];
+  for (var _l = 0; _l < NPCore.SCREEN_H; _l++) centroCarretera.push(0);
 
   function drawCarretera() {
     var col = DATA.carretera;
-    var horizonte = world.carreteraLineas(lineasCarretera);
-    var y, l, arcen, mitad;
+    var horizonte = world.carreteraLineas(centroCarretera);
+    var fase = world.carreteraFase();
+    var y, cx, medio, banda, arcen, mitad;
     if (horizonte >= NPCore.SCREEN_H) return;
     for (y = horizonte; y < NPCore.SCREEN_H; y++) {
-      l = lineasCarretera[y];
-      /* la hierba, de lado a lado, y encima la calzada */
-      ctx.fillStyle = col.hierba[l.franja];
+      cx = centroCarretera[y];
+      medio = world.carreteraMedio[y];
+      /* Las cuatro franjas van en parejas -A, A, B, B- y lo que se mueve es
+         **cual de las cuatro toca**: cada paso corre la frontera un tramo, y
+         por eso las rayas viajan hacia ti en vez de parpadear. En las maquinas
+         esto es rotar cuatro registros de color; aqui es elegir el color. */
+      banda = (world.carreteraBanda[y] + fase) % 4;
+      ctx.fillStyle = col.hierba[(banda / 2) | 0];
       ctx.fillRect(0, y, NPCore.SCREEN_W, 1);
-      if (l.medio <= 0) continue;
-      ctx.fillStyle = col.arcen[l.franja];
-      ctx.fillRect(l.centro - l.medio, y, l.medio * 2, 1);
-      /* el arcen encoge con la distancia, igual que todo lo demas */
-      arcen = (col.ancho_arcen * l.medio / 64) | 0;
-      mitad = l.medio - arcen;
+      if (medio <= 0) continue;
+      ctx.fillStyle = col.arcen[(banda / 2) | 0];
+      ctx.fillRect(cx - medio, y, medio * 2, 1);
+      arcen = ((col.ancho_arcen * medio) / 64) | 0;
+      mitad = medio - arcen;
       if (mitad > 0) {
-        ctx.fillStyle = col.asfalto[l.franja];
-        ctx.fillRect(l.centro - mitad, y, mitad * 2, 1);
-        /* y la raya del medio, discontinua: solo en una de las dos franjas */
-        if (l.franja && mitad > 6) {
+        ctx.fillStyle = col.asfalto[(banda / 2) | 0];
+        ctx.fillRect(cx - mitad, y, mitad * 2, 1);
+        if ((banda & 1) && mitad > 6) {
           ctx.fillStyle = col.raya;
-          ctx.fillRect(l.centro - 1, y, 2, 1);
+          ctx.fillRect(cx - 2, y, 4, 1);
         }
       }
     }

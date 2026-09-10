@@ -17,6 +17,8 @@
      distintas con el mismo game.yaml. */
   var HORIZONTE = 88, CAMARA_ALTO = 48, FOCAL = 135;
   var CAMARA_ATRAS = 24, CERCA = 16, TRAMOS_VISTA = 160, MAX_TRAMOS = 256;
+  var MAX_ANCHO = 64;       /* lo mas ancha que puede ser una calzada, en casillas */
+  var CARRETERA_FRANJAS = 4;
   var SUBSTEP = 8 * FIX_ONE;
   var ENTITY_FALL = 8 * FIX_ONE;
   var DYING_TIME = 60, LEVEL_END_TIME = 90, GAME_OVER_TIME = 240;
@@ -165,8 +167,17 @@
        son dos campos de la estructura y estan siempre. Crearla solo al cargar
        un nivel de carretera dejaba el primer dibujado sin ella. */
     this.viaCentro = [];
-    this.viaMedio = [];
-    for (var _t = 0; _t < MAX_TRAMOS; _t++) { this.viaCentro.push(0); this.viaMedio.push(0); }
+    this.viaAncho = 0;
+    for (var _t = 0; _t < MAX_TRAMOS; _t++) this.viaCentro.push(0);
+    /* Y la tabla de la carretera. Existe desde el principio por lo mismo: el
+       primer dibujado ocurre antes de que se cargue ningun nivel, y en C esto
+       son campos de la estructura que estan siempre. */
+    this.carreteraMedio = [];
+    this.carreteraBanda = [];
+    for (_t = 0; _t < SCREEN_H; _t++) {
+      this.carreteraMedio.push(0);
+      this.carreteraBanda.push(0);
+    }
     /* Cuantos enemigos pegan ahora mismo, los frames de parada al acertar y
        los que tiembla la camara. Igual que en NpWorld. */
     this.atacando = 0; this.congelado = 0; this.sacudida = 0;
@@ -1503,11 +1514,50 @@
     }
   };
 
+  /* Lo ancha que se ve la calzada en cada linea de pantalla, y a que franja
+     pertenece esa linea. No cambia entre frames -de eso vive el que las ocho
+     maquinas puedan dibujar la carretera sin dibujarla-, asi que se calcula
+     una vez al cargar el nivel.
+
+     Es la misma cuenta que hace el compilador para dibujar la textura
+     (tools/ngplat/carretera.py), y tests/test_carretera.py compara las dos
+     linea a linea. */
+  World.prototype.carreteraTabla = function () {
+    var medio = [], banda = [], y;
+    for (y = 0; y < SCREEN_H; y++) { medio.push(0); banda.push(0); }
+    var syAnt = SCREEN_H, mxAnt = 0, primero = true, i;
+    for (i = 0; i < TRAMOS_VISTA; i++) {
+      var z = i * TILE + CERCA;
+      var k = encoge(z);
+      var sy = HORIZONTE + ((CAMARA_ALTO * k) >> 8);
+      if (sy >= SCREEN_H) continue;
+      if (sy <= HORIZONTE) break;
+      var mx = (this.viaAncho * k) >> 8;
+      var alto = syAnt - sy;
+      if (alto <= 0) continue;
+      if (primero) { mxAnt = mx; primero = false; }
+      var fr = i % CARRETERA_FRANJAS;
+      var dmx = idiv((mxAnt - mx) << 8, alto), amx = mx << 8;
+      for (y = sy; y < syAnt; y++) {
+        medio[y] = amx >> 8;
+        banda[y] = fr;
+        amx += dmx;
+      }
+      syAnt = sy;
+      mxAnt = mx;
+    }
+    this.carreteraMedio = medio;
+    this.carreteraBanda = banda;
+  };
+
   World.prototype.viaMontar = function () {
     var nivel = this.level;
     var filas = Math.min(nivel.cells_h, MAX_TRAMOS);
-    var centro = idiv(nivel.cells_w * TILE, 2), medio = TILE;
+    var centro = idiv(nivel.cells_w * TILE, 2);
     var fila, columna, mejorIni, mejorLargo, ini, tipo, calzada;
+    var cuantas = [], mejorAncho = 0, mejorVeces = 0;
+    for (fila = 0; fila < MAX_ANCHO; fila++) cuantas.push(0);
+    this.viaAncho = 0;
     for (fila = 0; fila < filas; fila++) {
       mejorIni = -1; mejorLargo = 0; ini = -1;
       for (columna = 0; columna <= nivel.cells_w; columna++) {
@@ -1523,17 +1573,21 @@
       }
       if (mejorLargo > 0) {
         centro = idiv((mejorIni * 2 + mejorLargo) * TILE, 2);
-        medio = idiv(mejorLargo * TILE, 2);
+        if (mejorLargo < MAX_ANCHO) cuantas[mejorLargo]++;
       }
       this.viaCentro[fila] = centro;
-      this.viaMedio[fila] = medio;
     }
-    for (; fila < MAX_TRAMOS; fila++) {
-      this.viaCentro[fila] = centro;
-      this.viaMedio[fila] = medio;
-    }
+    for (; fila < MAX_TRAMOS; fila++) this.viaCentro[fila] = centro;
     this.viaSuavizar(this.viaCentro);
-    this.viaSuavizar(this.viaMedio);
+    /* El ancho de la calzada: el que mide en mas filas, no el mas ancho. Con
+       el mas ancho, una sola linea de control -que cruza de lado a lado-
+       convertiria toda la carretera en una explanada. Igual que en C. */
+    for (fila = 0; fila < MAX_ANCHO; fila++) {
+      if (cuantas[fila] > mejorVeces) { mejorVeces = cuantas[fila]; mejorAncho = fila; }
+    }
+    this.viaAncho = idiv(mejorAncho * TILE, 2);
+    if (!this.viaAncho) this.viaAncho = TILE;
+    this.carreteraTabla();
   };
 
   /* El trafico: sube por la carretera por su carril. Gemelo de
@@ -1584,45 +1638,42 @@
 
   /* Rellena `lineas` (NpLinea por linea de pantalla) y devuelve la primera que
      lleva carretera: de ahi para arriba es cielo. */
-  World.prototype.carreteraLineas = function (lineas) {
-    var cam, camX, camY, filaCamara, syAnt = SCREEN_H, cxAnt = 0, mxAnt = 0;
-    var i, primero = 1;
+  /* Por donde pasa el eje de la calzada en cada linea de pantalla. Gemelo de
+     np_carretera: rellena `centro` y devuelve la primera linea con carretera.
+     Lo ancha que se ve y de que franja es ya estan en carreteraTabla, porque
+     no cambian entre frames. */
+  World.prototype.carreteraLineas = function (centro) {
+    var syAnt = SCREEN_H, cxAnt = 0, primero = true, i;
     if (!this.carretera()) return SCREEN_H;
-    cam = this.camaraCarretera();
-    camX = cam[0]; camY = cam[1];
-    filaCamara = camY >> TILE_SHIFT;
+    var cam = this.camaraCarretera();
+    var filaCamara = cam[1] >> TILE_SHIFT;
     for (i = 0; i < TRAMOS_VISTA; i++) {
       var fila = filaCamara - i;
       var z = i * TILE + CERCA;
       var k = encoge(z);
       var sy = HORIZONTE + ((CAMARA_ALTO * k) >> 8);
-      var cx, mx, y, alto, dcx, dmx, acx, amx, franja;
       if (sy >= SCREEN_H) continue;
       if (sy <= HORIZONTE) break;
       if (fila < 0) fila = 0;
       if (fila >= MAX_TRAMOS) fila = MAX_TRAMOS - 1;
-      cx = idiv(SCREEN_W, 2) + (((this.viaCentro[fila] - camX) * k) >> 8);
-      mx = (this.viaMedio[fila] * k) >> 8;
-      franja = (fila >> 1) & 1;
-      alto = syAnt - sy;
+      var cx = idiv(SCREEN_W, 2) + (((this.viaCentro[fila] - cam[0]) * k) >> 8);
+      var alto = syAnt - sy;
       if (alto <= 0) continue;
-      if (primero) { cxAnt = cx; mxAnt = mx; primero = 0; }
-      dcx = idiv((cxAnt - cx) << 8, alto);
-      dmx = idiv((mxAnt - mx) << 8, alto);
-      acx = cx << 8; amx = mx << 8;
-      for (y = sy; y < syAnt; y++) {
-        lineas[y].centro = acx >> 8;
-        lineas[y].medio = amx >> 8;
-        lineas[y].franja = franja;
-        acx += dcx; amx += dmx;
-      }
-      syAnt = sy; cxAnt = cx; mxAnt = mx;
+      if (primero) { cxAnt = cx; primero = false; }
+      var dcx = idiv((cxAnt - cx) << 8, alto), acx = cx << 8, y;
+      for (y = sy; y < syAnt; y++) { centro[y] = acx >> 8; acx += dcx; }
+      syAnt = sy;
+      cxAnt = cx;
     }
     return syAnt;
   };
 
-  /* Donde cae, y cuanto encoge, algo que esta en ese punto del mapa.
-     Devuelve null si queda detras de la camara o pasado el horizonte. */
+  /* Que franja toca este frame. Gemelo de np_carretera_fase. */
+  World.prototype.carreteraFase = function () {
+    var fila = F2I(this.players[0].y) >> TILE_SHIFT;
+    return ((-fila) % CARRETERA_FRANJAS + CARRETERA_FRANJAS) % CARRETERA_FRANJAS;
+  };
+
   World.prototype.carreteraDonde = function (x, y) {
     var cam, z, k, sy, sx;
     if (!this.carretera()) return null;

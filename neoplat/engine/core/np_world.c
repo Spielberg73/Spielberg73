@@ -4064,7 +4064,14 @@ static void np_via_montar(NpWorld *w)
     int32_t filas = (int32_t)nivel->cells_h;
     int32_t fila, columna;
     int16_t centro = (int16_t)(nivel->cells_w * NP_TILE / 2);
-    int16_t medio = NP_TILE;
+    /* Cuantas filas mide la calzada cada ancho, para quedarse con el que mas
+       se repite. Van en palabras y no en bytes por lo de siempre: el 68000 se
+       para en seco leyendo una palabra en direccion impar. */
+    uint16_t cuantas[NP_MAX_ANCHO];
+    int32_t mejor_ancho = 0, mejor_veces = 0;
+
+    for (fila = 0; fila < NP_MAX_ANCHO; fila++) cuantas[fila] = 0;
+    w->via_ancho = 0;
 
     if (filas > NP_MAX_TRAMOS) filas = NP_MAX_TRAMOS;
     for (fila = 0; fila < filas; fila++) {
@@ -4086,19 +4093,25 @@ static void np_via_montar(NpWorld *w)
         }
         if (mejor_largo > 0) {
             centro = (int16_t)((mejor_ini * 2 + mejor_largo) * NP_TILE / 2);
-            medio = (int16_t)(mejor_largo * NP_TILE / 2);
+            if (mejor_largo < NP_MAX_ANCHO) cuantas[mejor_largo]++;
         }
         w->via_centro[fila] = centro;
-        w->via_medio[fila] = medio;
     }
     /* Lo que quede detras del principio del mapa sigue recto: asi el horizonte
        no se queda en blanco al llegar a la meta. */
-    for (; fila < NP_MAX_TRAMOS; fila++) {
-        w->via_centro[fila] = centro;
-        w->via_medio[fila] = medio;
-    }
+    for (; fila < NP_MAX_TRAMOS; fila++) w->via_centro[fila] = centro;
     np_via_suavizar(w->via_centro);
-    np_via_suavizar(w->via_medio);
+    /* Y el ancho de la calzada: el que mide en **mas filas**, no el mas ancho.
+       Con el mas ancho, una sola linea de control -que cruza el mapa de lado a
+       lado- convertiria toda la carretera en una explanada. */
+    for (fila = 0; fila < NP_MAX_ANCHO; fila++) {
+        if (cuantas[fila] > mejor_veces) {
+            mejor_veces = cuantas[fila];
+            mejor_ancho = fila;
+        }
+    }
+    w->via_ancho = (int16_t)(mejor_ancho * NP_TILE / 2);
+    if (!w->via_ancho) w->via_ancho = NP_TILE;   /* un mapa sin carretera */
 }
 
 /* El trafico: un coche que sube por la carretera **por su carril**.
@@ -4182,10 +4195,10 @@ static int32_t np_encoge(int32_t z)
     return ((int32_t)NP_FOCAL << 8) / z;
 }
 
-uint16_t np_carretera(const NpWorld *w, NpLinea *lineas)
+uint16_t np_carretera(const NpWorld *w, int16_t *centro)
 {
     int32_t cam_x, cam_y, fila_camara;
-    int32_t sy_ant = NP_SCREEN_H, cx_ant = 0, mx_ant = 0;
+    int32_t sy_ant = NP_SCREEN_H, cx_ant = 0;
     int32_t i;
     int primero = 1;
 
@@ -4198,8 +4211,7 @@ uint16_t np_carretera(const NpWorld *w, NpLinea *lineas)
         int32_t z = i * NP_TILE + NP_CERCA;
         int32_t k = np_encoge(z);
         int32_t sy = NP_HORIZONTE + ((NP_CAMARA_ALTO * k) >> 8);
-        int32_t cx, mx, y, alto, dcx, dmx, acx, amx;
-        uint8_t franja;
+        int32_t cx, y, alto, dcx, acx;
 
         if (sy >= NP_SCREEN_H) continue;   /* todavia por debajo de la pantalla */
         if (sy <= NP_HORIZONTE) break;     /* ya se ha llegado al horizonte */
@@ -4207,38 +4219,35 @@ uint16_t np_carretera(const NpWorld *w, NpLinea *lineas)
         if (fila >= NP_MAX_TRAMOS) fila = NP_MAX_TRAMOS - 1;
 
         cx = NP_SCREEN_W / 2 + (((w->via_centro[fila] - cam_x) * k) >> 8);
-        mx = (w->via_medio[fila] * k) >> 8;
-        /* Las rayas van por la fila del mapa y no por la linea de pantalla:
-           asi corren hacia ti al avanzar -que es de lo que vive la sensacion
-           de velocidad- en vez de quedarse clavadas en la pantalla. */
-        franja = (uint8_t)((fila >> 1) & 1);
 
         /* Y se rellenan las lineas que hay entre este tramo y el de antes,
-           repartiendo el eje y el ancho entre las dos: sin esto la calzada
-           saldria a escalones, porque un tramo de cerca ocupa medio centenar
-           de lineas de pantalla el solo. */
+           repartiendo el eje entre las dos: sin esto la calzada saldria a
+           escalones, porque un tramo de cerca ocupa medio centenar de lineas
+           de pantalla el solo. */
         alto = sy_ant - sy;
         /* Dos tramos de lejos caen en la misma linea: ahi no hay nada que
            repartir, y dividir entre cero en un 68000 no es un numero raro,
            es una excepcion que para la maquina en seco. */
         if (alto <= 0) continue;
-        if (primero) { cx_ant = cx; mx_ant = mx; primero = 0; }
+        if (primero) { cx_ant = cx; primero = 0; }
         dcx = ((cx_ant - cx) << 8) / alto;
-        dmx = ((mx_ant - mx) << 8) / alto;
         acx = cx << 8;
-        amx = mx << 8;
         for (y = sy; y < sy_ant; y++) {
-            lineas[y].centro = (int16_t)(acx >> 8);
-            lineas[y].medio = (int16_t)(amx >> 8);
-            lineas[y].franja = franja;
+            centro[y] = (int16_t)(acx >> 8);
             acx += dcx;
-            amx += dmx;
         }
         sy_ant = sy;
         cx_ant = cx;
-        mx_ant = mx;
     }
     return (uint16_t)sy_ant;
+}
+
+uint8_t np_carretera_fase(const NpWorld *w)
+{
+    /* Por donde va el coche, en tramos. Al avanzar, la cuenta sube y la paleta
+       rota: las franjas corren hacia ti. Al parar, se quedan quietas. */
+    int32_t fila = NP_F2I(w->players[0].y) >> NP_TILE_SHIFT;
+    return (uint8_t)(((uint32_t)(-fila)) % NP_CARRETERA_FRANJAS);
 }
 
 int np_carretera_donde(const NpWorld *w, np_fix x, np_fix y,

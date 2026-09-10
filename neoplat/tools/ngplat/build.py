@@ -15,6 +15,7 @@ from typing import Dict, List, Optional, Tuple
 from . import gfx
 from .errors import ProjectError
 from .png import read_png
+from . import carretera as carretera_mod
 from .fixed import to_fixed
 from .project import (
     Actor, Animation, BEHAVIOR_ID, ITEM_EFFECT_ID, Layer, Project, SALA,
@@ -139,6 +140,9 @@ class Build:
     # que quepan en la PCG del X68000, que solo tiene 192 patrones. Fuera es la
     # lista 0, 1, 2... y no cambia nada.
     tileset_remap: List[int] = field(default_factory=list)
+    # La carretera en perspectiva de un juego de conducir, ya troceada en
+    # tiles. None en los otros nueve generos.
+    asfalto: Optional[LayerBuild] = None
     info: Dict[str, object] = field(default_factory=dict)    # datos sueltos del sistema
     pcm_bytes: int = 0                                       # lo que ocupan las muestras
 
@@ -219,8 +223,17 @@ def _load_actor(actor: Actor, where: str, root: str) -> ActorBuild:
 
 def _load_layer(layer: Layer, root: str) -> LayerBuild:
     """Trocea la imagen de una capa en tiles de 16x16 (sin repetir los iguales)."""
-    where = "fondos.%s" % layer.name
-    image = read_png(os.path.join(root, layer.image))
+    return _trocear_capa(layer, read_png(os.path.join(root, layer.image)),
+                         "fondos.%s" % layer.name)
+
+
+def _trocear_capa(layer: Layer, image, where: str) -> LayerBuild:
+    """Lo mismo, pero con la imagen ya cargada.
+
+    Sale a parte porque la carretera de un juego de conducir **no viene de un
+    archivo**: la dibuja el compilador (ver carretera.py) y entra por aqui como
+    cualquier otra capa, de modo que las ocho maquinas la convierten con lo que
+    ya sabian hacer."""
     if image.width % gfx.TILE_PX or image.height % gfx.TILE_PX:
         raise ProjectError(
             "'%s' mide %dx%d y las capas de fondo se dividen en tiles de 16x16"
@@ -257,6 +270,68 @@ def _load_layer(layer: Layer, root: str) -> LayerBuild:
     return LayerBuild(name=layer.name, layer=layer, cols=cols, rows=rows, tiles=tiles,
                       palette=palette, dibujos=dibujos, palette_index=0,
                       frames=len(dibujos))
+
+
+def _capa_de_carretera(project: Project) -> LayerBuild:
+    """La carretera en perspectiva, dibujada aqui y troceada como una capa.
+
+    El ancho de la calzada sale del mapa, igual que lo saca el motor: se mira
+    cuanto mide la calzada en cada fila y se coge el que mas se repite. Tiene
+    que dar lo mismo que np_via_montar o la carretera que se ve no seria la que
+    se pisa; tests/test_carretera.py lo comprueba.
+    """
+    anchos: Dict[int, int] = {}
+    for level in project.levels:
+        for fila in level.rows:
+            mejor = ini = 0
+            actual = -1
+            for columna, char in enumerate(list(fila) + [None]):
+                tile = project.tiles.get(char) if char is not None else None
+                calzada = (tile is not None and tile.kind != "lento"
+                           and tile.kind not in ("solid", "lock"))
+                if calzada:
+                    if actual < 0:
+                        actual = columna
+                elif actual >= 0:
+                    if columna - actual > mejor:
+                        mejor = columna - actual
+                        ini = actual
+                    actual = -1
+            del ini
+            if mejor:
+                anchos[mejor] = anchos.get(mejor, 0) + 1
+    # el que mas filas ocupa; a igualdad, el mas estrecho, para que no dependa
+    # del orden en que se recorra el diccionario
+    ancho = min(anchos, key=lambda a: (-anchos[a], a)) if anchos else 2
+    medio = ancho * carretera_mod.TILE // 2
+    col = project.asfalto
+    # Los cuatro huecos van **en parejas**: A, A, B, B. Y eso no es un detalle.
+    # Con A, B, A, B, rotar la paleta un paso solo intercambia los dos colores
+    # y las franjas **parpadean**: no se sabe si la carretera va hacia ti o al
+    # reves. En parejas, cada rotacion mueve la frontera entre A y B **un
+    # tramo**, y entonces las franjas corren. Es todo el efecto de velocidad, y
+    # sale de como se ordenan cuatro numeros.
+    colores = {
+        "asfalto": [col.asfalto[(i // 2) % 2] + (255,)
+                    for i in range(carretera_mod.FRANJAS)],
+        "arcen": [col.arcen[(i // 2) % 2] + (255,)
+                  for i in range(carretera_mod.FRANJAS)],
+        "hierba": [col.hierba[(i // 2) % 2] + (255,)
+                   for i in range(carretera_mod.FRANJAS)],
+        "raya": col.raya + (255,),
+    }
+    # Y los cuatro tienen que ser cuatro entradas de paleta distintas aunque
+    # dos a dos valgan lo mismo, o el cuantizador los junta y ya no hay nada
+    # que rotar. Se separan un punto de azul, que no se ve.
+    for nombre in ("asfalto", "arcen", "hierba"):
+        colores[nombre] = [
+            (c[0], c[1], min(255, c[2] + i), 255)
+            for i, c in enumerate(colores[nombre])
+        ]
+    imagen = carretera_mod.textura(medio, colores, col.ancho_arcen)
+    capa = Layer(name="__carretera__", image="", speed_x=1.0, speed_y=0.0,
+                 offset_y=0, repeat=True)
+    return _trocear_capa(capa, imagen, "carretera")
 
 
 def _sin_table() -> List[int]:
@@ -306,6 +381,10 @@ def build_project(project: Project) -> Build:
         _load_layer(layer, project.root) for layer in project.layers.values()
     ]
     layer_index = {layer.name: i for i, layer in enumerate(layers)}
+    # La carretera de un juego de conducir: la dibuja el compilador y entra
+    # como una capa mas, asi que las ocho maquinas la convierten con lo que ya
+    # sabian hacer. En los demas generos no se genera y no ocupa nada.
+    asfalto = _capa_de_carretera(project) if project.view == "carretera" else None
 
     player = _load_actor(project.player, "jugador", project.root)
     enemies = [
@@ -449,7 +528,8 @@ def build_project(project: Project) -> Build:
     return Build(
         project=project, rom=rom, tiles=tiles, tile_index=tile_index,
         tileset=tileset, tileset_remap=tileset_remap,
-        player=player, enemies=enemies, items=items, layers=layers, levels=levels,
+        player=player, enemies=enemies, items=items, layers=layers,
+        asfalto=asfalto, levels=levels,
         platforms=platforms, breakables=breakables, blocks=blocks,
         attack=attack, subs=subs,
         enemy_shots=enemy_shots, prisoners=prisoners, generators=generators,
