@@ -69,7 +69,7 @@ class Amiga(Sistema):
     # carretera se lleva lisa -un color por cosa- y las bandas se pintan linea
     # a linea. Ademas es lo unico que cabe: doce huecos de paleta no entran en
     # los siete de un plano del doble plano, y cuatro si.
-    carretera_lisa = True
+    carretera_como = "lisa"
     dibuja_carreteras = True
     # Los tonos de la carretera van siempre en doce bits, tambien en AGA: ver
     # _tonos_c. Asi que el aviso de tonos que se funden se mira con cuatro.

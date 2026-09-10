@@ -50,6 +50,11 @@ MAX_TILES = 1024                            # 160 KB entre dibujos y mascaras
 class AtariSt(Sistema):
     nombre = "atarist"
     bits_de_color = 3          # STF: tres bits por canal
+    # El ST no tiene scroll de ninguna clase: la carretera se **pinta**, franja
+    # a franja, en la memoria de pantalla. Asi que de la imagen no necesita
+    # nada; solo los siete colores, para pedirlos por su numero.
+    carretera_como = "muestra"
+    dibuja_carreteras = True
     titulo = "Atari ST (520/1040)"
     cpu = "68000 a 8 MHz"
     pantalla = (320, 200)
@@ -109,6 +114,13 @@ class AtariSt(Sistema):
         partes += [(a.sheet.palette, a.sheet.tiles) for a in build.actor_builds()]
         if fondo:
             partes += [(c.palette, [c.dibujos[i] for i in c.tiles]) for c in build.layers]
+        elif build.asfalto is not None:
+            # Conduciendo no hay parallax, pero los siete colores de la
+            # carretera tienen que entrar en la paleta igual: el ST no dibuja
+            # su imagen -la pinta el- pero los pide por su numero.
+            partes.append((build.asfalto.palette,
+                           [build.asfalto.dibujos[i]
+                            for i in build.asfalto.tiles]))
         paletas = [p for p, _ in partes]
         pesos = _pesos(partes)
         unica = gfx_amiga.fusionar_paletas(paletas, tope=COLOR_HUD, pesos=pesos,
@@ -149,6 +161,13 @@ class AtariSt(Sistema):
                 capa.tiles = [0] * len(capa.tiles)
                 capa.palette_index = 0
                 capa.dibujos = []
+                # Y los huecos de la carretera, por el mismo camino: el motor
+                # los usa para pedir el color de cada franja, y despues de
+                # fundir las paletas ya no valen los de antes.
+                if capa.franjas:
+                    mapa = unica.asignacion.get(capa.palette.name, {})
+                    capa.franjas = [[mapa.get(h, h) for h in grupo]
+                                    for grupo in capa.franjas]
 
         if banco.cuantos > MAX_TILES:
             raise ProjectError(

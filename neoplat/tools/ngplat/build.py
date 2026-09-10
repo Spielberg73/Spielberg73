@@ -314,7 +314,7 @@ def _azul_para_separar(azul: int, i: int) -> int:
     return min(255, azul + i)
 
 
-def _capa_de_carretera(project: Project, lisa: bool = False) -> LayerBuild:
+def _capa_de_carretera(project: Project, como: str = "franjas") -> LayerBuild:
     """La carretera en perspectiva, dibujada aqui y troceada como una capa.
 
     El ancho de la calzada sale del mapa, igual que lo saca el motor: se mira
@@ -370,7 +370,14 @@ def _capa_de_carretera(project: Project, lisa: bool = False) -> LayerBuild:
             (c[0], c[1], _azul_para_separar(c[2], i), 255)
             for i, c in enumerate(colores[nombre])
         ]
-    if lisa:
+    if como == "muestra":
+        # Ni imagen ni bandas: un cuadro de 16x16 con los siete tonos, solo
+        # para que entren en la paleta del juego. La carretera la pinta la
+        # maquina entera, franja a franja, con np_carretera_bordes.
+        parejas = [tuple(col.hierba), tuple(col.arcen), tuple(col.asfalto),
+                   (col.raya, col.raya)]
+        imagen = carretera_mod.muestra(parejas)
+    elif como == "lisa":
         # Un color por cosa y las bandas las pinta la maquina linea a linea.
         # Se coge el primer tono de cada pareja porque **da igual**: la maquina
         # va a escribir ese registro en cada linea de todas formas. Lo que no
@@ -393,7 +400,16 @@ def _capa_de_carretera(project: Project, lisa: bool = False) -> LayerBuild:
     # esos cuatro colores un paso por frame. Sin esto habria que buscarlos en
     # la maquina, y buscar colores en un 68000 en mitad de un frame no es
     # forma de gastar un frame.
-    if lisa:
+    if como == "muestra":
+        # Los huecos son ocho: los dos tonos de cada cosa, en el orden de
+        # MUESTRA_COSAS. La maquina elige uno u otro segun la franja de cada
+        # linea, y no rota nada.
+        build.franjas = [[build.palette.index_of(a[:3]),
+                          build.palette.index_of(b[:3])]
+                         for a, b in [(p[0] + (255,), p[1] + (255,))
+                                      for p in parejas]]
+        build.tonos = [list(p) for p in parejas]
+    elif como == "lisa":
         # Aqui los huecos son cuatro, uno por cosa, en el orden que espera el
         # motor (carretera.LISO_COSAS). Y ademas hacen falta los **dos tonos**
         # de cada pareja, porque la maquina los escribe linea a linea y no
@@ -417,17 +433,18 @@ def _sin_table() -> List[int]:
     return [to_fixed(math.sin(2 * math.pi * i / SIN_STEPS)) for i in range(SIN_STEPS)]
 
 
-def build_project(project: Project, carretera_lisa: bool = False) -> Build:
+def build_project(project: Project, carretera_como: str = "franjas") -> Build:
     """Lee graficos, tiles, niveles y sonido, sin atarse a ninguna maquina.
 
     El empaquetado para el hardware (formato de los tiles, paletas, ROMs) lo
     hace despues el sistema de destino: ver tools/ngplat/sistemas/.
 
-    La unica cosa que hay que saber antes de tiempo es `carretera_lisa`, y es
+    La unica cosa que hay que saber antes de tiempo es `carretera_como`, y es
     porque la imagen de la carretera se dibuja **aqui**: hay maquinas que la
-    quieren con las cuatro franjas dentro -y rotan la paleta- y otras que la
-    quieren lisa -un color por cosa- y pintan las bandas con el haz. Ver
-    Sistema.carretera_lisa y carretera.textura_lisa.
+    quieren con las cuatro franjas dentro -y rotan la paleta-, otras que la
+    quieren lisa -un color por cosa- y pintan las bandas con el haz, y otras
+    que no la quieren en absoluto porque pintan la carretera entera y solo
+    necesitan los colores. Ver Sistema.carretera_como.
     """
     rom = gfx.RomData()          # lo usa Neo Geo; los demas sistemas lo ignoran
 
@@ -474,7 +491,7 @@ def build_project(project: Project, carretera_lisa: bool = False) -> Build:
     # parallax por error. En los demas generos no se genera y no ocupa nada.
     asfalto = None
     if project.view == "carretera":
-        asfalto = _capa_de_carretera(project, carretera_lisa)
+        asfalto = _capa_de_carretera(project, carretera_como)
         layers.append(asfalto)
 
     player = _load_actor(project.player, "jugador", project.root)

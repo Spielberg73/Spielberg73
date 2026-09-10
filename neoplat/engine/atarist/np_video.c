@@ -796,6 +796,108 @@ static void np_pintar_actor(NpBuffer *b, const NpActorDef *def,
  * El escenario va un paso por detras de los actores, y no se nota: la vista se
  * mueve de 16 en 16 pixeles y casi nunca cambia justo entre los dos pasos.
  */
+#if NP_VISTA_CARRETERA
+/* --- la carretera: aqui no se desliza, se pinta -------------------------
+ *
+ * El Atari ST no tiene scroll de ninguna clase. Ni planos, ni copper, ni
+ * tabla de lineas: la pantalla empieza siempre en la misma direccion y lo
+ * unico que hay es memoria. Asi que la carretera no se puede deslizar, y no
+ * hace falta: se **pinta entera**, franja a franja, en cada frame.
+ *
+ * Y sale barato, que es lo sorprendente. Una linea de carretera son cinco
+ * trozos de un color -hierba, arcen, calzada, arcen, hierba- mas la raya del
+ * medio, y un trozo de un color solo en un ST son palabras iguales: 160 bytes
+ * por linea, cuarenta escrituras largas. Dibujar la carretera entera cuesta
+ * menos que mover el escenario de un juego de plataformas, que es lo que hace
+ * que aqui el juego vaya a 25 dibujos por segundo y en un juego de conducir
+ * no haga falta.
+ *
+ * Los bordes de cada linea los da el motor (np_carretera_bordes), que es el
+ * mismo sitio de donde salen los de la Jaguar y el X68000 y el mismo con el
+ * que el compilador dibujo las texturas de la Mega Drive y el Amiga. Por eso
+ * la carretera cae en el mismo pixel en las ocho.
+ */
+
+/* Las cuatro palabras de bitplane de un color solido. */
+static void np_planos_de(uint8_t color, uint16_t *planos)
+{
+    uint8_t p;
+    for (p = 0; p < NP_PLANOS; p++)
+        planos[p] = (uint16_t)((color >> p) & 1 ? 0xFFFF : 0x0000);
+}
+
+/* Un trozo de linea de un color, de x0 a x1 (x1 no entra). */
+static void np_franja(uint16_t *fila, int32_t x0, int32_t x1, const uint16_t *planos)
+{
+    int32_t g0, g1, g;
+    uint16_t primera, ultima;
+
+    if (x0 < 0) x0 = 0;
+    if (x1 > NP_ANCHO) x1 = NP_ANCHO;
+    if (x1 <= x0) return;
+    g0 = x0 >> 4;
+    g1 = (x1 - 1) >> 4;
+    /* Los grupos de los extremos van a medias y hay que mezclarlos con lo que
+       ya habia; los de en medio se escriben tal cual, que es lo que hace que
+       esto sea barato. */
+    primera = (uint16_t)(0xFFFFu >> (x0 & 15));
+    ultima = (uint16_t)(0xFFFFu << (15 - ((x1 - 1) & 15)));
+    for (g = g0; g <= g1; g++) {
+        uint16_t *sitio = fila + g * NP_PLANOS;
+        uint16_t m = 0xFFFF;
+        uint8_t p;
+        if (g == g0) m &= primera;
+        if (g == g1) m &= ultima;
+        if (m == 0xFFFF) {
+            for (p = 0; p < NP_PLANOS; p++) sitio[p] = planos[p];
+        } else {
+            for (p = 0; p < NP_PLANOS; p++)
+                sitio[p] = (uint16_t)((sitio[p] & ~m) | (planos[p] & m));
+        }
+    }
+}
+
+static int16_t np_carretera_centro[NP_SCREEN_H];
+
+static void np_pintar_carretera(NpBuffer *b, const NpWorld *w)
+{
+    uint16_t horizonte = np_carretera(w, np_carretera_centro);
+    uint8_t fase = np_carretera_fase(w);
+    uint16_t planos[NP_CARRETERA_GRUPOS][2][NP_PLANOS];
+    uint16_t cielo[NP_PLANOS];
+    uint8_t g, t;
+    int32_t y;
+
+    /* Los tonos de cada cosa, ya en palabras de bitplane: se preparan una vez
+       por frame y luego cada linea solo elige. */
+    for (g = 0; g < NP_CARRETERA_GRUPOS; g++)
+        for (t = 0; t < 2; t++)
+            np_planos_de(np_carretera_huecos[g * NP_CARRETERA_HUECOS_POR_GRUPO + t],
+                         planos[g][t]);
+    np_planos_de((uint8_t)w->level->background, cielo);
+
+    for (y = NP_HUD_ALTO; y < NP_ALTO; y++) {
+        uint16_t *fila = (uint16_t *)(void *)(b->pixeles + y * NP_PASO_FILA);
+        uint16_t mundo = (uint16_t)(y + NP_RECORTE_Y);
+        int16_t bordes[4];
+        uint8_t banda, raya, tono;
+        if (mundo < horizonte) {
+            np_franja(fila, 0, NP_ANCHO, cielo);      /* de aqui arriba, cielo */
+            continue;
+        }
+        raya = np_carretera_bordes(mundo, np_carretera_centro[mundo], fase,
+                                   bordes, &banda);
+        tono = (uint8_t)(banda >> 1);
+        np_franja(fila, 0, NP_ANCHO, planos[0][tono]);              /* hierba */
+        np_franja(fila, bordes[0], bordes[3], planos[1][tono]);     /* arcen */
+        np_franja(fila, bordes[1], bordes[2], planos[2][tono]);     /* calzada */
+        if (raya)
+            np_franja(fila, np_carretera_centro[mundo] - 2,
+                      np_carretera_centro[mundo] + 2, planos[3][0]);
+    }
+}
+#endif /* NP_VISTA_CARRETERA */
+
 void np_video_escenario(const NpWorld *w)
 {
     NpBuffer *b = &np_buffers[np_cual];
@@ -812,6 +914,20 @@ void np_video_escenario(const NpWorld *w)
 #endif
 
     b->sala_nueva = 0;
+#if NP_VISTA_CARRETERA
+    /* Conduciendo, el escenario **no se dibuja**: el mapa es el trazado de la
+       carretera, no lo que se ve. Se pinta la carretera entera y ya. */
+    np_pintar_carretera(b, w);
+    b->nivel = w->level;
+    /* Sin redondear a grupos de 16: aqui no se corre la memoria, se pinta
+       entero, y los coches tienen que caer en el pixel exacto. */
+    b->vista_x = w->cam_x;
+    b->vista_y = vista_y;
+    b->rastro_count = 0;
+    (void)grupos;
+    NP_MARCA(1, w->level->background);
+    return;
+#endif
     if (w->level != b->nivel || vista_y != b->vista_y
         || w->abiertos_n != b->abiertos
         || grupos <= -NP_COLUMNAS || grupos >= NP_COLUMNAS
@@ -868,7 +984,32 @@ void np_video_actores(const NpWorld *w)
        el vblank y el juego entero se vaya a la mitad de velocidad. Medido: la
        melodia pasa de 16 notas de 16 a 4. */
     orden = np_orden_dibujo(w, &cuantas);
-#if NP_VISTA_ISO
+#if NP_VISTA_CARRETERA
+    for (i = 0; i < cuantas; i++) {
+        const NpEntity *e = &w->entities[NP_DIBUJO(orden, i)];
+        const NpActorDef *def;
+        if (!e->active) continue;
+        if (e->hurt && (w->frame & 1)) continue;
+        def = np_entity_def(e);
+        np_pintar_actor(b, def, NP_F2I(e->x) - def->box_x,
+                        NP_F2I(e->y) - def->box_y,
+                        np_actor_frame(def, e->anim, e->anim_frame), 1);
+    }
+    for (i = 0; i < NP_MAX_PLAYERS; i++) {
+        const NpActorDef *def = &np_player_def.actor;
+        const NpPlayer *p = &w->players[i];
+        int32_t cx, cy;
+        if (!np_player_visible(w, i)) continue;
+        /* El coche va en un sitio fijo de la pantalla: la camara le sigue. Lo
+           dice el motor para que caiga en el mismo pixel en las ocho maquinas,
+           y aqui se pasa a coordenadas de mundo porque es lo que pide
+           np_pintar_actor. Sin rastro que apuntar: la carretera se repinta
+           entera en cada frame y borra sola lo de antes. */
+        np_carretera_coche(w, i, &cx, &cy);
+        np_pintar_actor(b, def, cx + b->vista_x, cy + b->vista_y - NP_RECORTE_Y,
+                        np_actor_frame(def, p->anim, p->anim_frame), 1);
+    }
+#elif NP_VISTA_ISO
     for (i = 0; i < cuantas; i++) {
         const NpActorDef *def;
         int32_t sx, sy;

@@ -368,6 +368,31 @@ GEMDOS. Tiene una particularidad útil: deja la pila de supervisor donde estaba
 la de usuario, así que el `addq.l #6,sp` de después limpia los parámetros del
 sitio correcto y la ejecución sigue como si nada.
 
+## La carretera: aquí no se desliza, se pinta
+
+El ST no tiene scroll de ninguna clase. Ni planos, ni copper, ni tabla de
+líneas: la pantalla empieza siempre en la misma dirección y lo único que hay es
+memoria. Así que en un juego de conducir la carretera **no se desliza**: se
+dibuja entera, en cada frame.
+
+Y sale barato, que es lo sorprendente. Una línea de carretera son cinco trozos
+de un color —hierba, arcén, calzada, arcén, hierba— más la raya del medio, y un
+trozo de un color en un ST son palabras iguales: 160 bytes por línea, cuarenta
+escrituras largas. Los grupos de en medio se escriben tal cual y sólo los dos
+de los extremos hay que mezclarlos con lo que había. Dibujar la carretera
+entera cuesta **menos** que mover el escenario de un juego de plataformas, que
+es lo que obliga al ST a refrescar a 25 imágenes por segundo y a un juego de
+conducir no.
+
+Los bordes de cada línea los da el motor (`np_carretera_bordes`), que es el
+mismo sitio de donde salen los de la Jaguar y con el que el compilador dibujó
+las texturas de la Mega Drive y del Amiga. Por eso la carretera cae en el mismo
+píxel en las cuatro.
+
+De la imagen de la carretera el ST no necesita nada: sólo los siete colores,
+para pedirlos por su número. El compilador se los manda en un cuadro de 16×16
+(`Sistema.carretera_como = "muestra"`), que ocupa un dibujo y no dos mil.
+
 ## Si algo se ve raro
 
 | lo que se ve | dónde mirar |

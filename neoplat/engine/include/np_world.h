@@ -401,6 +401,19 @@ uint8_t np_carretera_fase(const NpWorld *w);
 extern int16_t np_carretera_medio[NP_SCREEN_H];
 extern uint8_t np_carretera_banda[NP_SCREEN_H];
 
+/* Los cuatro bordes de la calzada en la linea `y`, con el eje en `centro` y la
+ * fase de este frame. Devuelve 1 si ahi se ve la raya del medio.
+ *
+ *     bordes[0]      bordes[1]        bordes[2]      bordes[3]
+ *        |----arcen-----|----calzada-----|----arcen-----|
+ *   hierba                                              hierba
+ *
+ * Lo usan las maquinas que pintan la carretera en vez de deslizar una imagen
+ * -el Atari ST, el X68000 y la Jaguar-, y esta aqui para que saquen los mismos
+ * bordes que dibujo el compilador para las otras. */
+uint8_t np_carretera_bordes(uint16_t y, int16_t centro, uint8_t fase,
+                            int16_t *bordes, uint8_t *banda);
+
 /* Donde va el coche del jugador en la pantalla: **en un sitio fijo**, abajo.
  *
  * La camara le sigue, asi que en la pantalla el coche no se mueve; lo que se

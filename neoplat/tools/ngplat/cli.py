@@ -61,7 +61,7 @@ def _cargar(ruta: str, sistema_nombre: str = ""):
                "carretera. En el navegador -'ngplat probar'- y en las maquinas "
                "que ya la dibujan se ve como tiene que verse."
                % sistema.titulo)
-    build = build_project(project, sistema.carretera_lisa)
+    build = build_project(project, sistema.carretera_como)
     sistema.preparar(build)
     for aviso in sistema.comprobar(build):
         _aviso(aviso)

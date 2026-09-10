@@ -160,7 +160,7 @@ def cargar_demo(path: str, sistema: str = ""):
     """
     proyecto = load_project(path)
     maquina = sistemas.obtener(sistema or proyecto.system)
-    build = build_project(proyecto, maquina.carretera_lisa)
+    build = build_project(proyecto, maquina.carretera_como)
     maquina.preparar(build)
     return build
 

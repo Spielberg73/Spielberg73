@@ -130,12 +130,23 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     # La columna de la imagen de la carretera por la que pasa el eje de la
     # calzada, y cuantos grupos de cuatro franjas hay (calzada, arcen, hierba).
     header.append("#define NP_CARRETERA_EJE %d" % (carretera_mod.ANCHO // 2))
+    # Lo que mide el arcen a cada lado, en pixeles de calzada de cerca. Lo
+    # necesitan las maquinas que **pintan** la carretera en vez de deslizarla:
+    # el Atari ST y el X68000 la rellenan por franjas y la Jaguar la compone
+    # con su lista de objetos, y todas tienen que sacar los mismos bordes que
+    # saco el compilador al dibujar la textura.
+    header.append("#define NP_CARRETERA_ARCEN %d"
+                  % (project.asfalto.ancho_arcen if project.view == "carretera"
+                     else 8))
     # Con la textura lisa los huecos son cuatro -uno por cosa- en vez de doce,
     # y hay ademas dos tonos por cosa que la maquina escribe linea a linea.
-    lisa = bool(build.asfalto and build.asfalto.tonos)
-    header.append("#define NP_CARRETERA_LISA %d" % (1 if lisa else 0))
-    header.append("#define NP_CARRETERA_GRUPOS %d" % (4 if lisa else 3))
-    header.append("#define NP_CARRETERA_HUECOS_POR_GRUPO %d" % (1 if lisa else 4))
+    grupos = len(build.asfalto.franjas) if build.asfalto else 3
+    por_grupo = (len(build.asfalto.franjas[0])
+                 if build.asfalto and build.asfalto.franjas else 4)
+    header.append("#define NP_CARRETERA_LISA %d"
+                  % (1 if por_grupo == 1 else 0))
+    header.append("#define NP_CARRETERA_GRUPOS %d" % grupos)
+    header.append("#define NP_CARRETERA_HUECOS_POR_GRUPO %d" % por_grupo)
     header.append("extern const uint8_t np_carretera_huecos[];")
     header.append("#define NP_LAYER_COUNT %d" % len(build.layers))
     header.append("#define NP_MUSIC_COUNT %d" % len(build.music_order))

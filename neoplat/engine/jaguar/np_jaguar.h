@@ -106,6 +106,15 @@
 #define NP_FONDO_ALTO 224           /* alto del mapa de bits del parallax     */
 #define NP_HUD_COLOR 255            /* el ultimo color de la tabla           */
 #define NP_ACTORES_MAX 48           /* objetos de la lista para los actores  */
+/* Conduciendo, la carretera son **una linea, un objeto**: el Object Processor
+   recorre la lista en cada linea de barrido, asi que darle un mapa de bits de
+   una linea de alto con su propia X es exactamente el scroll por linea que la
+   Mega Drive hace con una tabla. Son 224 objetos mas en la lista. */
+#if NP_VISTA_CARRETERA
+#define NP_CARRETERA_OBJETOS NP_SCREEN_H
+#else
+#define NP_CARRETERA_OBJETOS 0
+#endif
 
 #define NP_DIR(p) ((uint32_t)(uintptr_t)(p))
 

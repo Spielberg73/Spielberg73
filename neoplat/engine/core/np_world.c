@@ -4077,6 +4077,41 @@ static void np_via_suavizar(int16_t *via)
 }
 
 #if NP_VISTA_CARRETERA
+/* Los cuatro bordes de la calzada en una linea de pantalla, y si ahi toca
+ * raya del medio.
+ *
+ * Esto es para las maquinas que **pintan** la carretera en vez de deslizar una
+ * imagen: el Atari ST y el X68000 la rellenan franja a franja en su memoria de
+ * pantalla, y la Jaguar la compone con su lista de objetos. Las tres tienen
+ * que sacar exactamente los mismos bordes que saco el compilador al dibujar la
+ * textura de la Mega Drive y del Amiga, o el mismo juego se veria distinto
+ * segun la maquina. Por eso la cuenta esta **una sola vez**, aqui.
+ *
+ * `bordes` se rellena con cuatro columnas de pantalla:
+ *
+ *     0        1                2        3
+ *     |--arcen-|----calzada-----|--arcen-|
+ *   hierba                               hierba
+ *
+ * y devuelve 1 si en esta linea se ve la raya del medio (va a tramos, uno de
+ * cada dos, y desaparece cuando la calzada es tan estrecha que no cabria).
+ */
+uint8_t np_carretera_bordes(uint16_t y, int16_t centro, uint8_t fase,
+                            int16_t *bordes, uint8_t *banda)
+{
+    int32_t medio = np_carretera_medio[y];
+    int32_t borde = (NP_CARRETERA_ARCEN * medio) / 64;
+    int32_t mitad = medio - borde;
+    uint8_t cual = (uint8_t)((np_carretera_banda[y] + fase)
+                             & (NP_CARRETERA_FRANJAS - 1));
+    *banda = cual;
+    bordes[0] = (int16_t)(centro - medio);
+    bordes[1] = (int16_t)(centro - mitad);
+    bordes[2] = (int16_t)(centro + mitad);
+    bordes[3] = (int16_t)(centro + medio);
+    return (uint8_t)(medio > 0 && (cual & 1) && mitad > 6);
+}
+
 static void np_carretera_tabla(const NpWorld *w);
 #endif
 static int32_t np_encoge(int32_t z);

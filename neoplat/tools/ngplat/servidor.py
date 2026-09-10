@@ -158,7 +158,7 @@ def compilar(raiz: str, nombre_sistema: str, hacer_make: bool = True
         project = load_project(raiz)
         lineas.extend("aviso: " + a for a in project.warnings)
         sistema = sistemas.obtener(nombre_sistema or project.system)
-        build = build_project(project, sistema.carretera_lisa)
+        build = build_project(project, sistema.carretera_como)
         sistema.preparar(build)
         lineas.extend("aviso: " + a for a in sistema.comprobar(build))
         salida = os.path.join(raiz, "build", sistema.nombre)
@@ -344,7 +344,7 @@ class _Manejador(BaseHTTPRequestHandler):
                     # el preview se regenera para que refleje lo recien guardado
                     project = load_project(self.server.raiz)
                     sistema = sistemas.obtener(nombre or project.system)
-                    build = build_project(project, sistema.carretera_lisa)
+                    build = build_project(project, sistema.carretera_como)
                     sistema.preparar(build)
                     write_preview(build, self.server.preview)
                     lineas.append("game.yaml guardado (la copia anterior queda "
@@ -401,7 +401,7 @@ class _Manejador(BaseHTTPRequestHandler):
             try:
                 project = load_project(self.server.raiz)
                 sistema = sistemas.obtener(project.system)
-                build = build_project(project, sistema.carretera_lisa)
+                build = build_project(project, sistema.carretera_como)
                 sistema.preparar(build)
                 write_preview(build, self.server.preview)
                 lineas.append("recarga la pagina para verlo")

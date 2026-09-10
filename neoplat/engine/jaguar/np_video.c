@@ -19,7 +19,7 @@
 /* Cada objeto son dos frases de 64 bits y la lista tiene que estar alineada a
    16 bytes: el chip lee de dos en dos frases. `volatile` porque quien la lee
    es el chip, no el programa (ver la nota de np_jaguar.h). */
-#define NP_OBJETOS (4 + NP_ACTORES_MAX + 1)
+#define NP_OBJETOS (4 + NP_ACTORES_MAX + NP_CARRETERA_OBJETOS + 1)
 static volatile uint64_t np_lista[NP_OBJETOS * 2] __attribute__((aligned(16)));
 static uint64_t np_copia[NP_OBJETOS * 2];       /* el original, para restaurarlo */
 static uint16_t np_usados;                      /* frases ocupadas este frame  */
@@ -234,6 +234,78 @@ static void np_pintar_fondo(const NpWorld *w)
     __asm__ __volatile__ ("" ::: "memory");
 }
 
+#if NP_VISTA_CARRETERA
+/* --- la carretera: una linea, un objeto ---------------------------------
+ *
+ * Aqui la Jaguar hace de una vez lo que a la Mega Drive le cuesta una tabla y
+ * al Amiga una lista de copper. El Object Processor recorre la lista de
+ * objetos **en cada linea de barrido**, asi que un mapa de bits de una sola
+ * linea de alto, con su propia X, es exactamente una entrada de scroll por
+ * linea. Doscientas veinticuatro de esas y la carretera esta puesta.
+ *
+ * La imagen es la misma que se lleva la Mega Drive -512 de ancho, con las
+ * cuatro franjas dibujadas dentro- y se pinta una vez al entrar en el nivel.
+ * Las rayas corren rotando la tabla de colores, que aqui son doce palabras a
+ * la CLUT.
+ */
+#define NP_CARR_ANCHO (NP_CARRETERA_EJE * 2)
+#define NP_CARR_MARGEN (NP_CARR_ANCHO - NP_SCREEN_W)
+
+static int16_t np_carretera_centro[NP_SCREEN_H];
+
+/* Pinta la carretera en el mapa de bits del fondo. Una vez por nivel. */
+static void np_pintar_carretera(void)
+{
+    const NpLayer *capa = &np_layers[np_carretera_capa];
+    uint32_t *p = (uint32_t *)(void *)np_fondo_bitmap;
+    uint32_t i;
+    int32_t c, r;
+    for (i = 0; i < (uint32_t)NP_MAPA_ANCHO * NP_FONDO_ALTO / 4; i++) *p++ = 0;
+    for (c = 0; c < (int32_t)capa->cols; c++)
+        for (r = 0; r < (int32_t)capa->rows; r++) {
+            int32_t y = r * NP_TILE;
+            if (y + NP_TILE > NP_FONDO_ALTO) continue;
+            np_pegar_tile_en(np_fondo_bitmap,
+                             capa->tiles[r * capa->cols + c], c * NP_TILE, y);
+        }
+    __asm__ __volatile__ ("" ::: "memory");
+}
+
+/* Las cuatro entradas de color de cada cosa, rotadas un paso. Es lo mismo que
+   hace la Mega Drive con la CRAM: la imagen no se toca, se mueve la paleta. */
+static void np_paleta_carretera(uint8_t fase)
+{
+    const uint8_t *huecos = np_carretera_huecos;
+    uint8_t grupo, i;
+    for (grupo = 0; grupo < NP_CARRETERA_GRUPOS; grupo++) {
+        const uint8_t *cuatro = &huecos[grupo * NP_CARRETERA_FRANJAS];
+        for (i = 0; i < NP_CARRETERA_FRANJAS; i++)
+            CLUT[cuatro[i]] =
+                np_colores[cuatro[(i + fase) & (NP_CARRETERA_FRANJAS - 1)]];
+    }
+}
+
+/* Y la lista: un objeto por linea, con la columna de la imagen que le toca. */
+static void np_objetos_carretera(const NpWorld *w)
+{
+    uint16_t horizonte = np_carretera(w, np_carretera_centro);
+    uint16_t y;
+    np_paleta_carretera(np_carretera_fase(w));
+    for (y = horizonte; y < NP_SCREEN_H; y++) {
+        int32_t off = NP_CARRETERA_EJE - np_carretera_centro[y];
+        if (off < 0) off = 0;
+        if (off > NP_CARR_MARGEN) off = NP_CARR_MARGEN;
+        /* La direccion salta de ocho en ocho pixeles -es lo que mide una frase
+           de 64 bits a ocho bits por pixel- y lo que sobra lo pone la X del
+           objeto, que si es por pixel. */
+        np_objeto(NP_DIR(np_fondo_bitmap) + (uint32_t)y * NP_MAPA_ANCHO
+                  + ((uint32_t)off & ~7u),
+                  (int16_t)(-(off & 7)), (int16_t)y,
+                  NP_SCREEN_W + 8, 1, NP_MAPA_ANCHO / 8, 0);
+    }
+}
+#endif /* NP_VISTA_CARRETERA */
+
 /* Mete el objeto del parallax en la lista, ya desplazado. */
 static void np_objeto_fondo(const NpWorld *w)
 {
@@ -296,6 +368,17 @@ void np_video_frame(const NpWorld *w)
     uint32_t datos;
     uint8_t i;
 
+#if NP_VISTA_CARRETERA
+    /* Conduciendo, el escenario **no se dibuja**: el mapa es el trazado de la
+       carretera, no lo que se ve. */
+    if (w->level != np_nivel_actual) {
+        np_nivel_actual = w->level;
+        np_pintar_carretera();
+    }
+    (void)ultima_columna;
+    (void)columna;
+    (void)datos;
+#else
     if (w->level != np_nivel_actual || w->abiertos_n != np_abiertos_pintados) {
         np_nivel_actual = w->level;
         np_abiertos_pintados = w->abiertos_n;
@@ -319,10 +402,14 @@ void np_video_frame(const NpWorld *w)
         }
         __asm__ __volatile__ ("" ::: "memory");
     }
+#endif /* NP_VISTA_CARRETERA */
 
     np_ramas();
     BG = w->level->background;
 
+#if NP_VISTA_CARRETERA
+    np_objetos_carretera(w);         /* una linea, un objeto */
+#else
 #if NP_LAYER_COUNT > 0
     np_objeto_fondo(w);              /* primero el parallax: va por detras */
 #endif
@@ -339,6 +426,7 @@ void np_video_frame(const NpWorld *w)
         np_objeto(datos, (int16_t)(-(dx & 7)), 0,
                   NP_SCREEN_W / 8 + 1, NP_SCREEN_H, NP_MAPA_ANCHO / 8, 1);
     }
+#endif /* NP_VISTA_CARRETERA */
 
     /* De mas lejos a mas cerca: en la vista de cinta los actores se pisan a
        cada rato y hay que pintarlos por la linea del suelo. En las demas
@@ -351,7 +439,29 @@ void np_video_frame(const NpWorld *w)
        el vblank y el juego entero se vaya a la mitad de velocidad. Medido: la
        melodia pasa de 16 notas de 16 a 4. */
     orden = np_orden_dibujo(w, &cuantas);
-#if NP_VISTA_ISO
+#if NP_VISTA_CARRETERA
+    for (i = 0; i < cuantas; i++) {
+        const NpEntity *e = &w->entities[NP_DIBUJO(orden, i)];
+        const NpActorDef *def;
+        if (!e->active) continue;
+        if (e->hurt && (w->frame & 1)) continue;
+        def = np_entity_def(e);
+        np_actor(def, NP_F2I(e->x) - def->box_x - w->cam_x,
+                 NP_F2I(e->y) - def->box_y - w->cam_y,
+                 np_actor_frame(def, e->anim, e->anim_frame),
+                 (uint8_t)!e->facing);
+    }
+    for (i = 0; i < NP_MAX_PLAYERS; i++) {
+        const NpActorDef *def = &np_player_def.actor;
+        const NpPlayer *p = &w->players[i];
+        int32_t cx, cy;
+        if (!np_player_visible(w, i)) continue;
+        /* En un sitio fijo abajo: la camara le sigue. Sin espejo, que el coche
+           se ve de culo y espejarlo cambiaria de asiento a los de dentro. */
+        np_carretera_coche(w, i, &cx, &cy);
+        np_actor(def, cx, cy, np_actor_frame(def, p->anim, p->anim_frame), 0);
+    }
+#elif NP_VISTA_ISO
     for (i = 0; i < cuantas; i++) {
         const NpActorDef *def;
         int32_t sx, sy;

@@ -266,6 +266,22 @@ interrupción y la vuelta estaban bien; (4) el manejador entero con constantes �
 sonaba. El fallo estaba en la prueba: el botón de empezar en la Jaguar es
 `SELECT`, no `A`, y la partida nunca había arrancado.
 
+## La carretera: una línea, un objeto
+
+Aquí la Jaguar hace de una vez lo que a la Mega Drive le cuesta una tabla y al
+Amiga una lista de copper. El Object Processor recorre la lista **en cada línea
+de barrido**, así que un mapa de bits de una sola línea de alto, con su propia
+X, **es** una entrada de scroll por línea. Doscientas veinticuatro de ésas y la
+carretera está puesta.
+
+La imagen es la misma que se lleva la Mega Drive —512 de ancho, con las cuatro
+franjas dibujadas dentro— y se pinta una vez al entrar en el nivel. Las rayas
+corren rotando la tabla de colores: doce palabras a la CLUT por frame.
+
+La dirección del objeto salta de ocho en ocho píxeles —lo que mide una frase de
+64 bits a ocho bits por píxel— y lo que sobra lo pone la X del objeto, que sí
+va por píxel.
+
 ## Lo que aún no hace
 
 - **Muestras digitales.** Los DAC son de 16 bits y darían para voces y

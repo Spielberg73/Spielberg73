@@ -58,18 +58,25 @@ class Sistema:
     # los dos tonos de una pareja le caen en el mismo color a esta maquina, la
     # paleta rota igual pero en pantalla no se mueve nada.
     bits_de_color = 8
-    # Como quiere esta maquina la imagen de la carretera. Hay dos maneras de
-    # que las franjas corran hacia ti y cada una le conviene a unas maquinas:
+    # Como quiere esta maquina la carretera. Hay tres maneras de que las
+    # franjas corran hacia ti, y cada una le conviene a unas maquinas:
     #
-    #   False  la imagen trae las cuatro franjas dibujadas, con cuatro colores
-    #          por cosa, y la maquina **rota la paleta** un paso por frame.
-    #          Es lo que hace la Mega Drive: cuatro palabras a la CRAM.
-    #   True   la imagen es lisa -un color por cosa- y la maquina pinta las
-    #          bandas **con el haz**, escribiendo el color de cada linea. Es lo
-    #          que hace el copper del Amiga, y ademas es lo unico que cabe:
-    #          doce huecos de paleta no entran en los siete de un plano del
-    #          doble plano, y cuatro si.
-    carretera_lisa = False
+    #   "franjas"  la imagen trae las cuatro franjas dibujadas, con cuatro
+    #              colores por cosa, y la maquina **rota la paleta** un paso
+    #              por frame. Es lo que hace la Mega Drive: cuatro palabras a
+    #              la CRAM.
+    #   "lisa"     la imagen es lisa -un color por cosa- y la maquina pinta
+    #              las bandas **con el haz**, escribiendo el color de cada
+    #              linea. Es lo que hace el copper del Amiga, y ademas es lo
+    #              unico que cabe: doce huecos de paleta no entran en los siete
+    #              de un plano del doble plano, y cuatro si.
+    #   "muestra"  ni imagen ni bandas: solo los siete colores, en un cuadro
+    #              de 16x16. Es para las que **pintan** la carretera en vez de
+    #              deslizarla -el Atari ST y el X68000 la rellenan franja a
+    #              franja en su memoria de pantalla, la Jaguar con su blitter-:
+    #              a esas la imagen no les sirve de nada, y los bordes los
+    #              sacan con np_carretera_bordes.
+    carretera_como = "franjas"
     # Y con cuantos bits por canal guarda **los colores de la carretera**, que
     # no siempre son los de la maquina: en AGA la paleta es de 24 bits pero los
     # tonos de la carretera van en 12, porque el copper los escribe linea a
@@ -119,7 +126,7 @@ class Sistema:
         capa = getattr(build, "asfalto", None)
         if capa is None or not capa.franjas or capa.palette is None:
             return []
-        if self.carretera_lisa:
+        if self.carretera_como != "franjas":
             # Con la textura lisa los tonos no estan en la paleta: los escribe
             # la maquina linea a linea, y se miran en build.tonos.
             return self._avisos_de_tonos(capa)

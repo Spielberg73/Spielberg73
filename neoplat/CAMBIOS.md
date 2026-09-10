@@ -2,8 +2,53 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.34.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.35.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.35
+
+**Dos maquinas mas dibujan la carretera: el Atari ST y la Jaguar.** Van cuatro
+de ocho —Mega Drive, Amiga (con el A1200 y el CD32), Atari ST y Jaguar— y cada
+una la hace de una manera distinta, que es justo lo que hace interesante el
+problema.
+
+**El Atari ST no desliza nada: pinta.** No tiene scroll de ninguna clase —ni
+planos, ni copper, ni tabla de líneas—, así que la carretera se dibuja entera
+en cada frame. Y sale barato, que es lo sorprendente: una línea de carretera
+son cinco trozos de un color más la raya del medio, y un trozo de un color en
+un ST son palabras iguales. Dibujar la carretera entera cuesta **menos** que
+mover el escenario de un juego de plataformas, que es lo que obliga al ST a
+refrescar a 25 y a un juego de conducir no.
+
+**La Jaguar lo tiene de serie.** El Object Processor recorre la lista de
+objetos en **cada línea de barrido**, así que un mapa de bits de una línea de
+alto con su propia X **es** una entrada de scroll por línea. Doscientas
+veinticuatro de ésas y la carretera está puesta. Por lo demás va como la Mega
+Drive: la misma imagen con las cuatro franjas dentro, y las rayas corren
+rotando la tabla de colores.
+
+**Una tercera forma de pedir la carretera.** El ST no necesita la imagen: la
+pinta él. Sólo necesita los siete colores, para pedirlos por su número. Así que
+`Sistema.carretera_como` tiene ahora un tercer valor, `"muestra"`: un cuadro de
+16×16 con los siete tonos, que ocupa un dibujo y no dos mil.
+
+**Y la cuenta de los bordes, escrita una sola vez.** `np_carretera_bordes` da,
+para una línea de pantalla, las cuatro columnas donde empieza y acaba cada cosa
+—hierba, arcén, calzada, arcén, hierba— y si ahí toca raya. Es la misma cuenta
+con la que el compilador dibujó las texturas de la Mega Drive y del Amiga, y
+está en el motor para que las ocho máquinas saquen el mismo píxel. La usan el
+ST y, cuando les toque, el X68000 y la Neo Geo.
+
+De paso, la Jaguar ya no rechaza un circuito por alto —eso entró en la 1.33 y
+ahora se usa de verdad—.
+
+**Lo que falta:** el X68000 y la Neo Geo. Las dos piden trabajo de verdad, y
+por razones opuestas. El X68000 tiene un píxel por palabra en su pantalla
+gráfica: pintar 224 líneas no cabe en un frame (medido: unos 36.000 escrituras
+largas, tres veces el presupuesto), así que necesita **scroll por línea**, y
+para eso hay que despertar la interrupción de rástere del CRTC, que el kit
+todavía no toca. La Neo Geo no tiene memoria de pantalla en absoluto: sólo
+sprites, y ahí la carretera hay que componerla con tiras encogidas.
 
 ## 1.34
 

@@ -200,6 +200,39 @@ def textura_lisa(ancho_via: int, colores, ancho_arcen: int = 8) -> Image:
     return Image(ANCHO, SCREEN_H, px)
 
 
+# --- y la tercera manera: ni imagen ni bandas, solo los colores ------------
+#
+# Hay maquinas que no deslizan nada porque **pintan**: el Atari ST y el X68000
+# rellenan la carretera franja a franja en su memoria de pantalla y la Jaguar
+# la compone con su blitter. A esas la imagen no les sirve de nada: lo unico
+# que necesitan de aqui son los siete colores, para que entren en la paleta del
+# juego y puedan pedirlos por su numero.
+#
+# Asi que se les da una muestra: un cuadro de 16x16 con los siete tonos, que
+# ocupa un dibujo y no dos mil. Los bordes de la calzada los sacan ellas con la
+# misma cuenta que hizo esta textura, y esta escrita una sola vez en el motor
+# (np_carretera_bordes).
+MUESTRA_COSAS = ("hierba", "arcen", "asfalto", "raya")
+
+
+def muestra(colores) -> Image:
+    """Un cuadro de 16x16 con los dos tonos de cada cosa, y nada mas.
+
+    `colores` es una lista de parejas en el orden de MUESTRA_COSAS. Van en
+    columnas de dos pixeles para que ningun cuantizador de paleta los junte por
+    ser pocos: cada uno ocupa 32 pixeles del cuadro.
+    """
+    px: List[RGBA] = [(0, 0, 0, 0)] * (TILE * TILE)
+    cuantos = len(colores) * 2
+    for i, pareja in enumerate(colores):
+        for mitad, color in enumerate(pareja):
+            columna = i * 2 + mitad
+            for y in range(TILE):
+                for x in range(TILE // cuantos):
+                    px[y * TILE + columna * (TILE // cuantos) + x] = color + (255,)
+    return Image(TILE, TILE, px)
+
+
 def fase(avance: int) -> int:
     """Que franja toca ahora: cuanto ha avanzado el coche, en tramos.
 
