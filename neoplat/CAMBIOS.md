@@ -2,8 +2,37 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.35.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.36.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.36
+
+**Un juego de conducir ya compila para el X68000.** No compilaba: reventaba con
+un `ValueError` en el generador de código. El X68000 se lleva sus capas a la
+pantalla gráfica y **vacía** `build.layers`, así que la capa de la carretera se
+quedaba huérfana y `build.layers.index(build.asfalto)` no la encontraba. No era
+un error: era que esa máquina no la dibuja desde ahí. Ahora se dice `-1` y el
+que la dibuje sabrá de dónde sacarla.
+
+Iba camuflado desde que existe el género: la comprobación de que «las ocho
+compilan» buscaba líneas que empezaran por `error`, y una excepción de Python
+no empieza por `error`. Ahora se mira el código de salida.
+
+**Y los registros del MFP, apuntados.** El X68000 no tiene tabla de líneas
+—tiene un solo registro de scroll para la pantalla gráfica— pero el CRTC sabe
+avisar cuando el haz llega a la línea que diga `R09`, y ese aviso entra en el
+MFP por GPIP6. Cambiar el scroll 224 veces por frame desde esa interrupción es
+lo único que hace que la carretera quepa ahí: pintarla no cabe, porque su
+pantalla gráfica gasta **una palabra por píxel** y son 36.000 escrituras
+largas, tres veces el presupuesto de un frame. Los registros quedan puestos y
+documentados; la interrupción todavía no se levanta.
+
+**Lo que bloquea comprobarlo**, y conviene decirlo con nombre: el disquete de
+Human68k con el que se prueba el X68000 tiene **76 KB libres** y un juego de
+conducir ocupa 137. Se intentó rehacer un disco de arranque con lo justo:
+arranca Human68k, pero sin `\SYS\` el juego ya no llega a ejecutarse. Hasta
+que haya un disco con sitio, el X68000 no se puede comprobar de verdad, y sin
+comprobarlo no se escribe código de interrupciones.
 
 ## 1.35
 

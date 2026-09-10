@@ -13,4 +13,4 @@ Modulos principales:
 # el nombre de los paquetes (neoplat-kit-1.30.zip) y en `ngplat --version`, para
 # saber sin abrir nada que version se esta probando. El historial de cada una
 # esta en CAMBIOS.md.
-__version__ = "1.35"
+__version__ = "1.36"

@@ -69,6 +69,7 @@ static __inline long np_iocs(long numero, long d1, long d2)
 #define NP_CRTC_R05      ((volatile uint16_t *)0xE8000A)  /* fin del VSYNC */
 #define NP_CRTC_R06      ((volatile uint16_t *)0xE8000C)  /* primera linea */
 #define NP_CRTC_R07      ((volatile uint16_t *)0xE8000E)  /* ultima linea */
+#define NP_CRTC_R09      ((volatile uint16_t *)0xE80012)  /* linea de la IRQ */
 #define NP_CRTC_R20      ((volatile uint16_t *)0xE80028)  /* modo de memoria */
 
 /* R20: bits 9-8 color (00 = 16 colores), bits 3-2 alto, bits 1-0 ancho
@@ -102,6 +103,22 @@ static __inline long np_iocs(long numero, long d1, long d2)
 /* --- MFP: de aqui sale el retrazo vertical ------------------------------ */
 #define NP_MFP_GPIP      ((volatile uint8_t *)0xE88001)
 #define NP_MFP_GPIP_VDISP 0x10    /* a 0 mientras se dibuja la imagen */
+/* Y el resto del MC68901. De aqui tiene que salir el scroll por linea de un
+   juego de conducir: el X68000 no tiene tabla de lineas -tiene un solo
+   registro de scroll para la pantalla grafica- pero el CRTC sabe avisar
+   cuando el haz llega a la linea que diga R09, y ese aviso entra en el MFP
+   por GPIP6. Cambiar el scroll 224 veces por frame desde esa interrupcion es
+   lo unico que hace que la carretera quepa aqui: pintarla no cabe (un pixel
+   por palabra son 36.000 escrituras largas, tres veces el frame).
+   Los registros estan puestos; la interrupcion todavia no se levanta. */
+#define NP_MFP_AER       ((volatile uint8_t *)0xE88003)
+#define NP_MFP_DDR       ((volatile uint8_t *)0xE88005)
+#define NP_MFP_IERA      ((volatile uint8_t *)0xE88007)
+#define NP_MFP_IPRA      ((volatile uint8_t *)0xE8800B)
+#define NP_MFP_ISRA      ((volatile uint8_t *)0xE8800F)
+#define NP_MFP_IMRA      ((volatile uint8_t *)0xE88013)
+#define NP_MFP_VR        ((volatile uint8_t *)0xE88017)
+#define NP_MFP_RASTERE   0x40     /* bit 6: la salida de rastere del CRTC */
 
 /* --- PPI: los mandos ----------------------------------------------------
  *

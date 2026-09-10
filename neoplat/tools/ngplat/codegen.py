@@ -608,8 +608,14 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     # maquina la convierte con lo que ya sabia hacer. -1 = este juego no
     # conduce.
     src.append("/* La capa que lleva la carretera en perspectiva, o -1. */")
-    src.append("const int16_t np_carretera_capa = %d;"
-               % (build.layers.index(build.asfalto) if build.asfalto else -1))
+    # Hay maquinas que se llevan las capas a otro sitio y vacian build.layers
+    # -el X68000 las pone en su pantalla grafica-, y entonces la carretera no
+    # esta en la lista. No es un error: es que esa maquina no la dibuja desde
+    # ahi. Se dice -1 y el que la dibuje sabra de donde sacarla.
+    _capa = (build.layers.index(build.asfalto)
+             if build.asfalto is not None and build.asfalto in build.layers
+             else -1)
+    src.append("const int16_t np_carretera_capa = %d;" % _capa)
     # Y los huecos de paleta de las cuatro franjas de cada cosa, seguidos:
     # calzada, arcen y hierba. Rotarlos un paso por frame es lo que hace correr
     # las rayas hacia el jugador, y son cuatro escrituras de color por grupo.
