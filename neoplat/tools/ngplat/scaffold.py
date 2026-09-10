@@ -3543,10 +3543,13 @@ coche:
 # Los siete colores con los que se pinta la calzada. Van en pares porque la
 # carretera se pinta a franjas que corren hacia ti: eso es lo que hace que se
 # note la velocidad, y es como se hacia en los recreativos.
+# Los dos tonos de cada pareja tienen que separarse bastante: la Mega Drive y
+# el Atari ST guardan tres bits por canal, y dos tonos parecidos les caen en
+# el mismo color -y entonces la carretera se ve lisa-.
 carretera:
-  asfalto: ["#4a4a52", "#42424a"]
+  asfalto: ["#4a4a52", "#282830"]
   arcen:   ["#d0d0d8", "#c02020"]
-  hierba:  ["#3a7a42", "#347038"]
+  hierba:  ["#3a7a42", "#2c5434"]
   raya:    "#e8e8f0"
   ancho_arcen: 8
 

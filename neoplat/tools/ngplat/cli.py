@@ -65,6 +65,8 @@ def _cargar(ruta: str, sistema_nombre: str = ""):
     sistema.preparar(build)
     for aviso in sistema.comprobar(build):
         _aviso(aviso)
+    for aviso in sistema.avisos_de_carretera(build):
+        _aviso(aviso)
     return project, build, sistema
 
 

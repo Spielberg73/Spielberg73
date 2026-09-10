@@ -53,6 +53,11 @@ class Sistema:
     # compilador lo dice al compilar en vez de dejar que se descubra al
     # arrancar la ROM.
     dibuja_carreteras = False
+    # Bits por canal de color que guarda la maquina. Solo se usa para avisar:
+    # las franjas de una carretera se hacen rotando colores de la paleta, y si
+    # los dos tonos de una pareja le caen en el mismo color a esta maquina, la
+    # paleta rota igual pero en pantalla no se mueve nada.
+    bits_de_color = 8
     titulo = "sistema generico"
     cpu = "68000"
     pantalla: Tuple[int, int] = (320, 224)
@@ -81,6 +86,39 @@ class Sistema:
     def comprobar(self, build: Build) -> List[str]:
         """Avisos propios del sistema (o ProjectError si algo no cabe)."""
         return []
+
+    def avisos_de_carretera(self, build: Build) -> List[str]:
+        """Que las franjas de la calzada se vayan a ver en esta maquina.
+
+        Las rayas que corren hacia ti no son un dibujo que se mueva: son
+        cuatro huecos de paleta -A, A, B, B- que se rotan un paso por frame.
+        Si A y B le caen en el mismo color a la maquina, la rotacion sigue
+        ocurriendo y no se ve nada: la carretera sale lisa y parece que el
+        coche esta parado. Le paso a la Mega Drive con los dos grises de
+        serie, que se llevaban ocho puntos y a tres bits por canal son el
+        mismo gris, y desde fuera no habia manera de saber si fallaba la
+        rotacion o los colores.
+        """
+        capa = getattr(build, "asfalto", None)
+        if capa is None or not capa.franjas or capa.palette is None:
+            return []
+        maximo = (1 << self.bits_de_color) - 1
+
+        def cuantizar(rgb):
+            return tuple((c * maximo + 127) // 255 for c in rgb[:3])
+
+        avisos = []
+        for nombre, huecos in zip(("asfalto", "arcen", "hierba"), capa.franjas):
+            # index_of devuelve el hueco contando el 0 transparente, asi que
+            # el color del hueco h es colors[h - 1].
+            tonos = {cuantizar(capa.palette.colors[h - 1]) for h in huecos}
+            if len(tonos) < 2:
+                avisos.append(
+                    "los dos tonos de '%s' le caen en el mismo color a %s "
+                    "(%d bits por canal): las franjas no se veran correr. "
+                    "Separalos mas en 'carretera:' del game.yaml"
+                    % (nombre, self.titulo, self.bits_de_color))
+        return avisos
 
     @staticmethod
     def dibuja_el_mapa(build: Build) -> bool:

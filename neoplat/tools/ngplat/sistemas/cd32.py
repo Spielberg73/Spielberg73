@@ -48,6 +48,7 @@ from .base import Salida, registrar
 
 class Cd32(Amiga1200):
     nombre = "cd32"
+    bits_de_color = 8          # AGA: ocho bits por canal
     titulo = "Amiga CD32"
     cpu = "68EC020 a 14 MHz (AGA, 2 MB de RAM chip)"
     nombre_binario = "el CD"

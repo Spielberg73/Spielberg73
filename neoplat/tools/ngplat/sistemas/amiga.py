@@ -57,6 +57,7 @@ MAX_TILES = 1024                            # 160 KB de dibujos: de sobra en chi
 
 class Amiga(Sistema):
     nombre = "amiga"
+    bits_de_color = 4          # OCS: cuatro bits por canal
     toca_muestras = True          # Paula las lee de la RAM chip por DMA
     titulo = "Commodore Amiga (OCS/ECS)"
     cpu = "68000 a 7 MHz"

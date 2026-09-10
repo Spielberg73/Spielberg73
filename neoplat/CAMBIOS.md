@@ -2,8 +2,54 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.31.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.32.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.32
+
+**La Mega Drive dibuja la carretera.** La primera de las ocho, y la que marca
+el camino: la calzada en perspectiva la trae hecha el compilador como una capa
+normal —512×224, 74 tiles distintos—, se pinta **una sola vez** en el plano B
+al empezar el nivel, y en cada frame lo único que se escribe son las 224
+entradas de la tabla de scroll horizontal, una por línea de pantalla. Ni un
+tile que rehacer. El VDP trae el scroll por línea de serie (registro 0x0B a 3)
+y la tabla cabe justa en el hueco de 0xAC00, antes de la ventana.
+
+Que la calzada mida **siempre lo mismo de ancho** es lo que abre las ocho
+máquinas: si el ancho no cambia, lo que se ve en cada línea es siempre la misma
+imagen y sólo cambia por dónde pasa. Deslizar una imagen por línea lo hace el
+hardware de las ocho —scroll por línea en Mega Drive y X68000, el copper en
+Amiga y CD32, la lista de objetos en la Jaguar—.
+
+**Y las rayas que corren hacia ti no se dibujan: se rotan.** Son cuatro huecos
+de paleta por cada cosa —calzada, arcén, hierba— y se rotan un paso por frame.
+Van en parejas, **A, A, B, B** y no A, B, A, B: alternando, rotar un paso sólo
+intercambia dos colores y las bandas **parpadean**; en parejas, cada rotación
+mueve la frontera un tramo, y entonces corren. Todo el efecto de velocidad sale
+de cómo se ordenan cuatro números.
+
+**El fallo que costó una tarde, y lo que se ha hecho para que no vuelva.** La
+rotación estaba bien desde el primer día y la carretera salía **lisa**. La Mega
+Drive guarda **tres bits por canal** —ocho niveles— y los dos grises del asfalto
+que traía el kit, `#4a4a52` y `#42424a`, se llevan ocho puntos: le caen en el
+**mismo gris**. La paleta rotaba, sí, rotaba cuatro colores idénticos. Desde
+fuera parecía exactamente lo mismo que si las escrituras a la CRAM no llegaran.
+
+Tres cambios, y los tres valen para las ocho máquinas:
+
+- los dos tonos de cada pareja van ahora **un escalón de tres bits entero**
+  (255/7 ≈ 36 puntos), que es lo que aguanta la máquina más corta de color del
+  kit —la Mega Drive y el Atari ST—;
+- el compilador **avisa** si el `carretera:` de un `game.yaml` elige dos tonos
+  que se funden en la máquina de destino, y dice cuál y cuántos bits tiene esa
+  máquina (`Sistema.avisos_de_carretera`);
+- el punto de azul que separa las cuatro entradas de paleta —hace falta, o el
+  cuantizador las junta en una y no queda nada que rotar— se **ancla** dentro
+  de un escalón: antes podía caer justo en una frontera y aparecer como una
+  raya que no tenía que estar.
+
+Y una prueba nueva que mira las ocho máquinas, y otra que comprueba que el
+aviso salta.
 
 ## 1.31
 

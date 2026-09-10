@@ -274,20 +274,20 @@ static void np_pintar_carretera(void)
 }
 
 /* Las cuatro entradas de paleta de cada cosa -calzada, arcen, hierba- rotadas
- * un paso. Con eso las franjas deberian correr hacia ti sin mover un pixel.
- *
- * OJO: **esto todavia no se ve**. La carretera se dibuja bien y se desliza
- * bien, pero rotar la paleta no cambia nada en pantalla, y no esta explicado.
- * Lo comprobado hasta ahora: la funcion esta en la ROM y se llama cada frame;
- * la capa dice paleta 0; escribir **las quince entradas de la paleta 0** con
- * un rojo chillon, cada frame, tampoco cambia nada, mientras que
- * np_color_de_fondo -que escribe la entrada 0 por el mismo camino- si
- * funciona. Asi que lo que falla no son los indices ni la rotacion: es que
- * estas escrituras a CRAM no llegan. Queda por mirar.
+ * un paso. Con eso las franjas corren hacia ti sin mover un pixel.
  *
  * Los colores viven en la paleta de la capa; se leen de np_palettes tal cual y
  * se vuelven a escribir corridos. Cuales son los cuatro huecos de cada cosa lo
- * sabe el compilador y lo deja en np_carretera_huecos. */
+ * sabe el compilador y lo deja en np_carretera_huecos.
+ *
+ * Una tarde entera se fue en creer que esto no funcionaba. Y funcionaba: lo
+ * que pasaba es que el VDP guarda **tres bits por canal**, y los dos grises
+ * del asfalto que traia el kit de serie -74,74,82 y 66,66,74- le caen en el
+ * mismo gris. La paleta rotaba cuatro colores identicos, asi que la calzada
+ * salia lisa y parecia que la rotacion no llegaba a la CRAM. Los tonos de
+ * cada pareja van ahora un escalon de tres bits enteros, y el compilador
+ * avisa si alguien elige dos que se le funden a la maquina de destino: ver
+ * Sistema.avisos_de_carretera. */
 static void np_paleta_carretera(uint8_t fase)
 {
     const uint8_t *huecos = np_carretera_huecos;

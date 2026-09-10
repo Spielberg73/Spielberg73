@@ -29,6 +29,7 @@ PCM_MAXIMO = 64 * 1024    # por efecto; la ROM crece sola hasta la potencia de d
 
 class MegaDrive(Sistema):
     nombre = "megadrive"
+    bits_de_color = 3          # el VDP guarda tres bits por canal
     toca_muestras = True          # el Z80 se las da al DAC del YM2612
     titulo = "Sega Mega Drive / Genesis"
     # la dibuja con el scroll por linea del VDP: ver np_video.c

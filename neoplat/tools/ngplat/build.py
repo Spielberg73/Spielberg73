@@ -276,6 +276,41 @@ def _trocear_capa(layer: Layer, image, where: str) -> LayerBuild:
                       frames=len(dibujos))
 
 
+def _azul_para_separar(azul: int, i: int) -> int:
+    """El azul del hueco `i` de una pareja: distinto en 24 bits, igual en la
+    maquina.
+
+    Las cuatro entradas de una franja tienen que ser cuatro colores distintos
+    -si no, el cuantizador de la paleta las junta en uno y no queda nada que
+    rotar- y a la vez tienen que verse iguales de dos en dos, que es de donde
+    sale el dibujo A, A, B, B. Sumar i al azul cumple lo primero, pero no
+    siempre lo segundo: las maquinas guardan tres, cuatro o cinco bits por
+    canal, y si el azul de partida cae justo al final de un escalon, azul y
+    azul+1 se van a escalones distintos y en pantalla aparece una raya que no
+    tenia que estar.
+
+    Asi que primero se corre el azul lo justo -unos pocos puntos, que no se
+    ven- hasta un sitio desde el que los cuatro caben en el mismo escalon a
+    3, 4 y 5 bits. Si no hay ninguno (queda poquisimo margen en los extremos),
+    se deja como estaba: peor es juntarlos.
+    """
+    def escalon(valor: int, bits: int) -> int:
+        maximo = (1 << bits) - 1
+        return (valor * maximo + 127) // 255
+
+    def caben(base: int) -> bool:
+        if base < 0 or base + 3 > 255:
+            return False
+        return all(len({escalon(base + n, bits) for n in range(4)}) == 1
+                   for bits in (3, 4, 5))
+
+    for salto in range(0, 9):
+        for base in (azul - salto, azul + salto):
+            if caben(base):
+                return base + i
+    return min(255, azul + i)
+
+
 def _capa_de_carretera(project: Project) -> LayerBuild:
     """La carretera en perspectiva, dibujada aqui y troceada como una capa.
 
@@ -329,7 +364,7 @@ def _capa_de_carretera(project: Project) -> LayerBuild:
     # que rotar. Se separan un punto de azul, que no se ve.
     for nombre in ("asfalto", "arcen", "hierba"):
         colores[nombre] = [
-            (c[0], c[1], min(255, c[2] + i), 255)
+            (c[0], c[1], _azul_para_separar(c[2], i), 255)
             for i, c in enumerate(colores[nombre])
         ]
     imagen = carretera_mod.textura(medio, colores, col.ancho_arcen)

@@ -37,6 +37,7 @@ MAPA_ANCHO, MAPA_ALTO = VENTANA_ANCHA  # el mapa de bits del escenario
 
 class Jaguar(Sistema):
     nombre = "jaguar"
+    bits_de_color = 5          # RGB16: cinco bits en rojo y azul
     toca_muestras = True          # el DSP las lee del cartucho, byte a byte
     titulo = "Atari Jaguar"
     cpu = "68000 a 13,3 MHz (+ GPU y DSP, sin usar)"

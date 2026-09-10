@@ -466,12 +466,18 @@ class Carretera:
     lo que da cada maquina -el scroll por linea de la Mega Drive, el copper del
     Amiga, sprites encogidos en la Neo Geo- sin gastar ni un tile, y la misma
     pantalla sale en las ocho."""
+    # Los dos tonos de cada pareja tienen que separarse **de verdad**, no un
+    # matiz: la maquina mas corta de color del kit -la Mega Drive y el Atari
+    # ST- guarda tres bits por canal, o sea ocho niveles, y dos grises que se
+    # llevan ocho puntos caen en el mismo. Y entonces la paleta rota, si, pero
+    # rota cuatro colores iguales y la carretera se ve lisa: parece que el
+    # coche no avanza. Cada pareja va un escalon entera (255/7 = 36 puntos).
     asfalto: Tuple[Tuple[int, int, int], Tuple[int, int, int]] = (
-        (74, 74, 82), (66, 66, 74))
+        (74, 74, 82), (40, 40, 48))
     arcen: Tuple[Tuple[int, int, int], Tuple[int, int, int]] = (
         (208, 208, 216), (192, 32, 32))
     hierba: Tuple[Tuple[int, int, int], Tuple[int, int, int]] = (
-        (58, 122, 66), (52, 112, 58))
+        (58, 122, 66), (44, 84, 52))
     raya: Tuple[int, int, int] = (232, 232, 240)
     # lo que mide el arcen a cada lado, en pixeles de carretera
     ancho_arcen: int = 8

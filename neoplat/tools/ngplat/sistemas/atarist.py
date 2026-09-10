@@ -49,6 +49,7 @@ MAX_TILES = 1024                            # 160 KB entre dibujos y mascaras
 
 class AtariSt(Sistema):
     nombre = "atarist"
+    bits_de_color = 3          # STF: tres bits por canal
     titulo = "Atari ST (520/1040)"
     cpu = "68000 a 8 MHz"
     pantalla = (320, 200)

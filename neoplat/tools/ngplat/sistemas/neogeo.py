@@ -69,6 +69,7 @@ def _columnas_a_la_vez(build: Build) -> Tuple[int, str]:
 
 class NeoGeo(Sistema):
     nombre = "neogeo"
+    bits_de_color = 5          # cinco bits por canal (mas el bit oscuro)
     toca_muestras = True          # los canales ADPCM-A del YM2610, con la ROM V1
     titulo = "Neo Geo (AES / MVS)"
     cpu = "68000 a 12 MHz"

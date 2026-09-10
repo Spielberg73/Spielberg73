@@ -75,6 +75,7 @@ COLOR_HUD = 15                       # el ultimo del bloque 0, del marcador
 
 class X68000(Sistema):
     nombre = "x68000"
+    bits_de_color = 5          # cinco bits por canal
     titulo = "Sharp X68000"
     cpu = "68000 a 10 MHz"
     pantalla = (320, 224)

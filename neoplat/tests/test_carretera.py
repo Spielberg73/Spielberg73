@@ -14,13 +14,16 @@ en C compilado.
 
 import os
 import re
+import shutil
 import subprocess
+import tempfile
 import unittest
 
 import comun
 from comun import KIT
 
-from ngplat import carretera
+from ngplat import carretera, sistemas
+from ngplat.scaffold import crear_proyecto
 
 
 def _constantes_del_motor():
@@ -70,6 +73,59 @@ class TestLaCamaraEsLaMisma(unittest.TestCase):
                           fh.read(), re.M)
         self.assertIsNotNone(m, "NP_CARRETERA_FRANJAS ya no esta en np_world.h")
         self.assertEqual(int(m.group(1)), carretera.FRANJAS)
+
+
+class TestLasFranjasSeVen(unittest.TestCase):
+    """Que las rayas que corren hacia ti se vean **en la maquina**.
+
+    Las franjas no son un dibujo que se mueva: son cuatro huecos de paleta
+    -A, A, B, B- que la maquina rota un paso por frame. Si A y B le caen en el
+    mismo color, la rotacion ocurre igual y en pantalla no se mueve nada: la
+    calzada sale lisa y parece que el coche esta parado.
+
+    Paso de verdad, y costo una tarde: los dos grises del asfalto que traia el
+    kit se llevaban ocho puntos, y la Mega Drive guarda tres bits por canal
+    -ocho niveles-, asi que eran el mismo gris. Desde fuera parecia que las
+    escrituras a la CRAM no llegaban. Esta prueba lo mira en las ocho
+    maquinas, empezando por las dos mas cortas de color.
+    """
+
+    def _proyecto(self, destino, asfalto=""):
+        crear_proyecto(destino, "COSTA", "TEST", genero="carretera")
+        yaml = os.path.join(destino, "game.yaml")
+        if asfalto:
+            with open(yaml, encoding="utf-8") as fh:
+                texto = fh.read()
+            texto = re.sub(r"asfalto: \[[^\]]*\]", asfalto, texto)
+            with open(yaml, "w", encoding="utf-8") as fh:
+                fh.write(texto)
+        return yaml
+
+    def test_los_dos_tonos_se_distinguen_en_las_ocho_maquinas(self):
+        carpeta = tempfile.mkdtemp(prefix="neoplat-franjas-")
+        try:
+            yaml = self._proyecto(os.path.join(carpeta, "juego"))
+            for maquina in sistemas.disponibles():
+                build = comun.cargar_demo(yaml, maquina.nombre)
+                self.assertEqual(
+                    maquina.avisos_de_carretera(build), [],
+                    "en %s las franjas de serie no se distinguen"
+                    % maquina.nombre)
+        finally:
+            shutil.rmtree(carpeta, ignore_errors=True)
+
+    def test_avisa_cuando_los_dos_tonos_son_el_mismo(self):
+        """Y si alguien elige dos tonos que se funden, se le dice."""
+        carpeta = tempfile.mkdtemp(prefix="neoplat-fundidos-")
+        try:
+            yaml = self._proyecto(os.path.join(carpeta, "juego"),
+                                  'asfalto: ["#4a4a52", "#484850"]')
+            build = comun.cargar_demo(yaml, "megadrive")
+            avisos = sistemas.obtener("megadrive").avisos_de_carretera(build)
+            self.assertTrue(any("asfalto" in a for a in avisos),
+                            "no aviso de que el asfalto se funde: %r" % avisos)
+        finally:
+            shutil.rmtree(carpeta, ignore_errors=True)
 
 
 class TestLaFormaDeLaCalzada(unittest.TestCase):

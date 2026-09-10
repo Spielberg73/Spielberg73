@@ -32,6 +32,7 @@ from .base import Limites, registrar
 
 class Amiga1200(Amiga):
     nombre = "amiga1200"
+    bits_de_color = 8          # AGA: ocho bits por canal
     titulo = "Commodore Amiga 1200 (AGA)"
     cpu = "68EC020 a 14 MHz"
     limites = Limites(colores_por_paleta=16, paletas=1, sprites=0,

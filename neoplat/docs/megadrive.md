@@ -88,6 +88,55 @@ los colores repetidos. Si no caben, avisa con el nombre de la que sobra.
 El color 0 de la primera paleta es el **fondo de la pantalla**, y el motor lo
 cambia al empezar cada nivel con el `fondo:` que le hayas puesto.
 
+## La carretera: no se dibuja, se desliza
+
+En un juego de conducir (`vista: carretera`) el escenario **no se pinta por
+frame**. La calzada en perspectiva la trae hecha el compilador —una imagen de
+512 × 224 con 74 tiles distintos, que entra como una capa más— y se pinta una
+sola vez en el plano B al empezar el nivel. A partir de ahí, cada frame escribe
+sólo la tabla de scroll horizontal: **una palabra por línea de pantalla**, la
+que dice por dónde pasa el eje de la calzada ahí.
+
+Eso es todo el dibujado. El VDP trae scroll por línea de serie —registro `$0B`
+a `3`— y la tabla son 224 pares que caben justos en `$AC00`, el hueco que ya
+estaba reservado antes de la ventana. Ni un tile que rehacer.
+
+Funciona porque la calzada **mide siempre lo mismo de ancho**: si el ancho no
+cambia, lo que se ve en una línea es siempre la misma imagen y lo único que
+cambia es por dónde pasa.
+
+### Las rayas que corren hacia ti son cuatro colores
+
+Tampoco se dibujan. Son **cuatro huecos de paleta** por cada cosa —calzada,
+arcén, hierba— que se rotan un paso por frame: cuatro palabras a la CRAM, y las
+franjas corren. Cuáles son esos huecos lo sabe el compilador y lo deja en
+`np_carretera_huecos`.
+
+Van en parejas, **A, A, B, B**, y no alternando. Con A, B, A, B rotar un paso
+sólo intercambia los dos colores y las bandas **parpadean**: no se sabe si la
+carretera va hacia ti o al revés. En parejas, cada rotación mueve la frontera
+entre A y B **un tramo**, y entonces viajan.
+
+### Y los dos tonos tienen que separarse de verdad
+
+Aquí se fue una tarde. La rotación estaba bien desde el primer día y la calzada
+salía lisa. El VDP guarda **tres bits por canal** —ocho niveles, y el escalón
+son 255/7 ≈ 36 puntos—, y los dos grises del asfalto que traía el kit,
+`#4a4a52` y `#42424a`, se llevan ocho puntos: le caen en el **mismo gris**. La
+paleta rotaba cuatro colores idénticos. Visto desde fuera es indistinguible de
+que las escrituras a la CRAM no lleguen, y por ahí se fue la tarde.
+
+Si tocas los colores de `carretera:` en tu `game.yaml`, sepáralos un escalón
+entero. Y si no lo haces, el compilador te lo dice al compilar: mira
+`Sistema.avisos_de_carretera`.
+
+Un detalle de la misma familia: las cuatro entradas de una franja tienen que
+ser cuatro colores **distintos** en 24 bits, o el cuantizador de paletas las
+junta en una y no queda nada que rotar. Se separan un punto de azul, y ese
+punto se ancla dentro de un escalón de la máquina (`_azul_para_separar` en
+`build.py`) para que no caiga justo en una frontera y aparezca como una raya
+que no tenía que estar.
+
 ## Cómo suena
 
 La Mega Drive tiene dos chips: el YM2612 (FM), que en la práctica maneja el
