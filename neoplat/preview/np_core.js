@@ -20,6 +20,8 @@
   var MAX_ANCHO = 64;       /* lo mas ancha que puede ser una calzada, en casillas */
   var CARRETERA_FRANJAS = 4;
   var CARRETERA_MARGEN = 14;   /* lo que se deja bajo el coche */
+  var MELENA_MAX = 5;
+  var CARRETERA_LADEO = 6;
   var SUBSTEP = 8 * FIX_ONE;
   var ENTITY_FALL = 8 * FIX_ONE;
   var DYING_TIME = 60, LEVEL_END_TIME = 90, GAME_OVER_TIME = 240;
@@ -1676,7 +1678,7 @@
   World.prototype.carreteraCoche = function (quien) {
     var a = this.data.player.actor, p = this.players[quien];
     var ancho = a.cols * TILE, alto = a.rows * TILE;
-    var centro = idiv(SCREEN_W, 2) + p.ladeo * 3;
+    var centro = idiv(SCREEN_W, 2) + p.ladeo * CARRETERA_LADEO;
     if (this.data.players > 1) centro += quien ? ancho : -ancho;
     return [centro - idiv(ancho, 2), SCREEN_H - CARRETERA_MARGEN - alto];
   };
@@ -1801,7 +1803,14 @@
     if (p.attackCd) p.attackCd--;
 
     animSet(p, p.trompo ? ANIM_HURT : (dir ? ANIM_RUN : ANIM_IDLE));
-    animTick(a, p);
+    /* La melena de ella se pasa mas deprisa cuanto mas corre el coche: parada
+       no se mueve, a tope va suelta. Igual que en np_player_update_carretera. */
+    if (p.trompo) {
+      animTick(a, p);
+    } else {
+      var veces = 1 + idiv(velocidad * MELENA_MAX, this.data.coche.punta + 1);
+      while (veces-- > 0) animTick(a, p);
+    }
   };
 
   /* ------------------------------------------------------- el agarre

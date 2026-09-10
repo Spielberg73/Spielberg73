@@ -2614,7 +2614,25 @@ static void np_player_update_carretera(NpWorld *w, uint8_t quien, uint16_t input
        quieto, asi que un juego sin arte propio se ve raro pero se juega. */
     np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer,
                 p->trompo ? NP_ANIM_HURT : (dir ? NP_ANIM_RUN : NP_ANIM_IDLE));
-    np_anim_tick(a, p->anim, &p->anim_frame, &p->anim_timer);
+    /* Y aqui la melena.
+     *
+     * Los fotogramas de ir recto son la melena de ella en tres posiciones, y
+     * **no se pasan a un ritmo fijo**: se pasan mas deprisa cuanto mas corre
+     * el coche. Parado no se mueve; a tope va suelta. Es un detalle tonto y es
+     * la mitad de la sensacion de velocidad, porque el coche, en pantalla, no
+     * se mueve del sitio: lo unico que dice a que vas son la carretera que
+     * pasa por debajo y el pelo.
+     *
+     * Se hace llamando al reloj de la animacion varias veces, que es lo mismo
+     * que ir mas deprisa y no obliga a que el motor sepa nada de melenas. En
+     * trompo va a su ritmo: ahi lo que pasa es otra cosa. */
+    if (p->trompo) {
+        np_anim_tick(a, p->anim, &p->anim_frame, &p->anim_timer);
+    } else {
+        int32_t veces = 1 + (velocidad * NP_MELENA_MAX) / (np_coche.punta + 1);
+        while (veces-- > 0)
+            np_anim_tick(a, p->anim, &p->anim_frame, &p->anim_timer);
+    }
 }
 
 static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
@@ -4259,7 +4277,7 @@ void np_carretera_coche(const NpWorld *w, uint8_t quien,
     int32_t alto = a->rows * NP_TILE;
     /* Centrado, apoyado sobre el borde de abajo con un margen, y ladeado tres
        pixeles hacia donde gira el volante. A dos jugadores, uno a cada lado. */
-    int32_t centro = NP_SCREEN_W / 2 + p->ladeo * 3;
+    int32_t centro = NP_SCREEN_W / 2 + p->ladeo * NP_CARRETERA_LADEO;
     if (np_player_count > 1) centro += quien ? ancho : -ancho;
     *sx = centro - ancho / 2;
     *sy = NP_SCREEN_H - NP_CARRETERA_MARGEN - alto;

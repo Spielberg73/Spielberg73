@@ -3552,13 +3552,17 @@ carretera:
 
 jugador:
   sprite: graficos/coche.png
-  frame: [16, 16]
-  caja: [12, 12]
+  frame: [64, 32]
+  caja: [40, 14]       # la caja es el coche, no el aire de encima
   vida: 1
   animaciones:
-    quieto: {{frames: [0]}}      # recto
-    correr: {{frames: [1]}}      # girando
-    dano:   {{frames: [2]}}      # el trompo
+    # Los tres primeros son ir recto con **la melena de ella** en sus tres
+    # posiciones, y los tres siguientes lo mismo girando. La melena no corre
+    # a un ritmo fijo: se pasa mas deprisa cuanto mas corre el coche, asi que
+    # parado no se mueve y a tope va suelta.
+    quieto: {{frames: [0, 1, 2], velocidad: 6}}
+    correr: {{frames: [0, 1, 2], velocidad: 6}}   # girando, la melena sigue
+    dano:   {{frames: [3]}}      # el trompo
 
 enemigos:
   # El trafico: coches que van a lo suyo, por su carril y a su velocidad. No
@@ -3566,8 +3570,8 @@ enemigos:
   # lado pasarlos.
   rival:
     sprite: graficos/rival.png
-    frame: [16, 16]
-    caja: [12, 12]
+    frame: [64, 32]
+    caja: [40, 14]
     comportamiento: trafico
     velocidad: 2.6
     vida: 99

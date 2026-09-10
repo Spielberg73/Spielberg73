@@ -448,9 +448,10 @@ void np_video_frame(const NpWorld *w)
         {
             int32_t cx, cy;
             np_carretera_coche(w, i, &cx, &cy);
+            /* Sin espejo: el coche se ve de culo y espejarlo cambiaria
+               de asiento a los dos que van dentro. */
             np_dibujar_actor(def, cx, cy,
-                             np_actor_frame(def, p->anim, p->anim_frame),
-                             (uint8_t)!p->facing);
+                             np_actor_frame(def, p->anim, p->anim_frame), 0);
         }
 #else
         np_dibujar_actor(def, NP_F2I(p->x) - def->box_x - w->cam_x,

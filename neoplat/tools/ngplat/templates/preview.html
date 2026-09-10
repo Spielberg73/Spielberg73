@@ -1159,8 +1159,10 @@
     /* Donde va lo dice el motor (np_carretera_coche), para que caiga en el
        mismo pixel aqui y en las ocho maquinas. */
     var sitio = world.carreteraCoche(quien);
+    /* Sin espejo: el coche se ve de culo y espejarlo cambiaria de asiento a
+       los dos que van dentro. Igual que en las maquinas. */
     drawFrame(def.sheet, NPCore.actorFrame(def, p.anim, p.animFrame),
-              sitio[0], sitio[1], !p.facing);
+              sitio[0], sitio[1], false);
   }
 
   function drawPlayer() {

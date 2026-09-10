@@ -119,6 +119,15 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
 /* Lo que se deja por debajo del coche del jugador: el morro no pega con el
  * borde de la pantalla, que quedaria raro, ni tapa la carretera de delante. */
 #define NP_CARRETERA_MARGEN 14
+/* Cuanto mas deprisa pasa la animacion del coche cuando va a tope. A cero, la
+ * melena de ella iria siempre al mismo ritmo -y parada tambien-, que es
+ * justo lo que no se quiere: lo que dice a que velocidad vas, con el coche
+ * clavado en el centro de la pantalla, son la carretera y el pelo. */
+#define NP_MELENA_MAX 5
+/* Lo que se corre el coche a un lado al girar el volante. Es lo unico que dice
+ * que estas girando, porque el coche se ve de culo y no se puede espejar sin
+ * cambiar de asiento a los dos que van dentro. */
+#define NP_CARRETERA_LADEO 6
 
 /* --- la vista isometrica (los juegos de tipo filmation) ------------------
  *
