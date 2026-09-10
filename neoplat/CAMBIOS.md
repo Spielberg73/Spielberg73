@@ -2,8 +2,33 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.33.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.34.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.34
+
+**Los coches del Amiga sí salían.** La 1.33 decía que en el Amiga se veía la
+carretera pero no los coches encima. No era verdad: se dibujan bien. Lo que
+pasaba es que el coche **parpadea** mientras el jugador es invulnerable
+—`np_player_visible` lo apaga cada dos frames, igual que en las ocho máquinas—
+y en esa vuelta sin volante el coche se estrellaba contra el arcén sin parar.
+Medido ahora: sale en 10 de 20 frames en el Amiga y en 20 de 20 en la Mega
+Drive, donde en esa misma prueba no llegaba a chocar. Corregidas la nota del
+código, la de `docs/amiga.md` y la del CAMBIOS.
+
+Vale la pena decir cómo se cerró, porque el error fue de método: al buscar el
+coche en la captura estaba mirando dos filas de píxeles por encima de donde
+cae, y con eso «no está» y «está y parpadea» se parecen mucho. Se acabó
+imprimiendo `cx` y `cy` **en el propio marcador del juego** con
+`np_hud_number`, que es la manera más corta que hay de que una máquina de 1985
+te diga lo que está pensando.
+
+**Y un tope en el borde de la calzada.** El desplazamiento de la imagen se
+queda ahora a una casilla de los extremos en vez de pegarse a ellos. Queda
+anotado el escaloncito que sigue viéndose en las curvas más cerradas —el
+scroll fino retrasa el plano y esos píxeles no se han leído— y cuál es su
+arreglo de verdad: leer una palabra de más por línea. No se hace de paso
+porque toca los dos planos y todos los géneros.
 
 ## 1.33
 

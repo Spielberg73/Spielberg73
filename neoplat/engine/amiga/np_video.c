@@ -84,13 +84,16 @@ static uint8_t np_abiertos_pintados;
 #if NP_VISTA_CARRETERA
 /* --- la carretera, linea a linea ----------------------------------------
  *
- * ESTADO: la carretera se dibuja bien -comprobado en un A500 emulado con
- * AROS: la calzada en perspectiva, la curva, las franjas corriendo y la raya
- * discontinua-. Lo que **todavia no sale** son los coches encima. Estan
- * pintados en el plano de delante (np_bitmap) y ese plano no se ve en la zona
- * del juego, aunque el marcador -que es el mismo plano, con otro puntero- si.
- * Comprobado que no es np_player_visible ni el sitio donde cae el coche:
- * forzandolo a un pixel fijo tampoco aparece. Queda por mirar.
+ * Comprobado en un A500 emulado con AROS: la calzada en perspectiva, la curva,
+ * las franjas corriendo, la raya discontinua y los coches encima.
+ *
+ * Queda un detalle de borde: en una curva cerrada, los pixeles de la
+ * izquierda que el scroll fino retrasa no se han leido -la DMA empieza en el
+ * puntero- y ahi se ve lo ultimo de la linea de arriba, un escaloncito de
+ * hasta quince pixeles pegado al borde. Se arregla leyendo una palabra de mas
+ * por linea (DDFSTRT un paso antes y los modulos y los punteros dos bytes
+ * menos), pero eso lo tocan los dos planos y todos los generos, asi que no se
+ * hace de paso.
  *
  *
  * Conduciendo, la lista del copper lleva una seccion mas: una entrada por
@@ -604,8 +607,13 @@ static int32_t np_carretera_columna(uint16_t y, uint16_t horizonte)
     int32_t off;
     if (y < horizonte) return 0;
     off = NP_CARRETERA_EJE - np_carretera_centro[y];
-    if (off < 0) off = 0;
-    if (off > NP_CARR_MARGEN) off = NP_CARR_MARGEN;
+    /* Y el tope no es 0 ni el margen entero, sino 16 pixeles por dentro. El
+       scroll fino **retrasa** el plano: pegado al borde, esos pixeles de
+       retraso no tienen de donde salir y en pantalla aparece un escaloncito
+       con lo que hubiera antes. Dejando una casilla de margen a cada lado
+       siempre hay imagen de donde tirar. */
+    if (off < NP_TILE) off = NP_TILE;
+    if (off > NP_CARR_MARGEN - NP_TILE) off = NP_CARR_MARGEN - NP_TILE;
     return off;
 }
 

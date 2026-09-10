@@ -604,12 +604,16 @@ elegante: es la diferencia entre arrancar y no arrancar. Con la ventana ancha,
 AROS contesta **`file is not executable`** y se queda en el shell, que es lo
 que dice AmigaDOS cuando LoadSeg no encuentra sitio.
 
-### Lo que todavía no está
+### Un detalle de borde
 
-La carretera se ve, pero **los coches encima no**. Están pintados en el plano
-de delante y ese plano no sale en la zona del juego, aunque el marcador —que es
-el mismo plano, con otro puntero— sí. Descartado que sea dónde cae el coche o
-la comprobación de visibilidad. Está anotado en `engine/amiga/np_video.c`.
+En una curva cerrada se ve un escaloncito de hasta quince píxeles pegado al
+borde izquierdo. Es el scroll fino: retrasa el plano, y esos píxeles de retraso
+no se han leído —la DMA empieza en el puntero—, así que ahí se ve lo último de
+la línea de arriba.
+
+Se arregla leyendo **una palabra de más por línea**: `DDFSTRT` un paso antes y
+los módulos y los punteros dos bytes menos. Es la receta de siempre, pero toca
+los dos planos y todos los géneros, así que no se ha hecho de paso.
 
 ## Si algo se ve raro
 
