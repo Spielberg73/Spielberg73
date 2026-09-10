@@ -47,6 +47,12 @@ class Sistema:
     """Interfaz que implementa cada maquina."""
 
     nombre = "generico"
+    # Si esta maquina ya sabe dibujar la carretera en perspectiva de un juego
+    # de conducir. Las que no, compilan el juego igual y se juega igual, pero
+    # en pantalla sale el mapa -el trazado- en vez de la carretera, y el
+    # compilador lo dice al compilar en vez de dejar que se descubra al
+    # arrancar la ROM.
+    dibuja_carreteras = False
     titulo = "sistema generico"
     cpu = "68000"
     pantalla: Tuple[int, int] = (320, 224)
@@ -75,6 +81,21 @@ class Sistema:
     def comprobar(self, build: Build) -> List[str]:
         """Avisos propios del sistema (o ProjectError si algo no cabe)."""
         return []
+
+    @staticmethod
+    def dibuja_el_mapa(build: Build) -> bool:
+        """Si esta maquina va a pintar el mapa del nivel en el fondo.
+
+        En nueve generos de diez, si: el mapa **es** el escenario. En un juego
+        de conducir, no: ahi el mapa es el trazado de la carretera -por donde
+        pasa y donde esta la hierba- y lo que se ve es la carretera en
+        perspectiva, que es otra imagen. El mapa se sigue pisando casilla a
+        casilla, pero no se dibuja ni una.
+
+        Sirve para no aplicar a un circuito los limites del plano de fondo:
+        un trazado de ciento setenta filas no cabe en el plano de la Mega
+        Drive, y no hace ninguna falta que quepa."""
+        return build.project.view != "carretera"
 
     def aviso_de_muestras(self, build: Build, porque: str) -> List[str]:
         """El aviso de los efectos que en esta maquina no van a sonar.

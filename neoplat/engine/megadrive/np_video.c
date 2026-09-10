@@ -234,6 +234,101 @@ static void np_dibujar_actor(const NpActorDef *def, int32_t x, int32_t y,
     }
 }
 
+#if NP_VISTA_CARRETERA
+/* --- la carretera ------------------------------------------------------
+ *
+ * Aqui no se dibuja la carretera: se **desliza**. La carretera es una imagen
+ * que trae hecha el compilador -la calzada en perspectiva, recta y centrada,
+ * de 512 pixeles de ancho- y que se pinta en el plano B una sola vez al
+ * empezar el nivel. A partir de ahi, en cada frame solo se escribe la tabla
+ * de scroll horizontal: una entrada por linea de pantalla, la que dice por
+ * donde pasa el eje de la calzada ahi.
+ *
+ * Eso es todo el dibujado de un juego de conducir en esta maquina. El VDP
+ * tiene scroll por linea de serie -registro 0x0B a 11- y la tabla son 224
+ * palabras que caben justo en el hueco que ya tenia reservado. No hay ni un
+ * tile que rehacer por frame.
+ *
+ * Y las franjas que corren hacia ti tampoco se dibujan: la imagen lleva
+ * cuatro y lo que se mueve son **cuatro colores de la paleta**, que en esta
+ * maquina son cuatro palabras a CRAM. */
+
+/* Pinta la imagen de la carretera en el plano B. Se hace una vez por nivel. */
+static void np_pintar_carretera(void)
+{
+    const NpLayer *capa = &np_layers[np_carretera_capa];
+    uint16_t columna, fila;
+    for (columna = 0; columna < MD_PLANE_W; columna++) {
+        uint16_t origenX = (uint16_t)((columna / 2) % capa->cols);
+        for (fila = 0; fila < MD_PLANE_H; fila++) {
+            uint16_t celda = 0;
+            uint16_t origenY = (uint16_t)(fila / 2);
+            if (origenY < capa->rows) {
+                uint16_t base = capa->tiles[origenY * capa->cols + origenX];
+                uint16_t trozo = (uint16_t)((columna & 1) * 2 + (fila & 1));
+                celda = MD_CELDA(base + trozo, capa->palette, 0);
+            }
+            np_celda(MD_PLANE_B, columna, fila, celda);
+        }
+    }
+}
+
+/* Las cuatro entradas de paleta de cada cosa -calzada, arcen, hierba- rotadas
+ * un paso. Con eso las franjas corren hacia ti sin mover un pixel.
+ *
+ * Los colores viven en la paleta de la capa; se leen de np_palettes tal cual y
+ * se vuelven a escribir corridos. Cuales son los cuatro huecos de cada cosa lo
+ * sabe el compilador y lo deja en np_carretera_huecos. */
+static void np_paleta_carretera(uint8_t fase)
+{
+    const uint8_t *huecos = np_carretera_huecos;
+    const uint16_t *paleta = np_palettes[np_layers[np_carretera_capa].palette];
+    uint8_t grupo, i;
+    for (grupo = 0; grupo < NP_CARRETERA_GRUPOS; grupo++) {
+        const uint8_t *cuatro = &huecos[grupo * NP_CARRETERA_FRANJAS];
+        for (i = 0; i < NP_CARRETERA_FRANJAS; i++) {
+            uint8_t destino = cuatro[i];
+            uint8_t origen = cuatro[(i + fase) & (NP_CARRETERA_FRANJAS - 1)];
+            uint16_t direccion = (uint16_t)(
+                (np_layers[np_carretera_capa].palette * 16 + destino) * 2);
+            np_md_vram_addr(MD_ADDR(MD_CRAM_WRITE, direccion));
+            *MD_VDP_DATA = paleta[origen];
+        }
+    }
+}
+
+/* La tabla de scroll por linea: una palabra por linea de pantalla.
+ *
+ * El VDP mueve el plano, asi que lo que hay que escribir es lo **contrario**
+ * de donde queremos que caiga la carretera: la imagen tiene el eje en su
+ * columna 256, y si el eje tiene que salir en la columna `centro` de la
+ * pantalla, el plano se corre centro - 256. */
+static int16_t np_carretera_centro[NP_SCREEN_H];
+
+static void np_scroll_carretera(const NpWorld *w)
+{
+    uint16_t horizonte = np_carretera(w, np_carretera_centro);
+    uint16_t y;
+    /* La carretera no sube ni baja: los dos planos, a cero.
+       Y hay que escribirlo **a proposito**, no darlo por hecho: el arranque
+       pone a cero la VRAM, pero la VSRAM no la toca nadie, asi que al saltarse
+       np_scroll el plano de la carretera se quedaba con el scroll vertical que
+       hubiera de antes -basura- y en pantalla salia una franja cualquiera de
+       la imagen. Que casi siempre es hierba, que es justo lo que se veia. */
+    np_md_vram_addr(MD_ADDR(MD_VSRAM_WRITE, 0));
+    *MD_VDP_DATA = 0;
+    *MD_VDP_DATA = 0;
+    np_md_vram_addr(MD_ADDR(MD_VRAM_WRITE, MD_HSCROLL));
+    for (y = 0; y < NP_SCREEN_H; y++) {
+        int16_t desplaza = 0;
+        if (y >= horizonte)
+            desplaza = (int16_t)(np_carretera_centro[y] - NP_CARRETERA_EJE);
+        *MD_VDP_DATA = 0;                 /* el plano A no se usa aqui */
+        *MD_VDP_DATA = (uint16_t)desplaza;
+    }
+}
+#endif /* NP_VISTA_CARRETERA */
+
 /* --- un frame ---------------------------------------------------------- */
 
 void np_video_frame(const NpWorld *w)
@@ -247,6 +342,22 @@ void np_video_frame(const NpWorld *w)
     int32_t columna = w->cam_x >> 4;
     uint8_t i;
 
+#if NP_VISTA_CARRETERA
+    /* Conduciendo, el escenario **no se dibuja**: el mapa es el trazado de la
+       carretera, no lo que se ve. Lo que hay en el plano B es la carretera en
+       perspectiva, y en cada frame solo se desliza. */
+    if (w->level != ultimo_nivel) {
+        ultimo_nivel = w->level;
+        np_color_de_fondo(w->level->background);   /* el cielo */
+        np_pintar_carretera();
+        np_md_reg(0x0B, 0x03);      /* modo 3: scroll horizontal por linea */
+    }
+    np_scroll_carretera(w);
+    np_paleta_carretera(np_carretera_fase(w));
+    (void)ultima_columna;
+    (void)ultimos_abiertos;
+    (void)columna;
+#else
     if (w->level != ultimo_nivel || w->abiertos_n != ultimos_abiertos) {
         int32_t c;
         ultimo_nivel = w->level;
@@ -268,6 +379,7 @@ void np_video_frame(const NpWorld *w)
     }
 
     np_scroll(w);
+#endif /* NP_VISTA_CARRETERA */
 
     /* De mas lejos a mas cerca: en la vista de cinta los actores se pisan a
        cada rato y hay que pintarlos por la linea del suelo. En las demas

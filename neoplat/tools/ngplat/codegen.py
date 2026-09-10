@@ -20,6 +20,7 @@ from .build import (
     enemy_shot_values, generator_values, prisoner_values, sub_values,
     tile_tables,
 )
+from . import carretera as carretera_mod
 from .build import coche_values
 from .fixed import FIXED_ONE
 from .paths import ENGINE_DIR, TEMPLATES_DIR
@@ -126,6 +127,11 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     # con eso se pasaba, y un juego que se pasa del frame va a la mitad.
     header.append("#define NP_VISTA_CARRETERA %d"
                   % (1 if project.view == "carretera" else 0))
+    # La columna de la imagen de la carretera por la que pasa el eje de la
+    # calzada, y cuantos grupos de cuatro franjas hay (calzada, arcen, hierba).
+    header.append("#define NP_CARRETERA_EJE %d" % (carretera_mod.ANCHO // 2))
+    header.append("#define NP_CARRETERA_GRUPOS 3")
+    header.append("extern const uint8_t np_carretera_huecos[];")
     header.append("#define NP_LAYER_COUNT %d" % len(build.layers))
     header.append("#define NP_MUSIC_COUNT %d" % len(build.music_order))
     header.append("#define NP_SOUND_ENABLED %d"
@@ -581,6 +587,23 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
         )
     src.append("};")
     src.append("const uint16_t np_layer_count = %d;" % len(build.layers))
+    # Cual de las capas es la carretera. Va aqui y no en un sitio propio
+    # porque la carretera **es** una capa: la dibuja el compilador y cada
+    # maquina la convierte con lo que ya sabia hacer. -1 = este juego no
+    # conduce.
+    src.append("/* La capa que lleva la carretera en perspectiva, o -1. */")
+    src.append("const int16_t np_carretera_capa = %d;"
+               % (build.layers.index(build.asfalto) if build.asfalto else -1))
+    # Y los huecos de paleta de las cuatro franjas de cada cosa, seguidos:
+    # calzada, arcen y hierba. Rotarlos un paso por frame es lo que hace correr
+    # las rayas hacia el jugador, y son cuatro escrituras de color por grupo.
+    huecos = []
+    for grupo in (build.asfalto.franjas if build.asfalto else []):
+        huecos.extend(grupo)
+    src.append("/* Los huecos de paleta de las franjas: calzada, arcen y")
+    src.append("   hierba, cuatro de cada. Rotarlos hace correr las rayas. */")
+    src.append("const uint8_t np_carretera_huecos[] = { %s };"
+               % (", ".join(str(h) for h in huecos) or "0"))
     src.append("")
 
     # --- niveles

@@ -124,8 +124,10 @@ def textura(ancho_via: int, colores, ancho_arcen: int = 8) -> Image:
         base = y * ANCHO
         hierba = colores["hierba"][franja]
         if medio <= 0:
-            for x in range(ANCHO):
-                px[base + x] = hierba
+            # Por encima del horizonte no hay carretera **ni hierba**: se deja
+            # transparente para que se vea el cielo, que es el color de fondo
+            # del nivel. Asi el cielo se cambia desde el game.yaml sin tocar la
+            # imagen, y ademas no gasta ni un tile.
             continue
         asfalto = colores["asfalto"][franja]
         arcen = colores["arcen"][franja]

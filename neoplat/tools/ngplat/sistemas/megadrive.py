@@ -31,6 +31,8 @@ class MegaDrive(Sistema):
     nombre = "megadrive"
     toca_muestras = True          # el Z80 se las da al DAC del YM2612
     titulo = "Sega Mega Drive / Genesis"
+    # la dibuja con el scroll por linea del VDP: ver np_video.c
+    dibuja_carreteras = True
     cpu = "68000 a 7,6 MHz"
     pantalla = (320, 224)
     limites = Limites(colores_por_paleta=16, paletas=4, sprites=80,
@@ -82,6 +84,16 @@ class MegaDrive(Sistema):
             mapa = reparto.asignacion[nombre][1]
             return [mapa.get(v, 0) for v in tile]
 
+        # En un juego de conducir el escenario no se pinta, asi que el plano A
+        # se queda entero con la celda cero... y la celda cero **no es
+        # transparente**: es el tile 0, que es el primer dibujo que se guarde.
+        # Con eso, el plano A tapa la carretera entera con un color plano (la
+        # primera vez salio una pantalla de hierba de arriba abajo). Se reserva
+        # el tile 0 en blanco y el problema desaparece sin tocar el dibujante:
+        # el plano A pasa a ser transparente por defecto.
+        if not self.dibuja_el_mapa(build):
+            vram.anadir_16([0] * 256, compartir=False)
+
         # 2) los dibujos, ya con los colores recolocados
         base_tileset = None
         for tile in build.tileset.tiles:
@@ -132,6 +144,15 @@ class MegaDrive(Sistema):
             capa.tiles = [numeros[i] for i in capa.tiles]
             capa.palette_index = reparto.asignacion[capa.palette.name][0]
             capa.dibujos = []
+            # Los huecos de las franjas de la carretera hay que recolocarlos
+            # **igual que los dibujos**: aqui las paletas del juego se fusionan
+            # en las cuatro del VDP y los colores cambian de sitio. Sin esto,
+            # rotar la paleta escribe colores en huecos que no son y la
+            # carretera se pinta entera del color de la hierba (que es justo
+            # lo que salio la primera vez que se arranco la ROM).
+            mapa = reparto.asignacion[capa.palette.name][1]
+            capa.franjas = [[mapa.get(v, 0) for v in grupo]
+                            for grupo in capa.franjas]
 
         # 3) la fuente del marcador: tiles de 8x8, uno por caracter
         fuente_paleta = reparto.asignacion["hud"][0]
@@ -180,7 +201,7 @@ class MegaDrive(Sistema):
     def comprobar(self, build: Build) -> List[str]:
         avisos: List[str] = []
         for nivel in build.levels:
-            if nivel.height > 32:
+            if nivel.height > 32 and self.dibuja_el_mapa(build):
                 self.error(
                     "el nivel '%s' tiene %d casillas de alto y en la Mega Drive el "
                     "plano de fondo llega a 32" % (nivel.name, nivel.height),

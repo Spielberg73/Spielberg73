@@ -180,6 +180,12 @@ def build_data(build: Build) -> Dict[str, object]:
 
     layers = []
     for i, layer in enumerate(build.layers):
+        # La capa de la carretera no viene de ningun archivo: la dibuja el
+        # compilador. Y el preview tampoco la necesita, porque ahi la carretera
+        # se pinta linea a linea -en el navegador se puede- con la misma cuenta
+        # que uso el compilador para la imagen. Ver drawCarretera.
+        if not layer.layer.image:
+            continue
         nombre = "layer%d" % i
         sheets[nombre] = _sheet_entry(
             os.path.join(project.root, layer.layer.image), 16, 16, sistema,

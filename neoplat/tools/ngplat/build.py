@@ -57,6 +57,10 @@ class LayerBuild:
     palette_index: int = 0
     frames: int = 0                  # dibujos distintos
     palette: object = None           # gfx.Palette de la capa
+    # Solo la capa de la carretera: en que huecos de la paleta estan las cuatro
+    # franjas de la calzada, del arcen y de la hierba. Rotarlas es lo que hace
+    # que las rayas corran hacia ti. Ver carretera.py.
+    franjas: List[List[int]] = field(default_factory=list)
     dibujos: List[List[int]] = field(default_factory=list)   # indices de paleta
 
 
@@ -331,7 +335,17 @@ def _capa_de_carretera(project: Project) -> LayerBuild:
     imagen = carretera_mod.textura(medio, colores, col.ancho_arcen)
     capa = Layer(name="__carretera__", image="", speed_x=1.0, speed_y=0.0,
                  offset_y=0, repeat=True)
-    return _trocear_capa(capa, imagen, "carretera")
+    build = _trocear_capa(capa, imagen, "carretera")
+    # Y en que huecos de la paleta han caido las cuatro franjas de cada cosa.
+    # Es lo unico que necesita una maquina para hacer correr las rayas: rotar
+    # esos cuatro colores un paso por frame. Sin esto habria que buscarlos en
+    # la maquina, y buscar colores en un 68000 en mitad de un frame no es
+    # forma de gastar un frame.
+    build.franjas = [
+        [build.palette.index_of(c[:3]) for c in colores[nombre]]
+        for nombre in ("asfalto", "arcen", "hierba")
+    ]
+    return build
 
 
 def _sin_table() -> List[int]:
@@ -382,9 +396,15 @@ def build_project(project: Project) -> Build:
     ]
     layer_index = {layer.name: i for i, layer in enumerate(layers)}
     # La carretera de un juego de conducir: la dibuja el compilador y entra
-    # como una capa mas, asi que las ocho maquinas la convierten con lo que ya
-    # sabian hacer. En los demas generos no se genera y no ocupa nada.
-    asfalto = _capa_de_carretera(project) if project.view == "carretera" else None
+    # **en la lista de capas**, no aparte. Con eso, las ocho maquinas ya le
+    # reparten paleta y le empaquetan los tiles sin que haya que tocar ni una:
+    # lo unico que queda por escribir en cada una es deslizarla, que es lo
+    # suyo. Ningun nivel la lleva en su lista, asi que nadie la pinta de
+    # parallax por error. En los demas generos no se genera y no ocupa nada.
+    asfalto = None
+    if project.view == "carretera":
+        asfalto = _capa_de_carretera(project)
+        layers.append(asfalto)
 
     player = _load_actor(project.player, "jugador", project.root)
     enemies = [

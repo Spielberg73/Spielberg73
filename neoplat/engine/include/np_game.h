@@ -505,6 +505,11 @@ extern const uint8_t np_vista_puntero;
    puede tomar. Eso es todo el genero. */
 extern const uint8_t np_vista_carretera;
 
+/* La capa que lleva la carretera en perspectiva, o -1 en los otros nueve
+   generos. La dibuja el compilador -no la maquina- y entra como una capa mas,
+   asi que se convierte con lo mismo que las de parallax. Ver carretera.py. */
+extern const int16_t np_carretera_capa;
+
 /* El coche: lo que hace que conducir se note. Son las unicas cifras del
    genero, y salen del game.yaml.
 

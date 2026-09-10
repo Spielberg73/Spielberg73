@@ -55,11 +55,12 @@ def _cargar(ruta: str, sistema_nombre: str = ""):
     # -y el preview la pinta- pero los ocho dibujantes siguen pintando el mapa,
     # que en este genero es el trazado y no lo que se ve. Mas vale decirlo aqui
     # que dejar que alguien monte una ROM y se encuentre una pantalla de tiles.
-    if project.view == "carretera":
-        _aviso("la vista de carretera todavia no la dibuja ninguna maquina: "
-               "el juego compila y se juega igual, pero en la ROM se vera el "
-               "mapa (el trazado) en vez de la carretera. En el navegador "
-               "-'ngplat probar'- se ve como tiene que verse.")
+    if project.view == "carretera" and not sistema.dibuja_carreteras:
+        _aviso("%s todavia no dibuja la carretera: el juego compila y se juega "
+               "igual, pero se vera el mapa (el trazado) en vez de la "
+               "carretera. En el navegador -'ngplat probar'- y en las maquinas "
+               "que ya la dibujan se ve como tiene que verse."
+               % sistema.titulo)
     build = build_project(project)
     sistema.preparar(build)
     for aviso in sistema.comprobar(build):
