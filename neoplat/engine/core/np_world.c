@@ -675,7 +675,6 @@ static void np_player_reset(NpWorld *w, uint8_t quien)
     p->stairs = 0;
     p->trepa = 0;
     p->balanceo = 0;
-    p->bal_espera = 0;
     p->stair_dir = 1;
     p->marcha = 0;              /* el coche sale de parado, con la corta */
     p->trompo = 0;
@@ -829,7 +828,6 @@ static void np_player_hurt(NpWorld *w, uint8_t quien, uint8_t damage)
     p->stairs = 0;              /* un golpe te tira de la escalera */
     p->trepa = 0;               /* y de la liana de trepar */
     p->balanceo = 0;            /* y de la de balancearse, claro */
-    p->bal_espera = 0;
 }
 
 /* La vida que se gasta sola.
@@ -1549,21 +1547,29 @@ static void np_ride_update(NpWorld *w, uint8_t quien, np_fix antes_y, int soltar
     for (i = 0; i < w->entity_count; i++) {
         NpEntity *e = &w->entities[i];
         const NpActorDef *ea;
-        if (!e->active) continue;
 #if NP_HAY_COCODRILOS
-        /* Y un cocodrilo con la boca cerrada, que a efectos de pisarle la
-           cabeza es una plataforma que se abre sola. */
+        /* Un cocodrilo con la boca cerrada es, a efectos de pisarle la cabeza,
+           una plataforma que se abre sola. */
+        if (!e->active) continue;
         if (e->kind == NP_KIND_ENEMY) {
             const NpEnemyDef *ed = &np_enemies[e->def];
             if (ed->behavior != NP_AI_COCODRILO || np_coco_abierto(ed, e))
                 continue;
             ea = &ed->actor;
-        } else
-#endif
-        {
+        } else {
             if (e->kind != NP_KIND_PLATFORM) continue;
             ea = &np_platforms[e->def].actor;
         }
+#else
+        /* Sin cocodrilos, la pregunta vuelve a ser una sola y el bucle queda
+           **exactamente** como estaba. No es cosmetico: este bucle se recorre
+           entero por jugador y por frame, y partir la pregunta en dos le
+           costaba 2000 ciclos por frame a la Neo Geo -de los 200000 que da-
+           aunque el juego no tuviera un solo cocodrilo. Medido: 198746 con la
+           pregunta junta y 200746 partida. */
+        if (!e->active || e->kind != NP_KIND_PLATFORM) continue;
+        ea = &np_platforms[e->def].actor;
+#endif
         if (p->x + NP_I2F(a->box_w) <= e->x) continue;
         if (e->x + NP_I2F(ea->box_w) <= p->x) continue;
         if (pies_antes > e->y) continue;                   /* venia por debajo */
@@ -2084,7 +2090,7 @@ static NP_APARTE void np_balanceo_paso(NpWorld *w)
             NpPlayer *p = &w->players[q];
             const NpActorDef *a = &np_player_def.actor;
             np_fix px, py;
-            if (p->balanceo != (uint8_t)(i + 1)) continue;
+            if (p->balanceo != (int8_t)(i + 1)) continue;
             np_bal_punta(e, largo, &px, &py);
             p->x = px - NP_I2F(a->box_w / 2);
             p->y = py;
@@ -2126,7 +2132,7 @@ static void np_bal_coger(NpWorld *w, uint8_t quien)
     NpPlayer *p = &w->players[quien];
     uint8_t i;
 
-    if (p->balanceo || p->bal_espera || p->on_ground || p->dying) return;
+    if (p->balanceo || p->on_ground || p->dying) return;
     for (i = 0; i < w->entity_count; i++) {
         NpEntity *e = &w->entities[i];
         const NpEnemyDef *d;
@@ -2139,7 +2145,7 @@ static void np_bal_coger(NpWorld *w, uint8_t quien)
         /* Se coge por la punta, que es lo que cuelga: media casilla alrededor. */
         if (NP_ABS(px - (p->x + NP_I2F(a->box_w / 2))) > NP_I2F(NP_TILE)) continue;
         if (NP_ABS(py - p->y) > NP_I2F(NP_TILE)) continue;
-        p->balanceo = (uint8_t)(i + 1);
+        p->balanceo = (int8_t)(i + 1);
         p->trepa = 0;
         p->stairs = 0;
         /* la carrerilla se le pasa al pendulo */
@@ -2159,12 +2165,11 @@ static void np_bal_soltar(NpWorld *w, uint8_t quien, int con_salto)
     const NpEnemyDef *d;
     np_fix largo;
 
-    if (!p->balanceo) return;
+    if (p->balanceo <= 0) return;   /* o no cuelga de nada, o esta esperando */
     e = &w->entities[p->balanceo - 1];
     d = &np_enemies[e->def];
     largo = d->range ? (np_fix)NP_I2F(d->range) : NP_I2F(NP_BAL_LARGO);
-    p->balanceo = 0;
-    p->bal_espera = NP_BAL_ESPERA;
+    p->balanceo = -NP_BAL_ESPERA;   /* en negativo: los frames de espera */
     /* La punta va perpendicular a la cuerda: en x con el coseno y en y con el
        seno, los dos por la velocidad angular y por el largo. */
     p->vx = (np_fix)((((largo * np_bal_coseno(e->vx)) >> NP_FIX_SHIFT) * e->vy)
@@ -3030,8 +3035,8 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
      * decide es cuando soltarse. Con saltar se sale con el impulso que llevaba
      * la punta -eso es cruzar el agujero- y con abajo se suelta a plomo, que
      * es como se baja a lo que haya debajo. */
-    if (p->bal_espera) p->bal_espera--;
-    if (p->balanceo) {
+    if (p->balanceo < 0) p->balanceo++;      /* se acaba la espera */
+    if (p->balanceo > 0) {
         p->crouch = 0;
         np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer, NP_ANIM_JUMP);
         if ((input & NP_IN_JUMP) && !(w->prev_input[quien] & NP_IN_JUMP))
@@ -3042,7 +3047,7 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
             return;                 /* la liana ya le ha puesto donde toca */
     } else if (!p->stun) {
         np_bal_coger(w, quien);
-        if (p->balanceo) return;
+        if (p->balanceo > 0) return;
     }
 #endif
 
@@ -3689,8 +3694,15 @@ static void np_enemy_update(NpWorld *w, NpEntity *e)
            dentro -es estatica y se llama una sola vez-, np_enemy_update crece,
            necesita mas registros y se encarecen **todos** los bichos de
            **todos** los generos. Medido: 198744 ciclos antes y 200660 despues,
-           de los 200000 que da un frame. Por eso el trafico se mueve fuera. */
+           de los 200000 que da un frame. Por eso el trafico se mueve fuera.
+
+           Y por eso los dos casos que vienen ahora van entre `#if`: dos ramas
+           de mas en este switch le costaban **2000 ciclos por frame** a la Neo
+           Geo aunque el juego no tuviera ni un cocodrilo ni una liana, y con
+           eso el juego de ejemplo se pasaba del frame. Medido igual: 200746
+           ciclos con las dos ramas puestas y 198744 borrandolas al compilar. */
         return;
+#if NP_HAY_COCODRILOS
     case NP_AI_COCODRILO:
         /* El cocodrilo no se mueve: lo unico que hace es abrir y cerrar la
            boca. El ciclo entero son `periodo` frames, de los cuales los
@@ -3706,11 +3718,14 @@ static void np_enemy_update(NpWorld *w, NpEntity *e)
            siempre le pasaria por encima el fotograma y no se le veria nunca
            avisar de que va a abrir, que es justo lo que hay que ver. */
         return;
+#endif
+#if NP_HAY_BALANCEO
     case NP_AI_BALANCEO:
         /* La liana cuelga de su sitio y se balancea. El pendulo va en `vx` y
            `vy` -que una liana no los usa para nada- y lo mueve np_balanceo_paso,
            que ademas lleva al que este colgado. Aqui, nada. */
         return;
+#endif
     case NP_AI_PATROL:
         e->vx = e->facing ? d->speed : -d->speed;
         break;

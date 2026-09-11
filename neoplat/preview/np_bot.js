@@ -197,7 +197,7 @@
          avanzado y lo que te queda de impulso. Medido en el nivel de la
          cueva: soltandose en el extremo se cae dentro; a medio subir cae
          treinta y un pixeles por delante del sitio de la liana. */
-      if (p.balanceo) {
+      if (p.balanceo > 0) {           /* en negativo son los frames de espera */
         var cuerda = w.entities[p.balanceo - 1];
         /* Lo que se tumba esta liana, en entradas de la tabla de senos: el
            `amplitud` viene en grados (y en coma fija), igual que en

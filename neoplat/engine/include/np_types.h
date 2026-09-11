@@ -238,8 +238,7 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
  * cocodrilo compilado y la funcion metida dentro, la musica sonaba a la mitad
  * de velocidad -o sea 25 imagenes por segundo en vez de 50- y el analizador
  * reconocia 5 notas de 16; apartandola, 9 de 16. Ayuda y bastante, pero no
- * llega: ese juego no tiene sitio para el cocodrilo en un A500, y por eso no
- * lo lleva puesto. */
+ * llega, y por eso ese juego no lleva cocodrilos: en un A500 no le caben. */
 #if defined(__GNUC__)
 #define NP_APARTE __attribute__((noinline))
 #else

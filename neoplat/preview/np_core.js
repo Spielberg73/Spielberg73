@@ -143,7 +143,7 @@
         /* a quien tienes agarrado: su sitio en la lista mas uno (0 = a nadie) */
         grab: 0, grabTimer: 0,
         attackTimer: 0, attackCd: 0, riding: 0, whip: 0, crouch: 0,
-        balanceo: 0, balEspera: 0,
+        balanceo: 0,
         stun: 0, power: 0,
         /* el repertorio de tortas: el golpe fuerte (patada o hombro), la
            carrera y el doble toque que la enciende */
@@ -597,8 +597,9 @@
     /* y sin carrera ni golpe fuerte a medias */
     p.fuerte = 0; p.carrera = 0; p.toque = 0; p.toqueDir = 0;
     p.dying = 0; p.attackTimer = 0; p.attackCd = 0; p.riding = 0; p.stun = 0;
+    /* La liana: >0 la que llevas cogida, <0 los frames que quedan sin poder
+       agarrarte a ninguna. Un solo numero, igual que en NpPlayer. */
     p.balanceo = 0;
-    p.balEspera = 0;            /* sin poder volver a engancharse a la liana */
     p.power = 0;                /* el arma vuelve a la de serie */
     p.crouch = 0;
     this.whipOff(quien);
@@ -1757,7 +1758,7 @@
 
   World.prototype.balCoger = function (quien) {
     var a = this.data.player.actor, p = this.players[quien], i;
-    if (p.balanceo || p.balEspera || p.onGround || p.dying) return;
+    if (p.balanceo || p.onGround || p.dying) return;
     for (i = 0; i < this.entityCount; i++) {
       var e = this.entities[i];
       if (!e.active || e.kind !== KIND_ENEMY) continue;
@@ -1777,11 +1778,10 @@
 
   World.prototype.balSoltar = function (quien, conSalto) {
     var p = this.players[quien];
-    if (!p.balanceo) return;
+    if (p.balanceo <= 0) return;   /* o no cuelga de nada, o esta esperando */
     var e = this.entities[p.balanceo - 1];
     var d = this.data.enemies[e.def], largo = this.balLargo(d);
-    p.balanceo = 0;
-    p.balEspera = BAL_ESPERA;
+    p.balanceo = -BAL_ESPERA;   /* en negativo: los frames de espera */
     p.vx = idiv(((largo * this.balCoseno(e.vx)) >> FIX_SHIFT) * e.vy, BAL_TIRON);
     p.vy = -idiv(((largo * this.balSeno(e.vx)) >> FIX_SHIFT) * e.vy, BAL_TIRON);
     if (conSalto) {
@@ -2302,8 +2302,8 @@
 
     /* La liana de balanceo: colgado no se anda ni se cae, te lleva ella, y lo
        unico que se decide es cuando soltarse. Igual que en np_player_update. */
-    if (p.balEspera) p.balEspera--;
-    if (p.balanceo) {
+    if (p.balanceo < 0) p.balanceo++;       /* se acaba la espera */
+    if (p.balanceo > 0) {
       p.crouch = 0;
       animSet(p, ANIM_JUMP);
       if ((input & IN.JUMP) && !(this.prevInput[quien] & IN.JUMP))
@@ -2312,7 +2312,7 @@
       else return;
     } else if (!p.stun) {
       this.balCoger(quien);
-      if (p.balanceo) return;
+      if (p.balanceo > 0) return;
     }
 
     /* Con abajo, en el suelo: ni se anda ni se salta, pero se pega y el golpe

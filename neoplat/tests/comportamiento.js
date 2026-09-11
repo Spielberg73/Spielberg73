@@ -4151,7 +4151,9 @@ prueba("al tocarla en el aire uno se cuelga, y se suelta con saltar", function (
   correr(w, 10, 0);
   assert.strictEqual(p.onGround, 0, "colgado no se pisa suelo");
   w.step(NP.IN.JUMP);
-  assert.strictEqual(p.balanceo, 0, "saltando no se ha soltado");
+  /* Soltarse deja el campo en negativo: son los frames que quedan sin poder
+     volver a agarrarse. Lo que importa es que ya no cuelga de nada. */
+  assert.ok(p.balanceo <= 0, "saltando no se ha soltado");
 });
 
 prueba("colgado, el jugador va donde va la punta de la liana", function () {
@@ -4176,7 +4178,7 @@ prueba("la liana cruza al otro lado: se coge en un extremo y deja en el otro",
     if (e.vx > 0 && e.vy <= 0) w.step(NP.IN.JUMP);
     else w.step(0);
   }
-  assert.strictEqual(p.balanceo, 0, "no se ha soltado nunca");
+  assert.ok(p.balanceo <= 0, "no se ha soltado nunca");
   assert.ok(NP.F2I(p.x) > NP.F2I(e.homeX),
             "soltandose en el extremo de delante se cae al otro lado");
 });

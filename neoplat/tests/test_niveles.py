@@ -23,6 +23,33 @@ from ngplat.scaffold import crear_proyecto
 
 EJEMPLO = os.path.join(KIT, "examples", "bosque-magico")
 
+# Los dos bloques de docs/formato.md, tal cual: si cambian ahi, tienen que
+# cambiar aqui, y si dejaran de funcionar esta prueba lo dice.
+BICHOS_PITFALL = """  cocodrilo:
+    sprite: graficos/cocodrilo.png
+    frame: [16, 16]
+    caja: [16, 8]
+    comportamiento: cocodrilo
+    periodo: 150
+    intervalo: 50
+    vida: 99
+    puntos: 0
+    animaciones:
+      quieto: {frames: [0, 1, 2]}
+  liana:
+    sprite: graficos/liana.png
+    frame: [48, 48]
+    caja: [6, 16]
+    desplazamiento: [24, 0]
+    comportamiento: balanceo
+    largo: 32
+    amplitud: 45
+    vida: 99
+    puntos: 0
+    animaciones:
+      quieto: {frames: [0, 1, 2, 3, 4]}
+"""
+
 
 def _datos(build, destino):
     datos = build_data(build)
@@ -63,6 +90,48 @@ class TestNivelesJugables(unittest.TestCase):
         self.assertEqual(resultado.returncode, 0,
                          "el bot no puede terminar el proyecto recien creado:\n"
                          + resultado.stdout)
+
+    def test_con_cocodrilos_y_liana_tambien_se_termina(self):
+        """Las dos mecanicas de Pitfall, pegadas tal y como las explica
+        docs/formato.md: la charca en el agujero del primer nivel y la liana
+        sobre un barranco de tres casillas en el segundo.
+
+        No vienen en el juego de partida -no caben en un A500- asi que si no se
+        prueban aqui no las prueba nadie: el bot tiene que saber esperar en el
+        borde a que la liana venga y soltarse a medio subir, que es lo unico
+        que cruza el barranco."""
+        destino = os.path.join(self.tmp, "pitfall")
+        crear_proyecto(destino, "PITFALL", "TEST")
+        yaml = os.path.join(destino, "game.yaml")
+        with open(yaml, encoding="utf-8") as fh:
+            texto = fh.read()
+        marca = "\nenemigos:\n"
+        self.assertIn(marca, texto)
+        texto = texto.replace(marca, marca + BICHOS_PITFALL, 1)
+        marca = "\nspawns:\n"
+        self.assertIn(marca, texto)
+        texto = texto.replace(marca, marca + "  C: cocodrilo\n  L: liana\n", 1)
+        # la charca: dos cocodrilos dentro del agujero del primer nivel
+        marca = "\n      ##################################..############"
+        self.assertIn(marca, texto, "el primer nivel ya no acaba asi")
+        texto = texto.replace(
+            marca, "\n      ##################################CC############", 1)
+        # y el barranco con liana: de dos casillas a tres, con la liana atada
+        # en la ultima y a la altura del salto
+        marca = "\n      ########################..#####################..#######"
+        self.assertIn(marca, texto, "el segundo nivel ya no acaba asi")
+        texto = texto.replace(
+            marca, "\n      #######################...#####################..#######", 1)
+        marca = "\n      ................................T......................."
+        self.assertIn(marca, texto, "el segundo nivel ya no trae el tablon ahi")
+        texto = texto.replace(
+            marca, "\n      ........................L.......T.......................", 1)
+        with open(yaml, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(texto)
+        resultado = self._jugar(destino)
+        self.assertEqual(resultado.returncode, 0,
+                         "el bot no puede terminar el juego con cocodrilos y "
+                         "liana:\n" + resultado.stdout)
 
     def test_el_proyecto_de_castlevania_tambien_se_termina(self):
         """El genero de latigo cambia la fisica entera -sin correccion del

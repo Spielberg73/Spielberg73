@@ -69,6 +69,17 @@ un agujero con liana no se salta sino que se espera en el borde a que la punta
 venga hacia acá, y **no se suelta en el extremo** —ahí la punta está quieta y se
 cae a plomo dentro del agujero— sino a medio subir por el otro lado.
 
+**Y un byte que costaba 2000 ciclos.** El estado de la liana empezo siendo dos
+campos en la estructura del jugador —de cual cuelgas y los frames que quedan
+sin poder agarrarte— y con eso la Neo Geo se salia del frame: 200758 ciclos de
+los 200000 que da, en un juego **sin una sola liana**. La estructura pasaba de
+72 bytes a 74, gcc cambiaba de estrategia y lo pagaba el juego entero. Se
+comprobó que no era cosa de la liana: con dos bytes de relleno que no lee nadie
+sale el mismo número. Ahora las dos cosas van en **un byte con signo** —positivo
+la liana de la que cuelgas, negativo lo que queda de espera; nunca pasan a la
+vez— que cabe en el hueco que la estructura ya tenía. Vuelve a 198746, que es
+lo que costaba antes de tocar nada.
+
 **El compilador avisa cuando un juego no cabe en un A500.** Todo lo que hace un
 juego de Amiga —código, datos y BSS— lo reserva AmigaDOS en RAM chip, y en una
 máquina de 512 KB lo que queda libre son unos 190 KB. Pasado eso el disquete
