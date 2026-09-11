@@ -14,9 +14,9 @@ dificil en otras:
 
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
-from .. import gfx, gfx_md
+from .. import fm, gfx, gfx_md
 from ..build import Build
 from ..errors import ProjectError
 from .. import md_pcm
@@ -271,12 +271,23 @@ def _graficos_c(build: Build, vram: gfx_md.VramMD) -> str:
     return "\n".join(partes)
 
 
-def _secuencia_c(nombre: str, pasos) -> List[str]:
+def _secuencia_c(nombre: str, pasos, fm_notas: bool = False) -> List[str]:
+    """Una secuencia de pasos, en C.
+
+    Con `fm_notas`, en vez del periodo del PSG va la nota como la quiere el
+    YM2612: el bloque en los bits altos y el `fnum` en los once de abajo. Es el
+    mismo campo porque es lo mismo -"que nota toca"- dicho en el idioma del
+    chip que la va a tocar.
+    """
     lineas = ["static const NpSndPaso %s[] = {" % nombre]
     for paso in pasos:
         duracion = max(1, int(paso.duracion))
         volumen = (paso.volumen & 0x0F) | (0x80 if paso.ruido else 0)
-        periodo = periodo_psg(paso.frecuencia)
+        if fm_notas:
+            bloque, fnum = fm.fnum_bloque(paso.frecuencia, fm.RELOJ_YM2612)
+            periodo = (bloque << 11) | fnum if paso.frecuencia > 0 else 0
+        else:
+            periodo = periodo_psg(paso.frecuencia)
         while duracion > 0:
             trozo = min(255, duracion)
             lineas.append("    { %d, %d, 0x%02x }," % (periodo, trozo, volumen))
@@ -286,13 +297,68 @@ def _secuencia_c(nombre: str, pasos) -> List[str]:
     return lineas
 
 
+def _timbres_c(build: Build) -> Tuple[List[str], List[str]]:
+    """La tabla de timbres y con cual suena cada pista de cada cancion.
+
+    Los bytes salen ya empaquetados como los quiere el chip, con los cuatro
+    operadores en el orden de registro (1, 3, 2, 4): asi el juego solo copia.
+    """
+    sonido = build.project.sound
+    usados: List[str] = []
+    for nombre in build.music_order:
+        for cual in sonido.musica[nombre].timbres:
+            if cual not in usados:
+                usados.append(cual)
+    if not usados:
+        usados = [fm.POR_DEFECTO]
+
+    lineas = ["const NpFmTimbre np_fm_timbres[] = {"]
+    for nombre in usados:
+        t = fm.TIMBRES[nombre]
+        # Los registros del canal 0: los de los demas canales son los mismos
+        # numeros con el canal sumado, asi que con estos vale para todos.
+        pares = dict(fm.registros_opn(t, 0))
+        def cuatro(base):
+            return ", ".join("0x%02x" % pares[base + i * 4] for i in range(4))
+        # La mascara va en el orden del **array**, no en el de los operadores:
+        # el array esta en orden de registro (1, 3, 2, 4), asi que el driver
+        # solo tiene que mirar el bit que le toca sin saber nada de esto.
+        sueltan = fm.portadoras(t.algoritmo)
+        mascara = 0
+        for j in range(4):
+            operador = [i for i in range(4) if fm.ORDEN_OPN[i] == j][0]
+            if operador in sueltan:
+                mascara |= 1 << j
+        lineas.append("    /* %s */" % nombre)
+        lineas.append("    { 0x%02x, { %s }, { %s }, { %s }, { %s }, { %s }, { %s }, 0x%02x },"
+                      % (pares[0xB0], cuatro(0x30), cuatro(0x40), cuatro(0x50),
+                         cuatro(0x60), cuatro(0x70), cuatro(0x80), mascara))
+    lineas.append("};")
+    lineas.append("const uint16_t np_fm_timbre_count = %d;" % len(usados))
+
+    reparto = ["const uint8_t np_fm_musica[] = {"]
+    if build.music_order:
+        entradas = []
+        for nombre in build.music_order:
+            timbres = sonido.musica[nombre].timbres
+            for p in range(2):
+                cual = timbres[p] if p < len(timbres) else fm.POR_DEFECTO
+                entradas.append(str(usados.index(cual) if cual in usados else 0))
+        reparto.append("    " + ", ".join(entradas))
+    else:
+        reparto.append("    0, 0")
+    reparto.append("};")
+    return lineas, reparto
+
+
 def _sonido_c(build: Build) -> str:
     from ..sonido import EVENTOS
     sonido = build.project.sound
     efectos = [n for n in EVENTOS if n in sonido.efectos]
     partes = [
         "/* Archivo generado por ngplat: la musica y los efectos, ya en periodos",
-        " * del PSG de la Mega Drive. */",
+        " * del chip que los toca: la musica en notas del YM2612 (el chip de FM) y",
+        " * los efectos en periodos del PSG. */",
         '#include "np_sonido.h"',
         "",
     ]
@@ -303,7 +369,7 @@ def _sonido_c(build: Build) -> str:
         tema = sonido.musica[nombre]
         for p in range(2):
             pista = tema.pistas[p] if p < len(tema.pistas) else []
-            partes.extend(_secuencia_c("np_mus%d_%d" % (i, p), pista))
+            partes.extend(_secuencia_c("np_mus%d_%d" % (i, p), pista, fm_notas=True))
         partes.append("")
 
     partes.append("const NpSndPaso *const np_snd_efectos[] = {")
@@ -322,6 +388,9 @@ def _sonido_c(build: Build) -> str:
     else:
         partes.append("    0, 0")
     partes.append("};")
+    timbres, reparto = _timbres_c(build)
+    partes.extend(timbres)
+    partes.extend(reparto)
     partes.append("const uint16_t np_snd_efecto_count = %d;" % len(efectos))
     partes.append("const uint16_t np_snd_musica_count = %d;" % len(build.music_order))
     partes.append("")

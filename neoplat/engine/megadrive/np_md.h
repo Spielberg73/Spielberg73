@@ -31,6 +31,15 @@
 #define MD_Z80_BUS     ((volatile uint16_t *)0xA11100)
 #define MD_Z80_RESET   ((volatile uint16_t *)0xA11200)
 #define MD_Z80_RAM     ((volatile uint8_t *)0xA00000)   /* 8 KB, byte a byte */
+/* El YM2612, el chip de FM. Vive en el bus del Z80, asi que para escribirle
+   hay que pararlo antes (ver np_sound.c). Dos mitades: la primera lleva los
+   canales 1-3 y la segunda los 4-6; el kit toca la musica en los dos primeros
+   canales de la primera y deja el sexto para las muestras, que las manda el
+   Z80 por el DAC. */
+#define MD_YM_DIR0     ((volatile uint8_t *)0xA04000)
+#define MD_YM_DAT0     ((volatile uint8_t *)0xA04001)
+#define MD_YM_DIR1     ((volatile uint8_t *)0xA04002)
+#define MD_YM_DAT1     ((volatile uint8_t *)0xA04003)
 #define MD_TMSS        ((volatile uint32_t *)0xA14000)
 #define MD_VERSION     ((volatile uint8_t *)0xA10001)
 

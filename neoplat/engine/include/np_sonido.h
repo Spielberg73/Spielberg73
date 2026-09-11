@@ -38,11 +38,46 @@ typedef struct {
     uint16_t frames;             /* cuanto dura, en frames de video */
 } NpSndMuestra;
 
+/* --- los timbres de FM ---------------------------------------------------
+ *
+ * Tres maquinas del kit llevan un chip de FM de cuatro operadores: el YM2612
+ * de la Mega Drive, el YM2610 de la Neo Geo y el YM2151 del X68000. Un timbre
+ * son esos cuatro operadores -cuatro senos con su envolvente- y como se
+ * conectan entre si.
+ *
+ * Los bytes vienen **ya empaquetados** por el compilador en el orden en el que
+ * los quiere el chip, incluida la rareza de que los cuatro operadores no van
+ * seguidos en los registros sino en el orden 1, 3, 2, 4. Aqui solo hay que
+ * escribirlos: el juego no sabe nada de FM, solo copia.
+ */
+typedef struct {
+    uint8_t alg_fb;              /* realimentacion y algoritmo, ya juntos */
+    uint8_t dt_mul[4];           /* en orden de registro, no de operador */
+    uint8_t tl[4];
+    uint8_t ks_ar[4];
+    uint8_t am_dr[4];
+    uint8_t sr[4];
+    uint8_t sl_rr[4];
+    uint8_t portadoras;          /* un bit por operador que se oye */
+} NpFmTimbre;
+
+/* En las secuencias de FM, `periodo` no es un periodo sino la nota tal y como
+ * la quiere el chip: el bloque (la octava) en los bits altos y el `fnum` en los
+ * once de abajo. Se parte con estas dos. */
+#define NP_FM_BLOQUE(p) ((uint8_t)((p) >> 11))
+#define NP_FM_FNUM(p)   ((uint16_t)((p) & 0x07FF))
+
 /* Las genera el compilador en sonido.c */
 extern const NpSndPaso *const np_snd_efectos[];
 extern const NpSndMuestra np_snd_muestras[];
 extern const NpSndPaso *const np_snd_musica[];   /* dos pistas por cancion */
 extern const uint16_t np_snd_efecto_count;
 extern const uint16_t np_snd_musica_count;
+/* Los timbres que usa el juego y con cual suena cada pista de cada cancion
+   (dos por cancion, en el mismo orden que np_snd_musica). Los generan solo las
+   maquinas con chip de FM; en las demas no existen. */
+extern const NpFmTimbre np_fm_timbres[];
+extern const uint8_t np_fm_musica[];
+extern const uint16_t np_fm_timbre_count;
 
 #endif /* NP_SONIDO_H */

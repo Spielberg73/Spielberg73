@@ -236,6 +236,9 @@ class Musica:
     velocidad: int                    # frames por nota
     pistas: List[List[Paso]] = field(default_factory=list)
     bucle: bool = True
+    # Con que suena cada pista, uno por pista. Solo lo miran las maquinas con
+    # chip de FM (ver fm.py); las demas tocan lo mismo con lo que tengan.
+    timbres: List[str] = field(default_factory=list)
     # Las lineas de notas tal cual venian, por lo mismo que en Efecto.
     fuente: Dict[str, Any] = field(default_factory=dict)
 

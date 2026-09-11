@@ -11,6 +11,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
+from . import fm as fm_mod
 from . import sonido as sonido_mod
 from . import wav
 from .errors import ProjectError
@@ -2065,9 +2066,36 @@ def _read_sound(raw: Any, root: str = ".", where: str = "sonido") -> "sonido_mod
                                      "%s.pistas[%d]" % (sub_where, i + 1))
             for i, pista in enumerate(pistas_raw)
         ]
+        # El timbre de cada pista: con que suena, no que toca. Solo lo usan las
+        # tres maquinas que llevan chip de FM; en las demas se hace lo que se
+        # pueda con lo que hay, pero se escribe una sola vez.
+        timbres_raw = sub.raw("timbres", "timbre", "instrumentos", "instrumento")
+        if isinstance(timbres_raw, str):
+            timbres_raw = [timbres_raw]
+        timbres: List[str] = []
+        for i, cual in enumerate(timbres_raw or []):
+            cual = str(cual).strip().lower()
+            if cual not in fm_mod.TIMBRES:
+                raise ProjectError(
+                    "el timbre '%s' no existe" % cual,
+                    hint="los que hay son: %s" % ", ".join(fm_mod.nombres()),
+                    where="%s.timbres[%d]" % (sub_where, i + 1),
+                )
+            timbres.append(cual)
+        if len(timbres) > len(pistas):
+            raise ProjectError(
+                "la musica '%s' tiene %d timbres y %d pistas"
+                % (nombre, len(timbres), len(pistas)),
+                hint="va un timbre por pista, en el mismo orden",
+                where=sub_where,
+            )
+        while len(timbres) < len(pistas):
+            timbres.append(fm_mod.POR_DEFECTO)
         resultado.musica[nombre] = sonido_mod.Musica(
             nombre=nombre, velocidad=velocidad, pistas=pistas, bucle=bucle,
+            timbres=timbres,
             fuente={"velocidad": velocidad, "volumen": volumen, "bucle": bucle,
+                    "timbres": list(timbres),
                     "pistas": [str(p) for p in pistas_raw]})
 
     # Las dos canciones que no son de ningun nivel. Se dicen por su nombre, y
