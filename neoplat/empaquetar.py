@@ -143,7 +143,17 @@ def hacer_exe(python=None) -> str:
     para_windows = os.name == "nt" or bool(python)
     orden = lanzador + ["-m", "PyInstaller"] + opciones_pyinstaller(para_windows)
     print("$ " + " ".join(orden))
-    hecho = subprocess.run(orden, cwd=RAIZ)
+    # Los tres flujos, por tuberia, y no heredados. Es por wine: el Python de
+    # Windows corriendo ahi **no sabe abrir su salida cuando es un archivo**
+    # -se muere con "Invalid handle" antes de ejecutar una sola linea-, y eso
+    # pasa en cuanto esto se lanza con la salida redirigida, que es como se
+    # lanza desde un script o desde una maquina de integracion. Con una
+    # tuberia arranca; lo que escriba se imprime aqui igual.
+    hecho = subprocess.run(orden, cwd=RAIZ, stdin=subprocess.DEVNULL,
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                           text=True)
+    if hecho.stdout:
+        print(hecho.stdout, end="")
     spec = os.path.join(RAIZ, "ngplat.spec")
     if os.path.exists(spec):
         os.remove(spec)
