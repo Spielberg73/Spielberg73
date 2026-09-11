@@ -298,57 +298,8 @@ def _secuencia_c(nombre: str, pasos, fm_notas: bool = False) -> List[str]:
 
 
 def _timbres_c(build: Build) -> Tuple[List[str], List[str]]:
-    """La tabla de timbres y con cual suena cada pista de cada cancion.
-
-    Los bytes salen ya empaquetados como los quiere el chip, con los cuatro
-    operadores en el orden de registro (1, 3, 2, 4): asi el juego solo copia.
-    """
-    sonido = build.project.sound
-    usados: List[str] = []
-    for nombre in build.music_order:
-        for cual in sonido.musica[nombre].timbres:
-            if cual not in usados:
-                usados.append(cual)
-    if not usados:
-        usados = [fm.POR_DEFECTO]
-
-    lineas = ["const NpFmTimbre np_fm_timbres[] = {"]
-    for nombre in usados:
-        t = fm.TIMBRES[nombre]
-        # Los registros del canal 0: los de los demas canales son los mismos
-        # numeros con el canal sumado, asi que con estos vale para todos.
-        pares = dict(fm.registros_opn(t, 0))
-        def cuatro(base):
-            return ", ".join("0x%02x" % pares[base + i * 4] for i in range(4))
-        # La mascara va en el orden del **array**, no en el de los operadores:
-        # el array esta en orden de registro (1, 3, 2, 4), asi que el driver
-        # solo tiene que mirar el bit que le toca sin saber nada de esto.
-        sueltan = fm.portadoras(t.algoritmo)
-        mascara = 0
-        for j in range(4):
-            operador = [i for i in range(4) if fm.ORDEN_OPN[i] == j][0]
-            if operador in sueltan:
-                mascara |= 1 << j
-        lineas.append("    /* %s */" % nombre)
-        lineas.append("    { 0x%02x, { %s }, { %s }, { %s }, { %s }, { %s }, { %s }, 0x%02x },"
-                      % (pares[0xB0], cuatro(0x30), cuatro(0x40), cuatro(0x50),
-                         cuatro(0x60), cuatro(0x70), cuatro(0x80), mascara))
-    lineas.append("};")
-    lineas.append("const uint16_t np_fm_timbre_count = %d;" % len(usados))
-
-    reparto = ["const uint8_t np_fm_musica[] = {"]
-    if build.music_order:
-        entradas = []
-        for nombre in build.music_order:
-            timbres = sonido.musica[nombre].timbres
-            for p in range(2):
-                cual = timbres[p] if p < len(timbres) else fm.POR_DEFECTO
-                entradas.append(str(usados.index(cual) if cual in usados else 0))
-        reparto.append("    " + ", ".join(entradas))
-    else:
-        reparto.append("    0, 0")
-    reparto.append("};")
-    return lineas, reparto
+    """La tabla de timbres: la misma para las tres maquinas con FM (ver fm.py)."""
+    return fm.tabla_c(build.project.sound, build.music_order)
 
 
 def _sonido_c(build: Build) -> str:

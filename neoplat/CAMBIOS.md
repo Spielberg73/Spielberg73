@@ -2,8 +2,71 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.37.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.38.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.38
+
+**Música de FM de verdad en las tres máquinas que tienen el chip, y con el
+timbre escrito en el `game.yaml`.**
+
+Hasta ahora la Mega Drive, la Neo Geo y el X68000 tocaban la música con lo
+mismo que las demás: ondas cuadradas. Las tres llevan un chip de FM de cuatro
+operadores de Yamaha, y los tres son primos —el YM2612, el YM2610 y el
+YM2151—, así que no hacía falta escribir tres cosas sino una.
+
+**Un timbre, tres chips.** Un timbre de FM son cuatro osciladores de seno con
+su envolvente y una de las ocho maneras de conectarlos entre sí. Los tres chips
+guardan por operador **los mismos seis números con la misma forma**, y hasta en
+el mismo orden raro (1, 3, 2, 4): lo único que cambia es dónde se escriben y
+cada cuánto —en la familia OPN los operadores van de cuatro en cuatro, en la
+OPM de ocho en ocho—. Así que el kit emite los mismos bytes para los tres y
+cada driver los mete en sus registros. Hay una prueba que lo vigila: si algún
+día dejaran de coincidir, avisa.
+
+En el `game.yaml` todo eso es una palabra por pista:
+
+```yaml
+    bosque:
+      velocidad: 8
+      timbres: [flauta, bajo]
+      pistas:
+        - "do4 mi4 sol4 mi4 | fa4 la4 do5 la4"
+        - "do3 -  do3 -     | fa3 -  fa3 -   "
+```
+
+Los ocho que trae el kit: `cuadrada` (el de siempre, y el que sale si no dices
+nada), `organo`, `flauta`, `bajo`, `metal`, `campana`, `cuerda` y `pizzicato`.
+Todos los juegos que crea `ngplat nuevo` vienen ya con los suyos puestos.
+
+**Se puede oír sin compilar.** El preview no sabe hacer FM, pero sabe tocar una
+onda dada por sus armónicos, y la onda de un timbre con multiplicadores enteros
+—que son todos los del kit— repite exactamente cada ciclo de la nota. Así que
+el compilador calcula los armónicos de los ocho y el navegador los toca: se
+elige el timbre en el editor y se oye lo que va a sonar.
+
+**La Neo Geo, que es la que más camino tenía.** Ahí el chip no cuelga del
+68000: lo maneja un Z80 con su propia ROM, que también escribe el kit. Ahora
+esa ROM carga el timbre de cada pista al empezar la canción —veintitantos
+registros, una sola vez, con el volumen ya dentro— y cada nota le cuesta cuatro
+escrituras: soltar, los dos bytes de la nota y volver a pulsar. Dos cosas que
+no avisan cuando se hacen mal y costaron lo suyo:
+
+- **Los canales de FM de este chip empiezan en el 1, no en el 0.** El YM2610 es
+  un YM2608 al que le quitaron el primero de cada tres. Escribir el canal 0 no
+  da error: no suena y ya.
+- **El chip se queda ocupado detrás de cada escritura y no lo dice.** Detrás
+  del dato de un registro de FM son unos 83 ciclos de su reloj, diez
+  microsegundos a 8 MHz. El driver los espera contando `nop`.
+
+Medido en el banco de pruebas del kit: **16 de 16 notas** de la melodía del
+`game.yaml` y el efecto de salto 4,8 veces por encima del fondo, con el frame
+más caro en 198.756 ciclos de los 200.000 que da la consola.
+
+**Lo que falta.** El Amiga, el CD32, la Jaguar y el Atari ST leen `timbres:` y
+lo ignoran: tocan las mismas notas con la onda que tienen. Y el X68000 está
+comprobado compilando, no oyéndolo: para arrancarlo hace falta un disquete de
+Human68k con unos 150 KB libres, y el que hay no llega.
 
 ## 1.37
 

@@ -570,6 +570,38 @@ class TestProyectoGenerado(unittest.TestCase):
         generar_para_sistema(build, salida_dir, sistema, "202")
         return build, salida_dir
 
+    def test_el_timbre_de_fm_vale_igual_para_los_dos_chips(self):
+        """La tabla de timbres es la misma en la Mega Drive y en el X68000.
+
+        No es un parecido: el YM2612 (OPN) y el YM2151 (OPM) guardan por
+        operador los mismos seis numeros con la misma forma y en el mismo orden
+        raro (1, 3, 2, 4), asi que el kit emite **los mismos bytes** y cada
+        driver los mete en sus registros. Si algun dia dejaran de coincidir, el
+        motor tendria que llevar dos tablas, y esta prueba es la que avisaria.
+        """
+        from ngplat import fm
+        fuentes = {}
+        for maquina in ("megadrive", "x68000"):
+            build, out = self._generar(maquina)
+            with open(os.path.join(out, "src/sonido.c"), encoding="utf-8") as fh:
+                fuentes[maquina] = fh.read()
+        timbres, reparto = fm.tabla_c(build.project.sound, build.music_order)
+        for maquina, fuente in fuentes.items():
+            for linea in timbres + reparto:
+                self.assertIn(linea.strip(), fuente,
+                              "a %s le falta '%s'" % (maquina, linea.strip()))
+
+    def test_cada_pista_de_fm_apunta_a_un_timbre_que_existe(self):
+        from ngplat import fm
+        build, _ = self._generar("megadrive")
+        timbres, reparto = fm.tabla_c(build.project.sound, build.music_order)
+        cuantos = int(timbres[-1].split("=")[1].strip(" ;"))
+        indices = [int(n) for n in reparto[1].split(",")]
+        self.assertEqual(len(indices), max(1, len(build.music_order)) * 2,
+                         "son dos pistas por cancion, ni una mas ni una menos")
+        for i in indices:
+            self.assertLess(i, cuantos, "una pista apunta a un timbre que no hay")
+
     def test_megadrive_genera_todo(self):
         build, out = self._generar("megadrive")
         for archivo in ("src/gamedata.c", "src/graficos.c", "src/sonido.c",

@@ -47,6 +47,7 @@ from .. import gfx_x68k
 from ..build import Build
 from ..errors import ProjectError
 from ..paths import fuente_del_kit
+from .. import fm
 from ..sonido import _bytes_c, codigo_ym2151, preparar_muestra
 from .base import Limites, Salida, Sistema, registrar
 
@@ -318,6 +319,14 @@ def _sonido_c(build: Build) -> str:
     else:
         partes.append("    0, 0")
     partes.append("};")
+    timbres, reparto = fm.tabla_c(sonido, build.music_order)
+    partes.append("")
+    partes.append("/* Con que suena cada pista. Los mismos bytes que en la Mega Drive:")
+    partes.append(" * el YM2151 es de otra familia pero guarda los mismos numeros. */")
+    partes.extend(timbres)
+    partes.append("")
+    partes.extend(reparto)
+    partes.append("")
     partes.append("const uint16_t np_snd_efecto_count = %d;" % len(efectos))
     partes.append("const uint16_t np_snd_musica_count = %d;" % len(build.music_order))
     partes.append("")

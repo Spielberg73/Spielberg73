@@ -305,3 +305,155 @@ def por_nombre(nombre: str) -> Timbre:
 
 def nombres() -> List[str]:
     return list(TIMBRES)
+
+
+# --- la tabla de timbres para el motor -------------------------------------
+
+def tabla_c(sonido, orden_musica) -> Tuple[List[str], List[str]]:
+    """`np_fm_timbres[]` y `np_fm_musica[]`, en C, para las maquinas con FM.
+
+    Los bytes salen ya empaquetados como los quiere el chip y **valen para los
+    dos**: el YM2612/YM2610 (OPN) y el YM2151 (OPM) guardan los mismos seis
+    numeros por operador con la misma forma; lo unico que cambia es donde van
+    (otras direcciones de registro) y cada cuanto (los operadores estan de
+    cuatro en cuatro en OPN y de ocho en ocho en OPM). Hasta el orden raro de
+    los operadores -1, 3, 2, 4- es el mismo en los dos, asi que el array se
+    recorre igual y el driver de cada maquina solo pone su base y su paso.
+    """
+    usados: List[str] = []
+    for nombre in orden_musica:
+        for cual in sonido.musica[nombre].timbres:
+            if cual not in usados:
+                usados.append(cual)
+    if not usados:
+        usados = [POR_DEFECTO]
+
+    lineas = ["const NpFmTimbre np_fm_timbres[] = {"]
+    for nombre in usados:
+        t = TIMBRES[nombre]
+        # Los registros del canal 0: los de los demas canales son los mismos
+        # numeros con el canal sumado, asi que con estos vale para todos.
+        pares = dict(registros_opn(t, 0))
+
+        def cuatro(base):
+            return ", ".join("0x%02x" % pares[base + i * 4] for i in range(4))
+
+        # La mascara va en el orden del **array**, no en el de los operadores:
+        # el array esta en orden de registro (1, 3, 2, 4), asi que el driver
+        # solo tiene que mirar el bit que le toca sin saber nada de esto.
+        sueltan = portadoras(t.algoritmo)
+        mascara = 0
+        for j in range(4):
+            operador = [i for i in range(4) if ORDEN_OPN[i] == j][0]
+            if operador in sueltan:
+                mascara |= 1 << j
+        lineas.append("    /* %s */" % nombre)
+        lineas.append("    { 0x%02x, { %s }, { %s }, { %s }, { %s }, { %s }, { %s }, 0x%02x },"
+                      % (pares[0xB0], cuatro(0x30), cuatro(0x40), cuatro(0x50),
+                         cuatro(0x60), cuatro(0x70), cuatro(0x80), mascara))
+    lineas.append("};")
+    lineas.append("const uint16_t np_fm_timbre_count = %d;" % len(usados))
+
+    reparto = ["const uint8_t np_fm_musica[] = {"]
+    if orden_musica:
+        entradas = []
+        for nombre in orden_musica:
+            timbres = sonido.musica[nombre].timbres
+            for p in range(2):
+                cual = timbres[p] if p < len(timbres) else POR_DEFECTO
+                entradas.append(str(usados.index(cual) if cual in usados else 0))
+        reparto.append("    " + ", ".join(entradas))
+    else:
+        reparto.append("    0, 0")
+    reparto.append("};")
+    return lineas, reparto
+
+
+# --- el timbre fuera del chip ----------------------------------------------
+
+# Como se conectan los cuatro operadores en cada algoritmo: para cada uno, de
+# quien recibe la modulacion. Es la misma tabla que PORTADORAS pero por el otro
+# lado, y hace falta para poder dibujar la onda sin tener el chip delante.
+MODULADORES = (
+    ((), (0,), (1,), (2,)),          # 0: 1 -> 2 -> 3 -> 4
+    ((), (), (0, 1), (2,)),          # 1: (1 + 2) -> 3 -> 4
+    ((), (), (1,), (0, 2)),          # 2: 1 y (2 -> 3) -> 4
+    ((), (0,), (), (1, 2)),          # 3: (1 -> 2) y 3 -> 4
+    ((), (0,), (), (2,)),            # 4: (1 -> 2) + (3 -> 4)
+    ((), (0,), (0,), (0,)),          # 5: 1 -> 2, 3 y 4
+    ((), (0,), (), ()),              # 6: (1 -> 2) + 3 + 4
+    ((), (), (), ()),                # 7: los cuatro sueltos
+)
+
+ARMONICOS = 32          # cuantos se le dan al navegador
+
+
+def onda(t: Timbre, puntos: int = 512) -> List[float]:
+    """Un ciclo de la onda que hace ese timbre, entre -1 y 1.
+
+    Es un modelo, no una copia del chip: sirve para **dibujar y oir** el timbre
+    fuera de la maquina (el preview, el editor), no para que salga identico. Se
+    toma el sonido ya arrancado -sin envolvente, que es lo que cambia de una
+    nota a otra- y se da por hecho que los multiplicadores son enteros: lo son
+    en los ocho timbres del kit, y por eso la onda repite cada ciclo.
+    """
+    import math
+    sueltan = portadoras(t.algoritmo)
+    moduladores = MODULADORES[t.algoritmo & 7]
+    # La realimentacion del primer operador es una ecuacion consigo misma: se
+    # resuelve dando vueltas, que converge en cuatro o cinco.
+    realim = 0.0 if t.realimentacion == 0 else math.pi * 2.0 ** (t.realimentacion - 7)
+    eco = [0.0] * puntos
+    for _ in range(6):
+        nuevo = []
+        for i in range(puntos):
+            fase = i / float(puntos)
+            op = t.op(0)
+            amp = 0.0 if op.tl >= 127 else 2.0 ** (-op.tl / 8.0)
+            mul = 0.5 if op.mul == 0 else op.mul
+            nuevo.append(amp * math.sin(2 * math.pi * fase * mul
+                                        + realim * eco[i - 1]))
+        eco = nuevo
+    salida = []
+    for i in range(puntos):
+        fase = i / float(puntos)
+        valores = [eco[i], 0.0, 0.0, 0.0]
+        for op_i in range(1, 4):
+            op = t.op(op_i)
+            amp = 0.0 if op.tl >= 127 else 2.0 ** (-op.tl / 8.0)
+            mul = 0.5 if op.mul == 0 else op.mul
+            entrada = math.pi * sum(valores[m] for m in moduladores[op_i])
+            valores[op_i] = amp * math.sin(2 * math.pi * fase * mul + entrada)
+        salida.append(sum(valores[c] for c in sueltan))
+    tope = max(abs(v) for v in salida) or 1.0
+    return [v / tope for v in salida]
+
+
+def armonicos(t: Timbre, cuantos: int = ARMONICOS) -> Tuple[List[float], List[float]]:
+    """La onda del timbre en armonicos: (parte real, parte imaginaria).
+
+    Es lo que pide `createPeriodicWave` del navegador, y las dos listas empiezan
+    por el armonico cero -la componente continua- que siempre va a cero.
+    """
+    import math
+    datos = onda(t)
+    puntos = len(datos)
+    real = [0.0]
+    imag = [0.0]
+    for k in range(1, cuantos):
+        c = sum(datos[i] * math.cos(2 * math.pi * k * i / puntos) for i in range(puntos))
+        sN = sum(datos[i] * math.sin(2 * math.pi * k * i / puntos) for i in range(puntos))
+        # El navegador suma cos*real + sin*imag, con el signo al reves que la
+        # transformada de toda la vida.
+        real.append(round(2.0 * c / puntos, 5))
+        imag.append(round(-2.0 * sN / puntos, 5))
+    return real, imag
+
+
+def armonicos_todos() -> Dict[str, Dict[str, List[float]]]:
+    """Los ocho timbres en armonicos, tal y como se los lleva el preview."""
+    salida = {}
+    for nombre, t in TIMBRES.items():
+        real, imag = armonicos(t)
+        salida[nombre] = {"real": real, "imag": imag}
+    return salida

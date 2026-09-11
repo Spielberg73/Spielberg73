@@ -13,7 +13,7 @@ lo primero que hay que mirar si algo se ve raro en el emulador.
 | Sprites | 381 sprites de 16 píxeles de ancho y hasta 32 tiles de alto |
 | Plano fix | 40 × 32 tiles de 8x8, sin scroll (para el marcador) |
 | Color | 65536 colores, 4096 en pantalla, 16 por paleta |
-| Sonido | Z80 + YM2610 (NeoPlat aún no lo usa) |
+| Sonido | Z80 + YM2610: FM para la música, SSG para los efectos y ADPCM-A para las muestras |
 
 **No hay plano de fondo con scroll.** El fondo se dibuja con sprites: es lo que
 hacen los juegos comerciales y lo que hace NeoPlat.
@@ -138,17 +138,35 @@ bit 6      alternancia (permite repetir el mismo sonido dos veces seguidas)
 bits 0-5   $01..$2F efecto, $30..$3E musica, $3F parar la musica
 ```
 
-El driver usa los tres canales de onda cuadrada (SSG) del YM2610:
+El YM2610 son tres chips en uno, y el driver usa los tres a la vez:
 
 ```
-canal A (registros $00/$01, volumen $08)   primera pista de la musica
-canal B (registros $02/$03, volumen $09)   segunda pista
-canal C (registros $04/$05, volumen $0A)   efectos, y ruido para los golpes
+FM canal 1 ($A1/$A5, timbre en $31..$B5)   primera pista de la musica
+FM canal 2 ($A2/$A6, timbre en $32..$B6)   segunda pista
+SSG canal C ($04/$05, volumen $0A)         efectos, y ruido para los golpes
+ADPCM-A canal 0 (parte B del chip)         las muestras digitales
 ```
 
-El periodo de una nota es `4.000.000 / (16 * frecuencia)` y el compas lo marca
-el temporizador B del YM2610, programado a unos 60 Hz para que la musica avance
-al ritmo del juego.
+Los **canales de FM de este chip empiezan en el 1, no en el 0**: el YM2610 es
+un YM2608 al que le quitaron el primero de cada tres, así que de los seis
+quedan cuatro y en cada mitad del chip valen el 1 y el 2. Escribir el canal 0
+no da error: no suena y ya.
+
+Una nota de FM son dos bytes, `fnum` y bloque, que el compilador deja en la ROM
+ya con la forma de los registros `$A0` y `$A4`; el driver solo suelta la nota,
+copia los dos bytes y vuelve a pulsar. El **timbre** (con qué suena: ver
+[sonido.md](sonido.md#con-qué-suena-timbres)) son veintitantos registros que se
+cargan una sola vez al empezar la canción, con el volumen ya dentro, así que
+tocar una nota no cuesta más que cuatro escrituras.
+
+El periodo de un efecto por el SSG es `4.000.000 / (16 * frecuencia)`, y el
+compas lo marca el temporizador B del YM2610, programado a unos 60 Hz para que
+la musica avance al ritmo del juego.
+
+Una cosa que no avisa cuando se hace mal: el chip se queda **ocupado** un rato
+detrás de cada escritura y no lo dice. Detrás del dato de un registro de FM son
+unos 83 ciclos de su reloj, que a 8 MHz son 10 microsegundos; el driver los
+espera contando `nop`, que a 4 MHz cae uno por microsegundo.
 
 ### Muestras digitales: los canales ADPCM-A y la ROM V1
 
@@ -322,7 +340,7 @@ escrituras a VRAM de más.
 
 ## Lo que aún no se ha podido comprobar
 
-El banco de pruebas cubre el vídeo, el mando y el sonido. Siguen sin usarse el
-zoom de sprites, los cuatro canales FM del YM2610 y las muestras digitales de
-la ROM V1. Y nada de esto se ha visto en una placa de verdad: el banco es del
-propio kit.
+El banco de pruebas cubre el vídeo, el mando y el sonido, y ahí entran ya la
+música por FM y las muestras de la ROM V1. Sigue sin usarse el **zoom de
+sprites**, que es lo que más distingue a esta placa. Y nada de esto se ha visto
+en una placa de verdad: el banco es del propio kit.

@@ -12,6 +12,7 @@ import comun
 from comun import KIT
 
 import z80sim
+from ngplat import fm as fm_mod
 from ngplat import m1 as m1_mod
 from ngplat import sonido as sonido_mod
 from ngplat.errors import ProjectError
@@ -303,18 +304,46 @@ class TestDriver(unittest.TestCase):
         self._tick(cpu, chip, total + 4)
         self.assertEqual(chip.registros.get(0x0A), 0, "el efecto se queda sonando")
 
+    def _nota_fm(self, chip, pista):
+        """Los dos bytes de la nota que tiene puesta ahora ese canal de FM."""
+        canal = m1_mod.FM_CANALES[pista]
+        return (chip.registros.get(0xA0 + canal, 0),
+                chip.registros.get(0xA4 + canal, 0))
+
+    def _nota_esperada(self, paso):
+        bloque, fnum = fm_mod.fnum_bloque(paso.frecuencia, fm_mod.RELOJ_YM2610)
+        return (fnum & 0xFF, (bloque << 3) | (fnum >> 8))
+
     def test_la_musica_suena_en_dos_canales(self):
         cpu, chip = self._arrancar()
         tema = self.proyecto.sound.musica[self.orden_musica[0]]
         chip.comando = m1_mod.comando_musica(0)
         cpu.nmi_pendiente = True
         self._tick(cpu, chip, 2)
-        periodo_a = chip.registros.get(0x00, 0) | (chip.registros.get(0x01, 0) << 8)
-        periodo_b = chip.registros.get(0x02, 0) | (chip.registros.get(0x03, 0) << 8)
-        self.assertEqual(periodo_a, tema.pistas[0][0].periodo)
-        self.assertEqual(periodo_b, tema.pistas[1][0].periodo)
-        self.assertGreater(chip.registros.get(0x08, 0), 0)
-        self.assertGreater(chip.registros.get(0x09, 0), 0)
+        self.assertEqual(self._nota_fm(chip, 0),
+                         self._nota_esperada(tema.pistas[0][0]))
+        self.assertEqual(self._nota_fm(chip, 1),
+                         self._nota_esperada(tema.pistas[1][0]))
+        # y las dos notas pulsadas: los cuatro operadores de cada canal
+        pulsadas = [v for (r, v) in chip.escrituras if r == 0x28 and v & 0xF0]
+        self.assertIn(0xF0 | m1_mod.FM_CANALES[0], pulsadas)
+        self.assertIn(0xF0 | m1_mod.FM_CANALES[1], pulsadas)
+
+    def test_cada_pista_lleva_su_timbre(self):
+        """El timbre se carga entero al empezar la cancion, no nota a nota."""
+        cpu, chip = self._arrancar()
+        chip.comando = m1_mod.comando_musica(0)
+        cpu.nmi_pendiente = True
+        self._tick(cpu, chip, 2)
+        for pista, canal in enumerate(m1_mod.FM_CANALES):
+            # el algoritmo y la realimentacion, y los dos altavoces abiertos
+            self.assertIn(0xB0 + canal, chip.registros,
+                          "la pista %d no ha cargado su timbre" % pista)
+            self.assertEqual(chip.registros.get(0xB4 + canal), 0xC0,
+                             "la pista %d sonaria callada" % pista)
+            # la portadora tiene que llevar un volumen que se oiga
+            tls = [chip.registros.get(0x40 + canal + r * 4, 127) for r in range(4)]
+            self.assertLess(min(tls), 127, "la pista %d no tiene portadora" % pista)
 
     def test_la_musica_da_la_vuelta(self):
         cpu, chip = self._arrancar()
@@ -323,8 +352,8 @@ class TestDriver(unittest.TestCase):
         chip.comando = m1_mod.comando_musica(0)
         cpu.nmi_pendiente = True
         self._tick(cpu, chip, total + 2)
-        periodo_a = chip.registros.get(0x00, 0) | (chip.registros.get(0x01, 0) << 8)
-        self.assertEqual(periodo_a, tema.pistas[0][0].periodo,
+        self.assertEqual(self._nota_fm(chip, 0),
+                         self._nota_esperada(tema.pistas[0][0]),
                          "la musica deberia volver al principio")
 
     def test_parar_la_musica(self):
@@ -332,11 +361,14 @@ class TestDriver(unittest.TestCase):
         chip.comando = m1_mod.comando_musica(0)
         cpu.nmi_pendiente = True
         self._tick(cpu, chip, 3)
+        cuantas = len(chip.escrituras)
         chip.comando = m1_mod.CMD_MUSIC_STOP | 0x40      # con el bit de alternancia
         cpu.nmi_pendiente = True
         self._tick(cpu, chip, 2)
-        self.assertEqual(chip.registros.get(0x08), 0)
-        self.assertEqual(chip.registros.get(0x09), 0)
+        sueltas = [v for (r, v) in chip.escrituras[cuantas:]
+                   if r == 0x28 and not v & 0xF0]
+        for canal in m1_mod.FM_CANALES:
+            self.assertIn(canal, sueltas, "el canal %d se queda sonando" % canal)
 
     def test_el_mismo_efecto_dos_veces_seguidas(self):
         """El bit de alternancia permite repetir sonido (saltar dos veces)."""

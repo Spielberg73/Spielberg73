@@ -13,12 +13,17 @@ Aqui se juntan dos piezas:
     `machine68k`, que viene con amitools;
   * el chip de video (el LSPC) esta escrito en este fichero: se queda con lo
     que el juego escribe en la VRAM y luego reconstruye la imagen a partir de
-    los tiles de las ROMs C1/C2 y S1 y de las paletas.
+    los tiles de las ROMs C1/C2 y S1 y de las paletas;
+  * y el sonido entero, que en esta placa es otro circuito: el Z80 ejecuta la
+    ROM M1 de verdad (tests/z80sim.py) y de los registros que le deja al
+    YM2610 sale la onda -FM para la musica, SSG para los efectos y ADPCM-A
+    para las muestras- (la clase Sonido, al final del fichero).
 
-No es un emulador de Neo Geo. No hay Z80, ni YM2610, ni zoom de sprites, ni
-BIOS: el juego entra directo en `main()`. Lo que si comprueba, y no comprobaba
-nada hasta ahora, es que la lista de sprites y el plano fix que deja el motor
-en la VRAM dibujan el juego que se espera.
+No es un emulador de Neo Geo. No hay BIOS -el juego entra directo en `main()`-
+ni **zoom de sprites**, que es lo unico grande que le falta al chip de video de
+aqui. Lo que si comprueba, y no comprobaba nada hasta ahora, es que la lista de
+sprites y el plano fix que deja el motor en la VRAM dibujan el juego que se
+espera, y que por el altavoz sale la musica del game.yaml.
 
 Lo que aqui se da por supuesto y no se ha podido contrastar con hardware:
   * el sprite 0 es el que va delante (los siguientes quedan detras);
@@ -447,6 +452,33 @@ def cargar(carpeta, rom_id="202", trabajo=None, sonido=True):
 
 SSG_RELOJ = 4000000
 SONIDO_RITMO = 44100            # muestras por segundo de lo que se genera aqui
+FM_RELOJ = 8000000              # el reloj del YM2610 en la placa
+
+# Los dos canales de FM que usa la musica. En el YM2610 el canal 0 de cada
+# mitad del chip **no existe**: es un YM2608 al que le quitaron el primero de
+# cada tres, asi que quedan el 1 y el 2.
+FM_CANALES = (1, 2)
+
+# Como se conectan los cuatro operadores en cada uno de los ocho algoritmos:
+# para cada operador, de quien recibe la modulacion. Los que no modulan a nadie
+# son los que salen por el altavoz (las "portadoras").
+FM_MODULADORES = (
+    ((), (0,), (1,), (2,)),        # 0: 1->2->3->4
+    ((), (), (0, 1), (2,)),        # 1: (1+2)->3->4
+    ((), (), (1,), (0, 2)),        # 2: 1 y (2->3) -> 4
+    ((), (0,), (), (1, 2)),        # 3: (1->2) y 3 -> 4
+    ((), (0,), (), (2,)),          # 4: (1->2) + (3->4)
+    ((), (0,), (0,), (0,)),        # 5: 1 -> 2, 3 y 4
+    ((), (0,), (), ()),            # 6: (1->2) + 3 + 4
+    ((), (), (), ()),              # 7: los cuatro sueltos
+)
+FM_PORTADORAS = ((3,), (3,), (3,), (3,), (1, 3), (1, 2, 3), (1, 2, 3), (0, 1, 2, 3))
+# El orden de los operadores en los registros no es el suyo: van en 1, 3, 2, 4.
+FM_ORDEN = (0, 2, 1, 3)
+# Cuanto pega una portadora de FM a tope, en la misma escala que los canales
+# del SSG (que llegan a 6000). El FM de esta placa suena bastante mas fuerte
+# que el SSG: por eso la musica lleva su mezcla y no va a tope.
+FM_ESCALA = 12000.0
 
 
 class Sonido:
@@ -471,6 +503,13 @@ class Sonido:
         self.pcm = []               # la muestra que esta sonando, ya descifrada
         self.pcm_donde = 0.0
         self._visto_b = 0
+        # El FM: la fase de los cuatro operadores de cada canal, las dos
+        # ultimas salidas del primero (que es el que se realimenta) y si el
+        # canal tiene la nota pulsada.
+        self.fm_fases = [[0.0] * 4 for _ in FM_CANALES]
+        self.fm_eco = [[0.0, 0.0] for _ in FM_CANALES]
+        self.fm_pulsado = [False] * len(FM_CANALES)
+        self._visto_a = 0
         self._arrancar()
 
     def _arrancar(self):
@@ -524,8 +563,78 @@ class Sonido:
             self.pcm = adpcm.descifrar(self.v1[primero:ultimo + 1])
             self.pcm_donde = 0.0
 
+    def _mirar_fm(self):
+        """Busca en lo que le han escrito al chip las notas pulsadas y sueltas.
+
+        El registro $28 lo dice todo: los cuatro bits de arriba son los
+        operadores que arrancan (cero = soltar) y los dos de abajo, el canal.
+        """
+        escrituras = self.chip.escrituras
+        while self._visto_a < len(escrituras):
+            registro, valor = escrituras[self._visto_a]
+            self._visto_a += 1
+            if registro != 0x28:
+                continue
+            if (valor & 3) not in FM_CANALES:
+                continue
+            i = FM_CANALES.index(valor & 3)
+            pulsa = (valor & 0xF0) != 0
+            if pulsa:
+                # El chip arranca la nota desde el principio de la onda; si no
+                # se hiciera, dos notas seguidas sonarian pegadas.
+                self.fm_fases[i] = [0.0] * 4
+                self.fm_eco[i] = [0.0, 0.0]
+            self.fm_pulsado[i] = pulsa
+
+    def _fm_voces(self):
+        """Los operadores que suenan ahora mismo en cada canal.
+
+        Es un modelo, no una copia del chip: sirve para saber **que frecuencia
+        sale y con cuanta fuerza**, que es lo que miden las pruebas, y no para
+        que la onda salga identica a la de una placa. La envolvente se trata
+        como una llave: mientras la nota este pulsada, el operador suena a su
+        volumen; al soltarla, calla. Los timbres del kit atacan a tope
+        (`ar` = 31) y no decaen, asi que la diferencia se oye poco.
+        """
+        import math
+        reg = self.chip.registros
+        voces = []
+        for i, canal in enumerate(FM_CANALES):
+            if not self.fm_pulsado[i]:
+                voces.append(None)
+                continue
+            alto = reg.get(0xA4 + canal, 0)
+            fnum = ((alto & 0x07) << 8) | reg.get(0xA0 + canal, 0)
+            bloque = (alto >> 3) & 0x07
+            if not fnum:
+                voces.append(None)
+                continue
+            hz = fnum * FM_RELOJ / (144.0 * (1 << (21 - bloque)))
+            conexion = reg.get(0xB0 + canal, 0)
+            algoritmo = conexion & 0x07
+            realim = (conexion >> 3) & 0x07
+            # Con realimentacion 7 el primer operador se modula a si mismo a
+            # tope y deja de ser un seno: asi es como el timbre 'cuadrada'
+            # suena a onda cuadrada y no a flauta.
+            eco = 0.0 if realim == 0 else math.pi * 2.0 ** (realim - 7)
+            operadores = []
+            for op in range(4):
+                d = canal + FM_ORDEN[op] * 4
+                mul = reg.get(0x30 + d, 0) & 0x0F
+                tl = reg.get(0x40 + d, 127) & 0x7F
+                # cada unidad de tl son 0.75 dB, y ocho de ellas, la mitad
+                amplitud = 0.0 if tl >= 127 else 2.0 ** (-tl / 8.0)
+                paso = hz * (0.5 if mul == 0 else mul) / SONIDO_RITMO
+                operadores.append((paso, amplitud))
+            voces.append((operadores, FM_MODULADORES[algoritmo],
+                          FM_PORTADORAS[algoritmo], eco))
+        return voces
+
     def _generar(self, cuantas):
-        """La onda de los tres canales durante ese frame.
+        """La onda de todo lo que suena durante ese frame.
+
+        Son los tres canales de onda cuadrada del SSG, el ruido, la muestra que
+        toque el ADPCM-A y los dos canales de FM, que es por donde va la musica.
 
         La fase se guarda de un frame para otro: si se empezara de cero cada
         vez saldrian chasquidos que no existen en la consola."""
@@ -547,11 +656,33 @@ class Sonido:
         amp_ruido = 4000.0 if ruido_on else 0.0
 
         self._mirar_adpcm()
+        self._mirar_fm()
+        voces = self._fm_voces()
         paso_pcm = adpcm_ritmo() / float(SONIDO_RITMO)
 
+        import math
         import random
+        dos_pi = 2.0 * math.pi
         for _ in range(cuantas):
             total = 0.0
+            for i, voz in enumerate(voces):
+                if voz is None:
+                    continue
+                operadores, moduladores, portadoras, eco = voz
+                fases = self.fm_fases[i]
+                salidas = [0.0, 0.0, 0.0, 0.0]
+                for op, (paso, amplitud) in enumerate(operadores):
+                    fases[op] = (fases[op] + paso) % 1.0
+                    if amplitud <= 0.0:
+                        continue
+                    if op == 0 and eco:
+                        entrada = eco * (self.fm_eco[i][0] + self.fm_eco[i][1]) / 2.0
+                    else:
+                        entrada = math.pi * sum(salidas[m] for m in moduladores[op])
+                    salidas[op] = amplitud * math.sin(fases[op] * dos_pi + entrada)
+                self.fm_eco[i][1] = self.fm_eco[i][0]
+                self.fm_eco[i][0] = salidas[0]
+                total += FM_ESCALA * sum(salidas[c] for c in portadoras)
             if self.pcm:
                 indice = int(self.pcm_donde)
                 if indice >= len(self.pcm):

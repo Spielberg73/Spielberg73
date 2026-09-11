@@ -35,7 +35,7 @@ from __future__ import annotations
 
 from typing import Dict, List, Tuple
 
-from . import adpcm, wav
+from . import adpcm, fm, wav
 from .errors import ProjectError
 from .sonido import EVENTOS, Sonido, periodo_ssg
 from .z80 import ensamblar
@@ -95,8 +95,11 @@ bucle_principal:
         call actualizar
         jr bucle_principal
 
-; --- escribir un registro del YM2610 (parte A: SSG y temporizadores) ------
+; --- escribir un registro del YM2610 (parte A: SSG, FM 1 y 2, temporizadores)
 ; b = registro, c = valor
+; El chip se queda ocupado un rato detras de cada escritura y no avisa: hay que
+; esperarlo a ojo. Detras del dato de un registro de FM son unos 83 ciclos del
+; reloj del chip, que a 8 MHz son 10 microsegundos; cada nop del Z80 es uno.
 escribir_ym:
         ld a,b
         out ($04),a
@@ -105,6 +108,8 @@ escribir_ym:
         nop
         ld a,c
         out ($05),a
+        nop
+        nop
         nop
         nop
         nop
@@ -126,6 +131,20 @@ escribir_ym_b:
         nop
         nop
         ret
+
+; --- cargar un timbre de FM ----------------------------------------------
+; hl = pares (registro, valor) terminados en un registro 0. Sale con hl
+; apuntando detras del cero, que no le hace falta a nadie pero es lo limpio.
+cargar_timbre:
+        ld b,(hl)
+        inc hl
+        ld a,b
+        or a
+        ret z
+        ld c,(hl)
+        inc hl
+        call escribir_ym
+        jr cargar_timbre
 
 ; --- tocar una muestra digital -------------------------------------------
 ; hl = entrada de cuatro bytes de tabla_muestras (principio y final, en
@@ -163,6 +182,15 @@ tocar_muestra:
 init_ym:
         ld b,$07                ; mezclador: tono en A, B y C; ruido apagado
         ld c,%%00111000
+        call escribir_ym
+        ld b,$22                ; el LFO, apagado: el timbre no cuenta con el
+        ld c,0
+        call escribir_ym
+        ld b,$28                ; y los dos canales de FM, callados
+        ld c,$01
+        call escribir_ym
+        ld b,$28
+        ld c,$02
         call escribir_ym
         ld b,$08                ; volumenes a cero
         ld c,0
@@ -262,6 +290,29 @@ comando_musica:
         ret nc
         add a,a
         add a,a                 ; cada musica son dos punteros
+        push af
+; Primero los timbres: con que suena cada pista. Se cargan una sola vez, al
+; empezar la cancion, porque no cambian en toda ella; y el volumen ya viene
+; dentro, asi que el driver no calcula nada por nota.
+        ld l,a
+        ld h,0
+        ld de,tabla_timbres
+        add hl,de
+        ld e,(hl)
+        inc hl
+        ld d,(hl)
+        inc hl
+        push hl
+        ex de,hl
+        call cargar_timbre      ; el de la primera pista
+        pop hl
+        ld e,(hl)
+        inc hl
+        ld d,(hl)
+        ex de,hl
+        call cargar_timbre      ; y el de la segunda
+        pop af
+; Y ahora si, las notas.
         ld l,a
         ld h,0
         ld de,tabla_musica
@@ -290,11 +341,11 @@ parar_musica:
         xor a
         ld (%s),a
         ld (%s),a
-        ld b,$08
-        ld c,0
+        ld b,$28                ; soltar las notas de los dos canales de FM
+        ld c,$01
         call escribir_ym
-        ld b,$09
-        ld c,0
+        ld b,$28
+        ld c,$02
         call escribir_ym
         ret
 
@@ -328,7 +379,84 @@ arrancar_nada:
        "$%04x" % _canal_vars(0)["act"], "$%04x" % _canal_vars(1)["act"])
 
 
+def _canal_fm_asm(indice: int) -> str:
+    """Un canal de musica, que en esta maquina va por FM.
+
+    Cada nota son cuatro escrituras y ni una mas: soltar, los dos bytes de la
+    nota y volver a pulsar. El timbre ya esta puesto -se carga al arrancar la
+    cancion- y el volumen va dentro del timbre, asi que aqui no se calcula
+    nada. Se suelta **siempre**, aunque la nota sea la misma que la de antes:
+    si no, dos negras seguidas del mismo tono suenan como una blanca.
+    """
+    v = _canal_vars(indice)
+    canal = FM_CANALES[indice]
+    return """
+; --- canal %d (FM %d) -------------------------------------------------------
+actualizar_canal%d:
+        ld a,($%04x)            ; activo?
+        or a
+        ret z
+        ld hl,$%04x             ; contador de frames
+        dec (hl)
+        ret nz
+siguiente%d:
+        ld hl,($%04x)           ; puntero a la secuencia
+        ld c,(hl)               ; fnum bajo
+        inc hl
+        ld b,(hl)               ; bloque y fnum alto, ya colocados
+        inc hl
+        ld a,(hl)               ; duracion
+        inc hl
+        ld e,(hl)               ; volumen (no se usa: va en el timbre)
+        inc hl
+        or a
+        jr z,fin%d
+        ld ($%04x),a            ; guardar la duracion
+        ld ($%04x),hl           ; y el puntero a la siguiente
+        push bc
+        ld b,$28                ; soltar la nota de este canal
+        ld c,$%02x
+        call escribir_ym
+        pop bc
+        ld a,b                  ; silencio? entonces no se vuelve a pulsar
+        or c
+        ret z
+        push bc
+        ld c,b                  ; el valor que va al registro
+        ld b,$%02x              ; primero la parte alta: el chip se la guarda
+        call escribir_ym
+        pop bc
+        ld b,$%02x              ; y al escribir la baja entra la nota entera
+        call escribir_ym
+        ld b,$28
+        ld c,$%02x              ; los cuatro operadores, a sonar
+        call escribir_ym
+        ret
+
+fin%d:
+        ld a,($%04x)            ; en bucle?
+        or a
+        jr z,parar%d
+        ld hl,($%04x)           ; volver al principio
+        ld ($%04x),hl
+        jr siguiente%d
+parar%d:
+        xor a
+        ld ($%04x),a
+        ld b,$28                ; y soltar la nota
+        ld c,$%02x
+        call escribir_ym
+        ret
+""" % (indice, canal, indice, v["act"], v["cont"], indice, v["ptr"], indice,
+       v["cont"], v["ptr"], canal,
+       0xA4 + canal, 0xA0 + canal, 0xF0 | canal,
+       indice, v["loop"], indice, v["base"], v["ptr"], indice, indice,
+       v["act"], canal)
+
+
 def _canal_asm(indice: int) -> str:
+    if indice < 2:
+        return _canal_fm_asm(indice)
     v = _canal_vars(indice)
     reg_lo = indice * 2
     reg_hi = indice * 2 + 1
@@ -429,19 +557,74 @@ actualizar:
 """
 
 
-def _secuencia_bytes(pasos, nombre: str) -> List[str]:
-    """Convierte los pasos en lineas 'db' de 4 bytes."""
+def _secuencia_bytes(pasos, nombre: str, fm_notas: bool = False) -> List[str]:
+    """Convierte los pasos en lineas 'db' de 4 bytes.
+
+    Con `fm_notas`, los dos primeros bytes no son el periodo del SSG sino la
+    nota tal y como la quiere el chip de FM: el `fnum` bajo y, en el segundo, el
+    bloque y los tres bits altos ya colocados. Son **los mismos dos bytes** que
+    van a los registros $A0 y $A4, asi que el driver no tiene que pensar.
+    """
     lineas = ["%s:" % nombre]
     for paso in pasos:
         duracion = max(1, int(paso.duracion))
         volumen = (paso.volumen & 0x0F) | (0x80 if paso.ruido else 0)
-        periodo = periodo_ssg(paso.frecuencia)
+        if fm_notas:
+            if paso.frecuencia > 0:
+                bloque, fnum = fm.fnum_bloque(paso.frecuencia, fm.RELOJ_YM2610)
+                bajo, alto = fnum & 0xFF, (bloque << 3) | (fnum >> 8)
+            else:
+                bajo, alto = 0, 0
+        else:
+            periodo = periodo_ssg(paso.frecuencia)
+            bajo, alto = periodo & 0xFF, (periodo >> 8) & 0x0F
         while duracion > 0:
             trozo = min(255, duracion)
             lineas.append("        db $%02x,$%02x,%d,$%02x"
-                          % (periodo & 0xFF, (periodo >> 8) & 0x0F, trozo, volumen))
+                          % (bajo, alto, trozo, volumen))
             duracion -= trozo
     lineas.append("        db 0,0,0,0        ; fin")
+    return lineas
+
+
+# Los dos canales de FM que toca la musica. En el YM2610 los cuatro canales de
+# FM **no empiezan en el cero**: en cada mitad del chip valen el 1 y el 2, y el
+# 0 no existe. Aqui se usan los dos de la primera mitad, que son los que se
+# escriben por los mismos puertos que el SSG.
+FM_CANALES = (1, 2)
+# La mezcla, en unidades de `tl`: el FM suena mucho mas que el SSG y a tope se
+# comeria los efectos, que van por el canal C del SSG. Melodia por debajo y
+# acompanamiento, mas. Es la misma decision que en la Mega Drive.
+FM_MEZCLA = (10, 18)
+
+
+def _timbre_bytes(nombre_timbre: str, canal: int, volumen: int, mezcla: int,
+                  etiqueta: str) -> List[str]:
+    """El timbre entero, en pares (registro, valor) y con el volumen ya dentro.
+
+    El volumen de una cancion no cambia de nota a nota, asi que en vez de
+    calcularlo en el Z80 se hornea aqui: el `tl` de las portadoras ya viene con
+    la atenuacion puesta. El driver solo copia pares hasta el cero.
+    """
+    t = fm.TIMBRES[nombre_timbre]
+    suma = (15 - max(0, min(15, volumen))) * 3 + mezcla
+    sueltan = fm.portadoras(t.algoritmo)
+    lineas = ["%s:" % etiqueta]
+    for i, ranura in enumerate(fm.ORDEN_OPN):
+        op = t.op(i)
+        d = canal + ranura * 4
+        tl = op.tl + (suma if i in sueltan else 0)
+        lineas.append("        db $%02x,$%02x" % (0x30 + d, ((op.dt & 7) << 4) | (op.mul & 15)))
+        lineas.append("        db $%02x,$%02x" % (0x40 + d, min(127, tl)))
+        lineas.append("        db $%02x,$%02x" % (0x50 + d, ((op.ks & 3) << 6) | (op.ar & 31)))
+        lineas.append("        db $%02x,$%02x" % (0x60 + d, ((op.am & 1) << 7) | (op.dr & 31)))
+        lineas.append("        db $%02x,$%02x" % (0x70 + d, op.sr & 31))
+        lineas.append("        db $%02x,$%02x" % (0x80 + d, ((op.sl & 15) << 4) | (op.rr & 15)))
+    lineas.append("        db $%02x,$%02x" % (0xB0 + canal,
+                                             ((t.realimentacion & 7) << 3) | (t.algoritmo & 7)))
+    # Los dos altavoces. Sin esto el chip toca y no se oye nada.
+    lineas.append("        db $%02x,$%02x" % (0xB4 + canal, 0xC0))
+    lineas.append("        db 0              ; fin del timbre")
     return lineas
 
 
@@ -521,13 +704,33 @@ def generar_asm(sonido: Sonido, orden_musica: List[str]) -> Tuple[str, List[str]
             datos.append("        dw " + ", ".join(pistas))
     else:
         datos.append("        dw 0, 0")
+    datos.append("; Con que suena cada pista de cada cancion, en el mismo orden que")
+    datos.append("; tabla_musica: dos punteros a timbre por cancion.")
+    datos.append("tabla_timbres:")
+    if orden_musica:
+        for nombre in orden_musica:
+            datos.append("        dw " + ", ".join("timbre_%s_%d" % (nombre, p)
+                                                   for p in range(2)))
+    else:
+        datos.append("        dw timbre_callado, timbre_callado")
+        datos.extend(_timbre_bytes(fm.POR_DEFECTO, FM_CANALES[0], 0,
+                                   FM_MEZCLA[0], "timbre_callado"))
 
     for nombre in orden_efectos:
         datos.extend(_secuencia_bytes(sonido.efectos[nombre].pasos, "efecto_%s" % nombre))
     for nombre in orden_musica:
         tema = sonido.musica[nombre]
         for i, pista in enumerate(tema.pistas):
-            datos.extend(_secuencia_bytes(pista, "musica_%s_%d" % (nombre, i)))
+            datos.extend(_secuencia_bytes(pista, "musica_%s_%d" % (nombre, i),
+                                          fm_notas=True))
+        for p in range(2):
+            cual = tema.timbres[p] if p < len(tema.timbres) else fm.POR_DEFECTO
+            # El volumen es de la cancion entera, asi que se hornea en el timbre
+            # y no se toca mas. Si la pista no existe da igual lo que se ponga.
+            pasos = tema.pistas[p] if p < len(tema.pistas) else []
+            volumen = max([paso.volumen for paso in pasos] or [0])
+            datos.extend(_timbre_bytes(cual, FM_CANALES[p], volumen,
+                                       FM_MEZCLA[p], "timbre_%s_%d" % (nombre, p)))
 
     fuente = "\n".join(partes) + "\n" + "\n".join(datos) + "\n"
     return fuente, orden_efectos

@@ -1580,10 +1580,18 @@ sonido:
       velocidad: 8        # frames que dura cada nota (más alto = más lento)
       volumen: 11         # 0 a 15
       bucle: si
+      timbres: [flauta, bajo]   # con qué suena cada pista (solo las de FM)
       pistas:
         - "do4 mi4 sol4 mi4 | fa4 la4 do5 la4"    # canal A: melodía
         - "do3 -   do3 -    | fa3 -   fa3 -"      # canal B: acompañamiento
 ```
+
+`timbres:` dice **con qué** suena cada pista, no qué toca. Lo miran las tres
+máquinas con chip de FM (Mega Drive, Neo Geo y X68000); las demás tocan las
+mismas notas con la onda que tienen. Los ocho que hay —`cuadrada` (el de
+siempre, y el que sale si no dices nada), `organo`, `flauta`, `bajo`, `metal`,
+`campana`, `cuerda` y `pizzicato`— están contados uno a uno en
+[sonido.md](sonido.md#con-qué-suena-timbres).
 
 ### Lo que enseña el marcador
 

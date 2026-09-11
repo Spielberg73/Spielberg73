@@ -69,6 +69,16 @@ static const uint8_t np_canal_de[NP_CANALES] = {
  * la mitad de los tramos en vez de la melodia. */
 static const uint8_t np_baja[NP_CANALES] = { 0, 4, 0 };
 
+/* Que timbre tiene puesto ahora mismo cada una de las dos voces de musica.
+   0xFF = ninguno todavia, asi que la primera cancion lo carga seguro. */
+static uint8_t np_fm_puesto[2];
+
+/* Cuanto se baja cada voz por encima de np_baja, en unidades de `tl` (0.75 dB
+   cada una). Es la misma decision que en la Mega Drive y en la Neo Geo: el
+   acompanamiento va mas bajo para que no tape la melodia, y las dos por debajo
+   del tope para dejarle sitio al efecto. */
+static const uint8_t NP_FM_MEZCLA[2] = { 10, 18 };
+
 typedef struct {
     const NpSndPaso *paso;
     const NpSndPaso *inicio;
@@ -156,7 +166,9 @@ static void np_opm_ruido(uint8_t encender, uint8_t tono)
 static void np_opm_instrumento(uint8_t canal)
 {
     /* $20: los dos altavoces encendidos (sin esto no se oye nada), sin
-       realimentacion y algoritmo 7: los cuatro operadores en paralelo. */
+       realimentacion y algoritmo 7: los cuatro operadores en paralelo. Es el
+       timbre de arranque, el que usa el canal de efectos; la musica se carga
+       el suyo (np_fm_timbre) en cuanto empieza una cancion. */
     np_opm((uint8_t)(0x20 + canal), 0xC7);
     np_opm((uint8_t)(0x38 + canal), 0x00);   /* sin vibrato ni tremolo */
     np_opm_operadores(0x40, canal, 0x01);    /* multiplicador 1, sin detune */
@@ -165,6 +177,47 @@ static void np_opm_instrumento(uint8_t canal)
     np_opm_operadores(0xC0, canal, 0x00);    /* sin segunda caida */
     np_opm_operadores(0xE0, canal, 0x0F);    /* y que corte rapido al soltar */
     np_opm_volumen(canal, 0);
+}
+
+/* --- los timbres de la musica ------------------------------------------
+ *
+ * Los mismos bytes que usa la Mega Drive con su YM2612. No es casualidad ni
+ * una traduccion: los dos chips guardan por operador los mismos seis numeros
+ * con la misma forma, y hasta en el mismo orden raro (1, 3, 2, 4). Lo unico
+ * que cambia es donde se escriben -otras direcciones- y cada cuanto: en el
+ * OPN los operadores van de cuatro en cuatro y en el OPM, de ocho en ocho.
+ */
+static void np_fm_timbre(uint8_t canal, const NpFmTimbre *t)
+{
+    uint8_t i;
+    np_opm((uint8_t)(0x20 + canal), (uint8_t)(0xC0 | t->alg_fb));
+    np_opm((uint8_t)(0x38 + canal), 0x00);   /* sin vibrato ni tremolo */
+    for (i = 0; i < 4; i++) {
+        uint8_t d = (uint8_t)(canal + i * 8);
+        np_opm((uint8_t)(0x40 + d), t->dt_mul[i]);
+        np_opm((uint8_t)(0x60 + d), t->tl[i]);
+        np_opm((uint8_t)(0x80 + d), t->ks_ar[i]);
+        np_opm((uint8_t)(0xA0 + d), t->am_dr[i]);
+        np_opm((uint8_t)(0xC0 + d), t->sr[i]);
+        np_opm((uint8_t)(0xE0 + d), t->sl_rr[i]);
+    }
+}
+
+/* El volumen de una nota con timbre: el `tl` de las portadoras y solo de
+   ellas, porque en un modulador el `tl` es el brillo y bajarlo cambiaria el
+   instrumento en vez de bajar el volumen. */
+static void np_fm_volumen(uint8_t canal, const NpFmTimbre *t, uint8_t volumen,
+                          uint8_t voz)
+{
+    uint8_t i;
+    uint8_t suma = (uint8_t)((volumen > 15 ? 0 : 15 - volumen) * 3
+                             + NP_FM_MEZCLA[voz & 1]);
+    for (i = 0; i < 4; i++) {
+        uint16_t tl;
+        if (!(t->portadoras & (1 << i))) continue;
+        tl = (uint16_t)(t->tl[i] + suma);
+        np_opm((uint8_t)(0x60 + canal + i * 8), (uint8_t)(tl > 127 ? 127 : tl));
+    }
 }
 
 /* --- las muestras digitales --------------------------------------------
@@ -223,6 +276,7 @@ void np_sound_init(void)
         np_canales[i].activo = 0;
     }
     np_musica_actual = 0xFF;
+    np_fm_puesto[0] = np_fm_puesto[1] = 0xFF;
 }
 
 static void np_callar(uint8_t i)
@@ -247,12 +301,23 @@ static void np_arrancar(uint8_t i, const NpSndPaso *secuencia, uint8_t bucle)
 static void np_tocar_musica(uint8_t indice)
 {
 #if NP_SOUND_ENABLED
+    uint8_t p;
     if (indice == np_musica_actual) return;
     np_musica_actual = indice;
     if (indice == 0xFF || indice >= np_snd_musica_count) {
         np_arrancar(0, 0, 0);
         np_arrancar(1, 0, 0);
         return;
+    }
+    /* Con que suena cada voz. Se carga aqui, una vez por cancion, y no nota a
+       nota: son veintitantos registros y no cambian en toda la pieza. */
+    for (p = 0; p < 2; p++) {
+        uint8_t cual = np_fm_musica[indice * 2 + p];
+        if (cual >= np_fm_timbre_count) cual = 0;
+        if (np_fm_puesto[p] != cual) {
+            np_fm_timbre(np_canal_de[p], &np_fm_timbres[cual]);
+            np_fm_puesto[p] = cual;
+        }
     }
     np_arrancar(0, np_snd_musica[indice * 2], 1);
     np_arrancar(1, np_snd_musica[indice * 2 + 1], 1);
@@ -299,7 +364,13 @@ static void np_avanzar(uint8_t i)
         {
             uint8_t vol = (uint8_t)(paso->volumen & 0x0F);
             vol = (uint8_t)(vol > np_baja[i] ? vol - np_baja[i] : 0);
-            np_opm_volumen(canal, vol);
+            if (i < 2) {
+                uint8_t cual = np_fm_puesto[i] < np_fm_timbre_count
+                               ? np_fm_puesto[i] : 0;
+                np_fm_volumen(canal, &np_fm_timbres[cual], vol, i);
+            } else {
+                np_opm_volumen(canal, vol);
+            }
         }
         np_opm_key(canal, 1);
         c->paso = paso + 1;

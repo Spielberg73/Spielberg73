@@ -160,6 +160,29 @@ class TestGeneracion(unittest.TestCase):
         self.assertNotIn("@DATA@", html)
         self.assertNotIn("src=\"http", html)
 
+    def test_el_preview_se_lleva_los_timbres_de_fm(self):
+        """Para poder elegir el timbre sin compilar hay que poder oirlo aqui.
+
+        El navegador no hace FM: toca una onda dada por sus armonicos, y el
+        compilador se los manda ya calculados. Lo que se comprueba es que van
+        los ocho, que cada cancion dice con cual suena cada pista y que la onda
+        tiene fundamental -un timbre cuyo armonico 1 fuera cero no se oiria
+        donde toca-.
+        """
+        from ngplat import fm
+        datos = build_data(self.build)["sonido"]
+        self.assertEqual(sorted(datos["timbres"]), sorted(fm.nombres()))
+        for nombre, t in datos["timbres"].items():
+            self.assertEqual(len(t["real"]), fm.ARMONICOS, nombre)
+            self.assertEqual(t["real"][0], 0.0, "%s: el armonico cero no va" % nombre)
+            peso = abs(t["real"][1]) + abs(t["imag"][1])
+            self.assertGreater(peso, 0.3, "%s se queda sin fundamental" % nombre)
+        for tema in datos["musica"]:
+            self.assertEqual(len(tema["timbres"]), 2, tema["nombre"])
+            for cual in tema["timbres"]:
+                self.assertIn(cual, datos["timbres"],
+                              "%s pide un timbre que no existe" % tema["nombre"])
+
     def test_preview_y_c_describen_lo_mismo(self):
         datos = build_data(self.build)
         self.assertEqual(len(datos["levels"]), len(self.build.levels))

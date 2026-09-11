@@ -98,11 +98,15 @@ sonido:
   musica:
     galeria:
       velocidad: 9
+      # Con que suena cada pista: solo lo miran las tres maquinas con chip
+      # de FM; las demas tocan lo mismo con lo que tengan.
+      timbres: [organo, bajo]
       pistas:
         - "la3 do4 mi4 do4 | si3 re4 fa4 re4 | do4 mi4 la4 mi4 | mi4 - re4 -"
         - "la2 -   la2 -   | si2 -   si2 -   | do3 -   do3 -   | mi2 - -   -"
     pozo:
       velocidad: 11
+      timbres: [cuerda, bajo]
       pistas:
         - "re4 fa4 la4 fa4 | do4 mi4 sol4 mi4 | si3 re4 fa4 re4 | la3 - - -"
         - "re2 -   la2 -   | do3 -   sol2 -   | si2 -   fa2 -   | la2 - - -"

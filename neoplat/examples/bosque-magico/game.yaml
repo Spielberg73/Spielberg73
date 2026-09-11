@@ -212,11 +212,16 @@ sonido:
   musica:
     bosque:
       velocidad: 8          # frames que dura cada nota (mas alto = mas lento)
+      # Con que suena cada pista. Solo lo miran las tres maquinas con chip
+      # de FM (Mega Drive, Neo Geo y X68000); las demas tocan lo mismo con
+      # lo que tengan. Los timbres estan en la documentacion de sonido.
+      timbres: [flauta, bajo]
       pistas:
         - "do4 mi4 sol4 mi4 | fa4 la4 do5 la4 | sol4 si4 re5 si4 | do5 - sol4 -"
         - "do3 -  do3 -     | fa3 -  fa3 -    | sol3 - sol3 -     | do3 - -    -"
     cueva:
       velocidad: 10
+      timbres: [organo, bajo]
       pistas:
         - "la3 do4 mi4 do4 | sol3 si3 re4 si3 | fa3 la3 do4 la3 | mi3 - - -"
         - "la2 -   mi3 -   | sol2 -   re3 -   | fa2 -   do3 -   | mi2 - - -"

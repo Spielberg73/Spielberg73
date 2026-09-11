@@ -1383,17 +1383,20 @@ def _nivel_aventura_2() -> List[str]:
 _MUSICA_BOSQUE = """  musica:
     bosque:
       velocidad: 8          # frames que dura cada nota (mas alto = mas lento)
+      timbres: [flauta, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - "do4 mi4 sol4 mi4 | fa4 la4 do5 la4 | sol4 si4 re5 si4 | do5 - sol4 -"
         - "do3 -  do3 -     | fa3 -  fa3 -    | sol3 - sol3 -     | do3 - -    -"
     cueva:
       velocidad: 10
+      timbres: [organo, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - "la3 do4 mi4 do4 | sol3 si3 re4 si3 | fa3 la3 do4 la3 | mi3 - - -"
         - "la2 -   mi3 -   | sol2 -   re3 -   | fa2 -   do3 -   | mi2 - - -"
     # La del titulo: suena mientras espera a que pulses Start.
     presentacion:
       velocidad: 9
+      timbres: [metal, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           do5 mi5 sol5 do6 si5 sol5 mi5 sol5
@@ -1408,6 +1411,7 @@ _MUSICA_BOSQUE = """  musica:
     # La del jefe: manda sobre la del nivel mientras el jefe este vivo.
     acoso:
       velocidad: 6
+      timbres: [metal, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           la4 - la4 do5 si4 - si4 re5
@@ -1435,16 +1439,19 @@ _MUSICA_BOSQUE = """  musica:
 _MUSICA_HIERRO = """  musica:
     galeria:
       velocidad: 9
+      timbres: [organo, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - "la3 do4 mi4 do4 | si3 re4 fa4 re4 | do4 mi4 la4 mi4 | mi4 - re4 -"
         - "la2 -   la2 -   | si2 -   si2 -   | do3 -   do3 -   | mi2 - -   -"
     pozo:
       velocidad: 11
+      timbres: [cuerda, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - "re4 fa4 la4 fa4 | do4 mi4 sol4 mi4 | si3 re4 fa4 re4 | la3 - - -"
         - "re2 -   la2 -   | do3 -   sol2 -   | si2 -   fa2 -   | la2 - - -"
     portada:
       velocidad: 10
+      timbres: [metal, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           la4 mi5 do5 mi5 si4 fa#5 re5 fa#5
@@ -1458,6 +1465,7 @@ _MUSICA_HIERRO = """  musica:
           do3 - mi3 - la2 - - -
     asedio:
       velocidad: 6
+      timbres: [metal, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           re4 - re4 fa4 mi4 - mi4 sol4
@@ -1491,6 +1499,7 @@ _MUSICA_HIERRO = """  musica:
 _MUSICA_LATIGO = """  musica:
     castillo:
       velocidad: 5          # frames que dura cada nota (mas alto = mas lento)
+      timbres: [metal, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           re5 mi5 fa5 sol5 la5:2 fa5 re5
@@ -1528,6 +1537,7 @@ _MUSICA_LATIGO = """  musica:
           re2 re3 la2 la3 re2 re3 re2 re3
     cripta:
       velocidad: 8
+      timbres: [organo, cuerda]  # con que suena cada pista (solo FM)
       pistas:
         - |
           la4 - do5 - mi5 - do5 -
@@ -1550,6 +1560,7 @@ _MUSICA_LATIGO = """  musica:
     # La del titulo: notas largas, sin prisa, esperando a que pulses Start.
     presagio:
       velocidad: 11
+      timbres: [organo, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           re5 - do#5 - re5 - fa5 -
@@ -1564,6 +1575,7 @@ _MUSICA_LATIGO = """  musica:
     # La del jefe: la misma casa, pero con prisa.
     duelo:
       velocidad: 5
+      timbres: [metal, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           re5 - re5 mi5 fa5 - fa5 sol5
@@ -1599,6 +1611,7 @@ ESTILOS = ("bosque", "hierro")
 _MUSICA_COMANDO = """  musica:
     himno:
       velocidad: 9
+      timbres: [metal, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           la4 - do5 - mi5 - la5 -
@@ -1612,6 +1625,7 @@ _MUSICA_COMANDO = """  musica:
           mi2 - si2 - la2:2 - -
     avanzada:
       velocidad: 7
+      timbres: [metal, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           la4 - la4 do5 mi5 - re5 -
@@ -1633,6 +1647,7 @@ _MUSICA_COMANDO = """  musica:
           la2:2 mi3:2 la2:2 mi3:2
     patrulla:
       velocidad: 8
+      timbres: [cuadrada, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           mi4 - sol4 la4 si4 - la4 -
@@ -1654,6 +1669,7 @@ _MUSICA_COMANDO = """  musica:
           la2:2 mi3:2 la2:2 - -
     asalto:
       velocidad: 6
+      timbres: [metal, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           re5 - do#5 re5 mi5 - fa5 -
@@ -1684,6 +1700,7 @@ _MUSICA_MAZMORRA = """  musica:
     # te esta esperando. Menor natural, notas largas y el bajo andando solo.
     cripta:
       velocidad: 11
+      timbres: [organo, cuerda]  # con que suena cada pista (solo FM)
       pistas:
         - |
           la4 - - - do5 - - -
@@ -1697,6 +1714,7 @@ _MUSICA_MAZMORRA = """  musica:
           mi2 - - - mi2 - - -
     perseguido:
       velocidad: 7
+      timbres: [cuadrada, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           la4 si4 do5 si4 la4 sol4 la4 -
@@ -1718,6 +1736,7 @@ _MUSICA_MAZMORRA = """  musica:
           la2:2 mi2:2 la2:2 - -
     hondo:
       velocidad: 9
+      timbres: [cuerda, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           re4 - fa4 - la4 - fa4 -
@@ -1739,6 +1758,7 @@ _MUSICA_MAZMORRA = """  musica:
           re2:2 la2:2 re2:2 - -
     guardian:
       velocidad: 5
+      timbres: [metal, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           re5 do#5 re5 mi5 fa5 mi5 re5 do#5
@@ -1769,6 +1789,7 @@ _MUSICA_BARRIO = """  musica:
     # que se repite, que es lo que hace que pegues al ritmo sin darte cuenta.
     calle:
       velocidad: 6
+      timbres: [metal, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           la4 - do5 la4 - re5 do5 -
@@ -1790,6 +1811,7 @@ _MUSICA_BARRIO = """  musica:
           la2:2 - - mi2:2 - -
     descampado:
       velocidad: 7
+      timbres: [cuadrada, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           mi4 sol4 la4 - la4 do5 si4 -
@@ -1811,6 +1833,7 @@ _MUSICA_BARRIO = """  musica:
           mi2:2 - - la2:2 - -
     presentacion:
       velocidad: 8
+      timbres: [metal, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           la4 - do5 mi5 la5 - mi5 -
@@ -1820,6 +1843,7 @@ _MUSICA_BARRIO = """  musica:
           fa2 - fa3 - la2 - - -
     jefazo:
       velocidad: 5
+      timbres: [metal, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           la4 la4 do5 la4 re5 do5 la4 -
@@ -1843,6 +1867,7 @@ _MUSICA_AVENTURA = """  musica:
     # tiempo, que es lo que deja pensar mientras se anda de una pantalla a otra.
     valle:
       velocidad: 8
+      timbres: [flauta, pizzicato]  # con que suena cada pista (solo FM)
       pistas:
         - |
           do5 - mi5 - sol5 -
@@ -1864,6 +1889,7 @@ _MUSICA_AVENTURA = """  musica:
           do3:2 - - - -
     cueva:
       velocidad: 9
+      timbres: [campana, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           la4 - do5 - mi5 -
@@ -1885,6 +1911,7 @@ _MUSICA_AVENTURA = """  musica:
           la2:2 - - - -
     presentacion:
       velocidad: 8
+      timbres: [cuerda, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           do5 - mi5 sol5 do6 - sol5 -
@@ -1894,6 +1921,7 @@ _MUSICA_AVENTURA = """  musica:
           la2 - la3 - do3 - - -
     jefazo:
       velocidad: 6
+      timbres: [metal, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           la4 si4 do5 - re5 do5 si4 -
@@ -2361,6 +2389,7 @@ _MUSICA_GRAFICA = """  musica:
     # sitio para leer sin que la musica te meta prisa.
     estudio:
       velocidad: 12
+      timbres: [cuerda, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           la4 - - - do5 - - -
@@ -2374,6 +2403,7 @@ _MUSICA_GRAFICA = """  musica:
           mi2 - - - - - - -
     sotano:
       velocidad: 14
+      timbres: [campana, cuerda]  # con que suena cada pista (solo FM)
       pistas:
         - |
           re4 - - - fa4 - - -
@@ -2387,6 +2417,7 @@ _MUSICA_GRAFICA = """  musica:
           la2 - - - - - - -
     presentacion:
       velocidad: 10
+      timbres: [cuerda, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           la4 - do5 - mi5 - la5 -
@@ -2940,11 +2971,13 @@ def _nivel_filmation_2() -> List[str]:
 _MUSICA_FILMATION = """  musica:
     castillo:
       velocidad: 14
+      timbres: [organo, pizzicato]  # con que suena cada pista (solo FM)
       pistas:
         - "la4 -  do5 -  mi5 -  do5 -  | si4 -  re5 -  fa5 -  re5 -"
         - "la2 -  -   -  mi3 -  -   -  | si2 -  -   -  fa3 -  -   -"
     cripta:
       velocidad: 16
+      timbres: [campana, cuerda]  # con que suena cada pista (solo FM)
       pistas:
         - "re4 -  fa4 -  la4 -  fa4 -  | do4 -  mi4 -  sol4 - mi4 -"
         - "re2 -  -   -  la2 -  -   -  | do3 -  -   -  sol2 - -   -"
@@ -3372,6 +3405,7 @@ _MUSICA_CARRETERA = """  musica:
     # carretera abierta.
     costa:
       velocidad: 8
+      timbres: [metal, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           mi5 - sol5 la5 - si5 do6 -
@@ -3385,6 +3419,7 @@ _MUSICA_CARRETERA = """  musica:
           la2 la2 mi3 mi3 la2 la2 mi3 mi3
     montana:
       velocidad: 7
+      timbres: [metal, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           re5 - fa5 la5 - sol5 fa5 -
@@ -3406,6 +3441,7 @@ _MUSICA_KUNGFU = """  musica:
     # vienen andando detras de ti.
     patio:
       velocidad: 10
+      timbres: [cuadrada, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           la4 - do5 - re5 - mi5 -
@@ -3419,6 +3455,7 @@ _MUSICA_KUNGFU = """  musica:
           sol2 - - - la2 - - -
     entranas:
       velocidad: 11
+      timbres: [organo, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           mi4 - sol4 - la4 - do5 -
@@ -3432,6 +3469,7 @@ _MUSICA_KUNGFU = """  musica:
           mi2 - - - mi2 - - -
     presentacion:
       velocidad: 9
+      timbres: [metal, bajo]  # con que suena cada pista (solo FM)
       pistas:
         - |
           la4 do5 re5 mi5 sol5 - mi5 -

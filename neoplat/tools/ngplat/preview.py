@@ -13,7 +13,7 @@ import json
 import os
 from typing import Dict, List
 
-from . import gfx, sistemas
+from . import fm, gfx, sistemas
 from . import sonido as sonido_mod
 from .claves import tabla_para_el_editor
 from .project import VERBOS
@@ -267,10 +267,21 @@ def build_data(build: Build) -> Dict[str, object]:
                 "bucle": 1 if tema.bucle else 0,
                 "pistas": [[[round(paso.frecuencia, 2), paso.duracion, paso.volumen]
                             for paso in pista] for pista in tema.pistas],
+                # Con que suena cada pista. En la maquina lo tocan los tres
+                # chips de FM; aqui el navegador se fabrica la onda del timbre
+                # y la toca, para poder elegirlo sin compilar nada.
+                "timbres": [tema.timbres[p] if p < len(tema.timbres)
+                            else fm.POR_DEFECTO for p in range(2)],
                 "fuente": dict(tema.fuente),
             }
             for nombre, tema in project.sound.musica.items()
         ],
+        # Cada timbre, en armonicos: cuanto pesa el primero, el segundo, el
+        # tercero... El navegador no sabe hacer FM, pero sabe tocar una onda
+        # dada por sus armonicos (PeriodicWave), y la onda de un timbre de FM
+        # con multiplicadores enteros -que son todos los del kit- repite
+        # exactamente cada ciclo de la nota, asi que la cuenta sale igual.
+        "timbres": fm.armonicos_todos(),
         # Los momentos que el motor puede sonorizar, para que el editor pueda
         # ofrecer tambien los que este juego no usa todavia.
         "momentos": list(sonido_mod.EVENTOS),

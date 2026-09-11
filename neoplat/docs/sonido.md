@@ -12,14 +12,66 @@ todos los chips. Cada sistema las traduce a lo que pide el suyo:
 
 | | chip | período |
 |---|---|---|
-| Neo Geo | YM2610 (canales SSG) | `4.000.000 / (16 × Hz)` |
-| Mega Drive | SN76489 (PSG) | `3.579.545 / (32 × Hz)` |
+| Neo Geo | YM2610 (FM) | `fnum = Hz × 144 × 2^(21−bloque) / 8.000.000` |
+| Mega Drive | YM2612 (FM) | `fnum = Hz × 144 × 2^(21−bloque) / 7.670.453` |
+| X68000 | YM2151 (FM) | nota y fracción (el chip cuenta en 1/64 de semitono) |
 | Amiga | Paula | `3.546.895 / (Hz × muestras)` |
 | Atari ST | YM2149 | `2.000.000 / (16 × Hz)` |
+| Neo Geo (efectos) | YM2610 (canal SSG) | `4.000.000 / (16 × Hz)` |
 
 El YM2149 del ST es el mismo chip que el SSG de la Neo Geo con la mitad de
 reloj: el mismo período da una nota una octava más baja, y de eso se encarga la
 tabla de arriba.
+
+Las tres máquinas con chip de FM tocan la **música** por FM; los efectos siguen
+por donde estaban (el SSG en la Neo Geo, el PSG en la Mega Drive), así que
+suenan a la vez sin quitarse sitio. Lo que va al chip son dos bytes por nota,
+que son **exactamente** los dos registros que espera —el kit no le hace pensar
+nada al driver.
+
+### Con qué suena: `timbres:`
+
+Un chip de FM no tiene «un» sonido: tiene cuatro osciladores de seno por voz
+—los **operadores**—, cada uno con su envolvente, y ocho maneras de
+conectarlos entre sí (el **algoritmo**). Los que están al final de la cadena se
+oyen; los de antes no suenan, **deforman** a los siguientes, y de ahí salen los
+metales, las campanas y los bajos que suenan a los ochenta.
+
+Todo eso, en el `game.yaml`, es una palabra por pista:
+
+```yaml
+  musica:
+    bosque:
+      velocidad: 8
+      timbres: [flauta, bajo]   # melodía y acompañamiento
+      pistas:
+        - "do4 mi4 sol4 mi4 | fa4 la4 do5 la4"
+        - "do3 -  do3 -     | fa3 -  fa3 -   "
+```
+
+Los ocho que trae el kit (`tools/ngplat/fm.py`):
+
+| timbre | qué es |
+|---|---|
+| `cuadrada` | el de siempre, con el chip nuevo: realimentación a tope y el seno se rompe hasta parecer un diente de sierra. Es el que sale si no dices nada |
+| `organo` | cuatro senos en paralelo (1, 2, 4 y 8 veces la nota). El más seguro: siempre se oye |
+| `flauta` | un seno limpio y nada más. Deja sitio a lo demás |
+| `bajo` | ataque de golpe y caída corta: empuja y se quita de en medio |
+| `metal` | el «paaa» que abre según entra la nota |
+| `campana` | multiplicadores que no casan (1, 3, 7, 14): parciales sueltos en vez de armónicos |
+| `cuerda` | ataque lento: la nota entra empujando. Para fondos |
+| `pizzicato` | ataque seco y sin sostenido: marca el compás sin tapar a nadie |
+
+**Un timbre, tres chips.** El YM2612, el YM2610 y el YM2151 guardan por
+operador los mismos seis números con la misma forma, y hasta en el mismo orden
+raro (1, 3, 2, 4). Así que el kit emite **los mismos bytes** para los tres y
+cada driver los mete donde van: en la familia OPN los operadores están de
+cuatro en cuatro y en la OPM, de ocho en ocho. Que sigan coincidiendo lo
+comprueba `tests/test_sistemas.py`,
+`test_el_timbre_de_fm_vale_igual_para_los_dos_chips`.
+
+Las máquinas sin FM leen `timbres:` y lo ignoran: tocan las mismas notas con lo
+que tengan.
 
 Se usan tres voces: melodía, acompañamiento y efectos. En la Mega Drive, el
 Amiga y el Atari ST el reproductor va en C dentro del propio juego
@@ -45,8 +97,8 @@ banco de pruebas del kit (`tests/maquina_neogeo.py`) monta el circuito entero:
 68000 (Musashi)  --escribe $320000-->  Z80 (tests/z80sim.py)
                                           |  ejecuta la ROM M1 de verdad
                                           v
-                                       YM2610: registros $00..$0A
-                                          |  tres ondas cuadradas
+                                       YM2610: FM (canales 1 y 2)
+                                          |  + SSG para los efectos
                                           v
                                        la onda que se analiza
 ```
@@ -201,8 +253,10 @@ prueba los compara paso a paso sobre una tanda de melodías, barridos y ruidos
   YM2149 del ST no puede, salvo moviendo el volumen a mano desde la CPU, así
   que ahí no las habrá. El compilador avisa de los efectos que se quedarían
   mudos por no llevar notas al lado.
-- **FM.** La Mega Drive tiene el YM2612 y la Neo Geo cuatro canales FM del
-  YM2610 sin tocar; el kit usa los de onda cuadrada de las dos, que es lo que
-  permite que suene igual en todas.
+- **El timbre en las máquinas sin FM.** El Amiga, el CD32, la Jaguar y el Atari
+  ST leen `timbres:` y lo ignoran: tocan las mismas notas con la onda que
+  tienen. Lo que se podría hacer es lo contrario de lo que parece: en vez de
+  imitar la FM, generar de una vez la onda del timbre y que Paula o el DSP la
+  toquen como cualquier otra muestra.
 - **Envolventes.** El SSG y Paula pueden hacer que una nota decaiga sola; ahora
   el volumen es constante mientras dura.

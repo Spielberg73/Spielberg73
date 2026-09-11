@@ -747,6 +747,34 @@
       for (var n = 0; n < largo; n++) datos[n] = Math.random() * 2 - 1;
       this.ruidoBuffer = buffer;
       this.prepararMuestras();
+      this.prepararTimbres();
+    },
+
+    /* --- los timbres de FM -----------------------------------------------
+     * Las tres maquinas con chip de FM (Mega Drive, Neo Geo y X68000) tocan la
+     * musica con el timbre que diga `timbres:`. El navegador no sabe hacer FM,
+     * pero sabe tocar una onda dada por sus armonicos, y la de un timbre con
+     * multiplicadores enteros -que son todos los del kit- repite exactamente
+     * cada ciclo de la nota, asi que suena lo mismo sin simular nada. El
+     * compilador manda esos armonicos ya calculados (tools/ngplat/fm.py). */
+    ondas: {},
+
+    prepararTimbres: function () {
+      if (!this.ctx || !DATA.sonido || !DATA.sonido.timbres) return;
+      for (var nombre in DATA.sonido.timbres) {
+        var t = DATA.sonido.timbres[nombre];
+        this.ondas[nombre] = this.ctx.createPeriodicWave(
+          new Float32Array(t.real), new Float32Array(t.imag),
+          { disableNormalization: false });
+      }
+    },
+
+    timbre: function (canal, nombre) {
+      var c = this.canales[canal];
+      if (!c) return;
+      var onda = this.ondas[nombre];
+      if (onda) c.osc.setPeriodicWave(onda);
+      else c.osc.type = "square";
     },
 
     /* --- muestras digitales ---------------------------------------------
@@ -821,8 +849,10 @@
       if (indice < 0) return;
       var tema = DATA.sonido.musica[indice];
       if (!tema) return;
-      for (var i = 0; i < tema.pistas.length && i < 2; i++)
+      for (var i = 0; i < tema.pistas.length && i < 2; i++) {
         this.pistas.push({ pasos: tema.pistas[i], i: 0, resto: 0, bucle: tema.bucle });
+        this.timbre(i, (tema.timbres || [])[i]);
+      }
     },
 
     evento: function (bits) {
