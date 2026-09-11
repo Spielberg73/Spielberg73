@@ -1101,6 +1101,119 @@ Comportamientos:
 | `perseguidor` | va hacia el jugador si está cerca, y **se planta en el borde** de un agujero en vez de tirarse | `rango`, `girar_en_borde` |
 | `saltarin` | salta cada cierto tiempo | `salto`, `intervalo` |
 | `fijo` | no se mueve | — |
+| `cocodrilo` | abre y cierra la boca: cerrado es suelo, abierto muerde | `periodo`, `intervalo` |
+| `balanceo` | una liana que se columpia y de la que uno se cuelga | `largo`, `amplitud` |
+
+Los dos que vienen ahora —el cocodrilo y la liana— **no vienen puestos en el
+juego que crea `ngplat nuevo`**, y conviene decir por qué: ese juego tiene que
+arrancar y correr a 50 imágenes por segundo en un Amiga 500 de 512 KB, y ahí ya
+no queda sitio. Está medido:
+
+- con la liana puesta el ejecutable pasa de 66 KB a 82 y, con los 120 KB de
+  BSS, el juego pide 202 KB de RAM chip cuando en un A500 caben unos 190: el
+  disquete arranca, el sistema no puede cargarlo y en pantalla se queda el
+  escritorio. La culpa es del dibujo —la liana dibuja la cuerda entera, 45
+  casillas de gráficos—, y se comprobó al revés: el mismo disquete **sí**
+  arranca si a la máquina se le pone un mega de RAM chip;
+- con el cocodrilo puesto arranca, pero el juego baja a 25 imágenes por
+  segundo.
+
+Los dibujos sí se crean con el proyecto (`graficos/cocodrilo.png` y
+`graficos/liana.png`), así que en una máquina con sitio —un A1200, un CD32, una
+Mega Drive, una Neo Geo— o en un juego más pequeño basta con pegar el bloque y
+poner la letra en el mapa.
+
+### `cocodrilo`: la charca de Pitfall
+
+Un cocodrilo no se mata: se le coge el momento. No se mueve de su sitio y lo
+único que hace es abrir y cerrar la boca, y **con la boca cerrada es suelo**:
+se le pisa el lomo y se cruza por encima. Con la boca abierta, muerde.
+
+```yaml
+enemigos:
+  cocodrilo:
+    sprite: graficos/cocodrilo.png
+    frame: [16, 16]
+    caja: [16, 8]        # el lomo, que es lo que se pisa
+    comportamiento: cocodrilo
+    periodo: 150         # el ciclo entero, en frames
+    intervalo: 50        # de esos, los que pasa con la boca abierta
+    vida: 99             # no se mata
+    animaciones:
+      quieto: {frames: [0, 1, 2]}   # cerrado, avisando, abierto
+```
+
+Los tres fotogramas de `quieto` no son una animación que corre sola: los pone
+el motor según la boca. El de en medio es el **aviso** —entreabre y se le ven
+los dientes doce frames antes de morder—, y sin él esto no es un puzle sino una
+trampa.
+
+Puestos varios seguidos abren **en ola**: cada uno arranca el ciclo un tercio
+después que su vecino, y el desfase sale de la columna del mapa en la que está
+puesto, así que sale solo. Una charca de tres es la de Pitfall: se cruza al
+paso, no corriendo.
+
+Ponlos **en la fila del suelo**, dentro del agujero, y no en la de encima: así
+el lomo queda medio palmo por debajo del borde y al que pasa andando por el
+borde no le muerden. En la fila de encima asoman por encima del borde y muerden
+al que llega al agujero sin comerlo ni beberlo.
+
+### `balanceo`: la liana que cruza al otro lado
+
+La otra mitad de Pitfall. Una liana cuelga de donde la pongas y se balancea
+sola desde el primer frame. Se coge **en el aire y de un roce** —no hay botón
+de agarrar: la liana se coge saltando bien— y lo único que se decide es cuándo
+soltarse: con salto sales con lo que llevara la punta, y con abajo te dejas
+caer a plomo sobre lo que haya debajo.
+
+```yaml
+enemigos:
+  liana:
+    sprite: graficos/liana.png
+    frame: [48, 48]           # se dibuja la cuerda entera
+    caja: [6, 16]
+    desplazamiento: [24, 0]   # el eje: de aquí cuelga
+    comportamiento: balanceo
+    largo: 32                 # lo que mide la cuerda, en píxeles
+    amplitud: 45              # los grados que se tumba a cada lado
+    vida: 99
+    animaciones:
+      quieto: {frames: [0, 1, 2, 3, 4]}   # los cinco ángulos
+```
+
+Dos cosas que no son como en el resto de enemigos:
+
+- **`amplitud` son grados**, no píxeles. En un volador es lo que sube y baja;
+  aquí es lo que se tumba el columpio. Por defecto 45 a cada lado.
+- **el cuadro es grande a propósito**. Lo que se dibuja es la cuerda entera, y
+  una cuerda de 32 píxeles tumbada 45 grados se va 23 a un lado: en un cuadro
+  de 16x16 solo cabría el nudo de arriba. El `desplazamiento` dice qué punto
+  del cuadro es el eje del que cuelga. Y cuesta: cinco ángulos de 48x48 son 45
+  casillas de gráficos, más de lo que gasta el héroe.
+
+Los fotogramas de `quieto` son los ángulos, repartidos del más tumbado a la
+izquierda al más tumbado a la derecha, y el de en medio es la liana a plomo. El
+motor elige cuál según por dónde vaya el péndulo, así que **el orden importa**:
+cambiados de sitio, la liana se balancea al revés. Cinco dan el pego; con más
+—siete, nueve— la cuerda sigue mejor a quien va colgado, que va siempre por el
+sitio exacto y no por el del dibujo. Lo que cuesta es memoria de gráficos: cada
+ángulo son veinte casillas.
+
+Con esa cuerda la punta recorre unos 45 píxeles de lado a lado, así que el
+agujero que cruza esta liana es de tres casillas: justo lo que mide el salto más
+largo. O sea que se puede cruzar de un salto **perfecto**, y con la liana se
+cruza sin jugársela. Para un agujero más ancho hace falta una cuerda más larga,
+y con ella un cuadro más grande.
+
+Y no te sueltes en el extremo, que es lo que parece: ahí la punta está quieta y
+te caes a plomo, justo encima del agujero. Se suelta **a medio subir por el lado
+de allá**, que es cuando suman lo que ya has avanzado y lo que te queda de
+impulso.
+
+**Ojo con el nombre**: esta liana no es la de `tipo: liana` de la leyenda de
+tiles. Aquélla es una casilla por la que se **trepa** —arriba y abajo, tú
+mandas— y ésta es un enemigo del que te **cuelgas** y que te lleva él. Se
+pueden tener las dos en el mismo juego y no se estorban.
 
 **`girar_en_borde`** vale para los dos que andan por el suelo, y hace cosas
 distintas en cada uno: el que patrulla se da la vuelta y el que persigue se para

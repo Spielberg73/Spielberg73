@@ -44,6 +44,13 @@
   var AI_PATROL = 0, AI_FLYER = 1, AI_CHASER = 2, AI_JUMPER = 3;
   /* el trafico de un juego de conducir: sube por su carril, a lo suyo */
   var AI_TRAFICO = 5;
+  /* Las dos de Pitfall: el cocodrilo que abre y cierra las fauces y la liana
+     de la que uno se cuelga y se deja llevar. */
+  var AI_COCODRILO = 6, AI_BALANCEO = 7;
+  var COCO_AVISO = 12, COCO_FASES = 3;
+  var BAL_K = 6, BAL_LARGO = 48, BAL_FINO = 16, BAL_TIRON = 32768;
+  var BAL_ESPERA = 20;          /* frames sin poder volver a agarrarse */
+  var BAL_PASOS = 64, BAL_GRADOS = 45, BAL_TOPE = 80;
   /* Las fases del luchador, igual que NP_LUCHA_* en C. */
   var LUCHA_IR = 0, LUCHA_RONDAR = 1, LUCHA_PREPARAR = 2, LUCHA_GOLPEAR = 3,
       LUCHA_RECUPERAR = 4, LUCHA_REPLEGAR = 5;
@@ -136,6 +143,7 @@
         /* a quien tienes agarrado: su sitio en la lista mas uno (0 = a nadie) */
         grab: 0, grabTimer: 0,
         attackTimer: 0, attackCd: 0, riding: 0, whip: 0, crouch: 0,
+        balanceo: 0, balEspera: 0,
         stun: 0, power: 0,
         /* el repertorio de tortas: el golpe fuerte (patada o hombro), la
            carrera y el doble toque que la enciende */
@@ -554,6 +562,10 @@
         e.timer = ed.interval;
         e.vx = ed.speed;
         e.facing = 1;
+        /* La liana no anda: en `vx` lleva el angulo del pendulo, y empieza
+           tumbada del todo hacia la izquierda y suelta. Igual que en
+           np_spawn_entities. */
+        if (ed.behavior === AI_BALANCEO) { e.vx = -balAngulo(ed); e.vy = 0; }
       } else if (e.kind === KIND_PLATFORM) {
         e.facing = 1;             /* sale hacia la derecha o hacia abajo */
       } else if (e.kind === KIND_BREAKABLE) {
@@ -585,6 +597,8 @@
     /* y sin carrera ni golpe fuerte a medias */
     p.fuerte = 0; p.carrera = 0; p.toque = 0; p.toqueDir = 0;
     p.dying = 0; p.attackTimer = 0; p.attackCd = 0; p.riding = 0; p.stun = 0;
+    p.balanceo = 0;
+    p.balEspera = 0;            /* sin poder volver a engancharse a la liana */
     p.power = 0;                /* el arma vuelve a la de serie */
     p.crouch = 0;
     this.whipOff(quien);
@@ -1208,8 +1222,18 @@
     if (soltar || p.vy < 0) return;
     for (i = 0; i < this.entityCount; i++) {
       var e = this.entities[i];
-      if (!e.active || e.kind !== KIND_PLATFORM) continue;
-      var ea = this.data.platforms[e.def].actor;
+      if (!e.active) continue;
+      var ea;
+      if (e.kind === KIND_ENEMY) {
+        /* Un cocodrilo con la boca cerrada es una plataforma que se abre
+           sola. Igual que en np_ride_update. */
+        var ed = this.data.enemies[e.def];
+        if (ed.behavior !== AI_COCODRILO || this.cocoAbierto(ed, e)) continue;
+        ea = ed.actor;
+      } else {
+        if (e.kind !== KIND_PLATFORM) continue;
+        ea = this.data.platforms[e.def].actor;
+      }
       if (p.x + I2F(a.box_w) <= e.x) continue;
       if (e.x + I2F(ea.box_w) <= p.x) continue;
       if (piesAntes > e.y) continue;                 /* venia por debajo */
@@ -1626,6 +1650,145 @@
       animSet(e, ANIM_RUN);
       animTick(d.actor, e);
     }
+  };
+
+  /* --- el cocodrilo y la liana de balanceo ---------------------------------
+     Gemelos de np_cocodrilo_paso y np_balanceo_paso, y se llaman en el mismo
+     sitio del frame: despues de las plataformas y antes del jugador. */
+
+  World.prototype.cocoFase = function (d, e) {
+    var periodo = d.period || 120;
+    var columna = F2I(e.homeX) >> TILE_SHIFT;
+    var desfase = (columna % COCO_FASES) * idiv(periodo, COCO_FASES);
+    return (e.timer + desfase) % periodo;
+  };
+
+  World.prototype.cocoAbierto = function (d, e) {
+    var periodo = d.period || 120;
+    var abierto = d.interval || idiv(periodo, 3);
+    if (abierto >= periodo) abierto = periodo - 1;
+    return this.cocoFase(d, e) >= periodo - abierto;
+  };
+
+  World.prototype.cocodriloPaso = function () {
+    var i, e, d, periodo, abierto, fase;
+    for (i = 0; i < this.entityCount; i++) {
+      e = this.entities[i];
+      if (!e.active || e.kind !== KIND_ENEMY) continue;
+      d = this.data.enemies[e.def];
+      if (d.behavior !== AI_COCODRILO) continue;
+      periodo = d.period || 120;
+      abierto = d.interval || idiv(periodo, 3);
+      if (abierto >= periodo) abierto = periodo - 1;
+      fase = this.cocoFase(d, e);
+      e.anim = ANIM_IDLE;
+      /* El aviso, recortado a lo que quepa: igual que np_cocodrilo_paso. */
+      var cerrado = periodo - abierto;
+      var aviso = cerrado < COCO_AVISO ? cerrado : COCO_AVISO;
+      if (fase >= cerrado) e.animFrame = 2;
+      else if (fase >= cerrado - aviso) e.animFrame = 1;
+      else e.animFrame = 0;
+    }
+  };
+
+  World.prototype.balSeno = function (paso) {
+    var i = F2I(paso) & 63, f = paso & 255;
+    var a = this.data.sin[i], b = this.data.sin[(i + 1) & 63];
+    return a + (((b - a) * f) >> 8);
+  };
+
+  /* Cuanto se tumba la liana, en entradas de la tabla: el `amplitud:` de una
+     liana son grados y no pixeles. Gemelo de np_bal_angulo. */
+  function balAngulo(d) {
+    var grados = d.amplitude ? F2I(d.amplitude) : BAL_GRADOS;
+    if (grados < 1) grados = 1;
+    if (grados > BAL_TOPE) grados = BAL_TOPE;
+    return idiv(I2F(grados) * BAL_PASOS, 360);
+  }
+
+  World.prototype.balCoseno = function (paso) {
+    return this.balSeno(paso + I2F(16));
+  };
+
+  World.prototype.balLargo = function (d) {
+    return d.range ? d.range : I2F(BAL_LARGO);
+  };
+
+  World.prototype.balPunta = function (e, largo) {
+    return [e.homeX + ((largo * this.balSeno(e.vx)) >> FIX_SHIFT),
+            e.homeY + ((largo * this.balCoseno(e.vx)) >> FIX_SHIFT)];
+  };
+
+  World.prototype.balanceoPaso = function () {
+    var i, q, e, d, largo, acel, punta, an;
+    for (i = 0; i < this.entityCount; i++) {
+      e = this.entities[i];
+      if (!e.active || e.kind !== KIND_ENEMY) continue;
+      d = this.data.enemies[e.def];
+      if (d.behavior !== AI_BALANCEO) continue;
+      largo = this.balLargo(d);
+      /* El pendulo, con divisiones y no con >>: un >> de un negativo redondea
+         hacia abajo y le daba cuerda por un lado. Igual que np_balanceo_paso. */
+      acel = idiv(BAL_K * this.balSeno(e.vx), BAL_FINO);
+      e.vy -= acel;
+      e.vx += idiv(e.vy, BAL_FINO);
+      var tope = balAngulo(d);
+      if (e.vx > tope) { e.vx = tope; if (e.vy > 0) e.vy = 0; }
+      if (e.vx < -tope) { e.vx = -tope; if (e.vy < 0) e.vy = 0; }
+      for (q = 0; q < this.players.length; q++) {
+        var p = this.players[q], a = this.data.player.actor;
+        if (p.balanceo !== i + 1) continue;
+        punta = this.balPunta(e, largo);
+        p.x = punta[0] - I2F(idiv(a.box_w, 2));
+        p.y = punta[1];
+        p.vx = 0; p.vy = 0; p.onGround = 0;
+      }
+      an = d.actor.anims[ANIM_IDLE];
+      if (an && an.count > 1) {
+        var medio = idiv(an.count, 2), tope = F2I(balAngulo(d));
+        var cual = medio + idiv(F2I(e.vx) * medio, tope ? tope : 1);
+        if (cual < 0) cual = 0;
+        if (cual >= an.count) cual = an.count - 1;
+        e.anim = ANIM_IDLE;
+        e.animFrame = cual;
+      }
+    }
+  };
+
+  World.prototype.balCoger = function (quien) {
+    var a = this.data.player.actor, p = this.players[quien], i;
+    if (p.balanceo || p.balEspera || p.onGround || p.dying) return;
+    for (i = 0; i < this.entityCount; i++) {
+      var e = this.entities[i];
+      if (!e.active || e.kind !== KIND_ENEMY) continue;
+      var d = this.data.enemies[e.def];
+      if (d.behavior !== AI_BALANCEO) continue;
+      var largo = this.balLargo(d), punta = this.balPunta(e, largo);
+      if (Math.abs(punta[0] - (p.x + I2F(idiv(a.box_w, 2)))) > I2F(TILE)) continue;
+      if (Math.abs(punta[1] - p.y) > I2F(TILE)) continue;
+      p.balanceo = i + 1;
+      p.trepa = 0;
+      p.stairs = 0;
+      e.vy += idiv(p.vx * I2F(BAL_FINO), largo || I2F(1));
+      this.sfx |= SFX.JUMP;
+      return;
+    }
+  };
+
+  World.prototype.balSoltar = function (quien, conSalto) {
+    var p = this.players[quien];
+    if (!p.balanceo) return;
+    var e = this.entities[p.balanceo - 1];
+    var d = this.data.enemies[e.def], largo = this.balLargo(d);
+    p.balanceo = 0;
+    p.balEspera = BAL_ESPERA;
+    p.vx = idiv(((largo * this.balCoseno(e.vx)) >> FIX_SHIFT) * e.vy, BAL_TIRON);
+    p.vy = -idiv(((largo * this.balSeno(e.vx)) >> FIX_SHIFT) * e.vy, BAL_TIRON);
+    if (conSalto) {
+      p.vy -= idiv(this.data.player.jump, 2);
+      this.sfx |= SFX.JUMP;
+    }
+    if (p.vx) p.facing = p.vx > 0 ? 1 : 0;
   };
 
   World.prototype.camaraCarretera = function () {
@@ -2137,6 +2300,21 @@
       return;
     }
 
+    /* La liana de balanceo: colgado no se anda ni se cae, te lleva ella, y lo
+       unico que se decide es cuando soltarse. Igual que en np_player_update. */
+    if (p.balEspera) p.balEspera--;
+    if (p.balanceo) {
+      p.crouch = 0;
+      animSet(p, ANIM_JUMP);
+      if ((input & IN.JUMP) && !(this.prevInput[quien] & IN.JUMP))
+        this.balSoltar(quien, 1);
+      else if (input & IN.DOWN) this.balSoltar(quien, 0);
+      else return;
+    } else if (!p.stun) {
+      this.balCoger(quien);
+      if (p.balanceo) return;
+    }
+
     /* Con abajo, en el suelo: ni se anda ni se salta, pero se pega y el golpe
        sale por abajo. Igual que en np_player_update. */
     if (d.crouch_drop && p.onGround && (input & IN.DOWN)) {
@@ -2569,6 +2747,10 @@
        trafico-, y sobre todo para que las dos implementaciones muevan las
        cosas en el mismo orden dentro del frame. */
     if (d.behavior === AI_TRAFICO) return;
+    /* El cocodrilo y la liana se salen aqui, igual que en C: no se mueven, y
+       el dibujo se lo ponen sus propias vueltas. */
+    if (d.behavior === AI_COCODRILO) { e.timer = (e.timer + 1) & 0xFFFF; return; }
+    if (d.behavior === AI_BALANCEO) return;
 
     switch (d.behavior) {
       case AI_PATROL:
@@ -2932,6 +3114,15 @@
           continue;
         }
         if (e.kind === KIND_BREAKABLE) continue; /* hay que pegarle */
+        /* Un cocodrilo con la boca cerrada no es un bicho: es suelo. Solo
+           come abierto. Igual que en np_player_touch. */
+        if (e.kind === KIND_ENEMY
+            && this.data.enemies[e.def].behavior === AI_COCODRILO
+            && !this.cocoAbierto(this.data.enemies[e.def], e)) continue;
+        /* Y una liana tampoco es un bicho: es por donde se cruza. Igual que
+           en np_player_touch. */
+        if (e.kind === KIND_ENEMY
+            && this.data.enemies[e.def].behavior === AI_BALANCEO) continue;
         /* El trafico no hace dano: hace perder tiempo. Igual que en C. */
         if (this.carretera() && e.kind === KIND_ENEMY
             && this.data.enemies[e.def].behavior === AI_TRAFICO) {
@@ -3507,6 +3698,8 @@
     /* El trafico se mueve antes que el jugador, igual que las plataformas: lo
        que hay delante ya esta en su sitio cuando tu llegas. Igual que en C. */
     if (this.carretera()) this.traficoPaso();
+    this.cocodriloPaso();
+    this.balanceoPaso();
 
     for (quien = 0; quien < MAX_PLAYERS; quien++) {
       var jugador = this.players[quien];

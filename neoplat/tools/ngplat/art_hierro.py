@@ -547,9 +547,30 @@ def mejora() -> Image:
     return hoja.image
 
 
+# --- las dos de Pitfall ---------------------------------------------------
+#
+# La forma es la misma que en el estilo de bosque -no hay dos maneras de
+# dibujar unas fauces de 16 pixeles- y lo que cambia son los colores: aqui no
+# hay verde, asi que el bicho de la charca es de roca, como todo lo que no eres
+# tu ni se recoge, y la liana es una cadena.
+
+def cocodrilo() -> Image:
+    """El bicho de la charca, en piedra: el mismo que el del bosque con los
+    seis colores de esta paleta."""
+    return art.cocodrilo({"g": ROCA, "G": ROCA2, "d": LINEA,
+                          "b": ROJO, "w": CLARO, "L": ORO})
+
+
+def cadena() -> Image:
+    """La liana de balanceo, que aqui es una cadena colgando."""
+    return art.liana(ROCA2, ROCA)
+
+
 def todos() -> Dict[str, Image]:
     return {
         "graficos/heroe.png": heroe(),
+        "graficos/cocodrilo.png": cocodrilo(),
+        "graficos/liana.png": cadena(),
         "graficos/enemigo.png": enemigo(),
         "graficos/murcielago.png": murcielago(),
         "graficos/esqueleto.png": esqueleto(),

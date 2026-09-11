@@ -181,6 +181,12 @@ class TestParidad(unittest.TestCase):
         # pixel o el jugador chocaria en una y pasaria de largo en la otra.
         cls.variantes["trafico"] = cls._preparar("scroll", carretera=True,
                                                  trafico=True)
+        # Las dos de Pitfall: el cocodrilo y la liana de balanceo. La liana es
+        # la que mas aprieta de todo el kit -un pendulo con seno interpolado
+        # que **lleva al jugador**-, asi que si el C y el JS no hicieran la
+        # misma cuenta, las dos trazas se separarian en cuanto alguien se
+        # cuelgue.
+        cls.variantes["pitfall"] = cls._preparar("scroll", pitfall=True)
         # Y la cinta con la serie de golpes: puno, puno y remate. El remate
         # tumba, y un tumbado se mueve solo con el empujon que se llevo, asi
         # que si las dos no encadenaran igual, las entidades se separarian.
@@ -266,7 +272,8 @@ class TestParidad(unittest.TestCase):
                   cenital=False, nidos_dormidos=False, cinta=False,
                   combo=False, agarre=False, sin_llave=False,
                   sin_golpe=False, sin_relieve=False, sin_liana=False,
-                  guiones=False, carretera=False, trafico=False):
+                  guiones=False, carretera=False, trafico=False,
+                  pitfall=False):
         proyecto_dir = os.path.join(
             cls.tmp, "juego-" + camara + ("-jefe" if jefe else "")
             + ("-dos" if dos else "") + ("-golpe" if golpe else "")
@@ -284,6 +291,7 @@ class TestParidad(unittest.TestCase):
             + ("-guiones" if guiones else "")
             + ("-carretera" if carretera else "")
             + ("-trafico" if trafico else "")
+            + ("-pitfall" if pitfall else "")
             + ("-" + genero if genero != "plataformas" else ""))
         crear_proyecto(proyecto_dir, "PARIDAD", "TEST", genero=genero)
         yaml = os.path.join(proyecto_dir, "game.yaml")
@@ -412,6 +420,57 @@ enemigos:
     velocidad: 2.4
     vida: 99
 """, 1)
+        if pitfall:
+            # Las dos mecanicas de Pitfall: el cocodrilo que abre y cierra las
+            # fauces -y sobre el que se pisa cerrado- y la liana de la que uno
+            # se cuelga y se deja llevar. Las dos corren cada frame en los dos
+            # motores y las dos mueven al jugador, asi que si no cuadraran, la
+            # traza se separaria en el primer balanceo.
+            #
+            # Se ponen aqui y no vienen del andamiaje a proposito: el juego que
+            # crea `ngplat nuevo` no las lleva (no caben en un A500), asi que
+            # esta variante es la unica que las prueba de punta a punta.
+            #
+            # Los dibujos son los del bicho de siempre: lo que se compara es la
+            # cuenta, no el dibujo, y asi la prueba no depende de cuantas
+            # casillas mida una liana.
+            marca = "\nenemigos:\n"
+            assert marca in texto, "el andamiaje ya no escribe asi los enemigos"
+            texto = texto.replace(marca, '''
+enemigos:
+  cocodrilo:
+    sprite: graficos/enemigo.png
+    frame: [16, 16]
+    caja: [16, 12]
+    comportamiento: cocodrilo
+    periodo: 90
+    intervalo: 85       # casi siempre abierto: asi no queda sitio para el
+                        # aviso y se comprueba que los dos lo recortan igual
+    vida: 99
+  balanceo:
+    sprite: graficos/enemigo.png
+    frame: [16, 16]
+    caja: [10, 10]
+    comportamiento: balanceo
+    largo: 40
+    amplitud: 50
+    vida: 99
+''', 1)
+            marca = "\nspawns:\n"
+            assert marca in texto, "el andamiaje ya no escribe asi los spawns"
+            texto = texto.replace(marca, marca + "  C: cocodrilo\n  L: balanceo\n", 1)
+            # Y los dos, nada mas salir: el mando aleatorio no llega a mitad
+            # del nivel, asi que puestos alli no los tocaria nunca.
+            marca = "\n      P.......s"
+            assert marca in texto, "el primer nivel ya no empieza asi"
+            texto = texto.replace(marca, "\n      P..C....s", 1)
+            # La liana, en la fila de la plataforma baja. Se cambia un punto
+            # por la 'L' y no se anade nada: todas las filas del mapa miden lo
+            # mismo y una mas larga que las demas no la lee nadie.
+            marca = "\n      ....=====.."
+            assert marca in texto, "el primer nivel ya no trae esa plataforma"
+            texto = texto.replace(marca, "\n      ....=====.L", 1)
+
         if cinta:
             # y el mismo mirado desde arriba **pero saltando**: la vista de los
             # juegos de tortas, con la altura como tercera coordenada
@@ -1423,6 +1482,15 @@ enemigos:
         vidas = {linea.split()[13] for linea in traza_c}
         self.assertTrue(vidas - {"0"},
                         "la traza no llega a ver al jefe: no comprueba nada")
+
+    def test_misma_traza_con_cocodrilos_y_lianas(self):
+        """Las dos mecanicas de Pitfall, frame a frame.
+
+        El cocodrilo cambia de ser suelo a ser mortal cada pocos frames y la
+        liana lleva al jugador por un arco: son las dos cosas del kit donde una
+        cuenta distinta se nota antes, porque las dos mueven al jugador."""
+        traza_c, traza_js = self._trazas(11, "pitfall")
+        self.assertEqual(traza_c, traza_js)
 
     def test_la_traza_tiene_contenido(self):
         lineas_c, _ = self._trazas(1)

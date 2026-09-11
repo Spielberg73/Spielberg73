@@ -39,7 +39,10 @@
   var NPSonido = (typeof require === "function" && typeof module !== "undefined")
     ? require("./np_sonido.js") : root.NPSonido;
 
-  var COMPORTAMIENTOS = ["patrulla", "volador", "perseguidor", "saltarin", "fijo"];
+  /* El orden **es** el numero que guarda el motor (NP_AI_*): no se tocan de
+     sitio ni se quita ninguno, solo se anaden al final. */
+  var COMPORTAMIENTOS = ["patrulla", "volador", "perseguidor", "saltarin", "fijo",
+                         "trafico", "cocodrilo", "balanceo"];
   var EFECTOS = ["puntos", "vida", "salud", "llave"];
 
   function fijoAUsuario(v) { return Math.round(v / 256 * 1000) / 1000; }

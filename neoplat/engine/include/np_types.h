@@ -215,6 +215,47 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
  * elegir por donde pasarlo. Tocarlo no quita vida: te hace un trompo, y eso
  * cuesta tiempo, que es la unica moneda del genero. */
 #define NP_AI_TRAFICO 5
+/* El cocodrilo de la charca, el de Pitfall. No se mueve y **no siempre hace
+ * dano**: abre y cierra las fauces a compas, y esa es toda la mecanica. Con la
+ * boca cerrada se le pisa la cabeza como si fuera una plataforma; con la boca
+ * abierta te come.
+ *
+ * Puestos tres seguidos en una charca sale la escena de siempre, y lo que hace
+ * que sea un puzzle de ritmo y no un salto mas es que **van desfasados**: cada
+ * uno abre un tercio de ciclo despues que su vecino, asi que hay que cruzar
+ * al paso de la ola en vez de esperar a que esten los tres cerrados. El
+ * desfase sale de la columna donde esta puesto, asi que se dibuja en el mapa y
+ * ya esta: no hay nada que configurar. */
+/* Una funcion que **no** se mete dentro de quien la llama.
+ *
+ * Parece un detalle y no lo es. El bucle que mira a que estas tocando y el que
+ * mira sobre que te apoyas se recorren varias veces por frame; si el compilador
+ * mete ahi dentro una funcion con divisiones, el bucle entero necesita mas
+ * registros, empieza a guardar y recuperar cosas de la pila y se encarece
+ * **aunque el juego no tenga ni un bicho de esos**.
+ *
+ * Medido en el Amiga con el juego de ejemplo, que va justo de frame: con el
+ * cocodrilo compilado y la funcion metida dentro, la musica sonaba a la mitad
+ * de velocidad -o sea 25 imagenes por segundo en vez de 50- y el analizador
+ * reconocia 5 notas de 16; apartandola, 9 de 16. Ayuda y bastante, pero no
+ * llega: ese juego no tiene sitio para el cocodrilo en un A500, y por eso no
+ * lo lleva puesto. */
+#if defined(__GNUC__)
+#define NP_APARTE __attribute__((noinline))
+#else
+#define NP_APARTE
+#endif
+
+#define NP_AI_COCODRILO 6
+/* La liana de balanceo, la otra de Pitfall. Tampoco se mueve de sitio: cuelga
+ * de su punto y **se balancea**, y lo que hace es llevarte de un lado a otro
+ * de un agujero que de un salto no se cruza.
+ *
+ * No es la liana de trepar (NP_TILE_CLIMB): a aquella te agarras y subes recto,
+ * a esta te agarras **en el aire, al tocarla**, y lo que decides es **cuando
+ * soltarte**. Sueltas pronto y te quedas corto; sueltas tarde y vuelves. Eso
+ * es todo el juego, y es por lo que se recuerda. */
+#define NP_AI_BALANCEO 7
 
 /* Efectos de objeto; coinciden con ITEM_EFFECT_ID de project.py. */
 #define NP_ITEM_POINTS 0

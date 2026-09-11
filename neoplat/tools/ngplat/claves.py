@@ -100,7 +100,8 @@ CAMPOS: Dict[str, Dict[str, List[str]]] = {
 
 # Valores que admiten las opciones de tipo lista cerrada.
 OPCIONES: Dict[str, List[str]] = {
-    "comportamiento": ["patrulla", "volador", "perseguidor", "saltarin", "fijo"],
+    "comportamiento": ["patrulla", "volador", "perseguidor", "saltarin", "fijo",
+                       "trafico", "cocodrilo", "balanceo"],
     "efecto": ["puntos", "vida", "salud", "llave", "municion"],
     "camara": ["scroll", "pantallas"],
     "movimiento": ["horizontal", "vertical"],

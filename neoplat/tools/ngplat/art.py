@@ -7,6 +7,7 @@ para sustituirse por los tuyos (mismo tamano, hasta 15 colores).
 
 from __future__ import annotations
 
+import math
 from typing import Dict, List, Tuple
 
 from .png import Image
@@ -812,11 +813,154 @@ def arboles() -> Image:
     return c.image
 
 
+# --- el cocodrilo de la charca -------------------------------------------
+#
+# Tres poses y en este orden, que es el que espera el motor: cerrado, avisando
+# y abierto. La de aviso no es un capricho de dibujante: es el frame que te
+# dice que te quites, y sin ella el cocodrilo seria una trampa en vez de un
+# puzzle de ritmo. Se le ve el ojo en las tres, que es lo que hace que parezca
+# que te esta mirando.
+_COCODRILO = (
+    # cerrado: un lomo por el que se pasa andando
+    ("................",
+     "................",
+     "................",
+     "................",
+     "................",
+     "................",
+     "......gggg......",
+     "...ggggGgggg....",
+     ".gggggggggggggg.",
+     "gggLggggggggggdg",
+     "gddddddddddddddd",
+     "................",
+     "................",
+     "................",
+     "................",
+     "................"),
+    # avisando: entreabre, y ya se le ven los dientes
+    ("................",
+     "................",
+     "................",
+     "................",
+     "................",
+     "......gggg......",
+     "...ggggGgggg....",
+     ".gggLgggggggggg.",
+     "ggbbbbbbbbbbbbdg",
+     ".gwgwgwgwgwgwgg.",
+     "gddddddddddddddd",
+     "................",
+     "................",
+     "................",
+     "................",
+     "................"),
+    # abierto: las fauces de par en par
+    ("................",
+     "................",
+     "...gggg.........",
+     "..ggGggg........",
+     ".gggLgggg.......",
+     "gggggggggg......",
+     ".gwgwgwgwggg....",
+     "..bbbbbbbbbbb...",
+     "..bbbbbbbbbbbbb.",
+     ".gwgwgwgwgwgwgwg",
+     "gggggggggggggggg",
+     "gddddddddddddddd",
+     "................",
+     "................",
+     "................",
+     "................"),
+)
+
+
+def cocodrilo(colores: Dict[str, RGBA] = None) -> Image:
+    """El cocodrilo de la charca: cerrado, avisando y abierto.
+
+    Los colores se pueden pasar de fuera porque el estilo de hierro dibuja lo
+    mismo con **sus** seis colores: la forma es la misma y lo unico que cambia
+    es con que se pinta.
+    """
+    if colores is None:
+        colores = {"g": PALETA["hierba2"], "G": PALETA["hierba"],
+                   "d": PALETA["linea"], "b": (176, 40, 56, 255),
+                   "w": PALETA["ojo"], "L": PALETA["ojo"]}
+    hoja = Lienzo(16 * len(_COCODRILO), 16)
+    for i, frame in enumerate(_COCODRILO):
+        hoja.blit(i * 16, 0, patron(list(frame), colores))
+    return hoja.image
+
+
+# --- la liana de balanceo -------------------------------------------------
+#
+# Cinco angulos, del mas tumbado a la izquierda al mas tumbado a la derecha, y
+# el del medio es la liana quieta. El motor elige cual segun por donde vaya el
+# pendulo, asi que el orden importa: si se cambian de sitio, la liana se
+# balancea al reves.
+#
+# El fotograma no es de 16x16 y no puede serlo: lo que se dibuja es la cuerda
+# **entera**, desde donde esta atada hasta el nudo del final -que es de donde
+# se agarra uno-, y una cuerda tumbada del todo se va casi tanto de lado como
+# mide de largo. El motor la coloca de forma que el punto de arriba del cuadro
+# caiga justo donde el pendulo tiene su eje.
+#
+# Y es de 48x48 y no mayor porque **cada casilla se paga**: en el Amiga un
+# fotograma de 80x64 son veinte casillas, por cinco angulos cien, y con eso el
+# juego de ejemplo ya no arrancaba en un A500 de 512 KB. Medido: 99 KB de
+# codigo y datos con el cuadro grande y 83 con este. Un juego que no tenga que
+# caber ahi puede dibujarse la liana tan larga como quiera: el motor la lee del
+# `largo:` y del tamano del dibujo.
+LIANA_ANCHO = 48
+LIANA_ALTO = 48
+LIANA_EJE = 24                  # la columna del cuadro donde esta atada
+LIANA_LARGO = 32                # lo que mide la cuerda, en pixeles
+LIANA_ANGULOS = (-45, -22, 0, 22, 45)
+
+
+def _liana_frame(grados: int, cuerda: RGBA = None, luz: RGBA = None) -> Image:
+    """La cuerda entera, tumbada los grados que se pida."""
+    if cuerda is None:
+        cuerda = PALETA["madera2"]
+    if luz is None:
+        luz = PALETA["madera"]
+    c = Lienzo(LIANA_ANCHO, LIANA_ALTO)
+    rad = grados * math.pi / 180.0
+    puntax = LIANA_EJE + LIANA_LARGO * math.sin(rad)
+    puntay = LIANA_LARGO * math.cos(rad)
+    for paso in range(LIANA_LARGO + 1):
+        t = paso / float(LIANA_LARGO)
+        x = int(round(LIANA_EJE + (puntax - LIANA_EJE) * t))
+        y = int(round(puntay * t))
+        if 0 <= x < LIANA_ANCHO and 0 <= y < LIANA_ALTO:
+            c.px(x, y, cuerda)
+            if x + 1 < LIANA_ANCHO:
+                c.px(x + 1, y, luz)
+    # el nudo del final, que es de donde se agarra uno
+    nx, ny = int(round(puntax)), int(round(puntay))
+    for dy in range(-2, 2):
+        for dx in range(-2, 3):
+            x, y = nx + dx, ny + dy
+            if 0 <= x < LIANA_ANCHO and 0 <= y < LIANA_ALTO:
+                c.px(x, y, luz if dy < 0 else cuerda)
+    return c.image
+
+
+def liana(cuerda: RGBA = None, luz: RGBA = None) -> Image:
+    """La liana de balanceo: cinco angulos, de izquierda a derecha."""
+    hoja = Lienzo(LIANA_ANCHO * len(LIANA_ANGULOS), LIANA_ALTO)
+    for i, grados in enumerate(LIANA_ANGULOS):
+        hoja.blit(i * LIANA_ANCHO, 0, _liana_frame(grados, cuerda, luz))
+    return hoja.image
+
+
 def todos() -> Dict[str, Image]:
     return {
         "graficos/heroe.png": heroe(),
         "graficos/enemigo.png": enemigo(),
         "graficos/murcielago.png": murcielago(),
+        "graficos/cocodrilo.png": cocodrilo(),
+        "graficos/liana.png": liana(),
         "graficos/esqueleto.png": esqueleto(),
         "graficos/muerte.png": muerte(),
         "graficos/moneda.png": moneda(),

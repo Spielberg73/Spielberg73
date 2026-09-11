@@ -222,11 +222,24 @@ BEHAVIORS = {
     # el trafico: sube por la carretera por su carril, a lo suyo
     "trafico": "trafico", "tráfico": "trafico", "coche": "trafico",
     "traffic": "trafico", "rival": "trafico", "camion": "trafico",
+    # El cocodrilo de la charca: no se mueve y abre y cierra las fauces.
+    # Cerrado se le pisa la cabeza; abierto te come.
+    "cocodrilo": "cocodrilo", "crocodile": "cocodrilo", "caiman": "cocodrilo",
+    "caimán": "cocodrilo", "croc": "cocodrilo", "fauces": "cocodrilo",
+    # La liana de balanceo: cuelga de su sitio, se balancea, te agarras al
+    # tocarla en el aire y lo unico que decides es cuando soltarte.
+    #
+    # Se llama `balanceo` y no `liana` a proposito: `tipo: liana` ya existe y
+    # es **la otra**, la de trepar. Son las dos lianas del genero y conviene
+    # que no se confundan: una es una casilla del mapa por la que se sube, la
+    # otra es un bicho que cuelga y del que te dejas llevar.
+    "balanceo": "balanceo", "columpio": "balanceo", "swing": "balanceo",
+    "balancearse": "balanceo", "pendulo": "balanceo", "péndulo": "balanceo",
     "camión": "trafico", "adelantar": "trafico",
 }
 
 BEHAVIOR_ID = {"patrol": 0, "flyer": 1, "chaser": 2, "jumper": 3, "static": 4,
-               "trafico": 5}
+               "trafico": 5, "cocodrilo": 6, "balanceo": 7}
 
 ITEM_EFFECTS = {
     "puntos": "points", "points": "points", "score": "points", "moneda": "points",
@@ -1668,7 +1681,12 @@ def _read_enemy(name: str, data: Any, root: str) -> Enemy:
     fw, fh, bw, bh, bx, by = _actor_geometry(node, where, (16, 16))
     behavior = node.choice(["behavior", "comportamiento", "ia"], BEHAVIORS, "patrol")
     anims = _read_animations(node.child("animations", "animaciones", "anims"), where)
-    default_gravity = 0.0 if behavior in ("flyer", "static") else 0.28
+    default_gravity = (0.0 if behavior in ("flyer", "static", "cocodrilo",
+                                           "balanceo") else 0.28)
+    # En una liana, `amplitud` son **grados** -lo que se tumba el columpio- y
+    # no pixeles como en un volador, asi que por defecto tampoco vale lo
+    # mismo: 24 grados serian un temblor y con eso no se cruza nada.
+    amplitud_def = 45.0 if behavior == "balanceo" else 24.0
     return Enemy(
         name=name, sprite=sprite, frame_w=fw, frame_h=fh,
         box_w=bw, box_h=bh, box_x=bx, box_y=by, animations=anims,
@@ -1685,8 +1703,12 @@ def _read_enemy(name: str, data: Any, root: str) -> Enemy:
         boss=node.bool_(["jefe", "boss"], False),
         tenaz=node.bool_(["tenaz", "persigue_siempre", "te_sigue",
                           "relentless", "sombra"], False),
-        range=node.num(["range", "rango", "vista"], 96.0, 0.0, 512.0),
-        amplitude=node.num(["amplitude", "amplitud"], 24.0, 0.0, 200.0),
+        # `largo` y `cuerda` son para la liana de balanceo -donde esto no es
+        # lo que ve sino lo que mide- y valen lo mismo: es el mismo numero
+        # dicho como se dice en cada sitio.
+        range=node.num(["range", "rango", "vista", "largo", "cuerda"],
+                       96.0, 0.0, 512.0),
+        amplitude=node.num(["amplitude", "amplitud"], amplitud_def, 0.0, 200.0),
         period=node.int_(["period", "periodo", "período"], 120, 8, 1200),
         jump=node.num(["jump", "salto"], 3.5, 0.0, 12.0),
         interval=node.int_(["interval", "intervalo"], 90, 8, 1200),
@@ -2576,7 +2598,8 @@ def load_project(path: str) -> Project:
     # caerse: el suelo es toda la franja.
     necesitan_suelo = {
         name: (view not in ("cenital", "cinta", "iso", "carretera")
-               and enemy.gravity > 0 and enemy.behavior != "flyer")
+               and enemy.gravity > 0
+               and enemy.behavior not in ("flyer", "cocodrilo", "balanceo"))
         for name, enemy in enemies.items()
     }
     jefes = {name for name, enemy in enemies.items() if enemy.boss}

@@ -17,6 +17,13 @@
   var TILE_LOCK = 9;            /* la puerta que pide algo para abrirse */
   var TILE_CLIMB = 10;          /* la liana: se trepa y se coge en el aire */
   var KIND_ENEMY = 0, KIND_ITEM = 1, KIND_PRISONER = 8;
+  /* Dos comportamientos que **no** son bichos a los que pegar: el cocodrilo
+     de la charca -que la mitad del tiempo es suelo- y la liana de balanceo,
+     que es por donde se cruza. Tratarlos como enemigos era lo que hacia que
+     el bot se plantara delante de una liana a dispararle. */
+  var AI_COCODRILO = 6, AI_BALANCEO = 7;
+
+  function idivBot(a, b) { return (a / b) | 0; }
 
   /**
    * @param NPCore  el motor (preview/np_core.js)
@@ -72,6 +79,21 @@
                                      : Math.max(48, ataque.range || 96));
     var golpeCd = 0;
 
+    /* La liana que cuelga sobre lo que hay delante, si la hay. Se mira por
+       donde **cuelga** y no por donde va la punta: el sitio de la liana no se
+       mueve y el de la punta si, y lo que se busca es "hay una liana en este
+       agujero", no "donde esta ahora mismo". */
+    function lianaDelante(p) {
+      for (var k = 0; k < w.entityCount; k++) {
+        var e = w.entities[k];
+        if (!e.active || e.kind !== KIND_ENEMY) continue;
+        if (data.enemies[e.def].behavior !== AI_BALANCEO) continue;
+        var dx = NPCore.F2I(e.homeX) - NPCore.F2I(p.x);
+        if (dx > -8 && dx < 112) return e;
+      }
+      return null;
+    }
+
     /* El bot solo sabe andar hacia la derecha: si la llave que pide la meta
        esta escondida arriba, se queda dando vueltas delante de la meta sin
        saber por que. Este aviso lo dice con todas las letras. */
@@ -110,6 +132,8 @@
       for (var k = 0; k < w.entityCount; k++) {
         var e = w.entities[k];
         if (!e.active || e.kind !== KIND_ENEMY) continue;
+        var cual = data.enemies[e.def].behavior;
+        if (cual === AI_COCODRILO || cual === AI_BALANCEO) continue;
         var dx = NPCore.F2I(e.x) - NPCore.F2I(p.x);
         var dy = Math.abs(NPCore.F2I(e.y) - NPCore.F2I(p.y));
         if (dy >= 40) continue;
@@ -143,12 +167,44 @@
          pisar; si no, saltarle encima es tirarse a sus brazos. */
       var estorba = data.player.stomp ? distancia < 34
                                       : (!ataque && distancia < 34);
-      if (p.onGround && (pared || hueco || peligro || estorba)) {
+      /* Un agujero con liana no se salta: se cruza con ella, que para eso
+         esta puesta -y un agujero asi suele medir lo que mide el salto mas
+         largo o mas, o sea que saltarlo es jugarsela-. Se espera en el borde a
+         que la punta venga hacia aca -angulo del lado de aca y yendose a la
+         derecha- y se salta a cogerla, que es lo que hace una persona.
+         Saltar a destiempo es caerse. */
+      var liana = p.onGround && (hueco || peligro) ? lianaDelante(p) : null;
+      if (liana) {
+        if (liana.vx < 0 && liana.vy >= 0) {
+          input |= NPCore.IN.JUMP;
+          saltando = 1;
+        } else {
+          input = 0;            /* quieto en el borde, esperandola */
+        }
+      } else if (p.onGround && (pared || hueco || peligro || estorba)) {
         input |= NPCore.IN.JUMP;
         saltando = 1;
       } else if (saltando && !p.onGround && p.vy < 0) {
         input |= NPCore.IN.JUMP;
       } else if (p.onGround) {
+        saltando = 0;
+      }
+
+      /* Y colgado no se anda: lo unico que se decide es cuando soltarse. Y no
+         se suelta en el extremo, que es lo que parece: ahi la punta esta
+         quieta y uno se cae a plomo, justo encima del agujero. Se suelta **a
+         medio subir por el lado de alla**, que es cuando sumas lo que ya has
+         avanzado y lo que te queda de impulso. Medido en el nivel de la
+         cueva: soltandose en el extremo se cae dentro; a medio subir cae
+         treinta y un pixeles por delante del sitio de la liana. */
+      if (p.balanceo) {
+        var cuerda = w.entities[p.balanceo - 1];
+        /* Lo que se tumba esta liana, en entradas de la tabla de senos: el
+           `amplitud` viene en grados (y en coma fija), igual que en
+           np_bal_angulo. Y se suelta pasada la mitad de ese angulo. */
+        var grados = data.enemies[cuerda.def].amplitude || 0;
+        var med = idivBot(idivBot(grados * 64, 360), 2);
+        input = (cuerda.vx > med && cuerda.vy > 0) ? NPCore.IN.JUMP : 0;
         saltando = 0;
       }
 

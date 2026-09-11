@@ -125,6 +125,13 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     # mas registros y se encarecen todos los bichos de todos los generos. El
     # juego de ejemplo ya gastaba 198744 de los 200000 que da un frame, asi que
     # con eso se pasaba, y un juego que se pasa del frame va a la mitad.
+    # Dos mecanicas de plataformas que se borran al compilar si el juego no las
+    # usa, por lo mismo que el trafico: su vuelta la recorre cada bicho, y
+    # dejarla puesta encarece a todos los generos aunque no haya ninguna.
+    _ias = {e.actor.behavior for e in build.enemies}
+    header.append("#define NP_HAY_COCODRILOS %d"
+                  % (1 if "cocodrilo" in _ias else 0))
+    header.append("#define NP_HAY_BALANCEO %d" % (1 if "balanceo" in _ias else 0))
     header.append("#define NP_VISTA_CARRETERA %d"
                   % (1 if project.view == "carretera" else 0))
     # La columna de la imagen de la carretera por la que pasa el eje de la

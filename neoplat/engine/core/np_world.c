@@ -462,6 +462,16 @@ static void np_via_seguir(NpWorld *w, NpEntity *e, const NpEnemyDef *d);
 #if NP_VISTA_CARRETERA
 static void np_trafico_paso(NpWorld *w);
 #endif
+#if NP_HAY_COCODRILOS
+/* Lo mira np_ride_update, que va mucho antes: un cocodrilo con la boca
+   cerrada es suelo, y para saberlo hay que preguntarselo. */
+static NP_APARTE int np_coco_abierto(const NpEnemyDef *d, const NpEntity *e);
+#endif
+#if NP_HAY_BALANCEO
+/* Lo mira np_spawn_entities, que va antes: una liana empieza tumbada del
+   todo, no colgando quieta. */
+static np_fix np_bal_angulo(const NpEnemyDef *d);
+#endif
 static void np_tenaces_siguen(NpWorld *w, int32_t dx, int32_t dy);
 static void np_cambio_de_pantalla(NpWorld *w);
 static void np_vars_reset(NpWorld *w);
@@ -567,6 +577,18 @@ static void np_spawn_entities(NpWorld *w)
             e->timer = ed->interval;
             e->vx = ed->speed;       /* empieza andando a la derecha */
             e->facing = 1;
+#if NP_HAY_BALANCEO
+            /* La liana no anda: en `vx` lleva el angulo del pendulo, y
+               empieza **tumbada del todo hacia la izquierda y suelta**. Es lo
+               que la hace util: si empezara colgando quieta se quedaria
+               quieta para siempre -un pendulo parado en el punto de abajo no
+               arranca solo- y lo unico que la moveria seria el empujon del
+               que se agarra, que es demasiado poco para cruzar nada. */
+            if (ed->behavior == NP_AI_BALANCEO) {
+                e->vx = -np_bal_angulo(ed);
+                e->vy = 0;
+            }
+#endif
         } else if (e->kind == NP_KIND_PLATFORM) {
             e->health = 1;
             e->facing = 1;           /* sale hacia la derecha o hacia abajo */
@@ -652,6 +674,8 @@ static void np_player_reset(NpWorld *w, uint8_t quien)
     np_whip_off(w, quien);
     p->stairs = 0;
     p->trepa = 0;
+    p->balanceo = 0;
+    p->bal_espera = 0;
     p->stair_dir = 1;
     p->marcha = 0;              /* el coche sale de parado, con la corta */
     p->trompo = 0;
@@ -803,7 +827,9 @@ static void np_player_hurt(NpWorld *w, uint8_t quien, uint8_t damage)
     p->attack_timer = 0;
     np_whip_off(w, quien);
     p->stairs = 0;              /* un golpe te tira de la escalera */
-    p->trepa = 0;               /* y de la liana */
+    p->trepa = 0;               /* y de la liana de trepar */
+    p->balanceo = 0;            /* y de la de balancearse, claro */
+    p->bal_espera = 0;
 }
 
 /* La vida que se gasta sola.
@@ -1523,8 +1549,21 @@ static void np_ride_update(NpWorld *w, uint8_t quien, np_fix antes_y, int soltar
     for (i = 0; i < w->entity_count; i++) {
         NpEntity *e = &w->entities[i];
         const NpActorDef *ea;
-        if (!e->active || e->kind != NP_KIND_PLATFORM) continue;
-        ea = &np_platforms[e->def].actor;
+        if (!e->active) continue;
+#if NP_HAY_COCODRILOS
+        /* Y un cocodrilo con la boca cerrada, que a efectos de pisarle la
+           cabeza es una plataforma que se abre sola. */
+        if (e->kind == NP_KIND_ENEMY) {
+            const NpEnemyDef *ed = &np_enemies[e->def];
+            if (ed->behavior != NP_AI_COCODRILO || np_coco_abierto(ed, e))
+                continue;
+            ea = &ed->actor;
+        } else
+#endif
+        {
+            if (e->kind != NP_KIND_PLATFORM) continue;
+            ea = &np_platforms[e->def].actor;
+        }
         if (p->x + NP_I2F(a->box_w) <= e->x) continue;
         if (e->x + NP_I2F(ea->box_w) <= p->x) continue;
         if (pies_antes > e->y) continue;                   /* venia por debajo */
@@ -1863,6 +1902,282 @@ static int np_climb_update(NpWorld *w, uint8_t quien, uint16_t input)
     if (moviendo) np_anim_tick(a, p->anim, &p->anim_frame, &p->anim_timer);
     return 1;
 }
+
+/* ---------------------------------------------------- el cocodrilo y la liana
+ *
+ * Dos mecanicas de Pitfall, y las dos son lo mismo visto de dos maneras: un
+ * bicho que no se mueve de sitio pero al que hay que cogerle **el momento**.
+ *
+ * Van en su propia vuelta y no dentro de np_enemy_update, y no por gusto: esa
+ * funcion la recorre cada bicho de cada genero, y meterle un caso mas la hace
+ * crecer, necesitar mas registros y encarecer a **todos**. Ya paso con el
+ * trafico -1900 ciclos por frame en la Neo Geo, con o sin trafico en el
+ * juego-. Aqui ademas se borran al compilar si el juego no las usa.
+ */
+
+/* Cuantos frames avisa el cocodrilo antes de abrir. Sin aviso esto no es un
+   puzzle de ritmo: es una trampa, y de las que no se ven venir. */
+#define NP_COCO_AVISO 12
+/* En cuantos tiempos van los de una misma charca. Tres es lo de Pitfall: abren
+   en ola y hay que cruzar al paso, en vez de esperar a que esten los tres
+   cerrados a la vez -que con dos tiempos pasaria, y el puzzle se acabaria-. */
+#define NP_COCO_FASES 3
+
+#if NP_HAY_COCODRILOS
+/* Por donde va el ciclo de este cocodrilo, de 0 a periodo-1. El desfase sale
+   de la columna del mapa donde esta puesto: dibujarlos seguidos ya los pone en
+   ola, sin nada que configurar. */
+static uint16_t np_coco_fase(const NpEnemyDef *d, const NpEntity *e)
+{
+    /* Todo en 16 bits, y no es una mania: el 68000 sabe dividir de 16 y **no**
+       de 32, asi que un `%` de 32 bits no es una instruccion sino una llamada
+       a una rutina de la biblioteca. Esto se pregunta varias veces por bicho y
+       por frame, y es de las pocas cosas del motor que dividen. */
+    uint16_t periodo = d->period ? d->period : 120;
+    uint16_t columna = (uint16_t)(NP_F2I(e->home_x) >> NP_TILE_SHIFT);
+    uint16_t desfase = (uint16_t)((columna % NP_COCO_FASES)
+                                  * (periodo / NP_COCO_FASES));
+    return (uint16_t)((uint16_t)(e->timer + desfase) % periodo);
+}
+
+/* Si tiene la boca abierta ahora mismo. Es lo unico que hace falta saber: con
+   la boca abierta come, y con la boca cerrada es suelo. */
+static NP_APARTE int np_coco_abierto(const NpEnemyDef *d, const NpEntity *e)
+{
+    uint16_t periodo = d->period ? d->period : 120;
+    uint16_t abierto = d->interval ? d->interval : (uint16_t)(periodo / 3);
+    if (abierto >= periodo) abierto = (uint16_t)(periodo - 1);
+    return np_coco_fase(d, e) >= (uint16_t)(periodo - abierto);
+}
+
+/* Y el dibujo que le toca: 0 cerrado, 1 avisando, 2 abierto. */
+static NP_APARTE void np_cocodrilo_paso(NpWorld *w)
+{
+    uint8_t i;
+    for (i = 0; i < w->entity_count; i++) {
+        NpEntity *e = &w->entities[i];
+        const NpEnemyDef *d;
+        uint16_t periodo, abierto, fase;
+        if (!e->active || e->kind != NP_KIND_ENEMY) continue;
+        d = &np_enemies[e->def];
+        if (d->behavior != NP_AI_COCODRILO) continue;
+        periodo = d->period ? d->period : 120;
+        abierto = d->interval ? d->interval : (uint16_t)(periodo / 3);
+        if (abierto >= periodo) abierto = (uint16_t)(periodo - 1);
+        fase = np_coco_fase(d, e);
+        e->anim = NP_ANIM_IDLE;
+        {
+            /* Lo que dura cerrado, y de eso lo que pasa avisando. El aviso se
+               recorta a lo que quepa: con un `intervalo` casi tan largo como
+               el `periodo` no queda sitio para avisar, y restar a secas daba
+               la vuelta al numero -que aqui no tiene signo- y lo dejaba
+               avisando siempre. */
+            uint16_t cerrado = (uint16_t)(periodo - abierto);
+            uint16_t aviso = cerrado < NP_COCO_AVISO ? cerrado : NP_COCO_AVISO;
+            if (fase >= cerrado) e->anim_frame = 2;
+            else if (fase >= (uint16_t)(cerrado - aviso)) e->anim_frame = 1;
+            else e->anim_frame = 0;
+        }
+    }
+}
+#endif /* NP_HAY_COCODRILOS */
+
+#if NP_HAY_BALANCEO
+/* --- la liana de balanceo ------------------------------------------------
+ *
+ * Un pendulo, y de los de verdad: el angulo se acelera hacia abajo tanto como
+ * dice su propio seno, que es la ecuacion de toda la vida. Con eso solo ya
+ * sale el balanceo que uno espera -rapido abajo, lento en los extremos- y,
+ * mas importante, sale **cuando hay que soltarse**: pronto y te quedas corto,
+ * tarde y vuelves. Eso es el juego entero.
+ *
+ * El angulo y su velocidad viven en `vx` y `vy` del bicho. Una liana no se
+ * mueve de sitio, asi que esos dos campos no los usa para nada, y guardarlos
+ * ahi ahorra dos numeros por bicho en maquinas donde la RAM se cuenta.
+ */
+#define NP_BAL_K     6        /* lo fuerte que tira la gravedad del pendulo */
+#define NP_BAL_LARGO 48       /* si no dice otra cosa el `largo:` */
+/* La velocidad del pendulo se guarda dieciseis veces mas fina que el angulo.
+   Hace falta: la fuerza que lo empuja es el seno partido por doscientos
+   cincuenta y seis, y con la cuenta en numeros enteros eso vale **cero** para
+   cualquier angulo por debajo de diez grados. El resultado era una liana que
+   se paraba tumbada y se quedaba asi para siempre. */
+#define NP_BAL_FINO  16
+/* Y la velocidad con la que sale el que se suelta: la punta lleva `largo` por
+   la velocidad angular, y esto pasa aquello a pixeles por frame. */
+#define NP_BAL_TIRON 15       /* division por 32768, o sea: un pelin sobrado */
+#define NP_BAL_ESPERA 20      /* frames sin poder volver a agarrarse */
+#define NP_BAL_PASOS 64       /* entradas de la tabla de senos: la vuelta entera */
+#define NP_BAL_GRADOS 45      /* lo que se tumba, si no dice otra cosa `amplitud:` */
+#define NP_BAL_TOPE  80       /* mas que esto ya no es una liana, es una helice */
+
+/* Cuanto se tumba la liana, en entradas de la tabla. El `amplitud:` de una
+   liana son **grados** -que es como se piensa un columpio- y no pixeles como
+   el de un volador, asi que aqui se pasa de unos a otros una sola vez. */
+static np_fix np_bal_angulo(const NpEnemyDef *d)
+{
+    int32_t grados = d->amplitude ? NP_F2I(d->amplitude) : NP_BAL_GRADOS;
+    if (grados < 1) grados = 1;
+    if (grados > NP_BAL_TOPE) grados = NP_BAL_TOPE;
+    return (np_fix)((NP_I2F(grados) * NP_BAL_PASOS) / 360);
+}
+
+/* El seno del angulo, interpolando entre dos entradas de la tabla. Sin esto el
+   pendulo va a saltos de seis grados y el que va colgado da tirones. */
+static np_fix np_bal_seno(np_fix paso)
+{
+    int32_t i = NP_F2I(paso) & 63;
+    np_fix f = paso & 255;
+    np_fix a = np_sin_table[i];
+    np_fix b = np_sin_table[(i + 1) & 63];
+    return (np_fix)(a + (((b - a) * f) >> 8));
+}
+
+static np_fix np_bal_coseno(np_fix paso)
+{
+    return np_bal_seno(paso + NP_I2F(16));
+}
+
+/* Donde cae la punta de la liana, que es de donde cuelga el que se agarra. */
+static void np_bal_punta(const NpEntity *e, np_fix largo,
+                           np_fix *px, np_fix *py)
+{
+    *px = e->home_x + ((largo * np_bal_seno(e->vx)) >> NP_FIX_SHIFT);
+    *py = e->home_y + ((largo * np_bal_coseno(e->vx)) >> NP_FIX_SHIFT);
+}
+
+static NP_APARTE void np_balanceo_paso(NpWorld *w)
+{
+    uint8_t i, q;
+    for (i = 0; i < w->entity_count; i++) {
+        NpEntity *e = &w->entities[i];
+        const NpEnemyDef *d;
+        np_fix largo, acel;
+        if (!e->active || e->kind != NP_KIND_ENEMY) continue;
+        d = &np_enemies[e->def];
+        if (d->behavior != NP_AI_BALANCEO) continue;
+        largo = d->range ? (np_fix)NP_I2F(d->range) : NP_I2F(NP_BAL_LARGO);
+
+        /* El pendulo: acelera hacia el punto de abajo tanto como dice su
+           propio seno. Las dos cuentas son divisiones y no desplazamientos a
+           proposito: un >> de un numero negativo redondea hacia abajo y no
+           hacia cero, y esa diferencia de medio bit, sesenta veces por
+           segundo, le daba cuerda por un lado y se la quitaba por el otro.
+
+           Y no se frena: una liana de estas se balancea toda la partida, como
+           las de Pitfall. Lo que la mantiene en su sitio no es el rozamiento
+           sino el tope de abajo. */
+        acel = (np_fix)((NP_BAL_K * np_bal_seno(e->vx)) / NP_BAL_FINO);
+        e->vy -= acel;
+        e->vx += (np_fix)(e->vy / NP_BAL_FINO);
+        /* El tope: no se tumba mas de lo que dice `amplitud`. Sin esto el
+           empujon del que se agarra se va sumando al de antes y la liana
+           acaba dando la vuelta de campana. */
+        {
+            np_fix tope = np_bal_angulo(d);
+            if (e->vx > tope)  { e->vx = tope;  if (e->vy > 0) e->vy = 0; }
+            if (e->vx < -tope) { e->vx = -tope; if (e->vy < 0) e->vy = 0; }
+        }
+
+        /* Y quien vaya colgado, que vaya donde vaya la punta. */
+        for (q = 0; q < NP_MAX_PLAYERS; q++) {
+            NpPlayer *p = &w->players[q];
+            const NpActorDef *a = &np_player_def.actor;
+            np_fix px, py;
+            if (p->balanceo != (uint8_t)(i + 1)) continue;
+            np_bal_punta(e, largo, &px, &py);
+            p->x = px - NP_I2F(a->box_w / 2);
+            p->y = py;
+            p->vx = 0;
+            p->vy = 0;
+            p->on_ground = 0;
+        }
+
+        /* El dibujo: el angulo repartido entre los fotogramas que tenga, con
+           el del medio para la liana quieta. */
+        {
+            const NpAnim *an = &d->actor.anims[NP_ANIM_IDLE];
+            if (an->count > 1) {
+                int32_t medio = an->count / 2;
+                int32_t paso = NP_F2I(e->vx);
+                int32_t tope = NP_F2I(np_bal_angulo(d));
+                /* El angulo repartido entre los fotogramas que haya: el del
+                   medio es la liana a plomo y los de los extremos, tumbada
+                   del todo. Se divide por lo que se tumba **esta** liana y no
+                   por un numero fijo, o una de poco recorrido saldria siempre
+                   con el mismo dibujo. */
+                int32_t cual = medio + (paso * medio) / (tope ? tope : 1);
+                if (cual < 0) cual = 0;
+                if (cual >= an->count) cual = an->count - 1;
+                e->anim = NP_ANIM_IDLE;
+                e->anim_frame = (uint8_t)cual;
+            }
+        }
+    }
+}
+
+/* Agarrarse al pasar. En el aire y de un roce: en Pitfall no hay boton de
+   agarrar, y esa es media gracia -la liana se coge saltando bien, no
+   pulsando-. Lo que llevabas de carrerilla se le pasa al pendulo, asi que
+   llegar lanzado te lleva mas lejos. */
+static void np_bal_coger(NpWorld *w, uint8_t quien)
+{
+    const NpActorDef *a = &np_player_def.actor;
+    NpPlayer *p = &w->players[quien];
+    uint8_t i;
+
+    if (p->balanceo || p->bal_espera || p->on_ground || p->dying) return;
+    for (i = 0; i < w->entity_count; i++) {
+        NpEntity *e = &w->entities[i];
+        const NpEnemyDef *d;
+        np_fix largo, px, py;
+        if (!e->active || e->kind != NP_KIND_ENEMY) continue;
+        d = &np_enemies[e->def];
+        if (d->behavior != NP_AI_BALANCEO) continue;
+        largo = d->range ? (np_fix)NP_I2F(d->range) : NP_I2F(NP_BAL_LARGO);
+        np_bal_punta(e, largo, &px, &py);
+        /* Se coge por la punta, que es lo que cuelga: media casilla alrededor. */
+        if (NP_ABS(px - (p->x + NP_I2F(a->box_w / 2))) > NP_I2F(NP_TILE)) continue;
+        if (NP_ABS(py - p->y) > NP_I2F(NP_TILE)) continue;
+        p->balanceo = (uint8_t)(i + 1);
+        p->trepa = 0;
+        p->stairs = 0;
+        /* la carrerilla se le pasa al pendulo */
+        e->vy += (np_fix)((p->vx * NP_I2F(NP_BAL_FINO))
+                          / (largo ? largo : NP_I2F(1)));
+        w->sfx |= NP_SFX_JUMP;
+        return;
+    }
+}
+
+/* Soltarse. Sale con la velocidad que llevaba la punta, que es lo que hace que
+   soltarse en el sitio bueno te cruce el agujero y soltarse mal te tire. */
+static void np_bal_soltar(NpWorld *w, uint8_t quien, int con_salto)
+{
+    NpPlayer *p = &w->players[quien];
+    NpEntity *e;
+    const NpEnemyDef *d;
+    np_fix largo;
+
+    if (!p->balanceo) return;
+    e = &w->entities[p->balanceo - 1];
+    d = &np_enemies[e->def];
+    largo = d->range ? (np_fix)NP_I2F(d->range) : NP_I2F(NP_BAL_LARGO);
+    p->balanceo = 0;
+    p->bal_espera = NP_BAL_ESPERA;
+    /* La punta va perpendicular a la cuerda: en x con el coseno y en y con el
+       seno, los dos por la velocidad angular y por el largo. */
+    p->vx = (np_fix)((((largo * np_bal_coseno(e->vx)) >> NP_FIX_SHIFT) * e->vy)
+                     / (1L << NP_BAL_TIRON));
+    p->vy = (np_fix)(-((((largo * np_bal_seno(e->vx)) >> NP_FIX_SHIFT) * e->vy)
+                       / (1L << NP_BAL_TIRON)));
+    if (con_salto) {
+        p->vy -= np_player_def.jump / 2;
+        w->sfx |= NP_SFX_JUMP;
+    }
+    if (p->vx) p->facing = (uint8_t)(p->vx > 0);
+}
+#endif /* NP_HAY_BALANCEO */
 
 /* ------------------------------------------------------------- el jugador */
 
@@ -2708,6 +3023,29 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
         return;
     }
 
+#if NP_HAY_BALANCEO
+    /* --- la liana de balanceo --------------------------------------------
+     *
+     * Colgado no se anda ni se cae: te lleva la liana, y lo unico que se
+     * decide es cuando soltarse. Con saltar se sale con el impulso que llevaba
+     * la punta -eso es cruzar el agujero- y con abajo se suelta a plomo, que
+     * es como se baja a lo que haya debajo. */
+    if (p->bal_espera) p->bal_espera--;
+    if (p->balanceo) {
+        p->crouch = 0;
+        np_anim_set(&p->anim, &p->anim_frame, &p->anim_timer, NP_ANIM_JUMP);
+        if ((input & NP_IN_JUMP) && !(w->prev_input[quien] & NP_IN_JUMP))
+            np_bal_soltar(w, quien, 1);
+        else if (input & NP_IN_DOWN)
+            np_bal_soltar(w, quien, 0);
+        else
+            return;                 /* la liana ya le ha puesto donde toca */
+    } else if (!p->stun) {
+        np_bal_coger(w, quien);
+        if (p->balanceo) return;
+    }
+#endif
+
     /* --- agacharse -------------------------------------------------------
      *
      * Con abajo, en el suelo: no se anda ni se salta, pero se pega, y el golpe
@@ -3353,6 +3691,26 @@ static void np_enemy_update(NpWorld *w, NpEntity *e)
            **todos** los generos. Medido: 198744 ciclos antes y 200660 despues,
            de los 200000 que da un frame. Por eso el trafico se mueve fuera. */
         return;
+    case NP_AI_COCODRILO:
+        /* El cocodrilo no se mueve: lo unico que hace es abrir y cerrar la
+           boca. El ciclo entero son `periodo` frames, de los cuales los
+           ultimos `intervalo` los pasa con la boca abierta, y los pocos de
+           antes avisando -que sin aviso esto no es un puzzle, es una trampa-.
+           El desfase sale de la columna del mapa donde esta puesto, asi que
+           tres seguidos abren en ola y hay que cruzar al paso. */
+        e->vx = 0;
+        e->vy = 0;
+        e->timer = (uint16_t)(e->timer + 1);
+        /* Y se sale, como el trafico: no se mueve, no choca con nada y el
+           dibujo se lo pone np_cocodrilo_paso. Si siguiera, la animacion de
+           siempre le pasaria por encima el fotograma y no se le veria nunca
+           avisar de que va a abrir, que es justo lo que hay que ver. */
+        return;
+    case NP_AI_BALANCEO:
+        /* La liana cuelga de su sitio y se balancea. El pendulo va en `vx` y
+           `vy` -que una liana no los usa para nada- y lo mueve np_balanceo_paso,
+           que ademas lleva al que este colgado. Aqui, nada. */
+        return;
     case NP_AI_PATROL:
         e->vx = e->facing ? d->speed : -d->speed;
         break;
@@ -3805,6 +4163,20 @@ static void np_touch_entities(NpWorld *w)
                    Arriba costaba una lectura y un salto por bicho y por
                    jugador -ciento veintiocho por frame-, y con eso la Neo Geo
                    se pasaba de los 200000 ciclos que da un frame. */
+#if NP_HAY_COCODRILOS
+                /* Un cocodrilo con la boca cerrada no es un bicho: es suelo.
+                   Solo come abierto, y por eso se le puede cruzar por encima.
+                   Va aqui dentro, donde `d` ya esta cargado, para no costarle
+                   ni un ciclo a los juegos que no tienen cocodrilos. */
+                if (d->behavior == NP_AI_COCODRILO && !np_coco_abierto(d, e))
+                    continue;
+#endif
+#if NP_HAY_BALANCEO
+                /* Y una liana tampoco es un bicho: es por donde se cruza. Ni
+                   hace dano al rozarla ni se la pisa; lo unico que se hace con
+                   ella es agarrarse, y de eso se encarga np_bal_coger. */
+                if (d->behavior == NP_AI_BALANCEO) continue;
+#endif
                 if (d->behavior == NP_AI_TRAFICO && np_vista_carretera) {
                     if (!p->trompo && np_velocidad(p) > np_coche.lento) {
                         p->trompo = (uint8_t)NP_MIN(np_coche.trompo, 255);
@@ -5131,6 +5503,16 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
        es de carretera esta linea no existe: se va al compilar. */
 #if NP_VISTA_CARRETERA
     np_trafico_paso(w);
+#endif
+    /* Los cocodrilos y las lianas, lo mismo: su propia vuelta, y borradas al
+       compilar si el juego no las usa. Las dos van antes que el jugador porque
+       las dos son sitios donde se apoya o de los que cuelga: cuando le toca
+       moverse, ya estan donde tienen que estar. */
+#if NP_HAY_COCODRILOS
+    np_cocodrilo_paso(w);
+#endif
+#if NP_HAY_BALANCEO
+    np_balanceo_paso(w);
 #endif
 
     for (quien = 0; quien < NP_MAX_PLAYERS; quien++) {

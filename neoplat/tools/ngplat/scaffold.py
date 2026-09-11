@@ -3855,6 +3855,18 @@ def _bichos_plataformas(nombres: Dict[str, str]) -> str:
             "    puntos: 200\n"
             "    animaciones:\n"
             "      quieto: {frames: [0, 1], velocidad: 6}\n"
+            # Las dos mecanicas de Pitfall -el cocodrilo de la charca y la
+            # liana de balanceo- **no** vienen puestas en este juego, y no por
+            # falta de ganas: este juego tiene que arrancar y correr a 50
+            # imagenes por segundo en un A500 de 512 KB, y ahi ya no queda
+            # sitio. Medido: con la liana puesta el ejecutable pasa de 66 KB a
+            # 99 y el disquete ya no arranca; con el cocodrilo puesto arranca
+            # pero el juego baja a 25 imagenes por segundo.
+            #
+            # Estan el motor, estan los dibujos (graficos/cocodrilo.png y
+            # graficos/liana.png, que se crean con el proyecto) y esta el
+            # bloque listo para pegar en docs/formato.md. En una maquina con
+            # sitio -o en un juego mas pequeno- se pegan y ya esta.
             % (nombres["andar"], nombres["volar"]))
 
 

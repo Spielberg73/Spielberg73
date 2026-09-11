@@ -2,8 +2,84 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.36.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.37.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.37
+
+**Dos mecánicas nuevas para el género de plataformas, las dos de Pitfall: los
+cocodrilos y la liana de balanceo.**
+
+**El cocodrilo** no se mata: se le coge el momento. No se mueve de su sitio y
+lo único que hace es abrir y cerrar la boca, y **con la boca cerrada es
+suelo**: se le pisa el lomo y se cruza por encima. Con la boca abierta, muerde.
+Entre una cosa y otra hay doce frames de aviso en los que entreabre y se le ven
+los dientes, porque sin aviso esto no es un puzle sino una trampa. Puestos
+varios seguidos abren **en ola** —cada uno arranca el ciclo un tercio después
+que su vecino, y el desfase sale de la columna del mapa en la que está— así que
+una charca de tres se cruza al paso y no corriendo.
+
+**La liana** es la otra mitad. Cuelga de donde la pongas, se balancea sola y se
+coge **en el aire y de un roce**: no hay botón de agarrar, la liana se coge
+saltando bien. Colgado no se anda ni se cae —te lleva ella— y lo único que se
+decide es cuándo soltarse: con salto sales con lo que llevara la punta, con
+abajo te dejas caer a plomo.
+
+**Dónde no están: en el juego que crea `ngplat nuevo`.** Y conviene decirlo con
+los números delante, porque es el tipo de cosa que se descubre tarde. Ese juego
+tiene que arrancar y correr a 50 imágenes por segundo en un **Amiga 500 de 512
+KB**, y ahí ya no queda sitio:
+
+- Con la liana puesta, el ejecutable pasa de 66 KB a 82 y, con los 120 KB de
+  BSS, el juego pide 202 KB de RAM chip cuando en un A500 caben unos 190: **el
+  disquete no arranca**, se queda el escritorio del sistema en pantalla y sin
+  un mensaje. La culpa es del dibujo: la liana dibuja la cuerda entera y son 45
+  casillas de gráficos, la mitad de todo lo que gasta el juego (con el primer
+  dibujo, de 80x64, eran 99 KB). Medido también al revés: el mismo disquete
+  **sí** arranca si a la máquina emulada se le pone un mega de RAM chip.
+- Con el cocodrilo puesto sí arranca, pero el juego baja a **25 imágenes por
+  segundo**. Se cazó por la música, que sonaba a la mitad de velocidad: el
+  analizador oía cada nota dos veces seguidas.
+
+Así que se quedan fuera del juego de partida y dentro del kit: motor, preview,
+editor, dibujos (`graficos/cocodrilo.png` y `graficos/liana.png` se crean con
+cada proyecto nuevo) y el bloque listo para pegar en `docs/formato.md`.
+
+**Y de paso, tres arreglos del motor que valen para todos:**
+
+- **La liana no se balanceaba sola.** Colgaba a plomo con velocidad cero, y un
+  péndulo parado en el punto de abajo se queda ahí para siempre. Ahora empieza
+  tumbado del todo hacia un lado, y `amplitud` —que en una liana son **grados**,
+  no píxeles— dice cuánto.
+- **Y se paraba a media partida.** La fuerza que tira del péndulo es su propio
+  seno partido por 256, y en números enteros eso vale **cero** para cualquier
+  ángulo por debajo de diez grados: la liana se frenaba, entraba en esa zona
+  muerta y se quedaba tumbada y quieta. La velocidad se guarda ahora dieciséis
+  veces más fina, y las dos cuentas son divisiones y no desplazamientos: un
+  `>>` de un número negativo redondea hacia abajo y no hacia cero, y esa
+  diferencia de medio bit, sesenta veces por segundo, le daba cuerda por un lado
+  y se la quitaba por el otro.
+- **Soltarse no servía de nada.** Uno se soltaba en la punta y en el frame
+  siguiente seguía a un palmo de ella, así que se volvía a enganchar. Ahora hay
+  veinte frames sin poder agarrarse a nada.
+
+**El bot sabe usarlas**, que es lo que hace que el botón «¿se puede terminar?»
+siga diciendo la verdad: ni el cocodrilo ni la liana son bichos a los que pegar,
+un agujero con liana no se salta sino que se espera en el borde a que la punta
+venga hacia acá, y **no se suelta en el extremo** —ahí la punta está quieta y se
+cae a plomo dentro del agujero— sino a medio subir por el otro lado.
+
+**El compilador avisa cuando un juego no cabe en un A500.** Todo lo que hace un
+juego de Amiga —código, datos y BSS— lo reserva AmigaDOS en RAM chip, y en una
+máquina de 512 KB lo que queda libre son unos 190 KB. Pasado eso el disquete
+arranca, el sistema no puede cargar el juego y en la pantalla se queda el
+escritorio: ni un mensaje. Ahora sale un aviso con los KB que ocupa y los que
+caben.
+
+**Un alias que faltaba:** `alcance:` no era ninguno de los nombres de la opción
+`rango` de un enemigo, así que la cuerda de una liana medía los 96 píxeles de
+serie en vez de los que pidiera el ejemplo. Ahora `largo:` y `cuerda:` valen
+también.
 
 ## 1.36
 

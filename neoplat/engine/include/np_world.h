@@ -40,6 +40,15 @@ typedef struct {
        sube desde el suelo y va en diagonal; a una liana te agarras **tambien
        en el aire** y se sube recta. */
     uint8_t trepa;
+    /* De que liana de balanceo vas colgado: su sitio en la lista **mas uno**,
+       0 = de ninguna. No es `trepa`: de aquella subes, de esta te dejas
+       llevar y lo unico que decides es cuando soltarte. */
+    uint8_t balanceo;
+    /* Frames que quedan sin poder agarrarse a otra liana (ni a la misma).
+       Sin esto soltarse no sirve de nada: se suelta uno en la punta y en el
+       frame siguiente vuelve a estar a un palmo de ella, asi que se vuelve a
+       enganchar, y el que mira ve a alguien pegado a la liana para siempre. */
+    uint8_t bal_espera;
     uint8_t crouch;          /* 1 = agachado */
     int8_t stair_dir;        /* hacia donde avanza en x al subir: +1 o -1 */
     uint16_t wear_timer;     /* frames para el siguiente punto de `desgaste:` */

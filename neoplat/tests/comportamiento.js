@@ -103,6 +103,9 @@ function datos(filas, opciones) {
       else if (ch === "V") { spawns.push([x * 16 + 2, y * 16 + 16 - candelabro.box_h, 4, 1]); ch = "."; }
       else if (ch === "J") { spawns.push([x * 16 + 2, y * 16 + 16 - enemigo.box_h, 0, 2]); ch = "."; }
       else if (ch === "R") { spawns.push([x * 16 + 2, y * 16 + 16 - enemigo.box_h, 8, 0]); ch = "."; }
+      /* el cocodrilo va apoyado en su casilla; la liana cuelga de la suya */
+      else if (ch === "K") { spawns.push([x * 16, y * 16 + 16 - 12, 0, 3]); ch = "."; }
+      else if (ch === "Z") { spawns.push([x * 16 + 3, y * 16, 0, 4]); ch = "."; }
       else if (ch === "N") { spawns.push([x * 16 + 1, y * 16 + 2, 9, 0]); ch = "."; }
       /* los tres objetos que se llevan: llave, tablon y cubo */
       else if (ch === "1") { spawns.push([x * 16 + 3, y * 16 + 6, 1, 5]); ch = "."; }
@@ -254,7 +257,19 @@ function datos(filas, opciones) {
         active: opciones.duracionEnemigo || 6,
         recover: opciones.recuperaEnemigo === undefined ? 20 : opciones.recuperaEnemigo,
         wait: opciones.esperaEnemigo === undefined ? 40 : opciones.esperaEnemigo,
-        punch: opciones.punoEnemigo || 0 }
+        punch: opciones.punoEnemigo || 0 },
+      /* el cocodrilo de la charca: quieto, y solo come con la boca abierta */
+      { actor: actor(16, 12), speed: 0, gravity: 0, jump: 0, range: 0,
+        amplitude: 0, period: opciones.cocoPeriodo || 120,
+        interval: opciones.cocoAbierto || 40, score: 0, behavior: 6,
+        health: 99, damage: 1, stompable: 0, edge_turn: 0, name: "cocodrilo",
+        reach: 0, windup: 16, active: 6, recover: 20, wait: 40, punch: 0 },
+      /* la liana de balanceo: cuelga de su sitio y no hace dano */
+      { actor: actor(10, 10), speed: 0, gravity: 0, jump: 0,
+        range: fx(opciones.lianaLargo || 48),
+        amplitude: 0, period: 0, interval: 0, score: 0, behavior: 7,
+        health: 99, damage: 0, stompable: 0, edge_turn: 0, name: "balanceo",
+        reach: 0, windup: 16, active: 6, recover: 20, wait: 40, punch: 0 }
     ],
     /* los prisioneros: tocarlos los suelta, dispararles los pierde */
     prisoners: [
@@ -4055,6 +4070,115 @@ prueba("el verbo se ve en la linea de lo que llevas", function () {
   assert.strictEqual((w.data.verbos || [])[w.verbo], "MIRAR");
   otroVerbo(w);
   assert.strictEqual((w.data.verbos || [])[w.verbo], "COGER");
+});
+
+/* ------------------------------------- el cocodrilo y la liana de balanceo */
+
+/* Un cocodrilo en el suelo, con el jugador encima a la izquierda. */
+function mundoCoco(opciones) {
+  return mundo(["..........",
+                "..........",
+                "..........",
+                "..P...K...",
+                "##########"], opciones);
+}
+
+prueba("el cocodrilo abre y cierra la boca a compas", function () {
+  var w = mundoCoco({ cocoPeriodo: 120, cocoAbierto: 40 });
+  var e = w.entities[0], vistos = {};
+  for (var i = 0; i < 240; i++) { w.step(0); vistos[e.animFrame] = 1; }
+  assert.ok(vistos[0], "nunca se le ve la boca cerrada");
+  assert.ok(vistos[1], "nunca avisa antes de abrir");
+  assert.ok(vistos[2], "nunca abre la boca");
+});
+
+prueba("con la boca cerrada se le pisa la cabeza", function () {
+  var w = mundoCoco({ cocoPeriodo: 600, cocoAbierto: 1 });   /* casi siempre cerrado */
+  var e = w.entities[0], p = w.players[0];
+  /* al jugador se le deja caer justo encima */
+  p.x = e.x; p.y = e.y - NP.I2F(20); p.vy = 0;
+  correr(w, 30, 0);
+  assert.strictEqual(p.riding, 1, "no se ha quedado encima del cocodrilo");
+  assert.ok(p.health === w.data.player.health, "le ha hecho dano estando cerrado");
+});
+
+prueba("con la boca abierta, el cocodrilo come", function () {
+  var w = mundoCoco({ cocoPeriodo: 120, cocoAbierto: 119 }); /* casi siempre abierto */
+  var e = w.entities[0], p = w.players[0];
+  var antes = p.health;
+  p.x = e.x; p.y = e.y - NP.I2F(20); p.vy = 0;
+  correr(w, 60, 0);
+  assert.ok(p.health < antes, "con la boca abierta no ha hecho dano");
+});
+
+/* Una liana colgada de arriba, con un agujero debajo. */
+function mundoBalanceo(opciones) {
+  return mundo(["..........",
+                ".....Z....",
+                "..........",
+                "..........",
+                "..P.......",
+                "###....###"], opciones);
+}
+
+/* Deja al jugador colgando justo de la punta, que es de donde se coge. */
+function enLaPunta(w) {
+  var e = w.entities[0], p = w.players[0];
+  var d = w.data.enemies[e.def];
+  var punta = w.balPunta(e, w.balLargo(d));
+  p.x = punta[0] - NP.I2F(Math.floor(w.data.player.actor.box_w / 2));
+  p.y = punta[1];
+  p.vx = 0; p.vy = 0; p.onGround = 0;
+  return p;
+}
+
+prueba("la liana empieza tumbada y se balancea sola", function () {
+  var w = mundoBalanceo({});
+  var e = w.entities[0];
+  /* Sin esto la liana no serviria de nada: un pendulo parado en el punto de
+     abajo se queda ahi para siempre. */
+  assert.ok(e.vx < 0, "la liana no empieza tumbada");
+  var antes = e.vx;
+  correr(w, 20, 0);
+  assert.notStrictEqual(e.vx, antes, "la liana no se ha movido");
+});
+
+prueba("al tocarla en el aire uno se cuelga, y se suelta con saltar", function () {
+  var w = mundoBalanceo({});
+  var p = enLaPunta(w);
+  w.step(0);
+  assert.strictEqual(p.balanceo, 1, "no se ha colgado de la liana");
+  correr(w, 10, 0);
+  assert.strictEqual(p.onGround, 0, "colgado no se pisa suelo");
+  w.step(NP.IN.JUMP);
+  assert.strictEqual(p.balanceo, 0, "saltando no se ha soltado");
+});
+
+prueba("colgado, el jugador va donde va la punta de la liana", function () {
+  var w = mundoBalanceo({});
+  var p = enLaPunta(w);
+  w.step(0);
+  assert.strictEqual(p.balanceo, 1, "no se ha colgado");
+  var antes = p.x;
+  correr(w, 15, 0);
+  assert.notStrictEqual(p.x, antes, "colgado no se ha movido con la liana");
+});
+
+prueba("la liana cruza al otro lado: se coge en un extremo y deja en el otro",
+       function () {
+  var w = mundoBalanceo({});
+  var e = w.entities[0], p = enLaPunta(w);
+  w.step(0);
+  assert.strictEqual(p.balanceo, 1, "no se ha colgado");
+  /* se aguanta hasta el extremo de enfrente y ahi se suelta */
+  var vueltas = 0;
+  while (p.balanceo && vueltas++ < 300) {
+    if (e.vx > 0 && e.vy <= 0) w.step(NP.IN.JUMP);
+    else w.step(0);
+  }
+  assert.strictEqual(p.balanceo, 0, "no se ha soltado nunca");
+  assert.ok(NP.F2I(p.x) > NP.F2I(e.homeX),
+            "soltandose en el extremo de delante se cae al otro lado");
 });
 
 var fallos = 0;

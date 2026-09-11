@@ -186,6 +186,9 @@ def convertir(ruta_elf: str, chip: bool = True) -> Tuple[bytes, Dict[str, int]]:
     return bytes(salida), info
 
 
+A500_LIBRE = 190        # KB de RAM chip que deja libres el sistema
+
+
 def main(argv: List[str]) -> int:
     if len(argv) < 2:
         print(__doc__)
@@ -198,10 +201,22 @@ def main(argv: List[str]) -> int:
         return 1
     with open(destino, "wb") as fh:
         fh.write(datos)
+    kb = (info["codigo"] + info["bss"]) // 1024
     print("ejecutable de Amiga: %s (%d KB de codigo y datos, %d KB de BSS, "
           "%d direcciones corregidas)"
           % (destino, info["codigo"] // 1024, info["bss"] // 1024,
              info["reloc_codigo"] + info["reloc_bss"]))
+    # Todo esto -codigo, datos y BSS- lo reserva AmigaDOS en RAM chip, y en un
+    # A500 de 512 KB lo que queda libre despues del sistema son unos 190. Pasado
+    # eso el disquete arranca, el sistema no puede cargar el juego y en la
+    # pantalla se queda el escritorio: ni un mensaje. Esta medido en un A500
+    # emulado: con 189 KB arranca y con 197 no, y los mismos 197 arrancan si a
+    # la maquina se le pone un mega de RAM chip.
+    if kb > A500_LIBRE:
+        print("aviso  %d KB de RAM chip: en un A500 de 512 KB no arranca "
+              "(caben unos %d). Sigue valiendo para un A1200, un CD32 o un "
+              "A500 ampliado; para el A500 de serie hay que quitar dibujos, "
+              "que es lo que mas ocupa." % (kb, A500_LIBRE))
     return 0
 
 

@@ -247,7 +247,8 @@ jugador:
 enemigos:
   seta:
     sprite: graficos/enemigo.png
-    comportamiento: patrulla      # patrulla, volador, perseguidor, saltarin, fijo
+    comportamiento: patrulla      # patrulla, volador, perseguidor, saltarin,
+                                  # fijo, cocodrilo, balanceo
     velocidad: 0.4
 
 objetos:
@@ -386,9 +387,9 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.36.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
-| `neoplat-kit-1.36.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.36.zip` | el `ngplat.exe` y su LEEME |
+| `neoplat-docs-1.37.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
+| `neoplat-kit-1.37.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.37.zip` | el `ngplat.exe` y su LEEME |
 
 El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
 plantillas; no necesita Python ni nada instalado. Con **doble clic** —sin
@@ -551,7 +552,7 @@ consola, y da igual en cuál.
 make test           # herramientas, validación, generación de C y paridad C/JS
 make test-emulador  # arranca la ROM y el disquete en emuladores de verdad
 make test-navegador # abre el preview y el editor en Chromium
-node tests/comportamiento.js   # 242 pruebas de jugabilidad
+node tests/comportamiento.js   # 249 pruebas de jugabilidad
 make ejemplo-todos             # compila el ejemplo para las siete máquinas
 ```
 
