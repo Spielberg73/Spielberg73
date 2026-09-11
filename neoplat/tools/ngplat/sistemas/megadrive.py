@@ -76,7 +76,7 @@ class MegaDrive(Sistema):
 
         # 1) todas las paletas del juego se meten en las 4 del VDP
         paletas = [build.tileset.palette]
-        paletas += [a.sheet.palette for a in build.actor_builds()]
+        paletas += [a.sheet.palette for a in build.actor_builds(con_lejos=False)]
         paletas += [c.palette for c in build.layers]
         paletas.append(gfx.hud_palette())
         reparto = gfx_md.repartir_paletas(paletas)

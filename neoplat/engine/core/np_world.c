@@ -4787,6 +4787,19 @@ int np_carretera_donde(const NpWorld *w, np_fix x, np_fix y,
     return 1;
 }
 
+const NpCarreteraTam *np_carretera_dibujo(const NpActorDef *def, int32_t escala)
+{
+    const NpCarreteraTam *tam;
+    if (!def->lejos) return 0;
+    tam = np_carretera_tam[def->lejos - 1];
+    /* La lista va de mas cerca a mas lejos, asi que el primero que acepte esta
+       escala es el mas grande que vale. El ultimo tiene `desde` a cero: algo
+       lejisimos se dibuja con el mas pequeno, no desaparece. */
+    for (; tam->cols; tam++)
+        if (escala >= (int32_t)tam->desde) return tam;
+    return 0;
+}
+
 /* ------------------------------------------------- la pantalla y las salas */
 
 void np_pantalla(const NpWorld *w, np_fix x, np_fix y, np_fix altura,

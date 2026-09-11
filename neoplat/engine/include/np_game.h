@@ -19,10 +19,34 @@ typedef struct {
     uint16_t first_tile;     /* primer tile de la hoja en la ROM C */
     uint8_t palette;         /* paleta asignada */
     uint8_t cols, rows;      /* tamano del fotograma en tiles de 16x16 */
+    /* Con que juego de tamanos se dibuja esto cuando se ve de lejos en la
+       carretera: su sitio en np_carretera_tam **mas uno**; cero = no sale en
+       la calzada, que es lo que pasa en los otros nueve generos. Va aqui, y no
+       al final, porque aqui no ocupa: el hueco entre `rows` y `box_x` estaba
+       de relleno para que los int16 cayeran en direccion par. */
+    uint8_t lejos;
     int16_t box_x, box_y;    /* caja de colision dentro del fotograma */
     int16_t box_w, box_h;
     NpAnim anims[NP_ANIM_SLOTS];
 } NpActorDef;
+
+/* Un dibujo de carretera a uno de sus tamanos.
+ *
+ * Lo que esta en la calzada se ve **mas pequeno cuanto mas lejos**, y de estas
+ * ocho maquinas solo la Neo Geo sabe encoger un sprite por hardware. Las demas
+ * lo llevan ya dibujado a varios tamanos: el compilador los saca del mismo PNG
+ * (ver `hoja_encogida` en tools/ngplat/gfx.py) y aqui solo hay que elegir cual
+ * toca.
+ *
+ * El dibujo va **centrado y apoyado abajo** dentro de su bloque de tiles, asi
+ * que la esquina de arriba a la izquierda es (centro - cols*8, suelo -
+ * rows*16) y no hace falta saber cuanto margen sobra. */
+typedef struct {
+    uint16_t first_tile;
+    uint8_t palette;
+    uint8_t cols, rows;      /* lo que ocupa en tiles de 16x16 */
+    uint16_t desde;          /* la escala mas baja a la que sirve (8.8) */
+} NpCarreteraTam;
 
 /* El ataque del jugador. `kind` a cero quiere decir que el juego no lleva
  * ataque y el boton no hace nada, que es como estaba el kit hasta ahora.
@@ -358,6 +382,10 @@ extern const NpSubDef np_subs[];         /* las armas secundarias del juego */
 extern const NpPlatformDef np_platforms[];
 extern const NpBreakableDef np_breakables[];
 extern const NpBlockDef np_bloques[];    /* los cubos de la vista isometrica */
+/* Los tamanos de cada cosa que sale en la calzada, de mas cerca a mas lejos y
+   terminados en uno con cols = 0. Se busca por NpActorDef.lejos - 1. Fuera del
+   genero de conducir la tabla existe pero no la mira nadie. */
+extern const NpCarreteraTam *const np_carretera_tam[];
 extern const NpLevel np_levels[];
 /* --- los guiones ---------------------------------------------------------
  *

@@ -2,8 +2,68 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.38.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.39.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.39
+
+**El tráfico de la carretera, en perspectiva. Antes no se veía ni un coche.**
+
+El género de conducir compilaba, se jugaba y la calzada se veía perfecta —el
+horizonte, los arcenes, las rayas corriendo, el coche en su sitio—. Lo que no
+salía era el tráfico: en la vista de carretera las ocho máquinas seguían
+dibujando los actores con la cámara del mapa, que en este género es el trazado
+y no lo que se ve, así que los coches caían fuera de la pantalla. El motor ya
+sabía dónde van (`np_carretera_donde`) y el preview los pintaba; las máquinas
+no.
+
+**Cinco tamaños, no un escalador.** De las ocho, sólo la Neo Geo sabe encoger
+un sprite por hardware. Así que el compilador saca del mismo PNG cinco versiones
+ya reducidas de cada cosa que puede salir en la calzada, y el motor elige la que
+toca (`np_carretera_dibujo`, compartida para que las ocho elijan igual).
+
+Cuántos tamaños y cuáles está **medido, no elegido**: conduciendo el circuito
+del andamiaje con el piloto de `tests/pilotar.js`, el tráfico se ve 5.142 veces
+y la mitad de ellas **por debajo de la escala 32** —un octavo de su tamaño—. Los
+grandes casi no se usan y los pequeños son casi todo, así que hay más tamaños
+cerca del final: 256, 128, 64, 32 y 16 de 256.
+
+**Al encoger no se promedia, se vota.** Estas máquinas tienen dieciséis colores:
+un color nuevo es un color que no cabe. Cada píxel del resultado se queda con el
+que más se repite en el cuadrado que le toca, y eso además salva la silueta: un
+coche de 64 × 32 reducido a 8 × 4 tomando el píxel del medio se queda en cuatro
+píxeles de carrocería o en nada según dónde caiga la rejilla, y parpadea al
+alejarse.
+
+**Y un detalle que costó una tarde.** Esos dibujos encogidos no traen ni un
+color nuevo, pero si se cuentan al **repartir color** sus píxeles pesan, y en
+una máquina corta de color eso cambia qué colores sobreviven. En el Amiga le
+cambió la paleta al coche del jugador y el coche desapareció, pintado con los
+grises del asfalto, sin que nada avisara.
+
+Dónde está comprobado, arrancando la ROM o el disquete de verdad:
+
+| | |
+|---|---|
+| Mega Drive | se ve, con prueba automática en el emulador |
+| Amiga (A500) | se ve |
+| Atari ST | se ve |
+| A1200 y CD32 | **ahora compila** (no compilaba: `np_amiga.h` declaraba los tonos de la calzada de 32 bits y el compilador los emitía de 16) y los registros de color ya siguen a la máquina (dieciséis por plano en AGA, ocho en OCS, estaba fijo en ocho). El coche y el tráfico salen bien; el asfalto todavía sale con los colores cambiados |
+| Jaguar | el código está puesto, pero **esa máquina no dibuja la carretera en absoluto** y tampoco lo hacía antes |
+| Neo Geo y X68000 | todavía no dibujan la carretera |
+
+La prueba nueva no mira registros: conduce, busca en la pantalla los colores que
+sólo tiene el tráfico y exige que **lo de abajo se vea más ancho que lo de
+arriba**. Contar el total no valía —se probó—: el tráfico va a tu velocidad y el
+total se queda casi clavado aunque la perspectiva esté bien.
+
+**Y una que costó y conviene recordar.** En el Atari ST, refactorizar el pintor
+de actores para que el tamaño viniera por parámetro —una función, limpia, con
+`np_pintar_actor` llamándola— hizo que un juego **normal** pasara de tocar 16
+notas de 16 a tocar 8. De las ocho máquinas ésa es la más justa de ciclos y lo
+que se pierde en el frame se oye en la melodía; ni `inline` lo salvaba. Ahora
+hay dos pintores casi iguales, el segundo detrás de un `#if`, y en un juego que
+no sea de conducir el camino de siempre queda exactamente como estaba.
 
 ## 1.38
 

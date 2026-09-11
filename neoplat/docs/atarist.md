@@ -393,6 +393,23 @@ De la imagen de la carretera el ST no necesita nada: sólo los siete colores,
 para pedirlos por su número. El compilador se los manda en un cuadro de 16×16
 (`Sistema.carretera_como = "muestra"`), que ocupa un dibujo y no dos mil.
 
+### El tráfico, y por qué hay dos pintores casi iguales
+
+Lo que está sobre la calzada se dibuja en perspectiva: el motor dice dónde cae
+y cuánto encoge, y el compilador manda el dibujo ya hecho a cinco tamaños,
+porque el ST no sabe escalar nada (está contado en
+[megadrive.md](megadrive.md#el-tráfico-dibujado-a-cinco-tamaños-no-escalado),
+que es donde se decidieron los tamaños).
+
+En `np_video.c` hay por eso dos funciones casi idénticas: `np_pintar_actor`,
+que saca el tamaño del actor, y `np_pintar_bloque`, que lo recibe. Es a
+propósito, y está medido. Lo limpio —un solo pintor con los números por
+parámetro, y `np_pintar_actor` llamándolo— hace que **un juego normal pase de
+tocar 16 notas de 16 a tocar 8**: de las ocho máquinas, ésta es la más justa de
+ciclos, y lo que se pierde en el frame se oye en la melodía. Poniéndolo así, en
+un juego que no sea de conducir el segundo pintor ni se compila y el camino de
+siempre queda exactamente como estaba.
+
 ## Si algo se ve raro
 
 | lo que se ve | dónde mirar |

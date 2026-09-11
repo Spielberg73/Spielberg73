@@ -455,6 +455,12 @@ void np_carretera_coche(const NpWorld *w, uint8_t quien,
 int np_carretera_donde(const NpWorld *w, np_fix x, np_fix y,
                        int32_t *sx, int32_t *sy, int32_t *escala);
 
+/* Con que dibujo se pinta eso: el tamano de su lista que sirve para esa
+ * escala, o 0 si ese actor no sale en la calzada. Esta aqui, y no en cada
+ * np_video.c, para que las ocho elijan el mismo: con cinco tamanos, elegir
+ * distinto se ve. */
+const NpCarreteraTam *np_carretera_dibujo(const NpActorDef *def, int32_t escala);
+
 /* Lo que corre el coche, en pixeles por frame (24.8). En la vista de carretera
  * el coche sube por el mapa, o sea con la `y` bajando, asi que su velocidad de
  * verdad es la de al reves; esto lo dice una sola vez para que el marcador, el

@@ -187,11 +187,14 @@ extern const uint8_t np_font_data[];             /* fuente de 8x8, un bit por pi
 /* La carretera: los dos tonos de cada cosa -hierba, arcen, calzada y raya- y
    el registro de color de cada una. Aqui las franjas no vienen dibujadas: el
    copper escribe el tono que toca en cada linea. */
-#if NP_AGA
-extern const uint32_t np_carretera_tonos[4][2];
-#else
+/* En doce bits **tambien en AGA**, aunque ahi el resto de la paleta sea de
+   veinticuatro: un color de 24 bits se escribe en dos veces, con BPLCON3 en
+   medio, y eso serian diez escrituras de copper por linea de pantalla en vez
+   de cuatro. Se pierden los cuatro bits de abajo de un tono de asfalto, que no
+   los ve nadie, y se gana que la carretera quepa en el hueco de una linea.
+   (Aqui ponia uint32_t con NP_AGA y el compilador emitia uint16_t: el juego de
+   carretera no compilaba ni para A1200 ni para CD32.) */
 extern const uint16_t np_carretera_tonos[4][2];
-#endif
 extern const uint16_t np_carretera_regs[4];
 #endif
 

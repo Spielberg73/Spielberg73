@@ -130,6 +130,35 @@ Si tocas los colores de `carretera:` en tu `game.yaml`, sepáralos un escalón
 entero. Y si no lo haces, el compilador te lo dice al compilar: mira
 `Sistema.avisos_de_carretera`.
 
+### El tráfico: dibujado a cinco tamaños, no escalado
+
+Lo que está **sobre** la calzada —los coches de delante— sí se dibuja por
+frame, y se dibuja en perspectiva: el motor dice dónde cae y cuánto encoge
+(`np_carretera_donde`), igual para las ocho máquinas.
+
+El VDP no sabe encoger un sprite, así que el compilador saca del mismo PNG
+**cinco tamaños** de cada cosa que puede salir en la calzada y el motor elige
+el que toca (`np_carretera_dibujo`). Cuántos y cuáles no está elegido a ojo:
+conduciendo el circuito del andamiaje con `tests/pilotar.js`, el tráfico se ve
+5.142 veces y **la mitad de ellas por debajo de la escala 32** —un octavo de su
+tamaño—, así que los tamaños pequeños son los que más se usan y por eso hay más
+cerca del final: 256, 128, 64, 32 y 16 de 256.
+
+Al encoger no se promedia: cada píxel del resultado se queda con el color que
+**más se repite** en el cuadrado que le toca. Promediar inventaría colores, y
+aquí una paleta son dieciséis. Contar en vez de tomar el píxel del medio es
+además lo que salva la silueta: un coche de 64 × 32 reducido a 8 × 4 tomando el
+del medio se queda en cuatro píxeles de carrocería o en nada según dónde caiga
+la rejilla, y parpadea al alejarse.
+
+Un detalle que costó encontrar: esos dibujos encogidos **no entran en el
+reparto de color**. No traen ni un color nuevo —salen del mismo PNG— pero si se
+cuentan, sus píxeles pesan, y en una máquina corta de color eso cambia qué
+colores sobreviven. En el Amiga le cambió la paleta al coche del jugador y el
+coche desapareció, pintado con los grises del asfalto, sin que nada avisara.
+Por eso `Build.actor_builds()` tiene un `con_lejos`: para los tiles se piden
+con todo, para repartir color se piden sin ellos.
+
 Un detalle de la misma familia: las cuatro entradas de una franja tienen que
 ser cuatro colores **distintos** en 24 bits, o el cuantizador de paletas las
 junta en una y no queda nada que rotar. Se separan un punto de azul, y ese

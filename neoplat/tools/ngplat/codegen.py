@@ -58,7 +58,7 @@ def _actor_vacio() -> str:
     Las ranuras de animacion se cuentan a partir de ANIM_SLOTS y no a mano:
     anadir una (como paso con la de atacar) rompia esto en silencio."""
     ranuras = ", ".join(["{ 0, 0, 0, 0 }"] * len(ANIM_SLOTS))
-    return "{ 0, 0, 1, 1, 0, 0, 16, 16, { %s } }" % ranuras
+    return "{ 0, 0, 1, 1, 0, 0, 0, 16, 16, { %s } }" % ranuras
 
 
 def _actor_def(prefix: str, values: Dict[str, object]) -> str:
@@ -70,16 +70,59 @@ def _actor_def(prefix: str, values: Dict[str, object]) -> str:
         )
     return (
         "    {\n"
-        "        %d, %d, %d, %d,\n"
+        "        %d, %d, %d, %d, %d,\n"
         "        %d, %d, %d, %d,\n"
         "        {\n%s\n        }\n"
         "    }"
         % (
             values["first_tile"], values["palette"], values["cols"], values["rows"],
+            values.get("lejos", 0),
             values["box_x"], values["box_y"], values["box_w"], values["box_h"],
             ",\n".join(anims),
         )
     )
+
+
+def _carretera_tamanos_c(build: Build) -> List[str]:
+    """Los tamanos de cada cosa que sale en la calzada, ya en C.
+
+    De mas cerca a mas lejos, terminados en uno con `cols` a cero. El primero
+    es el dibujo natural -la misma hoja de siempre- y los demas las versiones
+    encogidas que saco el compilador. Fuera del genero de conducir la tabla
+    sigue existiendo, con una entrada muerta, porque un array vacio no es C
+    valido y la alternativa seria un #if mas en las ocho maquinas.
+    """
+    from .build import CARRETERA_ESCALAS
+    con_tamanos = sorted(
+        (a for a in build.actor_builds() if a.lejos_index),
+        key=lambda a: a.lejos_index,
+    )
+    src = ["/* --- los tamanos de la carretera ------------------------------",
+           " *",
+           " * Lo que esta en la calzada se ve mas pequeno cuanto mas lejos, y de",
+           " * estas ocho maquinas solo la Neo Geo sabe encoger un sprite. Las demas",
+           " * lo llevan ya dibujado a varios tamanos, sacados del mismo PNG al",
+           " * compilar. Cada dibujo va centrado y apoyado abajo en su bloque de",
+           " * tiles, asi que el motor solo pone la esquina y no mira margenes. */"]
+    for construido in con_tamanos:
+        hojas = [construido.sheet] + construido.lejos
+        src.append("static const NpCarreteraTam np_lejos%d[] = {"
+                   % (construido.lejos_index - 1))
+        for hoja, (escala, desde) in zip(hojas, CARRETERA_ESCALAS):
+            src.append("    { %d, %d, %d, %d, %d },   /* a %d/256 */"
+                       % (hoja.first_tile, hoja.palette_index, hoja.cols,
+                          hoja.rows, desde, escala))
+        src.append("    { 0, 0, 0, 0, 0 }")
+        src.append("};")
+    src.append("const NpCarreteraTam *const np_carretera_tam[] = {")
+    if con_tamanos:
+        src.append("    " + ", ".join("np_lejos%d" % i
+                                      for i in range(len(con_tamanos))))
+    else:
+        src.append("    0")
+    src.append("};")
+    src.append("")
+    return src
 
 
 def generate_gamedata(build: Build) -> Dict[str, str]:
@@ -589,6 +632,8 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("};")
     src.append("const uint8_t np_bloque_count = %d;" % len(build.blocks))
     src.append("")
+
+    src.extend(_carretera_tamanos_c(build))
 
     # --- capas de fondo (parallax)
     for i, layer in enumerate(build.layers):

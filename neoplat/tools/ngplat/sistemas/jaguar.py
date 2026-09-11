@@ -88,7 +88,7 @@ class Jaguar(Sistema):
         banco = gfx_jaguar.BancoJaguar()
 
         paletas = [build.tileset.palette]
-        paletas += [a.sheet.palette for a in build.actor_builds()]
+        paletas += [a.sheet.palette for a in build.actor_builds(con_lejos=False)]
         paletas += [c.palette for c in build.layers]
         unica = gfx_jaguar.fusionar_paletas(paletas, tope=COLOR_HUD)
 

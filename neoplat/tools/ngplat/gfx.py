@@ -246,6 +246,117 @@ def load_sheet(path: str, name: str, frame_w: int, frame_h: int) -> Sheet:
     return sheet
 
 
+# ------------------------------------------- dibujos encogidos (la carretera)
+
+def encoger_frame(frame: Image, ancho: int, alto: int) -> Image:
+    """Reduce un fotograma a `ancho` x `alto` **sin inventar ni un color**.
+
+    Promediar no sirve aqui: estas maquinas no mezclan colores, tienen una
+    paleta de dieciseis y un color nuevo es un color que no cabe. Asi que cada
+    pixel del resultado se queda con el color que **mas se repite** en el
+    cuadrado del original que le toca, sin contar lo transparente salvo que
+    todo lo sea.
+
+    Contar en vez de tomar el pixel del medio es lo que salva la silueta: un
+    coche de 64x32 reducido a 8x4 por el del medio se queda en cuatro pixeles
+    de carroceria o en nada, segun donde caiga la rejilla, y parpadea al
+    alejarse. Contando, sale siempre el color que manda en esa zona.
+    """
+    if ancho < 1 or alto < 1:
+        raise ProjectError("no se puede encoger a %dx%d" % (ancho, alto))
+    salida: List[Tuple[int, int, int, int]] = []
+    for y in range(alto):
+        y0 = y * frame.height // alto
+        y1 = max(y0 + 1, (y + 1) * frame.height // alto)
+        for x in range(ancho):
+            x0 = x * frame.width // ancho
+            x1 = max(x0 + 1, (x + 1) * frame.width // ancho)
+            # Se cuenta en orden de aparicion dentro del cuadrado: asi, a
+            # igualdad de votos, gana el que se vio antes y el resultado no
+            # depende de como ordene el diccionario.
+            cuenta: Dict[Tuple[int, int, int, int], int] = {}
+            for sy in range(y0, y1):
+                base = sy * frame.width
+                for sx in range(x0, x1):
+                    px = frame.pixels[base + sx]
+                    if px[3] == 0:
+                        continue
+                    cuenta[px] = cuenta.get(px, 0) + 1
+            if not cuenta:
+                salida.append((0, 0, 0, 0))
+                continue
+            ganador, votos = None, 0
+            for px, veces in cuenta.items():
+                if veces > votos:
+                    ganador, votos = px, veces
+            salida.append(ganador)
+    return Image(ancho, alto, salida)
+
+
+def _multiplo(valor: int, de: int = TILE_PX) -> int:
+    return ((valor + de - 1) // de) * de
+
+
+def hoja_encogida(hoja: Sheet, escala: int) -> Sheet:
+    """La misma hoja dibujada mas pequena, para lo que se ve de lejos.
+
+    `escala` va en 8.8 (256 = tamano natural). El dibujo encogido se centra
+    **abajo** dentro de su bloque de tiles: asi el motor solo tiene que poner
+    el bloque con su esquina en (centro - ancho/2, suelo - alto) y no le hace
+    falta saber cuanto margen hay. El bloque se redondea a tiles de 16 porque
+    es la unidad de las maquinas de sprites; lo que sobra queda transparente y
+    no se ve.
+    """
+    imagen = read_png(hoja.path)
+    # La paleta es **la del original, la misma y en el mismo orden**, y no una
+    # que se saque de la imagen encogida. Parece lo mismo -al encoger no se
+    # inventa ningun color- y no lo es: las maquinas cortas de color reparten
+    # los suyos mirando todas las paletas a la vez, y una paleta de mas, aunque
+    # sea un subconjunto, cambia el reparto. Costo encontrarlo: al Amiga le
+    # cambio la paleta del **coche del jugador** y desaparecio, pintado con los
+    # grises del asfalto, sin que nada avisara.
+    palette, lookup = build_palette(imagen, hoja.name, hoja.name)
+    ancho = max(1, hoja.frame_w * escala // 256)
+    alto = max(1, hoja.frame_h * escala // 256)
+    caja_w, caja_h = _multiplo(ancho), _multiplo(alto)
+    filas = imagen.height // hoja.frame_h
+    destino = Image(caja_w * hoja.per_row, caja_h * filas,
+                    [(0, 0, 0, 0)] * (caja_w * hoja.per_row * caja_h * filas))
+    for fy in range(filas):
+        for fx in range(hoja.per_row):
+            frame = imagen.crop(fx * hoja.frame_w, fy * hoja.frame_h,
+                                hoja.frame_w, hoja.frame_h)
+            pequeno = encoger_frame(frame, ancho, alto)
+            ox = fx * caja_w + (caja_w - ancho) // 2
+            oy = fy * caja_h + (caja_h - alto)      # apoyado abajo
+            for y in range(alto):
+                for x in range(ancho):
+                    destino.set(ox + x, oy + y, pequeno.get(x, y))
+    return _hoja_de_imagen(destino, "%s_x%d" % (hoja.name, escala), hoja.path,
+                           caja_w, caja_h, hoja.per_row, palette, lookup)
+
+
+def _hoja_de_imagen(imagen: Image, nombre: str, path: str, frame_w: int,
+                    frame_h: int, per_row: int, palette: Palette,
+                    lookup: Dict[RGB, int]) -> Sheet:
+    """Trocea una imagen ya en memoria igual que load_sheet trocea un archivo."""
+    filas = imagen.height // frame_h
+    hoja = Sheet(name=nombre, path=path, frame_w=frame_w, frame_h=frame_h,
+                 frames=per_row * filas, palette=palette, per_row=per_row)
+    for fy in range(filas):
+        for fx in range(per_row):
+            frame = imagen.crop(fx * frame_w, fy * frame_h, frame_w, frame_h)
+            indices = quantize(frame, lookup)
+            for col in range(frame_w // TILE_PX):
+                for row in range(frame_h // TILE_PX):
+                    tile: List[int] = []
+                    for y in range(TILE_PX):
+                        base = (row * TILE_PX + y) * frame_w + col * TILE_PX
+                        tile.extend(indices[base:base + TILE_PX])
+                    hoja.tiles.append(tile)
+    return hoja
+
+
 def load_tileset(path: str, name: str = "tileset") -> Sheet:
     """Carga un tileset como hoja de fotogramas de 16x16 (uno por tile)."""
     return load_sheet(path, name, TILE_PX, TILE_PX)

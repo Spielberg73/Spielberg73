@@ -339,22 +339,31 @@ static void np_objeto_fondo(const NpWorld *w)
 /* --- actores ------------------------------------------------------------ */
 
 /* Cada trozo de 16x16 de un actor entra en la lista como un objeto. */
-static void np_actor(const NpActorDef *def, int32_t x, int32_t y,
-                     uint8_t frame, uint8_t espejo)
+/* Un bloque de tiles del tamano que sea. Va aparte del actor porque en la
+   carretera lo que se pone en la lista de objetos no es la hoja del actor sino
+   una de sus versiones encogidas, con sus propios tiles y su tamano. */
+static void np_bloque(uint16_t first_tile, uint8_t cols, uint8_t rows,
+                      int32_t x, int32_t y, uint8_t frame, uint8_t espejo)
 {
-    uint16_t base = (uint16_t)(def->first_tile + frame * def->cols * def->rows);
+    uint16_t base = (uint16_t)(first_tile + frame * cols * rows);
     uint8_t c, r;
-    for (c = 0; c < def->cols; c++) {
-        uint8_t origen = espejo ? (uint8_t)(def->cols - 1 - c) : c;
+    for (c = 0; c < cols; c++) {
+        uint8_t origen = espejo ? (uint8_t)(cols - 1 - c) : c;
         int32_t px = x + c * NP_TILE;
         if (px <= -NP_TILE || px >= NP_SCREEN_W) continue;
-        for (r = 0; r < def->rows; r++) {
-            uint16_t tile = (uint16_t)(base + origen * def->rows + r);
+        for (r = 0; r < rows; r++) {
+            uint16_t tile = (uint16_t)(base + origen * rows + r);
             np_objeto(NP_DIR(np_tile_data) + (uint32_t)tile * (NP_TILE * NP_TILE),
                       (int16_t)px, (int16_t)(y + r * NP_TILE),
                       NP_TILE / 8, NP_TILE, NP_TILE / 8, 1);
         }
     }
+}
+
+static void np_actor(const NpActorDef *def, int32_t x, int32_t y,
+                     uint8_t frame, uint8_t espejo)
+{
+    np_bloque(def->first_tile, def->cols, def->rows, x, y, frame, espejo);
 }
 
 /* --- un frame ----------------------------------------------------------- */
@@ -440,16 +449,23 @@ void np_video_frame(const NpWorld *w)
        melodia pasa de 16 notas de 16 a 4. */
     orden = np_orden_dibujo(w, &cuantas);
 #if NP_VISTA_CARRETERA
+    /* Lo que hay en la calzada va **donde dice la proyeccion y del tamano que
+       le toca**, no donde diga el mapa: en esta vista el mapa es el trazado. */
     for (i = 0; i < cuantas; i++) {
         const NpEntity *e = &w->entities[NP_DIBUJO(orden, i)];
         const NpActorDef *def;
+        const NpCarreteraTam *tam;
+        int32_t sx, sy, escala;
         if (!e->active) continue;
         if (e->hurt && (w->frame & 1)) continue;
         def = np_entity_def(e);
-        np_actor(def, NP_F2I(e->x) - def->box_x - w->cam_x,
-                 NP_F2I(e->y) - def->box_y - w->cam_y,
-                 np_actor_frame(def, e->anim, e->anim_frame),
-                 (uint8_t)!e->facing);
+        if (!np_carretera_donde(w, e->x, e->y, &sx, &sy, &escala)) continue;
+        tam = np_carretera_dibujo(def, escala);
+        if (!tam) continue;
+        /* El dibujo viene centrado y apoyado abajo en su bloque de tiles. */
+        np_bloque(tam->first_tile, tam->cols, tam->rows,
+                  sx - tam->cols * NP_TILE / 2, sy - tam->rows * NP_TILE,
+                  np_actor_frame(def, e->anim, e->anim_frame), 0);
     }
     for (i = 0; i < NP_MAX_PLAYERS; i++) {
         const NpActorDef *def = &np_player_def.actor;

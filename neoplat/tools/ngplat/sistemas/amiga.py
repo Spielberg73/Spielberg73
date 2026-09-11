@@ -146,9 +146,10 @@ class Amiga(Sistema):
         #    plano solo tiene tres bitplanes. Ahi no hay dibujo que quepa tal
         #    cual, asi que los colores que sobran se acercan al mas parecido.
         paletas = [build.tileset.palette]
-        paletas += [a.sheet.palette for a in build.actor_builds()]
+        paletas += [a.sheet.palette for a in build.actor_builds(con_lejos=False)]
         pesos = _pesos([(build.tileset.palette, build.tileset.tiles)]
-                       + [(a.sheet.palette, a.sheet.tiles) for a in build.actor_builds()])
+                       + [(a.sheet.palette, a.sheet.tiles)
+                          for a in build.actor_builds(con_lejos=False)])
         unica = gfx_amiga.fusionar_paletas(paletas, tope=color_hud, pesos=pesos,
                                            aproximar=doble)
 
@@ -337,7 +338,8 @@ class Amiga(Sistema):
         salida = Salida()
         banco: gfx_amiga.BancoAmiga = build.info["banco"]
 
-        salida.archivos["src/graficos.c"] = _graficos_c(build, banco)
+        salida.archivos["src/graficos.c"] = _graficos_c(build, banco,
+                                                        self.por_plano)
         salida.archivos["src/sonido.c"] = _sonido_c(build)
         nombre = _nombre_ejecutable(build)
         salida.archivos["Makefile"] = _makefile(build, nombre,
@@ -410,7 +412,8 @@ def _c_bytes(datos, por_linea=16) -> str:
     return "\n".join(lineas)
 
 
-def _graficos_c(build: Build, banco: gfx_amiga.BancoAmiga) -> str:
+def _graficos_c(build: Build, banco: gfx_amiga.BancoAmiga,
+                por_plano: int = COLORES_POR_PLANO) -> str:
     colores = build.info["colores"]
     glifos = []
     for filas in build.info["glifos"]:
@@ -451,7 +454,7 @@ def _graficos_c(build: Build, banco: gfx_amiga.BancoAmiga) -> str:
         _c_bytes(bytes(banco.mascaras)),
         "};",
         "",
-    ] + _colores_c(build, colores) + _tonos_c(build) + [
+    ] + _colores_c(build, colores) + _tonos_c(build, por_plano) + [
         "",
         "/* Fuente del marcador: ocho bytes por caracter. */",
         "const uint8_t np_font_data[NP_FONT_COUNT * 8] = {",
@@ -462,7 +465,7 @@ def _graficos_c(build: Build, banco: gfx_amiga.BancoAmiga) -> str:
     return "\n".join(partes)
 
 
-def _tonos_c(build: Build) -> List[str]:
+def _tonos_c(build: Build, por_plano: int = COLORES_POR_PLANO) -> List[str]:
     """Los dos tonos de cada cosa de la carretera, y en que registro van.
 
     En el Amiga las franjas no vienen dibujadas: la imagen de la carretera
@@ -472,8 +475,12 @@ def _tonos_c(build: Build) -> List[str]:
     que escribirlos.
 
     Los registros son los del plano de atras: en doble plano el plano de
-    delante gasta los colores 0 a 7 y el de atras del 8 al 15, asi que el
-    color `n` de la carretera es el registro 8 + n. Ver COLOR() en np_amiga.h.
+    delante gasta los primeros colores y el de atras los siguientes, asi que el
+    color `n` de la carretera es el registro `por_plano + n`. Ver COLOR() en
+    np_amiga.h. **Cuantos son depende de la maquina**: ocho en el A500 y
+    dieciseis en el A1200 y el CD32, que llevan ocho bitplanes. Estuvo fijo en
+    ocho y en AGA la carretera salia con los colores cambiados -hierba gris y
+    asfalto verde- porque el copper escribia ocho registros mas abajo.
     """
     capa = build.asfalto
     if capa is None or not capa.tonos:
@@ -496,7 +503,7 @@ def _tonos_c(build: Build) -> List[str]:
                         gfx_amiga.amiga_color(tuple(pareja[1]))))
     filas.append("};")
     filas.append("const uint16_t np_carretera_regs[4] = { %s };"
-                 % ", ".join(str(COLORES_POR_PLANO + grupo[0])
+                 % ", ".join(str(por_plano + grupo[0])
                              for grupo in capa.franjas))
     return filas
 

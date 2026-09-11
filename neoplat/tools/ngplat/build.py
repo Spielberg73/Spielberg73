@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional, Tuple
 
 from . import gfx
@@ -37,6 +37,20 @@ ANIM_SLOTS = ["idle", "run", "jump", "fall", "hurt", "attack", "stair", "crouch"
 SIN_STEPS = 64
 
 
+# Los tamanos con los que se dibuja en la carretera algo que no es el coche
+# del jugador: la escala a la que se dibuja (8.8, 256 = natural) y desde que
+# escala sirve. Son cinco y no tres porque estan medidos, no elegidos:
+# conduciendo el circuito del andamiaje con el piloto de tests/pilotar.js, el
+# trafico se ve 5142 veces y **la mitad de ellas por debajo de la escala 32**,
+# o sea a un octavo de su tamano. Los tamanos grandes casi no se usan y los
+# pequenos son casi todo, asi que hay mas cerca del final.
+#
+# No se escala en la maquina porque estas maquinas no saben: el VDP de la Mega
+# Drive y los sprites del X68000 dibujan del tamano que sean. La Neo Geo si
+# sabe (SCB2) y podra saltarse esta tabla el dia que se use.
+CARRETERA_ESCALAS = ((256, 192), (128, 96), (64, 48), (32, 24), (16, 0))
+
+
 @dataclass
 class ActorBuild:
     name: str
@@ -44,6 +58,11 @@ class ActorBuild:
     sheet: gfx.Sheet
     anims: List[Animation]          # una por ranura, en el orden de ANIM_SLOTS
     shot_index: int = 0             # enemigos: su disparo + 1 (0 = no dispara)
+    # Las versiones ya encogidas para verlo de lejos en la carretera, de mas
+    # cerca a mas lejos y **sin la natural**, que es `sheet`. Vacia en los
+    # otros nueve generos.
+    lejos: List[gfx.Sheet] = field(default_factory=list)
+    lejos_index: int = 0            # su sitio en np_carretera_tam + 1
 
 
 @dataclass
@@ -153,12 +172,20 @@ class Build:
     info: Dict[str, object] = field(default_factory=dict)    # datos sueltos del sistema
     pcm_bytes: int = 0                                       # lo que ocupan las muestras
 
-    def actor_builds(self) -> List[ActorBuild]:
+    def actor_builds(self, con_lejos: bool = True) -> List[ActorBuild]:
         """Todos los dibujos que hay que empaquetar, en un orden que **no
         cambia**: el jugador, los enemigos, los objetos, las plataformas
         moviles y, al final del todo, el proyectil. Lo que se anade va detras
         para no mover los indices de lo que ya estaba, que es lo que guardan
-        los niveles."""
+        los niveles.
+
+        `con_lejos` a False deja fuera los dibujos encogidos de la carretera.
+        Se pide asi **para repartir color**: no traen ni un color nuevo -salen
+        del mismo PNG- pero si se cuentan, sus pixeles pesan en el reparto y en
+        una maquina corta de color eso cambia que colores sobreviven. Paso de
+        verdad: al Amiga le cambio la paleta del coche del jugador y el coche
+        desaparecio, pintado con los grises del asfalto, sin que nada avisara.
+        Para empaquetar tiles se piden con todo, que es lo normal."""
         todos = ([self.player] + self.enemies + self.items + self.platforms
                  + self.breakables + self.prisoners + self.generators)
         if self.attack is not None:
@@ -166,6 +193,16 @@ class Build:
         todos.extend(self.subs)
         todos.extend(self.enemy_shots)
         todos.extend(self.blocks)
+        # Y detras del todo, los dibujos encogidos de la carretera. Van en esta
+        # lista -y no en una aparte- porque lo unico que hacen las ocho
+        # maquinas con ella es empaquetar tiles y repartir paleta, que es
+        # exactamente lo que les hace falta a estos; asi no hay que tocar ni
+        # una. Al final, para no mover ningun indice de los de arriba.
+        if con_lejos:
+            for actor in list(todos):
+                for hoja in actor.lejos:
+                    todos.append(replace(actor, sheet=hoja, lejos=[],
+                                         lejos_index=0))
         return todos
 
     def stats(self) -> Dict[str, int]:
@@ -226,6 +263,13 @@ def _load_actor(actor: Actor, where: str, root: str) -> ActorBuild:
         raise ProjectError("'%s' no tiene ningun fotograma" % actor.sprite, where=where)
     anims = _resolve_anims(actor, where, sheet.frames)
     return ActorBuild(name=actor.name, actor=actor, sheet=sheet, anims=anims)
+
+
+def _preparar_lejos(construido: ActorBuild) -> None:
+    """Las versiones encogidas de un actor de carretera, de mas cerca a mas
+    lejos. La natural no entra: ya esta en `sheet`."""
+    construido.lejos = [gfx.hoja_encogida(construido.sheet, escala)
+                        for escala, _desde in CARRETERA_ESCALAS[1:]]
 
 
 def _load_layer(layer: Layer, root: str) -> LayerBuild:
@@ -545,6 +589,16 @@ def build_project(project: Project, carretera_como: str = "franjas") -> Build:
     ]
     generator_index = {b.name: i for i, b in enumerate(generators)}
 
+    # En un juego de conducir, lo que sale en la calzada se ve **encogido**
+    # segun lo lejos que este, y estas maquinas no saben encoger un sprite: hay
+    # que darles el dibujo ya hecho a cada tamano. El coche del jugador no
+    # entra -va siempre en el mismo sitio y a su tamano- ni las plataformas,
+    # los cubos o las armas, que en este genero no existen.
+    if project.view == "carretera":
+        for numero, construido in enumerate(enemies + items + breakables):
+            _preparar_lejos(construido)
+            construido.lejos_index = numero + 1     # cero quiere decir 'ninguno'
+
     music_order = list(project.sound.musica)
     music_index = {name: i + 1 for i, name in enumerate(music_order)}
     # las dos que no son de ningun nivel, con el mismo numero (indice + 1)
@@ -729,6 +783,7 @@ def actor_def_values(build: ActorBuild) -> Dict[str, object]:
         "palette": sheet.palette_index,
         "cols": sheet.cols,
         "rows": sheet.rows,
+        "lejos": build.lejos_index,
         "box_x": actor.box_x,
         "box_y": actor.box_y,
         "box_w": actor.box_w,

@@ -213,25 +213,35 @@ static void np_volcar_sprites(void)
  * por cada dos columnas y los mismos bytes en la ROM. Lo que arregla es lo
  * alto: un cubo de 32x64 se pintaba con dos sprites de ocho celdas de alto,
  * que el VDP recorta a cuatro, y salia una columna de tiras sin sentido. */
-static void np_dibujar_actor(const NpActorDef *def, int32_t x, int32_t y,
-                             uint8_t frame, uint8_t flip)
+/* Un bloque de tiles del tamano que sea. Va aparte del actor porque en la
+   carretera lo que se dibuja no es la hoja del actor sino una de sus versiones
+   encogidas, que tiene sus propios tiles, su paleta y su tamano. */
+static void np_dibujar_bloque(uint16_t first_tile, uint8_t palette,
+                              uint8_t cols, uint8_t rows, int32_t x, int32_t y,
+                              uint8_t frame, uint8_t flip)
 {
-    uint16_t sitio = (uint16_t)(def->first_tile
-                                + frame * def->cols * def->rows * 4);
+    uint16_t sitio = (uint16_t)(first_tile + frame * cols * rows * 4);
     uint8_t chx, chy;
-    for (chy = 0; chy < def->rows; chy = (uint8_t)(chy + 2)) {
-        uint8_t alto = (uint8_t)((def->rows - chy) >= 2 ? 2 : 1);
-        for (chx = 0; chx < def->cols; chx = (uint8_t)(chx + 2)) {
-            uint8_t ancho = (uint8_t)((def->cols - chx) >= 2 ? 2 : 1);
-            int32_t px = x + (flip ? (def->cols - chx - ancho) : chx) * 16;
+    for (chy = 0; chy < rows; chy = (uint8_t)(chy + 2)) {
+        uint8_t alto = (uint8_t)((rows - chy) >= 2 ? 2 : 1);
+        for (chx = 0; chx < cols; chx = (uint8_t)(chx + 2)) {
+            uint8_t ancho = (uint8_t)((cols - chx) >= 2 ? 2 : 1);
+            int32_t px = x + (flip ? (cols - chx - ancho) : chx) * 16;
             int32_t py = y + chy * 16;
             if (px > -(int32_t)(ancho * 16) && px < NP_SCREEN_W)
                 np_sprite((int16_t)px, (int16_t)py,
                           (uint8_t)(ancho * 2), (uint8_t)(alto * 2),
-                          sitio, def->palette, flip);
+                          sitio, palette, flip);
             sitio = (uint16_t)(sitio + ancho * alto * 4);
         }
     }
+}
+
+static void np_dibujar_actor(const NpActorDef *def, int32_t x, int32_t y,
+                             uint8_t frame, uint8_t flip)
+{
+    np_dibujar_bloque(def->first_tile, def->palette, def->cols, def->rows,
+                      x, y, frame, flip);
 }
 
 #if NP_VISTA_CARRETERA
@@ -336,6 +346,81 @@ static void np_scroll_carretera(const NpWorld *w)
         *MD_VDP_DATA = (uint16_t)desplaza;
     }
 }
+
+/* Lo que hay en la calzada -el trafico, y lo que se ponga al borde- se dibuja
+ * **donde cae y del tamano que le toca**, no donde diga el mapa: en esta vista
+ * el mapa es el trazado, no lo que se ve. El motor dice las dos cosas
+ * (np_carretera_donde y np_carretera_dibujo) para que las ocho maquinas lo
+ * pongan en el mismo pixel.
+ *
+ * De mas lejos a mas cerca, que es lo que hace que lo de delante tape a lo de
+ * detras. Se ordena por insercion y sin miedo: conduciendo el circuito del
+ * andamiaje se ven **dos coches de media** a la vez, no sesenta. */
+#define NP_CARRETERA_A_LA_VEZ 12
+
+/* Los tres numeros caben de sobra en dieciseis bits -la pantalla son 320x224 y
+   la escala mas grande que se ha medido es 705- y asi la estructura son ocho
+   bytes. Importa: con int32_t gcc copiaba la estructura llamando a memcpy, y
+   aqui no hay biblioteca de C que lo tenga. */
+typedef struct {
+    int16_t sx, sy, escala;
+    uint8_t entidad;
+} NpEnLaVia;
+
+static void np_copiar_via(NpEnLaVia *a, const NpEnLaVia *b)
+{
+    a->sx = b->sx;
+    a->sy = b->sy;
+    a->escala = b->escala;
+    a->entidad = b->entidad;
+}
+
+static void np_dibujar_trafico(const NpWorld *w)
+{
+    NpEnLaVia visto[NP_CARRETERA_A_LA_VEZ];
+    uint8_t cuantos = 0, i;
+    for (i = 0; i < NP_MAX_ENTITIES; i++) {
+        const NpEntity *e = &w->entities[i];
+        NpEnLaVia esto;
+        int32_t sx, sy, escala;
+        uint8_t hueco;
+        if (!e->active) continue;
+        if (e->hurt && (w->frame & 1)) continue;
+        /* La proyeccion se hace **una vez** y se guarda: en esta maquina
+           repetirla por cada coche se nota en el frame. */
+        if (!np_carretera_donde(w, e->x, e->y, &sx, &sy, &escala)) continue;
+        esto.sx = (int16_t)sx;
+        esto.sy = (int16_t)sy;
+        esto.escala = (int16_t)escala;
+        esto.entidad = i;
+        if (cuantos == NP_CARRETERA_A_LA_VEZ) {
+            /* Si no caben todos se quedan los que mas se ven, que son los mas
+               cercanos: el primero de la lista es el mas lejano. */
+            if (esto.escala <= visto[0].escala) continue;
+            cuantos--;
+            for (hueco = 0; hueco < cuantos; hueco++)
+                np_copiar_via(&visto[hueco], &visto[hueco + 1]);
+        }
+        for (hueco = cuantos; hueco > 0 && visto[hueco - 1].escala > esto.escala;
+             hueco--)
+            np_copiar_via(&visto[hueco], &visto[hueco - 1]);
+        np_copiar_via(&visto[hueco], &esto);
+        cuantos++;
+    }
+    for (i = 0; i < cuantos; i++) {
+        const NpEntity *e = &w->entities[visto[i].entidad];
+        const NpActorDef *def = np_entity_def(e);
+        const NpCarreteraTam *tam = np_carretera_dibujo(def, visto[i].escala);
+        if (!tam) continue;
+        /* El dibujo viene centrado y apoyado abajo en su bloque de tiles, asi
+           que la esquina sale de restar medio bloque de ancho y el bloque
+           entero de alto. */
+        np_dibujar_bloque(tam->first_tile, tam->palette, tam->cols, tam->rows,
+                          visto[i].sx - tam->cols * 8,
+                          visto[i].sy - tam->rows * 16,
+                          np_actor_frame(def, e->anim, e->anim_frame), 0);
+    }
+}
 #endif /* NP_VISTA_CARRETERA */
 
 /* --- un frame ---------------------------------------------------------- */
@@ -422,6 +507,13 @@ void np_video_frame(const NpWorld *w)
         np_dibujar_actor(def, sx, sy, frame, flip);
     }
 #else
+# if NP_VISTA_CARRETERA
+    /* En la carretera el mapa es el trazado, no lo que se ve: lo que hay en la
+       calzada va donde dice la proyeccion y del tamano que le toca. */
+    (void)orden;
+    (void)cuantas;
+    np_dibujar_trafico(w);
+# else
     for (i = 0; i < cuantas; i++) {
         const NpEntity *e = &w->entities[NP_DIBUJO(orden, i)];
         const NpActorDef *def;
@@ -436,6 +528,7 @@ void np_video_frame(const NpWorld *w)
         np_dibujar_actor(def, sx, sy, np_actor_frame(def, e->anim, e->anim_frame),
                          (uint8_t)!e->facing);
     }
+# endif
 
     for (i = 0; i < NP_MAX_PLAYERS; i++) {
         const NpActorDef *def = &np_player_def.actor;

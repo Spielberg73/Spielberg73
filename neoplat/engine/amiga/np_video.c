@@ -775,16 +775,16 @@ static void np_apuntar_rastro(int32_t x, int32_t y, int16_t ancho, int16_t alto)
  *      suelo por encima: solo hacen falta **los trozos que se han borrado**.
  *      Un muro son ocho trozos y el rastro de un bicho toca uno o dos.
  */
-static void np_pintar_actor(const NpActorDef *def, int32_t mundo_x, int32_t mundo_y,
-                            uint8_t frame, uint8_t flip, uint8_t quieto)
+static void np_pintar_bloque(uint16_t first_tile, uint8_t cols, uint8_t rows,
+                             int32_t mundo_x, int32_t mundo_y, uint8_t frame,
+                             uint8_t quieto)
 {
-    uint16_t base = (uint16_t)(def->first_tile + frame * def->cols * def->rows);
+    uint16_t base = (uint16_t)(first_tile + frame * cols * rows);
     uint8_t c, r;
     int32_t x = mundo_x - np_base_tile * NP_TILE;
-    (void)flip;                         /* el espejo se hace con dibujos aparte */
-    if (x < 0 || x + def->cols * NP_TILE >= NP_MAPA_ANCHO) return;
-    for (c = 0; c < def->cols; c++) {
-        for (r = 0; r < def->rows; r++) {
+    if (x < 0 || x + cols * NP_TILE >= NP_MAPA_ANCHO) return;
+    for (c = 0; c < cols; c++) {
+        for (r = 0; r < rows; r++) {
             int32_t py = mundo_y + r * NP_TILE;
             if (py < 0 || py + NP_TILE > NP_MAPA_ALTO) continue;
 #if NP_VISTA_ISO
@@ -793,12 +793,20 @@ static void np_pintar_actor(const NpActorDef *def, int32_t mundo_x, int32_t mund
                                        mundo_y + r * NP_TILE,
                                        NP_TILE, NP_TILE)) continue;
 #endif
-            np_blit_bob((uint16_t)(base + c * def->rows + r), x + c * NP_TILE, py);
+            np_blit_bob((uint16_t)(base + c * rows + r), x + c * NP_TILE, py);
         }
     }
     if (!quieto)
-        np_apuntar_rastro(mundo_x, mundo_y, (int16_t)(def->cols * NP_TILE),
-                          (int16_t)(def->rows * NP_TILE));
+        np_apuntar_rastro(mundo_x, mundo_y, (int16_t)(cols * NP_TILE),
+                          (int16_t)(rows * NP_TILE));
+}
+
+static void np_pintar_actor(const NpActorDef *def, int32_t mundo_x, int32_t mundo_y,
+                            uint8_t frame, uint8_t flip, uint8_t quieto)
+{
+    (void)flip;                         /* el espejo se hace con dibujos aparte */
+    np_pintar_bloque(def->first_tile, def->cols, def->rows, mundo_x, mundo_y,
+                     frame, quieto);
 }
 
 void np_video_frame(const NpWorld *w)
@@ -906,19 +914,29 @@ void np_video_frame(const NpWorld *w)
        se mueve, asi que el mapa de bits es la pantalla y no hay camara que
        restar despues. La fila 0 del mapa de bits sale en la linea NP_HUD_ALTO,
        que es donde acaba el marcador. */
+    /* Lo que hay en la calzada va **donde dice la proyeccion y del tamano que
+       le toca**, no donde diga el mapa: en esta vista el mapa es el trazado.
+       Se dibuja de mas lejos a mas cerca -np_orden_dibujo ya da ese orden en
+       la lista, pero aqui el orden que vale es el de la escala- para que lo de
+       delante tape a lo de detras. */
     for (i = 0; i < cuantas; i++) {
         const NpEntity *e = &w->entities[NP_DIBUJO(orden, i)];
         const NpActorDef *def;
-        int32_t sx, sy;
+        const NpCarreteraTam *tam;
+        int32_t sx, sy, escala;
         if (!e->active) continue;
         if (e->hurt && (w->frame & 1)) continue;
         def = np_entity_def(e);
-        sx = NP_F2I(e->x) - def->box_x - w->cam_x;
-        sy = NP_F2I(e->y) - def->box_y - w->cam_y - NP_HUD_ALTO;
-        if (sx < 0 || sx + def->cols * NP_TILE >= NP_MAPA_ANCHO) continue;
-        if (sy < 0 || sy + def->rows * NP_TILE > NP_MAPA_ALTO) continue;
-        np_pintar_actor(def, sx, sy, np_actor_frame(def, e->anim, e->anim_frame),
-                        (uint8_t)!e->facing, 0);
+        if (!np_carretera_donde(w, e->x, e->y, &sx, &sy, &escala)) continue;
+        tam = np_carretera_dibujo(def, escala);
+        if (!tam) continue;
+        /* El dibujo viene centrado y apoyado abajo en su bloque de tiles. */
+        sx -= tam->cols * NP_TILE / 2;
+        sy -= tam->rows * NP_TILE + NP_HUD_ALTO;
+        if (sx < 0 || sx + tam->cols * NP_TILE >= NP_MAPA_ANCHO) continue;
+        if (sy < 0 || sy + tam->rows * NP_TILE > NP_MAPA_ALTO) continue;
+        np_pintar_bloque(tam->first_tile, tam->cols, tam->rows, sx, sy,
+                         np_actor_frame(def, e->anim, e->anim_frame), 0);
     }
     for (i = 0; i < NP_MAX_PLAYERS; i++) {
         const NpActorDef *def = &np_player_def.actor;

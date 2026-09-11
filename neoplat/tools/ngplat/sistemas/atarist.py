@@ -111,7 +111,8 @@ class AtariSt(Sistema):
         #    dibujo que quepa tal cual, asi que los que sobran se cambian por el
         #    mas parecido, pesando cuanto se usa cada uno.
         partes = [(build.tileset.palette, build.tileset.tiles)]
-        partes += [(a.sheet.palette, a.sheet.tiles) for a in build.actor_builds()]
+        partes += [(a.sheet.palette, a.sheet.tiles)
+                   for a in build.actor_builds(con_lejos=False)]
         if fondo:
             partes += [(c.palette, [c.dibujos[i] for i in c.tiles]) for c in build.layers]
         elif build.asfalto is not None:

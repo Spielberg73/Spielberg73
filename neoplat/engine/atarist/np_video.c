@@ -748,6 +748,36 @@ static void np_pintar_actor(NpBuffer *b, const NpActorDef *def,
                           (int16_t)(def->rows * NP_TILE));
 }
 
+#if NP_VISTA_CARRETERA
+/* El mismo pintor, pero con el tamano por delante en vez de sacarlo del actor:
+ * en la carretera lo que se pinta no es la hoja del actor sino una de sus
+ * versiones encogidas, con sus propios tiles y su propio tamano.
+ *
+ * Es casi el mismo codigo dos veces, y es a proposito: **de las ocho maquinas
+ * esta es la mas justa de ciclos**. Se probo lo limpio -un solo pintor con los
+ * numeros por parametro y np_pintar_actor llamandolo, con y sin `inline`- y el
+ * juego normal pasaba de tocar 16 notas de 16 a tocar 8: lo que se pierde en
+ * el frame se oye en la melodia. Asi, en un juego que no sea de carretera esto
+ * ni se compila y el camino de siempre queda exactamente como estaba. */
+static void np_pintar_bloque(NpBuffer *b, uint16_t first_tile, uint8_t cols,
+                             uint8_t rows, int32_t mundo_x, int32_t mundo_y,
+                             uint8_t frame, uint8_t quieto)
+{
+    uint16_t base = (uint16_t)(first_tile + frame * cols * rows);
+    uint8_t c, r;
+    int32_t x = mundo_x - b->vista_x;
+    int32_t y = mundo_y - b->vista_y;
+    if (x + cols * NP_TILE <= 0 || x >= NP_ANCHO) return;
+    for (c = 0; c < cols; c++)
+        for (r = 0; r < rows; r++)
+            np_sprite_en(b->pixeles, (uint16_t)(base + c * rows + r),
+                         x + c * NP_TILE, y + r * NP_TILE);
+    if (!quieto)
+        np_apuntar_rastro(b, mundo_x, mundo_y, (int16_t)(cols * NP_TILE),
+                          (int16_t)(rows * NP_TILE));
+}
+#endif
+
 /* --- un frame ------------------------------------------------------------ */
 
 /* Medir lo que cuesta un frame, sin instrumentos y sin emulador especial: se
@@ -985,15 +1015,26 @@ void np_video_actores(const NpWorld *w)
        melodia pasa de 16 notas de 16 a 4. */
     orden = np_orden_dibujo(w, &cuantas);
 #if NP_VISTA_CARRETERA
+    /* Lo que hay en la calzada va **donde dice la proyeccion y del tamano que
+       le toca**, no donde diga el mapa: en esta vista el mapa es el trazado.
+       np_carretera_donde da la pantalla, y aqui se pasa a coordenadas de mundo
+       porque es lo que pide el pintor. */
     for (i = 0; i < cuantas; i++) {
         const NpEntity *e = &w->entities[NP_DIBUJO(orden, i)];
         const NpActorDef *def;
+        const NpCarreteraTam *tam;
+        int32_t sx, sy, escala;
         if (!e->active) continue;
         if (e->hurt && (w->frame & 1)) continue;
         def = np_entity_def(e);
-        np_pintar_actor(b, def, NP_F2I(e->x) - def->box_x,
-                        NP_F2I(e->y) - def->box_y,
-                        np_actor_frame(def, e->anim, e->anim_frame), 1);
+        if (!np_carretera_donde(w, e->x, e->y, &sx, &sy, &escala)) continue;
+        tam = np_carretera_dibujo(def, escala);
+        if (!tam) continue;
+        /* El dibujo viene centrado y apoyado abajo en su bloque de tiles. */
+        np_pintar_bloque(b, tam->first_tile, tam->cols, tam->rows,
+                         sx - tam->cols * NP_TILE / 2 + b->vista_x,
+                         sy - tam->rows * NP_TILE + b->vista_y - NP_RECORTE_Y,
+                         np_actor_frame(def, e->anim, e->anim_frame), 1);
     }
     for (i = 0; i < NP_MAX_PLAYERS; i++) {
         const NpActorDef *def = &np_player_def.actor;
