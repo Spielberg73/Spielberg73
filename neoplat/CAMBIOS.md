@@ -2,8 +2,45 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.42.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.43.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.43
+
+**El kit ya sabe leer un disco de sistema de Human68k 3.x.**
+
+Buscando por que la carretera no se podia probar en el X68000 salio esto, que
+es anterior y mas gordo: `tools/ngplat/x68k_disk.py` daba por supuesto **un
+solo** formato de sector de arranque, el de Human68k 2.x —nombre de fabricante
+de dieciseis bytes y el BPB detras, en big endian, a la 68000—. Los discos de
+sistema de 3.x en adelante, los que arrancan con el IPL `X68IPL30`, usan el BPB
+de MS-DOS tal cual: nombre de ocho bytes y todo en little endian.
+
+Leyendo un 3.02 con la cuenta del 2.x salen numeros imposibles —sectores de 208
+bytes, 254 FAT, 512 sectores reservados— y de ahi para abajo no se salva nada:
+el directorio cae en cualquier sitio. Ahora se prueban los dos y se queda el
+que describe un disquete que podria existir; si no cuadra ninguno, se avisa en
+vez de seguir con basura.
+
+Y una vez leido bien apareció el segundo detalle: ese disco llama al suyo
+`Autoexec.Bat`, con mayusculas y minusculas. `reemplazar_archivo` comparaba los
+nombres byte a byte, asi que no lo encontraba y no habia manera de dejar el
+juego puesto para que arrancara solo. Human68k **guarda** el nombre como se lo
+escribieron pero lo busca sin distinguirlas, como cualquier FAT; ahora el kit
+hace lo mismo (`leer_archivo` ya lo hacia).
+
+Tres pruebas nuevas en `tests/test_x68000.py`, las tres comprobadas fallando
+con el codigo de antes: que el BPB se lee de las dos maneras y da lo mismo, que
+un sector de arranque que no es ninguno de los dos avisa, y que el archivo se
+encuentra aunque no cuadren las mayusculas.
+
+**Lo que sigue sin estar**: la carretera en el X68000. El motivo es que hoy
+**ningun** juego del kit llega a pantalla en px68k: Human68k carga, el juego
+cambia al modo de pantalla de la ROM y se muere antes de escribir su
+temporizado. No es de estos cambios —un binario de hace dos semanas falla
+igual— y no es del disco: se ha comprobado que el archivo se escribe y se lee
+identico, y que la FAT que escribe el kit coincide **byte a byte** con la que
+escribio Sharp. Queda por encontrar.
 
 ## 1.42
 

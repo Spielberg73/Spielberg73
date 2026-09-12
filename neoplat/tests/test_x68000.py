@@ -30,6 +30,68 @@ from ngplat.sonido import codigo_ym2151, frecuencia_de_nota, frecuencia_ym2151
 from ngplat.x68k import ErrorX, tabla_de_correcciones
 
 
+
+def _a_human68k_3x(disco: bytes) -> bytes:
+    """El mismo disquete, pero con el sector de arranque de un Human68k 3.x.
+
+    Los discos de sistema de Sharp 2.x traen un nombre de fabricante de
+    dieciseis bytes y el BPB detras, en big endian; los de 3.x en adelante -los
+    que arrancan con el IPL "X68IPL30"- usan el BPB de MS-DOS tal cual: nombre
+    de ocho bytes y todo en little endian. Aqui se cambia lo uno por lo otro
+    sin tocar ni la FAT ni los datos, que es justo lo que distingue a los dos.
+    """
+    bpb = leer_bpb(disco)
+    d = bytearray(disco)
+    d[0:3] = b"\x60\x3c\x90"
+    d[3:11] = b"X68IPL30"
+    struct.pack_into("<H", d, 0x0B, bpb["sector"])
+    d[0x0D] = bpb["por_agrupacion"]
+    struct.pack_into("<H", d, 0x0E, bpb["reservados"])
+    d[0x10] = bpb["fats"]
+    struct.pack_into("<H", d, 0x11, bpb["raiz"])
+    struct.pack_into("<H", d, 0x13, bpb["sectores"])
+    d[0x15] = bpb["medio"]
+    struct.pack_into("<H", d, 0x16, bpb["sectores_fat"])
+    return bytes(d)
+
+
+class TestDiscoDeSistema3x(unittest.TestCase):
+    """Que el kit sepa leer tambien un disco de sistema de Human68k 3.x.
+
+    Esto costo una tarde con un disco de sistema 3.02 delante: el modulo daba
+    por supuesto el BPB de Sharp -big endian, detras de dieciseis bytes de
+    nombre- y en un 3.02 eso sale como un disquete imposible, de sectores de
+    208 bytes y 254 FAT. A partir de ahi el directorio cae en cualquier sitio y
+    no hay nada que rescatar. Y una vez leido bien aparecio el segundo detalle:
+    ese disco llama al suyo "Autoexec.Bat", con mayusculas y minusculas, asi
+    que buscarlo byte a byte tampoco lo encuentra.
+    """
+
+    def test_lee_el_bpb_de_las_dos_maneras(self):
+        disco = crear_disquete({"HOLA.TXT": b"que tal" * 500})
+        tres = _a_human68k_3x(disco)
+        self.assertEqual(leer_bpb(tres), leer_bpb(disco))
+        self.assertEqual([n for n, _, _ in leer_directorio(tres)],
+                         [n for n, _, _ in leer_directorio(disco)])
+        self.assertEqual(leer_archivo(tres, "HOLA.TXT"), b"que tal" * 500)
+
+    def test_avisa_si_no_es_ninguno_de_los_dos(self):
+        roto = bytearray(crear_disquete({"HOLA.TXT": b"x"}))
+        roto[0x0B:0x20] = b"\x00" * 21
+        with self.assertRaises(ErrorDisco):
+            leer_bpb(bytes(roto))
+
+    def test_encuentra_el_archivo_aunque_no_cuadren_las_mayusculas(self):
+        """Human68k **guarda** el nombre como se lo escribieron y lo busca sin
+        distinguir mayusculas, como cualquier FAT."""
+        disco = bytearray(crear_disquete({"AUTOEXEC.BAT": b"echo off\r\n"}))
+        bpb = leer_bpb(bytes(disco))
+        raiz = (bpb["reservados"] + bpb["fats"] * bpb["sectores_fat"]) * bpb["sector"]
+        disco[raiz:raiz + 11] = b"Autoexec" + b"Bat"
+        puesto = reemplazar_archivo(bytes(disco), "AUTOEXEC.BAT", b"A:\\JUEGO.X\r\n")
+        self.assertEqual(leer_archivo(puesto, "autoexec.bat"), b"A:\\JUEGO.X\r\n")
+
+
 class TestColor(unittest.TestCase):
     """El color del X68000 es GRBi: cinco bits por canal y un bit de intensidad
     que es el LSB **de los tres a la vez**."""

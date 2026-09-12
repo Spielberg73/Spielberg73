@@ -141,13 +141,9 @@ def sector_de_arranque() -> bytes:
     return bytes(d)
 
 
-def leer_bpb(disco: bytes) -> Dict[str, int]:
-    """Los parametros del disquete, sacados de su propio sector de arranque.
-
-    Leerlos en vez de darlos por supuestos hace que esto valga para **cualquier**
-    disquete de Human68k, no solo para los que monta este modulo: es lo que
-    permite comprobarlo contra un disco de sistema de Sharp de verdad.
-    """
+def _bpb_sharp(disco: bytes) -> Dict[str, int]:
+    """El BPB de Human68k 2.x: detras de un nombre de fabricante de dieciseis
+    bytes, y con los numeros en **big endian**, como el 68000."""
     return {
         "sector": struct.unpack(">H", disco[0x12:0x14])[0],
         "por_agrupacion": disco[0x14],
@@ -158,6 +154,62 @@ def leer_bpb(disco: bytes) -> Dict[str, int]:
         "medio": disco[0x1C],
         "sectores_fat": disco[0x1D],
     }
+
+
+def _bpb_dos(disco: bytes) -> Dict[str, int]:
+    """Y el de Human68k 3.x, que es el de MS-DOS de toda la vida: nombre de
+    ocho bytes y numeros en **little endian**."""
+    return {
+        "sector": struct.unpack("<H", disco[0x0B:0x0D])[0],
+        "por_agrupacion": disco[0x0D],
+        "reservados": struct.unpack("<H", disco[0x0E:0x10])[0],
+        "fats": disco[0x10],
+        "raiz": struct.unpack("<H", disco[0x11:0x13])[0],
+        "sectores": struct.unpack("<H", disco[0x13:0x15])[0],
+        "medio": disco[0x15],
+        "sectores_fat": struct.unpack("<H", disco[0x16:0x18])[0],
+    }
+
+
+def _bpb_vale(bpb: Dict[str, int], disco: bytes) -> bool:
+    """Si esos numeros describen un disquete que puede existir."""
+    return (bpb["sector"] in (128, 256, 512, 1024)
+            and 1 <= bpb["por_agrupacion"] <= 64
+            and 1 <= bpb["fats"] <= 4
+            and 1 <= bpb["reservados"] <= 64
+            and 1 <= bpb["raiz"] <= 4096
+            and 1 <= bpb["sectores_fat"] <= 64
+            and 0 < bpb["sectores"] * bpb["sector"] <= len(disco))
+
+
+def leer_bpb(disco: bytes) -> Dict[str, int]:
+    """Los parametros del disquete, sacados de su propio sector de arranque.
+
+    Leerlos en vez de darlos por supuestos hace que esto valga para **cualquier**
+    disquete de Human68k, no solo para los que monta este modulo: es lo que
+    permite comprobarlo contra un disco de sistema de Sharp de verdad.
+
+    Y hay **dos** formas de guardarlos, que es lo que costo descubrir con un
+    disco de sistema 3.02 en la mano: los discos de Human68k 2.x ponen un
+    nombre de fabricante de dieciseis bytes y detras los numeros en big endian
+    (a la 68000), y los de 3.x en adelante -los que arrancan con el IPL
+    "X68IPL30"- usan el BPB de MS-DOS tal cual, de ocho bytes de nombre y todo
+    en little endian. Leyendo un 3.02 como si fuera un 2.x salen numeros
+    imposibles (sectores de 208 bytes, 254 FATs) y de ahi para abajo no hay
+    nada que hacer: el directorio cae en cualquier sitio.
+
+    Asi que se prueban los dos y se queda el que describe un disquete que
+    podria existir. Se mira primero el de Sharp porque es el que monta este
+    modulo.
+    """
+    sharp = _bpb_sharp(disco)
+    if _bpb_vale(sharp, disco):
+        return sharp
+    dos = _bpb_dos(disco)
+    if _bpb_vale(dos, disco):
+        return dos
+    raise ErrorDisco("el sector de arranque no describe ningun disquete "
+                     "conocido (ni Human68k 2.x ni 3.x)")
 
 
 def crear_disquete(archivos: Dict[str, bytes], etiqueta: str = "NEOPLAT") -> bytes:
@@ -336,12 +388,19 @@ def reemplazar_archivo(imagen: bytes, nombre: str, datos: bytes) -> bytes:
     bpb = leer_bpb(disco)
     paso = bpb["sector"] * bpb["por_agrupacion"]
     datos_en = _primer_dato(bpb)
-    quiere = _nombre_83(nombre)
+    base, extension = _nombre_83(nombre)
+    quiere = (base.upper(), extension.upper())
 
     for off in _entradas_raiz(disco, bpb):
         if disco[off] in (0x00, 0xE5):
             continue
-        if (bytes(disco[off:off + 8]), bytes(disco[off + 8:off + 11])) != quiere:
+        # Sin mirar mayusculas: Human68k **guarda** el nombre como se lo
+        # escribieron -un disco de sistema 3.02 trae "Autoexec.Bat"- pero lo
+        # busca sin distinguirlas, como cualquier FAT. Comparando byte a byte,
+        # el AUTOEXEC.BAT de ese disco no se encontraba y no habia manera de
+        # dejar puesto el juego para que arrancara solo.
+        if (bytes(disco[off:off + 8]).upper(),
+                bytes(disco[off + 8:off + 11]).upper()) != quiere:
             continue
         agrupacion = struct.unpack("<H", disco[off + 26:off + 28])[0]
         cabe = 0
