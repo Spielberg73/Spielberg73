@@ -361,7 +361,11 @@ typedef struct {
     const NpSpawn *spawns;
     uint16_t spawn_count;
     uint16_t start_x, start_y;       /* salida del jugador, en pixeles */
-    uint16_t background;             /* color de fondo ya en formato Neo Geo */
+    /* El color de fondo, ya en el formato de la maquina. Son treinta y dos
+       bits y no dieciseis porque en AGA un color son **veinticuatro**: cabia
+       justo en las siete primeras maquinas y en el A1200 y el CD32 se
+       truncaba sin avisar, asi que el cielo del circuito salia verde. */
+    uint32_t background;
     const uint8_t *layers;           /* indices en np_layers, de lejos a cerca */
     uint8_t layer_count;
     uint8_t music;                   /* 0 = sin musica, si no indice + 1 */

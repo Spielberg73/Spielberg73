@@ -147,9 +147,28 @@ static uint8_t np_abiertos_pintados;
  * y la paleta se queda en los 32 colores de siempre. BPU3 (bit 4) es el bit
  * de arriba del numero de bitplanes: ocho planos son 1000 en binario.
  */
+/* Conduciendo se lee de 16 en 16 **tambien en AGA**, como en el A500.
+ *
+ * No es por gusto. La carretera se desliza linea a linea, y para eso el
+ * puntero del plano salta lo que el chip lee de una vez y el scroll fino pone
+ * el resto. Leyendo de 32 en 32 el salto es de 32 pixeles, pero **el margen
+ * para retrasar el plano es solo de 16**: la DMA empieza ocho clocks antes y
+ * ahi no cabe mas. Pedirle 16 o mas de retraso no hace nada -medido: sumarle
+ * 16 al scroll fino no movia ni un pixel-, asi que de las 32 posiciones
+ * posibles solo salian la mitad y la calzada se quedaba 16 pixeles a la
+ * izquierda, siempre. Leyendo de 16 en 16 el salto y el margen vuelven a
+ * cuadrar y la carretera cae en el mismo pixel que en el A500, medido linea a
+ * linea. Aqui el ancho de banda sobra: son cuatro bitplanes por plano, no
+ * ocho. */
+#if NP_VISTA_CARRETERA
+#define NP_FMODE_32     0x0000
+#define NP_DDFSTRT_AGA  0x0038
+#define NP_DDFSTOP_AGA  0x00D0
+#else
 #define NP_FMODE_32     0x0001
 #define NP_DDFSTRT_AGA  0x0030
 #define NP_DDFSTOP_AGA  0x00C0
+#endif
 #if NP_DOBLE_PLANO
 #define NP_BPLCON3_BASE 0x1000          /* PF2 empieza en el color 16 */
 #define NP_BPLCON0_AGA  0x0611          /* 8 planos, doble plano, ECSENA */
@@ -617,6 +636,23 @@ static int32_t np_carretera_columna(uint16_t y, uint16_t horizonte)
     return off;
 }
 
+/* De cuanto en cuanto puede saltar el puntero de un plano.
+ *
+ * El puntero no se mueve pixel a pixel: salta lo que el chip lee de una vez, y
+ * lo que falta hasta ahi lo pone el scroll fino. En OCS se lee de 16 en 16
+ * bits y en AGA, con FMODE a 32, de 32 en 32; por eso mismo el scroll fino de
+ * AGA tiene dos bits mas por plano (ver np_scroll_fino). Redondeando a 16 en
+ * AGA el puntero cae en mitad de una lectura y la carretera se desliza mal:
+ * las lineas de cerca -las que mas se corren- se iban de sitio. */
+/* De cuanto en cuanto lee el chip, que es lo que salta el puntero. En la
+   carretera son 16 tambien en AGA: ver NP_FMODE_32 mas arriba. */
+#if NP_AGA && !NP_VISTA_CARRETERA
+#define NP_SALTO_PLANO 32
+#else
+#define NP_SALTO_PLANO 16
+#endif
+#define NP_REDONDEA_SALTO(v) (((v) + NP_SALTO_PLANO - 1) & ~(NP_SALTO_PLANO - 1))
+
 static void np_copper_carretera(const NpWorld *w)
 {
     uint16_t horizonte = np_carretera(w, np_carretera_centro);
@@ -626,7 +662,7 @@ static void np_copper_carretera(const NpWorld *w)
 
     /* El puntero del plano de atras se coloca ya con el desplazamiento de la
        primera linea con carretera: de ahi para abajo lo llevan los modulos. */
-    grueso = (np_carretera_columna(NP_CARR_Y0, horizonte) + 15) & ~15;
+    grueso = NP_REDONDEA_SALTO(np_carretera_columna(NP_CARR_Y0, horizonte));
     np_copper_punteros(np_copper + NP_COP_FONDO_PTR,
                        NP_DIR(np_fondo_bitmap) + (uint32_t)(grueso / 8),
                        NP_BYTES_FILA, 0x00E4);
@@ -638,15 +674,16 @@ static void np_copper_carretera(const NpWorld *w)
                                   & (NP_CARRETERA_FRANJAS - 1));
         uint8_t tono = (uint8_t)(banda >> 1);
         if (y + 1 < NP_SCREEN_H)
-            grueso_sig = (np_carretera_columna((uint16_t)(y + 1), horizonte) + 15) & ~15;
+            grueso_sig = NP_REDONDEA_SALTO(
+                np_carretera_columna((uint16_t)(y + 1), horizonte));
         else
             grueso_sig = grueso;
         /* el modulo se suma al acabar la linea: lo que dice es cuanto se corre
            **la de abajo** respecto a esta */
         e[3] = (uint16_t)(NP_PASO_FILA - 40 + (grueso_sig - grueso) / 8);
-        /* y lo que no cabe en el modulo -de 0 a 15 pixeles- lo pone el scroll
-           fino, que retrasa el plano: por eso el grueso se redondea hacia
-           arriba y el fino es lo que sobra */
+        /* y lo que no cabe en el modulo -hasta un salto de plano- lo pone el
+           scroll fino, que retrasa el plano: por eso el grueso se redondea
+           hacia arriba y el fino es lo que sobra */
         e[5] = np_scroll_fino(0, (uint16_t)(grueso - off));
         e[7] = np_carretera_tonos[0][tono];          /* hierba */
         e[9] = np_carretera_tonos[1][tono];          /* arcen */
@@ -832,7 +869,16 @@ void np_video_frame(const NpWorld *w)
        delante se queda para los coches, que asi no salen a escalones. */
     if (w->level != np_nivel_actual) {
         np_nivel_actual = w->level;
-        np_copper[NP_COP_COLOR0] = w->level->background;   /* el cielo */
+        /* El cielo. En AGA un color son veinticuatro bits y se escribe en dos
+           veces -los cuatro de arriba de cada canal, y los de abajo con LOCT
+           puesto-, igual que en la rama de siempre de mas abajo. Aqui se
+           escribia de una sola vez y el cielo del circuito salia verde. */
+#if NP_AGA
+        np_copper[NP_COP_COLOR0] = np_color_alto(w->level->background);
+        np_copper[NP_COP_COLOR0_BAJO] = np_color_bajo(w->level->background);
+#else
+        np_copper[NP_COP_COLOR0] = w->level->background;
+#endif
         np_pintar_carretera();
         np_limpiar_juego();
         np_base_tile = 0;

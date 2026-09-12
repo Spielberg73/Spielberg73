@@ -14,6 +14,7 @@ en C compilado.
 
 import os
 import re
+import sys
 import shutil
 import subprocess
 import tempfile
@@ -392,6 +393,73 @@ def _filas_de(pantalla, colores, desde_y=0):
         if cuantos:
             filas.append((y, cuantos))
     return filas
+
+
+class TestLaCarreteraEnAGA(unittest.TestCase):
+    """La calzada tiene que caer en el mismo pixel en el A500 y en el A1200.
+
+    Suena a perogrullada y no lo es. El A1200 y el CD32 leen los bitplanes de
+    32 en 32 bits, y el puntero de un plano salta lo que el chip lee de una
+    vez: el resto, hasta 31 pixeles, lo tiene que poner el scroll fino. Pero el
+    margen para retrasar el plano sigue siendo de 16 -la DMA empieza ocho
+    relojes antes y ahi no cabe mas-, asi que de las 32 posiciones posibles
+    solo salian la mitad y **la calzada se quedaba 16 pixeles a la izquierda,
+    siempre**. El marcador, que va en el otro plano, caia en su sitio.
+
+    Por eso conduciendo AGA lee de 16 en 16, como el A500. Esta prueba es la
+    que avisaria si alguien se lo lleva por delante.
+    """
+
+    def test_la_calzada_cae_en_el_mismo_pixel_en_ocs_y_en_aga(self):
+        import json
+        sys.path.insert(0, os.path.join(KIT, "tests"))
+        from libretro import buscar_core
+        from ngplat.build import build_project
+        from ngplat.project import load_project
+        if not buscar_core("puae", "NEOPLAT_CORE_AMIGA"):
+            self.skipTest("no esta instalado el core de PUAE")
+        if not shutil.which("m68k-linux-gnu-gcc") and not shutil.which("m68k-elf-gcc"):
+            self.skipTest("no hay un compilador de 68000 instalado")
+        tmp = tempfile.mkdtemp(prefix="neoplat-aga-")
+        try:
+            proyecto = os.path.join(tmp, "circuito")
+            crear_proyecto(proyecto, "COSTA", "TEST", genero="carretera")
+            # los dos tonos de la calzada, que es lo que se busca en pantalla
+            build = build_project(load_project(proyecto),
+                                  sistemas.obtener("amiga").carretera_como)
+            tonos = ",".join("%02x%02x%02x" % tuple(t)
+                             for t in build.asfalto.tonos[2])
+            donde = {}
+            for maquina, modelo, chip in (("amiga", "A500", "1"),
+                                          ("amiga1200", "A1200", "2")):
+                from ngplat.codegen import generar_para_sistema
+                out = os.path.join(tmp, maquina)
+                sistema = sistemas.obtener(maquina)
+                suyo = build_project(load_project(proyecto),
+                                     sistema.carretera_como)
+                sistema.preparar(suyo)
+                generar_para_sistema(suyo, out, sistema, "202")
+                hecho = subprocess.run(["make", "-C", out], capture_output=True,
+                                       text=True)
+                self.assertEqual(hecho.returncode, 0,
+                                 "%s no compila:\n%s" % (maquina, hecho.stderr))
+                adf = [f for f in os.listdir(os.path.join(out, "disco"))
+                       if f.endswith(".adf")][0]
+                salida = subprocess.run(
+                    [sys.executable, os.path.join(KIT, "tests", "calzada_amiga.py"),
+                     os.path.join(out, "disco", adf), modelo, chip, tonos],
+                    capture_output=True, text=True, check=True)
+                donde[maquina] = json.loads(salida.stdout.strip().splitlines()[-1])
+                if "saltar" in donde[maquina]:
+                    self.skipTest(donde[maquina]["saltar"])
+            self.assertTrue(any(v for v in donde["amiga"].values()),
+                            "en el A500 no se ve la calzada: %r" % donde["amiga"])
+            self.assertEqual(
+                donde["amiga1200"], donde["amiga"],
+                "la calzada no cae igual en las dos maquinas.\n"
+                "  A500 : %r\n  A1200: %r" % (donde["amiga"], donde["amiga1200"]))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 _TAMANOS_C = """/* Que tamano elige el motor a cada distancia, en tiles. */

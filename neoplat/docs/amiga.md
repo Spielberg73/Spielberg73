@@ -572,6 +572,33 @@ espera y seis escrituras.
 - `BPLCON1`: los píxeles sueltos que no caben en el módulo (0 a 15).
 - y **cuatro colores**: hierba, arcén, calzada y raya.
 
+### En AGA se lee de 16 en 16, y no es un descuido
+
+El A1200 y el CD32 leen los bitplanes **de 32 en 32 bits** (`FMODE`): la mitad
+de accesos de DMA, que es lo que permite ocho bitplanes. Conduciendo, no.
+
+El puntero de un plano no se mueve píxel a píxel: salta lo que el chip lee de
+una vez, y lo que falta hasta ahí lo pone el scroll fino de `BPLCON1`.
+Leyendo de 32 en 32 el salto es de 32 píxeles, pero **el margen para retrasar
+el plano sigue siendo de 16**: la DMA empieza ocho relojes antes y ahí no cabe
+más. Medido en el emulador: sumarle 16 al scroll fino no mueve ni un píxel. De
+las 32 posiciones posibles sólo salían la mitad, y la calzada se quedaba
+**16 píxeles a la izquierda, siempre** —el marcador, que va en el otro plano,
+caía en su sitio; la calzada no—.
+
+Adelantar `DDFSTRT` un bloque más deja sitio para 32, pero descuadra la ventana
+de pantalla entera. Así que en la vista de carretera AGA lee de 16 en 16, como
+el A500: el salto y el margen vuelven a cuadrar y la calzada cae en el mismo
+píxel en las dos máquinas, comprobado línea a línea en el emulador. Aquí el
+ancho de banda sobra —son cuatro bitplanes por plano, no ocho—, así que no se
+pierde nada. Fuera de la carretera AGA sigue leyendo de 32 en 32.
+
+Y el cielo: en AGA un color son **veinticuatro bits** y se escribe en dos
+veces, los cuatro de arriba de cada canal y luego los de abajo con `LOCT`. La
+rama de carretera lo escribía de una sola vez, y el cielo del circuito salía
+verde. El color de fondo de un nivel (`NpLevel.background`) tampoco cabía: era
+de dieciséis bits y en AGA se truncaba sin avisar.
+
 ### Por qué aquí la carretera va lisa
 
 La Mega Drive se lleva la imagen con las cuatro franjas dibujadas dentro

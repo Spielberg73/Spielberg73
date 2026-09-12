@@ -2,8 +2,54 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.39.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.40.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.40
+
+**La carretera en el A1200 y en el CD32: de no compilar a caer en el mismo
+píxel que en el A500.**
+
+Tres fallos encadenados, y ninguno avisaba.
+
+**No compilaba.** `np_amiga.h` declaraba los tonos de la calzada de 32 bits
+cuando la máquina es AGA, y el compilador los emitía de 16 siempre —a
+propósito: un color de 24 bits se escribe en dos veces, con `BPLCON3` en medio,
+y eso serían diez escrituras de copper por línea en vez de cuatro—. El género
+de conducir no llegaba a enlazar para ninguna de las dos máquinas, así que
+nadie lo había visto por dentro.
+
+**El cielo salía verde.** En AGA un color son veinticuatro bits y se escribe en
+dos veces, los cuatro de arriba de cada canal y luego los de abajo con `LOCT`.
+La rama de carretera lo escribía de una sola vez. Y debajo había otra: el color
+de fondo de un nivel (`NpLevel.background`) era de dieciséis bits, que cabía
+justo en las siete primeras máquinas, y en AGA se truncaba sin decir nada.
+Ahora son treinta y dos.
+
+**Y la calzada se quedaba 16 píxeles a la izquierda, siempre.** Ésta costó, y
+la explicación es bonita: el A1200 y el CD32 leen los bitplanes **de 32 en 32
+bits**, que es lo que permite ocho bitplanes. El puntero de un plano no se
+mueve píxel a píxel: salta lo que el chip lee de una vez, y lo que falta lo
+pone el scroll fino. Con lecturas de 32, el salto es de 32 píxeles, pero **el
+margen para retrasar el plano sigue siendo de 16**: la DMA empieza ocho relojes
+antes y ahí no cabe más. Medido en el emulador: sumarle 16 al scroll fino no
+mueve ni un píxel. De las 32 posiciones posibles sólo salían la mitad.
+
+El marcador, que va en el otro plano, caía en su sitio; la calzada no. Adelantar
+`DDFSTRT` un bloque deja sitio para 32 y descuadra la ventana de pantalla
+entera —probado—. Así que conduciendo, AGA lee de 16 en 16 como el A500: el
+salto y el margen vuelven a cuadrar. Aquí el ancho de banda sobra, que son
+cuatro bitplanes por plano y no ocho. Fuera de la carretera AGA sigue leyendo
+de 32 en 32.
+
+Hay prueba nueva que lo vigila: arranca el mismo circuito en un A500 y en un
+A1200 emulados —en dos procesos, que PUAE no se deja arrancar dos veces— y
+exige que la calzada empiece y acabe en el mismo píxel en cinco líneas de
+pantalla. Devolviendo AGA a las lecturas de 32 falla, con los 32 píxeles de
+diferencia delante.
+
+Lo que sigue sin estar: la Jaguar no dibuja la carretera en absoluto —tampoco
+lo hacía antes—, y la Neo Geo y el X68000 todavía no la dibujan.
 
 ## 1.39
 
