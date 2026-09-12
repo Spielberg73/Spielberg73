@@ -50,22 +50,48 @@
 #define NP_BG_COLUMNS 21           /* 320/16 + 1 para el scroll */
 #define NP_BG_ROWS 15              /* 224/16 + 1 */
 #define NP_LAYER_COLUMNS 21
+
+/* --- y cuantos sprites se lleva cada cosa ------------------------------
+ *
+ * Conduciendo el reparto es otro. Aqui no hay escenario de tiles ni capas de
+ * parallax: la pantalla entera es la carretera. Y la carretera hay que
+ * deslizarla **linea a linea**, que es lo unico que esta maquina no sabe
+ * hacer: no tiene un plano que correr, tiene sprites, y un sprite es una
+ * columna. Asi que va en **bandas**: una fila de sprites cada 16 lineas, cada
+ * banda con su desplazamiento.
+ *
+ * Catorce bandas de veintiuna columnas son 294 de los 381 sprites de la
+ * consola, asi que a los actores les quedan menos. No importa: en la calzada
+ * se ven dos coches de media, no veinte. */
+#if NP_VISTA_CARRETERA
+#define NP_CARRETERA_BANDAS (NP_SCREEN_H / 16)
+#define NP_CARRETERA_SPRITES (NP_CARRETERA_BANDAS * NP_LAYER_COLUMNS)
+#define NP_ACTOR_SPRITES 48
+#define NP_FONDO_SPRITES 0
+#define NP_LAYER_SPRITES 0
+#else
+#define NP_CARRETERA_SPRITES 0
 #define NP_ACTOR_SPRITES 96
+#define NP_FONDO_SPRITES NP_BG_COLUMNS
 #define NP_LAYER_SPRITES (NP_LAYER_COUNT * NP_LAYER_COLUMNS)
+#endif
 
 #if NP_SPRITE_FRONT_FIRST
 #define NP_ACTOR_FIRST_SPRITE 1
-#define NP_BG_FIRST_SPRITE (NP_ACTOR_FIRST_SPRITE + NP_ACTOR_SPRITES)
+#define NP_CARRETERA_FIRST_SPRITE (NP_ACTOR_FIRST_SPRITE + NP_ACTOR_SPRITES)
+#define NP_BG_FIRST_SPRITE (NP_CARRETERA_FIRST_SPRITE + NP_CARRETERA_SPRITES)
 /* la capa 0 es la mas lejana: se va al final, detras de todo */
 #define NP_LAYER_FIRST_SPRITE(i) \
-    (NP_BG_FIRST_SPRITE + NP_BG_COLUMNS + (NP_LAYER_COUNT - 1 - (i)) * NP_LAYER_COLUMNS)
+    (NP_BG_FIRST_SPRITE + NP_FONDO_SPRITES + (NP_LAYER_COUNT - 1 - (i)) * NP_LAYER_COLUMNS)
 #else
 #define NP_LAYER_FIRST_SPRITE(i) (1 + (i) * NP_LAYER_COLUMNS)
 #define NP_BG_FIRST_SPRITE (1 + NP_LAYER_SPRITES)
-#define NP_ACTOR_FIRST_SPRITE (NP_BG_FIRST_SPRITE + NP_BG_COLUMNS)
+#define NP_CARRETERA_FIRST_SPRITE (NP_BG_FIRST_SPRITE + NP_FONDO_SPRITES)
+#define NP_ACTOR_FIRST_SPRITE (NP_CARRETERA_FIRST_SPRITE + NP_CARRETERA_SPRITES)
 #endif
 
-#define NP_TOTAL_SPRITES (1 + NP_ACTOR_SPRITES + NP_BG_COLUMNS + NP_LAYER_SPRITES)
+#define NP_TOTAL_SPRITES (1 + NP_ACTOR_SPRITES + NP_CARRETERA_SPRITES \
+                          + NP_FONDO_SPRITES + NP_LAYER_SPRITES)
 
 void np_video_init(void);
 void np_video_frame(const NpWorld *w);

@@ -41,6 +41,13 @@ binario —lo único que cambia es que va en un CD y no en un disquete—.
 | Parallax | sí | una capa | una capa (`amiga: 8colores`) | una capa, con 16 colores por plano | una capa | una capa (`camara: pantallas`) | no |
 | Sale | ROMs de cartucho | `.bin` con cabecera y suma | disquete `.adf` arrancable | disquete `.adf` arrancable | cartucho `.j64` | disquete `.st` arrancable | `.X` de Human68k y disquete `.xdf` |
 
+Y la Neo Geo tiene lo contrario: **encoge sprites por hardware**, que es lo que
+más la distingue y no lo tiene ninguna de las otras seis. Conduciendo, el
+tráfico de la calzada se dibuja con el escalador, así que los coches crecen
+seguidos en vez de a saltos entre los cinco tamaños que llevan las demás; la
+carretera, que aquí no se puede deslizar línea a línea porque no hay más que
+sprites, va en bandas. Lo cuenta [docs/neogeo.md](docs/neogeo.md).
+
 El Atari ST es el caso raro y por eso merece la pena: mismo 68000 que los
 demás y **nada** que le eche una mano —sin sprites, sin blitter y sin scroll
 por hardware—, así que todo lo que se mueve lo mueve la CPU. Enseña 200 líneas
@@ -387,9 +394,9 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.41.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
-| `neoplat-kit-1.41.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.41.zip` | el `ngplat.exe` y su LEEME |
+| `neoplat-docs-1.42.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
+| `neoplat-kit-1.42.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.42.zip` | el `ngplat.exe` y su LEEME |
 
 El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
 plantillas; no necesita Python ni nada instalado. Con **doble clic** —sin

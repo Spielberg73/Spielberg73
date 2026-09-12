@@ -46,6 +46,10 @@ typedef struct {
     uint8_t palette;
     uint8_t cols, rows;      /* lo que ocupa en tiles de 16x16 */
     uint16_t desde;          /* la escala mas baja a la que sirve (8.8) */
+    /* Y a que escala esta dibujado (256 = el tamano natural del PNG). Lo mira
+       la maquina que sabe encoger sprites -solo la Neo Geo- para saber cuanto
+       le falta a este dibujo hasta el tamano de verdad. */
+    uint16_t escala;
 } NpCarreteraTam;
 
 /* El ataque del jugador. `kind` a cero quiere decir que el juego no lleva

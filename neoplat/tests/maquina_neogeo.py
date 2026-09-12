@@ -19,9 +19,9 @@ Aqui se juntan dos piezas:
     YM2610 sale la onda -FM para la musica, SSG para los efectos y ADPCM-A
     para las muestras- (la clase Sonido, al final del fichero).
 
-No es un emulador de Neo Geo. No hay BIOS -el juego entra directo en `main()`-
-ni **zoom de sprites**, que es lo unico grande que le falta al chip de video de
-aqui. Lo que si comprueba, y no comprobaba nada hasta ahora, es que la lista de
+No es un emulador de Neo Geo. No hay BIOS: el juego entra directo en `main()`.
+El **zoom de sprites** si esta (ver `_sprite_encogido`), que es lo que usa la
+carretera para que el trafico crezca seguido y no a saltos. Lo que si comprueba, y no comprobaba nada hasta ahora, es que la lista de
 sprites y el plano fix que deja el motor en la VRAM dibujan el juego que se
 espera, y que por el altavoz sale la musica del game.yaml.
 
@@ -269,6 +269,13 @@ class Maquina:
                 x -= 512
             if x <= -16 or x >= ANCHO:
                 continue
+            zoom = self.vram[SCB2 + sprite]
+            ancho_z = ((zoom >> 8) & 0x0F) + 1     # pixeles de cada 16
+            alto_z = (zoom & 0xFF) + 1             # lineas de cada 256
+            if ancho_z != 16 or alto_z != 256:
+                self._sprite_encogido(pantalla, sprite, x, y, min(alto, 32),
+                                      ancho_z, alto_z, cache_sprite, paleta)
+                continue
             for fila in range(min(alto, 32)):
                 cima = y + fila * 16
                 if cima <= -16 or cima >= ALTO:
@@ -297,6 +304,54 @@ class Maquina:
                             columna * 8, fila * 8, paleta(palabra >> 12), 0, 0)
 
         return (ANCHO, ALTO, pantalla)
+
+    def _sprite_encogido(self, pantalla, sprite, x, y, alto, ancho_z, alto_z,
+                         cache_sprite, paleta):
+        """El escalador de la Neo Geo: lo unico que este chip de video sabe
+        hacer y ninguno de los otros siete.
+
+        En SCB2 hay dos numeros: cuantos pixeles de cada 16 se quedan a lo
+        ancho (1..16) y cuantas lineas de cada 256 a lo alto (1..256). El
+        sprite sigue ocupando **un sprite por columna de tile**, lo que cambia
+        es lo que mide en pantalla; y la esquina de arriba no se mueve, asi que
+        un sprite encogido crece hacia abajo desde donde estaba.
+
+        Aqui se modela con el reparto proporcional: la columna i de las que
+        salen viene de la i*16/ancho_z de las que hay. El chip de verdad
+        elige con una tabla suya, asi que un pixel puede caer distinto; lo que
+        si sale igual es el **tamano**, que es lo que se comprueba.
+        """
+        alto_px = alto * 16
+        lineas = (alto_px * alto_z) // 256
+        for j in range(lineas):
+            pantalla_y = y + j
+            if pantalla_y < 0 or pantalla_y >= ALTO:
+                continue
+            origen_y = (j * 256) // alto_z
+            if origen_y >= alto_px:
+                break
+            fila = origen_y >> 4
+            numero = self.vram[SCB1 + sprite * 64 + fila * 2]
+            atributos = self.vram[SCB1 + sprite * 64 + fila * 2 + 1]
+            if numero not in cache_sprite:
+                cache_sprite[numero] = self._tile_sprite(numero)
+            pixeles = cache_sprite[numero]
+            colores_tile = paleta(atributos >> 8)
+            dentro = origen_y & 15
+            if atributos & 0x02:
+                dentro = 15 - dentro
+            base = dentro * 16
+            destino = pantalla_y * ANCHO
+            for i in range(ancho_z):
+                px = x + i
+                if px < 0 or px >= ANCHO:
+                    continue
+                origen_x = (i * 16) // ancho_z
+                if atributos & 0x01:
+                    origen_x = 15 - origen_x
+                indice = pixeles[base + origen_x]
+                if indice:
+                    pantalla[destino + px] = colores_tile[indice]
 
     @staticmethod
     def _pegar(pantalla, pixeles, lado, x0, y0, colores_tile, voltea_x, voltea_y):

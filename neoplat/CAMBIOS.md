@@ -2,8 +2,67 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.41.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.42.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.42
+
+**La carretera en la Neo Geo, y el escalador de sprites que ninguna otra
+máquina tiene.**
+
+La Neo Geo es la única de las ocho que no tiene **nada** con lo que deslizar
+una imagen línea a línea: ni un plano que correr (la Mega Drive, el X68000), ni
+un copper que lo cambie en mitad de la pantalla (el Amiga), ni una lista de
+objetos por línea (la Jaguar). Aquí todo son sprites, y un sprite de Neo Geo es
+**una columna**: justo lo contrario de lo que hace falta.
+
+Así que la carretera va en **bandas**: la misma imagen que se lleva la Mega
+Drive, repartida en filas de veintiuna columnas de sprite, una fila cada 16
+líneas, y cada banda corrida lo que diga la proyección en su línea de en medio.
+Son 294 de los 381 sprites de la consola; a los actores les quedan 48, que para
+una calzada donde se ven dos coches de media sobran.
+
+Y el tráfico usa **el escalador (SCB2)**, que es lo que más distingue a esta
+placa y llevaba sin tocarse desde el principio. El motor elige el dibujo con
+una función nueva, `np_carretera_dibujo_zoom()`, que es como la de las otras
+siete pero al revés —no el dibujo más grande que valga, sino el más pequeño que
+no se quede corto, para que un coche lejano siga costando un sprite y no
+cuatro— y el hardware tapa el escalón hasta el tamaño exacto. Aquí los coches
+no crecen a saltos de cinco tamaños: crecen.
+
+**Y de paso, la proyección va tres veces más rápida en las ocho máquinas.**
+
+Al medir el primer frame de carretera en el banco de Neo Geo salieron 400.000
+ciclos, el doble de los 200.000 que da la consola. Lo que no cabía no eran los
+sprites de las bandas —eso costaba 18.000—: era `np_carretera()`, la tabla de
+la proyección, que hace **160 divisiones de 32 bits por frame**. En un 68000
+una división de 32 bits no es una instrucción: es una llamada a una rutina de
+la biblioteca, cientos de ciclos. Tres arreglos, y los tres dan exactamente los
+mismos números que antes (no son aproximaciones, es no repetir trabajo):
+
+- lo que encoge cada tramo **no cambia nunca** —su distancia es una constante—,
+  así que sale de una tabla de 320 bytes que se llena la primera vez;
+- de los ciento y pico tramos que caben en pantalla, casi todos ocupan **una
+  sola línea**, y ahí no hay nada que repartir: el `dcx` que se calculaba no lo
+  usaba nadie. Quedan unas veinte divisiones;
+- y la multiplicación de la proyección se hace de 16 por 16, que en el 68000 es
+  un `muls.w` y no otra llamada a la biblioteca. Los dos números caben de sobra.
+
+De 400.000 a 187.000 ciclos de media. Lo aprovechan las ocho: la Mega Drive es
+más lenta todavía que la Neo Geo y pagaba lo mismo.
+
+El banco de pruebas del kit ha aprendido el zoom (`tests/maquina_neogeo.py`,
+`_sprite_encogido`), que era lo único grande que le faltaba a su chip de vídeo.
+Del escalador modela el tamaño; qué píxel exacto se queda lo decide en el chip
+de verdad una tabla suya, y eso sigue sin poder comprobarse fuera de una placa.
+
+Pruebas nuevas: que la calzada se ve y **se mueve con el trazado** (siguiendo
+el eje del asfalto en una fila de cerca y otra de lejos: las dos se mueven, y
+la de cerca barre mucho más, que es lo que hace la perspectiva), que el
+escalador se usa de verdad y con un valor distinto por coche, y que el frame
+cabe en los ciclos de la consola.
+
+Sigue sin estar: el X68000 todavía no dibuja la carretera.
 
 ## 1.41
 

@@ -538,6 +538,163 @@ class TestLaCarreteraEnLaJaguar(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class TestLaCarreteraEnLaNeoGeo(unittest.TestCase):
+    """La Neo Geo es la unica que no tiene **nada** con lo que deslizar una
+    imagen linea a linea: no hay plano que correr, ni copper, ni lista de
+    objetos por linea. Todo son sprites, y un sprite de Neo Geo es una
+    columna: justo lo contrario de lo que hace falta.
+
+    Por eso la carretera va en bandas -una fila de sprites cada 16 lineas, con
+    su desplazamiento- y el trafico se sirve de lo unico que esta maquina si
+    tiene y ninguna de las otras siete: el escalador de sprites.
+
+    Se comprueba en el banco del kit (tests/maquina_neogeo.py), que ejecuta el
+    68000 de verdad y reconstruye la pantalla desde la VRAM.
+    """
+
+    def _montar(self):
+        try:
+            import machine68k  # noqa: F401
+        except ImportError:
+            self.skipTest("falta machine68k (pip3 install amitools)")
+        sys.path.insert(0, os.path.join(KIT, "tests"))
+        import maquina_neogeo
+        from ngplat.build import build_project
+        from ngplat.codegen import generar_para_sistema
+        from ngplat.project import load_project
+        if not maquina_neogeo.compilador():
+            self.skipTest("no hay un compilador de 68000 instalado")
+        tmp = tempfile.mkdtemp(prefix="neoplat-ng-carretera-")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        proyecto = os.path.join(tmp, "circuito")
+        crear_proyecto(proyecto, "COSTA", "TEST", genero="carretera")
+        maquina = sistemas.obtener("neogeo")
+        build = build_project(load_project(proyecto), maquina.carretera_como)
+        maquina.preparar(build)
+        out = os.path.join(tmp, "build")
+        generar_para_sistema(build, out, maquina, "202")
+        os.makedirs(os.path.join(out, "rom"), exist_ok=True)
+        maquina_neogeo.construir_p1(out, os.path.join(out, "rom", "202-p1.p1"))
+        emu = maquina_neogeo.cargar(out)
+        self.assertIsNotNone(emu, "el banco no ha podido montar la ROM")
+        emu.avanzar(20)
+        emu.pulsar("START"); emu.avanzar(4); emu.pulsar(); emu.avanzar(20)
+        emu.pulsar("B")   # el acelerador es el boton de accion, no el de saltar
+        return maquina_neogeo, emu
+
+    def test_la_calzada_se_ve_en_perspectiva_y_se_mueve_con_el_trazado(self):
+        """Dos cosas, y la segunda es la que de verdad prueba las bandas.
+
+        La primera es que la carretera este puesta: asfalto ninguno por encima
+        del horizonte y, por debajo, mas ancho abajo que arriba. Eso solo, sin
+        embargo, lo daria por bueno una carretera pegada en el sitio: el ancho
+        viene dibujado en la imagen del compilador.
+
+        La segunda es que **cada banda se corra por su cuenta**. Se sigue el eje
+        de la calzada -el centro del asfalto- en una fila de cerca y en otra de
+        lejos, a lo largo de varios frames. Abajo el eje no se mueve casi: el
+        coche va siempre encima de la calzada y la camara le sigue. Arriba si,
+        porque ahi es donde la curva se ve. Si alguien deja las bandas quietas,
+        o las corre todas igual, esto se cae.
+        """
+        from ngplat import carretera as carr
+        _, emu = self._montar()
+        emu.avanzar(60)
+
+        def asfalto(px, ancho, fila):
+            """Los pixeles grises de esa fila: ni el cielo, ni la hierba, ni
+            los arcenes (rojo y blanco) lo son."""
+            return [x for x in range(ancho)
+                    for r, g, b in (px[fila * ancho + x][:3],)
+                    if abs(r - g) < 24 and abs(g - b) < 24 and r < 170]
+
+        ancho, alto, px = emu.dibujar()
+        cielo = {p[:3] for p in px[:(carr.HORIZONTE - 8) * ancho]}
+        self.assertLessEqual(
+            len(cielo), 4,
+            "por encima del horizonte tendria que haber solo cielo, y hay %d"
+            " colores" % len(cielo))
+        arriba = asfalto(px, ancho, carr.HORIZONTE + 8)
+        abajo = asfalto(px, ancho, alto - 8)
+        self.assertTrue(arriba, "junto al horizonte no se ve calzada")
+        self.assertGreater(
+            len(abajo), len(arriba) * 3,
+            "la calzada no se abre: %d pixeles de asfalto arriba y %d abajo"
+            % (len(arriba), len(abajo)))
+
+        ejes_arriba, ejes_abajo = [], []
+        for _ in range(8):
+            emu.avanzar(12)
+            ancho, alto, px = emu.dibujar()
+            for fila, donde in ((carr.HORIZONTE + 16, ejes_arriba),
+                                (alto - 8, ejes_abajo)):
+                trozo = asfalto(px, ancho, fila)
+                if trozo:
+                    donde.append((trozo[0] + trozo[-1]) // 2)
+        recorre_lejos = max(ejes_arriba) - min(ejes_arriba)
+        recorre_cerca = max(ejes_abajo) - min(ejes_abajo)
+        self.assertGreater(recorre_lejos, 0,
+                           "las bandas de lejos no se mueven: %r" % ejes_arriba)
+        self.assertGreater(
+            recorre_cerca, recorre_lejos * 2,
+            "lo de cerca tendria que barrer mucho mas que lo de lejos, y ha "
+            "corrido %d frente a %d (%r y %r)"
+            % (recorre_cerca, recorre_lejos, ejes_abajo, ejes_arriba))
+
+    def test_el_escalador_encoge_de_verdad_lo_que_esta_lejos(self):
+        """Y esto es lo que no puede hacer ninguna otra de las ocho.
+
+        Se mira la VRAM: en SCB2 cada sprite lleva cuanto se encoge, y 0x0FFF
+        es "tal cual". Conduciendo tiene que haber sprites encogidos, y ademas
+        **con mas de un valor**: si todos encogieran lo mismo seria que el
+        motor le esta pasando una constante, no la escala de cada coche.
+        """
+        maquina_neogeo, emu = self._montar()
+        zooms = set()
+        for _ in range(6):
+            emu.avanzar(20)
+            for sprite in range(maquina_neogeo.SPRITES):
+                control = emu.vram[maquina_neogeo.SCB3 + sprite]
+                if not (control & 0x3F):
+                    continue                 # apagado
+                z = emu.vram[maquina_neogeo.SCB2 + sprite]
+                if z != 0x0FFF:
+                    zooms.add(z)
+        self.assertTrue(zooms, "no hay ni un sprite encogido: el escalador no"
+                               " se esta usando")
+        self.assertGreater(len(zooms), 1,
+                           "todos los sprites encogen igual (%r): eso no es la"
+                           " escala de cada uno" % sorted(zooms))
+
+    def test_el_frame_cabe_en_los_ciclos_que_da_la_consola(self):
+        """Una carretera que no quepa en el frame no es una carretera: es un
+        juego a 30.
+
+        Lo que no cabia no eran los sprites de las bandas -eso costaba poco-:
+        era **la proyeccion**, 160 divisiones de 32 bits por frame, que en un
+        68000 no son una instruccion sino una llamada a una rutina de la
+        biblioteca. Con la tabla de tramos se quedan en unas veinte y el frame
+        pasa de 400.000 ciclos a caber en los 200.000 que da la consola.
+
+        Se mira la media y el pico por separado: de media cabe, y algun frame
+        con mucho trafico se pasa un poco -la consola repite ese frame y ya-,
+        pero ninguno tiene que irse al doble.
+        """
+        maquina_neogeo, emu = self._montar()
+        emu.avanzar(30)
+        ciclos = [emu.frame() for _ in range(60)]
+        medio = sum(ciclos) // len(ciclos)
+        tope = maquina_neogeo.CICLOS_FRAME
+        self.assertLess(
+            medio, tope,
+            "un frame de carretera cuesta %d ciclos de media y la consola da"
+            " %d" % (medio, tope))
+        self.assertLess(
+            max(ciclos), tope * 3 // 2,
+            "hay frames que cuestan %d ciclos, mas de vez y media lo que da la"
+            " consola (%d)" % (max(ciclos), tope))
+
+
 _TAMANOS_C = """/* Que tamano elige el motor a cada distancia, en tiles. */
 #include <stdio.h>
 #include "np_world.h"

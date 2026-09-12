@@ -288,6 +288,216 @@ static void np_draw_background(const NpWorld *w)
     }
 }
 
+#if NP_VISTA_CARRETERA
+/* --- la carretera, en bandas -------------------------------------------
+ *
+ * Esta es la unica de las ocho maquinas que no tiene **nada** con lo que
+ * deslizar una imagen linea a linea: no hay plano que correr (la Mega Drive y
+ * el X68000), ni copper que lo cambie en mitad de la pantalla (el Amiga), ni
+ * lista de objetos por linea (la Jaguar). Aqui todo son sprites, y un sprite
+ * de Neo Geo es **una columna**: justo lo contrario de lo que hace falta.
+ *
+ * Asi que la carretera va en bandas. La imagen es la misma que se lleva la
+ * Mega Drive -la calzada en perspectiva, 512 de ancho, con las cuatro franjas
+ * dibujadas dentro- y se reparte en filas de veintiuna columnas de sprite, una
+ * fila cada 16 lineas. Cada banda se corre lo que diga la proyeccion en su
+ * linea de en medio. Es el scroll por linea de la Mega Drive redondeado a
+ * dieciseis, y la curva cambia tan poco de una linea a la siguiente que la
+ * escalera no se ve.
+ *
+ * Las columnas van en anillo, igual que en el fondo y en las capas: la columna
+ * N de la imagen cae siempre en el sprite N mod 21, asi que cuando una banda
+ * se corre un tile solo hay que rehacer el tilemap de la que entra por el
+ * borde. Sin eso son 294 tilemaps por frame y la consola no llega.
+ *
+ * Y las franjas que corren hacia ti no se dibujan: son cuatro huecos de
+ * paleta por cosa, rotados un paso por frame. Doce palabras a la RAM de color.
+ */
+
+/* La imagen tiene el eje de la calzada en su columna NP_CARRETERA_EJE; si en
+   la linea `y` el eje tiene que caer en la columna `centro`, la imagen se
+   corre centro - EJE. La misma cuenta que hace la Mega Drive. */
+static int16_t np_centro_de_linea[NP_SCREEN_H];
+static uint8_t np_bandas_todas = 1;       /* al entrar en el nivel, todas */
+static const NpLevel *np_ultimo_nivel;
+
+/* Cuantas cosas de la calzada se dibujan a la vez, las mas cercanas. Con el
+   circuito del andamiaje se ven dos coches de media, no sesenta. */
+#define NP_CARRETERA_A_LA_VEZ 12
+
+/* Los tres numeros caben de sobra en dieciseis bits, y asi la estructura son
+   ocho bytes: con int32_t gcc copia la estructura llamando a memcpy, y aqui no
+   hay biblioteca de C que lo tenga. */
+typedef struct {
+    int16_t sx, sy, escala;
+    uint8_t entidad;
+} NpEnLaVia;
+
+static void np_paleta_carretera(uint8_t fase)
+{
+    const uint8_t *huecos = np_carretera_huecos;
+    uint8_t pal = np_layers[np_carretera_capa].palette;
+    const uint16_t *paleta = np_palettes[pal];
+    uint8_t grupo, i;
+    for (grupo = 0; grupo < NP_CARRETERA_GRUPOS; grupo++) {
+        const uint8_t *cuatro = &huecos[grupo * NP_CARRETERA_FRANJAS];
+        for (i = 0; i < NP_CARRETERA_FRANJAS; i++)
+            NP_PALETTE_RAM[pal * 16 + cuatro[i]] =
+                paleta[cuatro[(i + fase) & (NP_CARRETERA_FRANJAS - 1)]];
+    }
+}
+
+static void np_banda(uint8_t banda, int16_t desplaza)
+{
+    /* que columna de la imagen tiene cargada cada ranura de cada banda */
+    static int16_t cargada[NP_CARRETERA_BANDAS][NP_LAYER_COLUMNS];
+    static int16_t ultimo[NP_CARRETERA_BANDAS];
+    const NpLayer *capa = &np_layers[np_carretera_capa];
+    uint16_t base = (uint16_t)(NP_CARRETERA_FIRST_SPRITE
+                               + (uint16_t)banda * NP_LAYER_COLUMNS);
+    int32_t fuera = -(int32_t)desplaza;   /* lo que se sale por la izquierda */
+    int32_t primera = fuera >> 4;         /* el >> de un negativo baja: vale */
+    int16_t off = (int16_t)(fuera & 15);
+    int32_t resto = primera % NP_LAYER_COLUMNS;
+    uint16_t ranura0 = (uint16_t)(resto < 0 ? resto + NP_LAYER_COLUMNS : resto);
+    int32_t col = primera % capa->cols;
+    uint16_t ranura = ranura0;
+    uint8_t i;
+
+    if (!np_bandas_todas && ultimo[banda] == desplaza) return;
+    ultimo[banda] = desplaza;
+    if (col < 0) col += capa->cols;
+
+    /* El tilemap solo se toca cuando la banda se corre un tile entero: las
+       columnas van en anillo, asi que de las veintiuna suele cambiar una. */
+    for (i = 0; i < NP_LAYER_COLUMNS; i++) {
+        if (np_bandas_todas || cargada[banda][ranura] != (int16_t)col) {
+            np_vram_seek((uint16_t)(NP_SCB1 + (base + ranura) * 64), 1);
+            np_vram_write(capa->tiles[(uint16_t)banda * capa->cols + col]);
+            np_vram_write((uint16_t)(capa->palette << 8));
+            cargada[banda][ranura] = (int16_t)col;
+        }
+        if (++col >= capa->cols) col = 0;
+        if (++ranura == NP_LAYER_COLUMNS) ranura = 0;
+    }
+
+    /* La Y y la altura de una banda **no cambian nunca**, asi que SCB3 se
+       escribe una vez al entrar en el nivel y ya no se vuelve a tocar. */
+    if (np_bandas_todas) {
+        uint16_t alto_y = (uint16_t)(((496 - banda * 16) & 0x1FF) << 7 | 1);
+        np_vram_seek((uint16_t)(NP_SCB3 + base), 1);
+        for (i = 0; i < NP_LAYER_COLUMNS; i++)
+            np_vram_write(alto_y);
+    }
+
+    /* Y las X de los veintiun sprites estan **seguidas** en la VRAM (SCB4 +
+       numero de sprite), asi que se apunta una vez y se escriben del tiron,
+       en orden de sprite y no de pantalla: 23 escrituras por banda en vez de
+       las 84 de ir poniendolos uno a uno. Medido en el banco: la carretera
+       entera pasa de 215.000 ciclos por frame a caber en los 200.000 que da
+       la consola. */
+    np_vram_seek((uint16_t)(NP_SCB4 + base), 1);
+    for (i = 0; i < NP_LAYER_COLUMNS; i++) {
+        int16_t columna = (int16_t)(i + NP_LAYER_COLUMNS - ranura0);
+        if (columna >= NP_LAYER_COLUMNS) columna -= NP_LAYER_COLUMNS;
+        np_vram_write((uint16_t)(((columna * 16 - off) & 0x1FF) << 7));
+    }
+}
+
+static void np_dibujar_carretera(const NpWorld *w)
+{
+    uint16_t horizonte;
+    uint8_t banda;
+    /* Sin capa de carretera no hay nada que poner: pasa si alguien pide la
+       vista de conducir en un juego al que el compilador no le dibujo la
+       calzada. Mejor cielo que salirse de np_layers por el -1. */
+    if (np_carretera_capa < 0) return;
+    horizonte = np_carretera(w, np_centro_de_linea);
+    np_paleta_carretera(np_carretera_fase(w));
+    for (banda = 0; banda < NP_CARRETERA_BANDAS; banda++) {
+        /* la linea de en medio de la banda manda: es la que menos se
+           equivoca con las quince de al lado */
+        uint16_t linea = (uint16_t)(banda * 16 + 8);
+        int16_t desplaza = 0;
+        if (linea < NP_SCREEN_H && linea >= horizonte)
+            desplaza = (int16_t)(np_centro_de_linea[linea] - NP_CARRETERA_EJE);
+        np_banda(banda, desplaza);
+    }
+    np_bandas_todas = 0;
+}
+
+/* --- y el escalador de sprites (SCB2) ----------------------------------
+ *
+ * Lo que ninguna de las otras siete tiene: la Neo Geo **encoge sprites por
+ * hardware**. Cada sprite lleva en SCB2 una palabra con dos numeros, el de
+ * arriba de cuatro bits (el ancho: de 1 a 16 pixeles por columna de tile) y el
+ * de abajo de ocho (el alto). Es lo que hacen los jefes que se te vienen
+ * encima en los juegos de la maquina.
+ *
+ * El trafico de la carretera se sirve de las dos cosas a la vez: el motor
+ * elige el dibujo con np_carretera_dibujo_zoom -que es como el de las otras
+ * siete pero al reves: no el mas grande que valga, sino **el mas pequeno que
+ * no se quede corto**, para que un coche lejano siga costando un sprite y no
+ * cuatro- y el escalador tapa el escalon hasta el tamano exacto. Aqui los
+ * coches no crecen a saltos de cinco tamanos: crecen. */
+static void np_sprite_zoom(uint16_t sprite, uint8_t ancho, uint16_t alto)
+{
+    np_vram_seek((uint16_t)(NP_SCB2 + sprite), 0);
+    np_vram_write((uint16_t)(((uint16_t)(ancho - 1) << 8) | (alto - 1)));
+}
+
+/* Un tamano de la calzada, encogido hasta el que toca de verdad.
+ *
+ * Se le da el **centro de abajo** del dibujo -que es lo que dice la
+ * proyeccion- y lo coloca ya con el encogimiento puesto: si se le pasara la
+ * esquina, el que llama tendria que repetir aqui la cuenta del ancho. */
+static uint16_t np_bloque_zoom(const NpCarreteraTam *tam, uint16_t sprite,
+                               int32_t centro_x, int32_t suelo_y,
+                               uint8_t frame, uint16_t zoom)
+{
+    uint8_t ancho;                        /* pixeles por columna: 1..16 */
+    uint16_t alto;                        /* lineas de cada 256: 1..256 */
+    uint16_t base;
+    int32_t x0, y0;
+    uint8_t c, r;
+    if (zoom > 256) zoom = 256;           /* el chip encoge, no agranda */
+    ancho = (uint8_t)((zoom * 16) >> 8);
+    if (!ancho) ancho = 1;
+    alto = zoom ? zoom : 1;
+    base = (uint16_t)(tam->first_tile + (uint16_t)frame * tam->cols * tam->rows);
+    x0 = centro_x - (int32_t)tam->cols * ancho / 2;
+    y0 = suelo_y - (int32_t)tam->rows * 16 * alto / 256;
+    for (c = 0; c < tam->cols; c++) {
+        int32_t x = x0 + (int32_t)c * ancho;
+        if (sprite >= NP_ACTOR_FIRST_SPRITE + NP_ACTOR_SPRITES) break;
+        if (x <= -16 || x >= NP_SCREEN_W) {
+            np_sprite_hide(sprite);
+            sprite++;
+            continue;
+        }
+        np_vram_seek((uint16_t)(NP_SCB1 + sprite * 64), 1);
+        for (r = 0; r < tam->rows; r++) {
+            np_vram_write((uint16_t)(base + c * tam->rows + r));
+            np_vram_write((uint16_t)(tam->palette << 8));
+        }
+        np_sprite_zoom(sprite, ancho, alto);
+        np_sprite_pos(sprite, (int16_t)x, (int16_t)y0, tam->rows);
+        sprite++;
+    }
+    return sprite;
+}
+
+/* El coche del jugador va a tamano natural, asi que lo dibuja np_draw_actor;
+   pero el sprite que use puede venir encogido de un frame anterior, y el zoom
+   se queda puesto hasta que alguien lo cambie. */
+static void np_zoom_entero(uint16_t sprite)
+{
+    np_vram_seek((uint16_t)(NP_SCB2 + sprite), 0);
+    np_vram_write(0x0FFF);
+}
+
+#endif /* NP_VISTA_CARRETERA */
+
 /* Dibuja un actor (jugador, enemigo u objeto) usando `cols` sprites. */
 static uint16_t np_draw_actor(const NpActorDef *def, uint16_t sprite,
                               int32_t screen_x, int32_t screen_y,
@@ -323,9 +533,20 @@ void np_video_frame(const NpWorld *w)
     uint16_t sprite = NP_ACTOR_FIRST_SPRITE;
     uint8_t i;
 
-    *NP_BACKDROP = w->level->background;
+    *NP_BACKDROP = (uint16_t)w->level->background;
+#if NP_VISTA_CARRETERA
+    /* Conduciendo el escenario **no se dibuja**: el mapa es el trazado de la
+       carretera, no lo que se ve. Ni hay capas de parallax: la carretera es
+       la unica, y se pone en bandas. */
+    if (w->level != np_ultimo_nivel) {
+        np_ultimo_nivel = w->level;
+        np_bandas_todas = 1;
+    }
+    np_dibujar_carretera(w);
+#else
     np_draw_layers(w);
     np_draw_background(w);
+#endif
 
     /* De mas lejos a mas cerca: en la vista de cinta los actores se pisan a
        cada rato y hay que pintarlos por la linea del suelo. En las demas
@@ -338,7 +559,70 @@ void np_video_frame(const NpWorld *w)
        el vblank y el juego entero se vaya a la mitad de velocidad. Medido: la
        melodia pasa de 16 notas de 16 a 4. */
     orden = np_orden_dibujo(w, &cuantas);
-#if NP_VISTA_ISO
+#if NP_VISTA_CARRETERA
+    /* Lo que hay en la calzada va **donde dice la proyeccion y del tamano que
+       le toca**, no donde diga el mapa. El motor elige el dibujo -los mismos
+       cinco tamanos que en las otras siete- y el escalador de la consola tapa
+       el escalon hasta el tamano exacto.
+
+       De mas lejos a mas cerca no vale aqui: en esta maquina el que tapa es
+       **el de numero mas bajo**, asi que se dibujan los de cerca primero. Se
+       ordena por insercion, que conduciendo el circuito se ven dos coches de
+       media y no sesenta. */
+    {
+        NpEnLaVia visto[NP_CARRETERA_A_LA_VEZ];
+        uint8_t vistos = 0, j;
+        for (i = 0; i < cuantas; i++) {
+            const NpEntity *e = &w->entities[NP_DIBUJO(orden, i)];
+            int32_t sx, sy, escala;
+            if (!e->active) continue;
+            if (e->hurt && (w->frame & 1)) continue;
+            if (!np_carretera_donde(w, e->x, e->y, &sx, &sy, &escala)) continue;
+            if (vistos == NP_CARRETERA_A_LA_VEZ) {
+                if (escala <= visto[vistos - 1].escala) continue;
+                vistos--;
+            }
+            for (j = vistos; j && visto[j - 1].escala < escala; j--)
+                visto[j] = visto[j - 1];
+            visto[j].sx = (int16_t)sx;
+            visto[j].sy = (int16_t)sy;
+            visto[j].escala = (int16_t)escala;
+            visto[j].entidad = NP_DIBUJO(orden, i);
+            vistos++;
+        }
+        for (j = 0; j < vistos; j++) {
+            const NpEntity *e = &w->entities[visto[j].entidad];
+            const NpActorDef *def = np_entity_def(e);
+            uint16_t zoom;
+            /* El motor elige **el mas pequeno que no se queda corto**, no uno
+               de los cinco a ojo: de ahi para abajo lo pone el escalador, y
+               asi el coche crece seguido en vez de a saltos. */
+            const NpCarreteraTam *tam =
+                np_carretera_dibujo_zoom(def, visto[j].escala, &zoom);
+            if (!tam) continue;
+            sprite = np_bloque_zoom(tam, sprite, visto[j].sx, visto[j].sy,
+                                    np_actor_frame(def, e->anim, e->anim_frame),
+                                    zoom);
+            if (sprite >= NP_ACTOR_FIRST_SPRITE + NP_ACTOR_SPRITES) break;
+        }
+    }
+    for (i = 0; i < NP_MAX_PLAYERS; i++) {
+        const NpActorDef *def = &np_player_def.actor;
+        const NpPlayer *p = &w->players[i];
+        int32_t cx, cy;
+        if (!np_player_visible(w, i)) continue;
+        /* El coche del jugador va en un sitio fijo abajo y a tamano natural:
+           la camara le sigue. Sin espejo, que se ve de culo. */
+        np_carretera_coche(w, i, &cx, &cy);
+        {   /* el sprite puede venir encogido de un frame anterior */
+            uint16_t k;
+            for (k = 0; k < def->cols; k++) np_zoom_entero(sprite + k);
+        }
+        sprite = np_draw_actor(def, sprite, cx, cy,
+                               np_actor_frame(def, p->anim, p->anim_frame), 0);
+        if (sprite >= NP_ACTOR_FIRST_SPRITE + NP_ACTOR_SPRITES) break;
+    }
+#elif NP_VISTA_ISO
     for (i = 0; i < cuantas; i++) {
         const NpActorDef *def;
         int32_t sx, sy;

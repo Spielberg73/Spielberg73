@@ -4699,6 +4699,31 @@ static int32_t np_encoge(int32_t z)
     return ((int32_t)NP_FOCAL << 8) / z;
 }
 
+/* Lo que encoge cada tramo **no cambia nunca**: su distancia es
+ * i * NP_TILE + NP_CERCA, que es una constante, asi que FOCAL/z tambien lo es.
+ * Y en un 68000 una division de 32 bits no es una instruccion: es una llamada
+ * a una rutina de la biblioteca, cientos de ciclos. Ciento sesenta de esas por
+ * frame se comian la maquina.
+ *
+ * La tabla sale de la misma cuenta, asi que los numeros son **los mismos**: no
+ * es una aproximacion, es no repetir el trabajo. Se llena la primera vez que
+ * se pide y ya no se toca; son 320 bytes. */
+static int16_t np_k_tramo[NP_TRAMOS_VISTA];
+static int16_t np_sy_tramo[NP_TRAMOS_VISTA];
+static uint8_t np_k_tramo_lista;
+
+static void np_preparar_tramos(void)
+{
+    int32_t i;
+    if (np_k_tramo_lista) return;
+    for (i = 0; i < NP_TRAMOS_VISTA; i++) {
+        int32_t k = np_encoge(i * NP_TILE + NP_CERCA);
+        np_k_tramo[i] = (int16_t)k;
+        np_sy_tramo[i] = (int16_t)(NP_HORIZONTE + ((NP_CAMARA_ALTO * k) >> 8));
+    }
+    np_k_tramo_lista = 1;
+}
+
 uint16_t np_carretera(const NpWorld *w, int16_t *centro)
 {
     int32_t cam_x, cam_y, fila_camara;
@@ -4707,14 +4732,14 @@ uint16_t np_carretera(const NpWorld *w, int16_t *centro)
     int primero = 1;
 
     if (!np_vista_carretera) return NP_SCREEN_H;
+    np_preparar_tramos();
     np_camara_carretera(w, &cam_x, &cam_y);
     fila_camara = cam_y >> NP_TILE_SHIFT;
 
     for (i = 0; i < NP_TRAMOS_VISTA; i++) {
         int32_t fila = fila_camara - i;
-        int32_t z = i * NP_TILE + NP_CERCA;
-        int32_t k = np_encoge(z);
-        int32_t sy = NP_HORIZONTE + ((NP_CAMARA_ALTO * k) >> 8);
+        int32_t k = np_k_tramo[i];
+        int32_t sy = np_sy_tramo[i];
         int32_t cx, y, alto, dcx, acx;
 
         if (sy >= NP_SCREEN_H) continue;   /* todavia por debajo de la pantalla */
@@ -4722,7 +4747,12 @@ uint16_t np_carretera(const NpWorld *w, int16_t *centro)
         if (fila < 0) fila = 0;
         if (fila >= NP_MAX_TRAMOS) fila = NP_MAX_TRAMOS - 1;
 
-        cx = NP_SCREEN_W / 2 + (((w->via_centro[fila] - cam_x) * k) >> 8);
+        /* Los dos de 16 bits a proposito: asi es un `muls.w` del 68000 y no
+           una llamada a la rutina de multiplicar de 32 por 32. Caben de
+           sobra -el eje de la via y la camara son pixeles dentro del mapa, y
+           un mapa no pasa de 255 tiles- y el producto no se sale de 32. */
+        cx = NP_SCREEN_W / 2
+           + (((int32_t)(int16_t)(w->via_centro[fila] - cam_x) * (int16_t)k) >> 8);
 
         /* Y se rellenan las lineas que hay entre este tramo y el de antes,
            repartiendo el eje entre las dos: sin esto la calzada saldria a
@@ -4734,11 +4764,20 @@ uint16_t np_carretera(const NpWorld *w, int16_t *centro)
            es una excepcion que para la maquina en seco. */
         if (alto <= 0) continue;
         if (primero) { cx_ant = cx; primero = 0; }
-        dcx = ((cx_ant - cx) << 8) / alto;
-        acx = cx << 8;
-        for (y = sy; y < sy_ant; y++) {
-            centro[y] = (int16_t)(acx >> 8);
-            acx += dcx;
+        if (alto == 1) {
+            /* Una sola linea: no hay nada que repartir, y asi se ahorra la
+               division. No es un atajo con truco: con alto = 1 el bucle de
+               abajo escribe exactamente esto y el dcx que calculaba no lo
+               llegaba a usar nadie. De los ciento y pico tramos que caben en
+               pantalla, casi todos son de una linea. */
+            centro[sy] = (int16_t)cx;
+        } else {
+            dcx = ((cx_ant - cx) << 8) / alto;
+            acx = cx << 8;
+            for (y = sy; y < sy_ant; y++) {
+                centro[y] = (int16_t)(acx >> 8);
+                acx += dcx;
+            }
         }
         sy_ant = sy;
         cx_ant = cx;
@@ -4798,6 +4837,28 @@ const NpCarreteraTam *np_carretera_dibujo(const NpActorDef *def, int32_t escala)
     for (; tam->cols; tam++)
         if (escala >= (int32_t)tam->desde) return tam;
     return 0;
+}
+
+const NpCarreteraTam *np_carretera_dibujo_zoom(const NpActorDef *def,
+                                               int32_t escala, uint16_t *zoom)
+{
+    const NpCarreteraTam *tam, *elegido = 0;
+    *zoom = 256;
+    if (!def->lejos) return 0;
+    tam = np_carretera_tam[def->lejos - 1];
+    /* Aqui la eleccion es al reves que arriba: la maquina que encoge no quiere
+       el mas grande que valga, quiere **el mas pequeno que no se quede
+       corto**. Lo que sobra lo quita el hardware, y el tamano sale exacto en
+       vez de ser uno de cinco. */
+    for (; tam->cols; tam++) {
+        if ((int32_t)tam->escala < escala) break;
+        elegido = tam;
+    }
+    if (!elegido) return np_carretera_tam[def->lejos - 1];  /* mas cerca que el natural */
+    *zoom = (uint16_t)((uint32_t)escala * 256u / elegido->escala);
+    if (*zoom > 256) *zoom = 256;
+    if (!*zoom) *zoom = 1;
+    return elegido;
 }
 
 /* ------------------------------------------------- la pantalla y las salas */

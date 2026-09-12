@@ -46,6 +46,62 @@ tiempo de CPU.
 
 El marcador va en el plano fix, que no se mueve con la cámara.
 
+### Conduciendo el reparto es otro: la carretera en bandas
+
+Ésta es la única de las ocho máquinas que no tiene **nada** con lo que
+deslizar una imagen línea a línea: no hay un plano que correr (la Mega Drive y
+el X68000), ni un copper que lo cambie en mitad de la pantalla (el Amiga), ni
+una lista de objetos por línea (la Jaguar). Aquí todo son sprites, y un sprite
+de Neo Geo es **una columna**: justo lo contrario de lo que hace falta.
+
+Así que la carretera va en bandas. La imagen es la misma que se lleva la Mega
+Drive —la calzada en perspectiva, 512 de ancho, con las cuatro franjas
+dibujadas dentro— y se reparte en filas de veintiuna columnas de sprite, una
+fila cada 16 líneas. Cada banda se corre lo que diga la proyección en su línea
+de en medio:
+
+```
+sprite   1..48    el coche, el tráfico y lo que haya en la calzada  (delante)
+sprite  49..342   la carretera: 14 bandas de 21 columnas            (detrás)
+```
+
+Son 294 de los 381 sprites de la consola, así que a los actores les quedan
+menos. No importa: en la calzada se ven dos coches de media, no veinte.
+
+Es el scroll por línea de la Mega Drive redondeado a dieciséis, y la curva
+cambia tan poco de una línea a la siguiente que la escalera no se ve. Tres
+detalles que hacen que quepa en el frame:
+
+- las columnas de cada banda van **en anillo**, igual que en el fondo: la
+  columna N de la imagen cae siempre en el sprite N mod 21, así que cuando una
+  banda se corre un tile sólo hay que rehacer un tilemap;
+- la Y y la altura de una banda no cambian nunca, así que `SCB3` se escribe
+  una vez al entrar en el nivel;
+- y las X de los veintiún sprites están **seguidas** en la VRAM, así que se
+  apunta una vez y se escriben del tirón, en orden de sprite y no de pantalla:
+  23 escrituras por banda en vez de 84.
+
+Las franjas que corren hacia ti no se dibujan: son cuatro huecos de paleta por
+cosa, rotados un paso por frame. Doce palabras a la RAM de color.
+
+### El escalador de sprites (SCB2)
+
+Lo que ninguna de las otras siete tiene. Cada sprite lleva en `SCB2` una
+palabra con dos números: el de arriba, de cuatro bits, es el ancho (de 1 a 16
+píxeles por columna de tile) y el de abajo, de ocho, el alto (de 1 a 256
+líneas de cada 256). Es lo que hacen los jefes que se te vienen encima en los
+juegos de la máquina.
+
+El tráfico de la carretera se sirve de las dos cosas a la vez:
+
+1. el motor elige el dibujo con `np_carretera_dibujo_zoom()`, que es como el
+   `np_carretera_dibujo()` de las otras siete pero **al revés**: no busca el
+   dibujo más grande que valga, sino el más pequeño que no se quede corto. Así
+   un coche lejano sigue costando un sprite y no cuatro;
+2. y el escalador tapa el escalón hasta el tamaño exacto.
+
+Aquí los coches no crecen a saltos de cinco tamaños: crecen.
+
 ## Formato de los gráficos
 
 Lo implementa `tools/ngplat/gfx.py`. Cada función tiene su inversa y los tests
@@ -278,8 +334,11 @@ La prueba enciende la consola, mira la pantalla de título, pulsa START, juega
 un rato hacia la derecha y comprueba que la imagen cambia, que el marcador se
 dibuja y que ningún frame se pasa del presupuesto de la máquina.
 
-**No es un emulador de Neo Geo.** No hay Z80, ni YM2610, ni zoom de sprites, ni
-BIOS. Y hay dos cosas que da por supuestas, las mismas que da el motor, así que
+**No es un emulador de Neo Geo.** No hay BIOS. El Z80 con el YM2610 sí están
+(la ROM M1 se ejecuta de verdad) y el zoom de sprites también, modelado con el
+reparto proporcional: el chip de verdad elige qué píxeles se quedan con una
+tabla suya, así que uno puede caer distinto; lo que sí sale igual es el
+**tamaño**, que es lo que se comprueba. Y hay dos cosas que da por supuestas, las mismas que da el motor, así que
 no puede desmentirlas (solo un MVS o MAME con BIOS pueden):
 
 - que el sprite 0 va delante y los siguientes quedan detrás;
@@ -341,6 +400,6 @@ escrituras a VRAM de más.
 ## Lo que aún no se ha podido comprobar
 
 El banco de pruebas cubre el vídeo, el mando y el sonido, y ahí entran ya la
-música por FM y las muestras de la ROM V1. Sigue sin usarse el **zoom de
-sprites**, que es lo que más distingue a esta placa. Y nada de esto se ha visto
-en una placa de verdad: el banco es del propio kit.
+música por FM, las muestras de la ROM V1 y el zoom de sprites. Lo que no se ha
+visto es nada de esto **en una placa de verdad**: el banco es del propio kit, y
+del escalador modela el tamaño pero no qué píxel exacto se queda.

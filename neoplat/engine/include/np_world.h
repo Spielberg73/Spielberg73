@@ -461,6 +461,15 @@ int np_carretera_donde(const NpWorld *w, np_fix x, np_fix y,
  * distinto se ve. */
 const NpCarreteraTam *np_carretera_dibujo(const NpActorDef *def, int32_t escala);
 
+/* Lo mismo, para la maquina que sabe **encoger sprites** (solo la Neo Geo).
+ *
+ * Ahi la eleccion es al reves: no interesa el dibujo mas grande que valga,
+ * sino el mas pequeno que no se quede corto, porque de ahi para abajo lo pone
+ * el hardware y el tamano sale exacto. Deja en `zoom` lo que hay que encoger,
+ * con 256 = tal cual (nunca mas, que el chip encoge pero no agranda). */
+const NpCarreteraTam *np_carretera_dibujo_zoom(const NpActorDef *def,
+                                               int32_t escala, uint16_t *zoom);
+
 /* Lo que corre el coche, en pixeles por frame (24.8). En la vista de carretera
  * el coche sube por el mapa, o sea con la `y` bajando, asi que su velocidad de
  * verdad es la de al reves; esto lo dice una sola vez para que el marcador, el

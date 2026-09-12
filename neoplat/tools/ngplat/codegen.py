@@ -109,10 +109,10 @@ def _carretera_tamanos_c(build: Build) -> List[str]:
         src.append("static const NpCarreteraTam np_lejos%d[] = {"
                    % (construido.lejos_index - 1))
         for hoja, (escala, desde) in zip(hojas, CARRETERA_ESCALAS):
-            src.append("    { %d, %d, %d, %d, %d },   /* a %d/256 */"
+            src.append("    { %d, %d, %d, %d, %d, %d },   /* a %d/256 */"
                        % (hoja.first_tile, hoja.palette_index, hoja.cols,
-                          hoja.rows, desde, escala))
-        src.append("    { 0, 0, 0, 0, 0 }")
+                          hoja.rows, desde, escala, escala))
+        src.append("    { 0, 0, 0, 0, 0, 0 }")
         src.append("};")
     src.append("const NpCarreteraTam *const np_carretera_tam[] = {")
     if con_tamanos:
