@@ -321,17 +321,6 @@ static int16_t np_centro_de_linea[NP_SCREEN_H];
 static uint8_t np_bandas_todas = 1;       /* al entrar en el nivel, todas */
 static const NpLevel *np_ultimo_nivel;
 
-/* Cuantas cosas de la calzada se dibujan a la vez, las mas cercanas. Con el
-   circuito del andamiaje se ven dos coches de media, no sesenta. */
-#define NP_CARRETERA_A_LA_VEZ 12
-
-/* Los tres numeros caben de sobra en dieciseis bits, y asi la estructura son
-   ocho bytes: con int32_t gcc copia la estructura llamando a memcpy, y aqui no
-   hay biblioteca de C que lo tenga. */
-typedef struct {
-    int16_t sx, sy, escala;
-    uint8_t entidad;
-} NpEnLaVia;
 
 static void np_paleta_carretera(uint8_t fase)
 {
@@ -565,32 +554,15 @@ void np_video_frame(const NpWorld *w)
        cinco tamanos que en las otras siete- y el escalador de la consola tapa
        el escalon hasta el tamano exacto.
 
-       De mas lejos a mas cerca no vale aqui: en esta maquina el que tapa es
-       **el de numero mas bajo**, asi que se dibujan los de cerca primero. Se
-       ordena por insercion, que conduciendo el circuito se ven dos coches de
-       media y no sesenta. */
+       El orden lo da el motor, igual que a las otras siete. */
     {
         NpEnLaVia visto[NP_CARRETERA_A_LA_VEZ];
-        uint8_t vistos = 0, j;
-        for (i = 0; i < cuantas; i++) {
-            const NpEntity *e = &w->entities[NP_DIBUJO(orden, i)];
-            int32_t sx, sy, escala;
-            if (!e->active) continue;
-            if (e->hurt && (w->frame & 1)) continue;
-            if (!np_carretera_donde(w, e->x, e->y, &sx, &sy, &escala)) continue;
-            if (vistos == NP_CARRETERA_A_LA_VEZ) {
-                if (escala <= visto[vistos - 1].escala) continue;
-                vistos--;
-            }
-            for (j = vistos; j && visto[j - 1].escala < escala; j--)
-                visto[j] = visto[j - 1];
-            visto[j].sx = (int16_t)sx;
-            visto[j].sy = (int16_t)sy;
-            visto[j].escala = (int16_t)escala;
-            visto[j].entidad = NP_DIBUJO(orden, i);
-            vistos++;
-        }
-        for (j = 0; j < vistos; j++) {
+        uint8_t cuantos = np_carretera_trafico(w, visto, NP_CARRETERA_A_LA_VEZ);
+        uint8_t j;
+        /* El motor los da de lejos a cerca, que es como se dibujan en las
+           otras siete. Aqui se recorren **al reves**: el que tapa es el sprite
+           de numero mas bajo, asi que los de cerca se piden primero. */
+        for (j = cuantos; j--; ) {
             const NpEntity *e = &w->entities[visto[j].entidad];
             const NpActorDef *def = np_entity_def(e);
             uint16_t zoom;

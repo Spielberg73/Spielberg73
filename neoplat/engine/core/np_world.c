@@ -4826,6 +4826,50 @@ int np_carretera_donde(const NpWorld *w, np_fix x, np_fix y,
     return 1;
 }
 
+/* La copia de una ficha, campo a campo: con una asignacion de estructura gcc
+   llama a memcpy y aqui no hay biblioteca de C. */
+static void np_copiar_via(NpEnLaVia *a, const NpEnLaVia *b)
+{
+    a->sx = b->sx;
+    a->sy = b->sy;
+    a->escala = b->escala;
+    a->entidad = b->entidad;
+}
+
+uint8_t np_carretera_trafico(const NpWorld *w, NpEnLaVia *visto, uint8_t tope)
+{
+    uint8_t cuantos = 0, i;
+    if (!np_vista_carretera || !tope) return 0;
+    for (i = 0; i < w->entity_count; i++) {
+        const NpEntity *e = &w->entities[i];
+        NpEnLaVia esto;
+        int32_t sx, sy, escala;
+        uint8_t hueco;
+        if (!e->active) continue;
+        if (e->hurt && (w->frame & 1)) continue;      /* parpadeo al recibir */
+        if (!np_carretera_donde(w, e->x, e->y, &sx, &sy, &escala)) continue;
+        esto.sx = (int16_t)sx;
+        esto.sy = (int16_t)sy;
+        esto.escala = (int16_t)escala;
+        esto.entidad = i;
+        if (cuantos == tope) {
+            /* Si no caben todos se quedan los que mas se ven, que son los mas
+               cercanos: el primero de la lista es el mas lejano. */
+            if (esto.escala <= visto[0].escala) continue;
+            cuantos--;
+            for (hueco = 0; hueco < cuantos; hueco++)
+                np_copiar_via(&visto[hueco], &visto[hueco + 1]);
+        }
+        /* Por insercion y sin miedo: aqui se ven dos coches de media. */
+        for (hueco = cuantos; hueco > 0 && visto[hueco - 1].escala > esto.escala;
+             hueco--)
+            np_copiar_via(&visto[hueco], &visto[hueco - 1]);
+        np_copiar_via(&visto[hueco], &esto);
+        cuantos++;
+    }
+    return cuantos;
+}
+
 const NpCarreteraTam *np_carretera_dibujo(const NpActorDef *def, int32_t escala)
 {
     const NpCarreteraTam *tam;

@@ -459,6 +459,37 @@ int np_carretera_donde(const NpWorld *w, np_fix x, np_fix y,
  * escala, o 0 si ese actor no sale en la calzada. Esta aqui, y no en cada
  * np_video.c, para que las ocho elijan el mismo: con cinco tamanos, elegir
  * distinto se ve. */
+/* Lo que se ve en la calzada, proyectado y **ordenado de lejos a cerca**.
+ *
+ * Esto estaba escrito en la Mega Drive y en ninguna mas, y se notaba: en el
+ * Amiga, el A1200, el CD32, el Atari ST y la Jaguar el trafico se dibujaba en
+ * el orden de la lista de entidades, asi que cuando dos coches se solapaban
+ * tapaba el que tocara -y **no el mismo en todas las maquinas**-, que es justo
+ * la regla que el kit se impone en todo lo demas.
+ *
+ * Rellena `visto` con los `tope` mas cercanos, del mas lejano al mas cercano,
+ * y devuelve cuantos ha puesto. Dibujandolos en ese orden, lo de delante tapa
+ * a lo de detras; la Neo Geo, donde el que tapa es el sprite de numero mas
+ * bajo, lo recorre al reves.
+ *
+ * La proyeccion se hace **una vez por entidad** y se guarda, que repetirla por
+ * cada coche se nota en el frame de las maquinas justas.
+ *
+ * Los tres numeros caben de sobra en dieciseis bits -la pantalla son 320x224 y
+ * la escala mas grande medida es 705- y asi la ficha son ocho bytes. Importa:
+ * con int32_t gcc copia la estructura llamando a memcpy, y en estas maquinas
+ * no hay biblioteca de C que lo tenga. */
+typedef struct {
+    int16_t sx, sy, escala;
+    uint8_t entidad;
+} NpEnLaVia;
+
+/* Cuantas cosas de la calzada se dibujan a la vez, las mas cercanas. Con el
+   circuito del andamiaje se ven **dos coches de media**, no sesenta. */
+#define NP_CARRETERA_A_LA_VEZ 12
+
+uint8_t np_carretera_trafico(const NpWorld *w, NpEnLaVia *visto, uint8_t tope);
+
 const NpCarreteraTam *np_carretera_dibujo(const NpActorDef *def, int32_t escala);
 
 /* Lo mismo, para la maquina que sabe **encoger sprites** (solo la Neo Geo).

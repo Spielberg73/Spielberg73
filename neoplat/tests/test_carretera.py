@@ -695,6 +695,88 @@ class TestLaCarreteraEnLaNeoGeo(unittest.TestCase):
             " consola (%d)" % (max(ciclos), tope))
 
 
+class TestElOrdenDelTrafico(unittest.TestCase):
+    """Quien tapa a quien en la calzada, y que sea **el mismo en las ocho**.
+
+    Esto estaba escrito en la Mega Drive y en ninguna mas. El Amiga, el A1200,
+    el CD32, el Atari ST y la Jaguar dibujaban el trafico en el orden de la
+    lista de entidades, asi que al solaparse dos coches tapaba el que tocara
+    -y no el mismo en cada maquina-, que es justo la regla que el kit se impone
+    en todo lo demas. El Amiga hasta lo tenia escrito en un comentario que el
+    codigo no cumplia.
+
+    Ahora el orden lo da el motor, `np_carretera_trafico`, y cada maquina se
+    limita a recorrer la lista: de principio a fin las que dibujan encima de lo
+    ya dibujado, y del reves la Neo Geo, donde el que tapa es el sprite de
+    numero mas bajo.
+    """
+
+    def test_el_motor_los_da_de_lejos_a_cerca_y_se_queda_los_mas_cercanos(self):
+        if not shutil.which("gcc"):
+            self.skipTest("no hay gcc para compilar el motor")
+        from ngplat.build import build_project
+        from ngplat.codegen import copy_engine, generate_gamedata
+        from ngplat.project import load_project
+        tmp = tempfile.mkdtemp(prefix="neoplat-orden-")
+        try:
+            proyecto = os.path.join(tmp, "circuito")
+            crear_proyecto(proyecto, "COSTA", "TEST", genero="carretera")
+            build = build_project(load_project(proyecto))
+            out = os.path.join(tmp, "build")
+            os.makedirs(os.path.join(out, "src"), exist_ok=True)
+            for relativo, contenido in generate_gamedata(build).items():
+                with open(os.path.join(out, relativo), "w",
+                          encoding="utf-8") as fh:
+                    fh.write(contenido)
+            copy_engine(out)
+            fuente = os.path.join(tmp, "orden.c")
+            with open(fuente, "w", encoding="utf-8") as fh:
+                fh.write(_ORDEN_C)
+            binario = os.path.join(tmp, "orden")
+            compilar = subprocess.run(
+                ["gcc", "-std=c99", "-O2", "-Wall", "-Wextra", "-Werror",
+                 "-I", os.path.join(out, "src"), "-o", binario, fuente,
+                 os.path.join(out, "src", "np_world.c"),
+                 os.path.join(out, "src", "gamedata.c")],
+                capture_output=True, text=True)
+            self.assertEqual(compilar.returncode, 0,
+                             "el motor no compila:\n" + compilar.stderr)
+            lineas = subprocess.run([binario], capture_output=True, text=True,
+                                    check=True).stdout.split()
+            escalas = [int(v) for v in lineas]
+            self.assertGreater(len(escalas), 1,
+                               "el motor no ha visto trafico en la calzada")
+            self.assertEqual(escalas, sorted(escalas),
+                             "no vienen de lejos a cerca: %r" % escalas)
+            self.assertLessEqual(
+                len(escalas), 12,
+                "se ha pasado del tope de %d: %r" % (12, len(escalas)))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_ninguna_maquina_se_monta_su_propio_orden(self):
+        """Y la que lo caza: que las siete pidan el orden al motor en vez de
+        recorrerse la lista de entidades por su cuenta.
+
+        Se mira el codigo porque es donde estaba el fallo: las cinco que no
+        ordenaban proyectaban con `np_carretera_donde` dentro de su propio
+        bucle. Quien vuelva a hacerlo, aqui se entera."""
+        maquinas = ("megadrive", "neogeo", "amiga", "atarist", "jaguar")
+        for maquina in maquinas:
+            ruta = os.path.join(KIT, "engine", maquina, "np_video.c")
+            with open(ruta, encoding="utf-8") as fh:
+                codigo = fh.read()
+            if "NP_VISTA_CARRETERA" not in codigo:
+                continue
+            self.assertIn(
+                "np_carretera_trafico", codigo,
+                "%s no le pide el orden del trafico al motor" % maquina)
+            self.assertNotIn(
+                "np_carretera_donde", codigo,
+                "%s sigue proyectando el trafico por su cuenta: el orden se "
+                "le va a quedar el de la lista de entidades" % maquina)
+
+
 _TAMANOS_C = """/* Que tamano elige el motor a cada distancia, en tiles. */
 #include <stdio.h>
 #include "np_world.h"
@@ -752,6 +834,29 @@ int main(void)
     }
     printf("%d\\n", (int)world.via_ancho);
     for (y = 0; y < NP_SCREEN_H; y++) printf("%d\\n", (int)medio[y]);
+    return 0;
+}
+"""
+
+
+_ORDEN_C = """/* En que orden da el motor el trafico de la calzada. */
+#include <stdio.h>
+#include "np_world.h"
+static NpWorld world;
+int main(void)
+{
+    NpEnLaVia visto[NP_CARRETERA_A_LA_VEZ];
+    uint8_t cuantos, i;
+    int vuelta;
+    np_world_init(&world);
+    np_world_step(&world, NP_IN_START, 0);
+    /* Unas cuantas vueltas acelerando, para que haya trafico repartido por la
+       calzada y no todo pegado al horizonte. */
+    for (vuelta = 0; vuelta < 240; vuelta++)
+        np_world_step(&world, NP_IN_ACTION, 0);
+    cuantos = np_carretera_trafico(&world, visto, NP_CARRETERA_A_LA_VEZ);
+    for (i = 0; i < cuantos; i++) printf("%d ", (int)visto[i].escala);
+    printf("\\n");
     return 0;
 }
 """

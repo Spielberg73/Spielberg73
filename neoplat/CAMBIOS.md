@@ -2,8 +2,37 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.43.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.44.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.44
+
+**Quién tapa a quién en la calzada: ahora el mismo en las ocho máquinas.**
+
+El orden del tráfico estaba escrito en la Mega Drive y en ninguna más. El
+Amiga, el A1200, el CD32, el Atari ST y la Jaguar lo dibujaban en el orden de
+la **lista de entidades**, así que cuando dos coches se solapaban tapaba el que
+tocara —y no el mismo en cada máquina—, que es justo la regla que el kit se
+impone en todo lo demás. El Amiga hasta lo llevaba escrito en un comentario que
+el código no cumplía: *"se dibuja de más lejos a más cerca"*, y no lo hacía.
+
+Ahora lo decide el motor, `np_carretera_trafico()`: proyecta cada cosa **una
+vez**, se queda con las doce más cercanas y las devuelve **de lejos a cerca**.
+Cada máquina se limita a recorrer la lista —de principio a fin las que dibujan
+encima de lo ya dibujado, y del revés la Neo Geo, donde el que tapa es el
+sprite de número más bajo—. La Mega Drive y la Neo Geo, que cada una tenía su
+copia de la ordenación, se han quedado sin ella: cincuenta líneas menos y una
+sola cuenta para las ocho.
+
+Dos pruebas nuevas:
+
+- una compila el motor en el ordenador, conduce 240 frames y exige que la lista
+  venga ordenada y recortada al tope;
+- y la que habría cazado el fallo: que **ninguna máquina se monte su propio
+  orden**, mirando que las que dibujan carretera pidan la lista al motor y no
+  se recorran las entidades por su cuenta.
+
+Comprobadas fallando con el código de antes.
 
 ## 1.43
 

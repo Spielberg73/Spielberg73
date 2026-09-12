@@ -1017,24 +1017,26 @@ void np_video_actores(const NpWorld *w)
 #if NP_VISTA_CARRETERA
     /* Lo que hay en la calzada va **donde dice la proyeccion y del tamano que
        le toca**, no donde diga el mapa: en esta vista el mapa es el trazado.
-       np_carretera_donde da la pantalla, y aqui se pasa a coordenadas de mundo
-       porque es lo que pide el pintor. */
-    for (i = 0; i < cuantas; i++) {
-        const NpEntity *e = &w->entities[NP_DIBUJO(orden, i)];
-        const NpActorDef *def;
-        const NpCarreteraTam *tam;
-        int32_t sx, sy, escala;
-        if (!e->active) continue;
-        if (e->hurt && (w->frame & 1)) continue;
-        def = np_entity_def(e);
-        if (!np_carretera_donde(w, e->x, e->y, &sx, &sy, &escala)) continue;
-        tam = np_carretera_dibujo(def, escala);
-        if (!tam) continue;
-        /* El dibujo viene centrado y apoyado abajo en su bloque de tiles. */
-        np_pintar_bloque(b, tam->first_tile, tam->cols, tam->rows,
-                         sx - tam->cols * NP_TILE / 2 + b->vista_x,
-                         sy - tam->rows * NP_TILE + b->vista_y - NP_RECORTE_Y,
-                         np_actor_frame(def, e->anim, e->anim_frame), 1);
+       El motor da la pantalla ya proyectada, y aqui se pasa a coordenadas de
+       mundo porque es lo que pide el pintor. */
+    /* De mas lejos a mas cerca, y ese orden lo da el motor: la lista de
+       entidades no sirve, que aqui lo que manda es la escala. */
+    {
+        NpEnLaVia visto[NP_CARRETERA_A_LA_VEZ];
+        uint8_t cuantos = np_carretera_trafico(w, visto, NP_CARRETERA_A_LA_VEZ);
+        uint8_t j;
+        for (j = 0; j < cuantos; j++) {
+            const NpEntity *e = &w->entities[visto[j].entidad];
+            const NpActorDef *def = np_entity_def(e);
+            const NpCarreteraTam *tam = np_carretera_dibujo(def, visto[j].escala);
+            if (!tam) continue;
+            /* El dibujo viene centrado y apoyado abajo en su bloque de tiles. */
+            np_pintar_bloque(b, tam->first_tile, tam->cols, tam->rows,
+                             visto[j].sx - tam->cols * NP_TILE / 2 + b->vista_x,
+                             visto[j].sy - tam->rows * NP_TILE + b->vista_y
+                                 - NP_RECORTE_Y,
+                             np_actor_frame(def, e->anim, e->anim_frame), 1);
+        }
     }
     for (i = 0; i < NP_MAX_PLAYERS; i++) {
         const NpActorDef *def = &np_player_def.actor;

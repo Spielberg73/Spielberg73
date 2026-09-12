@@ -136,6 +136,15 @@ Lo que está **sobre** la calzada —los coches de delante— sí se dibuja por
 frame, y se dibuja en perspectiva: el motor dice dónde cae y cuánto encoge
 (`np_carretera_donde`), igual para las ocho máquinas.
 
+Y dice también **en qué orden**. `np_carretera_trafico()` proyecta cada cosa
+una vez, se queda con las doce más cercanas y las devuelve de lejos a cerca,
+que es como hay que dibujarlas para que lo de delante tape a lo de detrás. Esta
+cuenta estaba escrita aquí y en ninguna otra máquina, y se notaba: las que no
+la tenían dibujaban en el orden de la lista de entidades, así que al solaparse
+dos coches tapaba el que tocara y **no el mismo en cada máquina**. Ahora la
+pide todo el mundo; la Neo Geo recorre la misma lista al revés, porque allí el
+que tapa es el sprite de número más bajo.
+
 El VDP no sabe encoger un sprite, así que el compilador saca del mismo PNG
 **cinco tamaños** de cada cosa que puede salir en la calzada y el motor elige
 el que toca (`np_carretera_dibujo`). Cuántos y cuáles no está elegido a ojo:

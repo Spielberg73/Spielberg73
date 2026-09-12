@@ -349,64 +349,15 @@ static void np_scroll_carretera(const NpWorld *w)
 
 /* Lo que hay en la calzada -el trafico, y lo que se ponga al borde- se dibuja
  * **donde cae y del tamano que le toca**, no donde diga el mapa: en esta vista
- * el mapa es el trazado, no lo que se ve. El motor dice las dos cosas
- * (np_carretera_donde y np_carretera_dibujo) para que las ocho maquinas lo
- * pongan en el mismo pixel.
- *
- * De mas lejos a mas cerca, que es lo que hace que lo de delante tape a lo de
- * detras. Se ordena por insercion y sin miedo: conduciendo el circuito del
- * andamiaje se ven **dos coches de media** a la vez, no sesenta. */
-#define NP_CARRETERA_A_LA_VEZ 12
-
-/* Los tres numeros caben de sobra en dieciseis bits -la pantalla son 320x224 y
-   la escala mas grande que se ha medido es 705- y asi la estructura son ocho
-   bytes. Importa: con int32_t gcc copiaba la estructura llamando a memcpy, y
-   aqui no hay biblioteca de C que lo tenga. */
-typedef struct {
-    int16_t sx, sy, escala;
-    uint8_t entidad;
-} NpEnLaVia;
-
-static void np_copiar_via(NpEnLaVia *a, const NpEnLaVia *b)
-{
-    a->sx = b->sx;
-    a->sy = b->sy;
-    a->escala = b->escala;
-    a->entidad = b->entidad;
-}
+ * el mapa es el trazado, no lo que se ve. El motor dice las tres cosas -donde
+ * cae, con que dibujo y **en que orden**- para que las ocho maquinas lo pongan
+ * en el mismo pixel y tapen igual. */
 
 static void np_dibujar_trafico(const NpWorld *w)
 {
     NpEnLaVia visto[NP_CARRETERA_A_LA_VEZ];
-    uint8_t cuantos = 0, i;
-    for (i = 0; i < NP_MAX_ENTITIES; i++) {
-        const NpEntity *e = &w->entities[i];
-        NpEnLaVia esto;
-        int32_t sx, sy, escala;
-        uint8_t hueco;
-        if (!e->active) continue;
-        if (e->hurt && (w->frame & 1)) continue;
-        /* La proyeccion se hace **una vez** y se guarda: en esta maquina
-           repetirla por cada coche se nota en el frame. */
-        if (!np_carretera_donde(w, e->x, e->y, &sx, &sy, &escala)) continue;
-        esto.sx = (int16_t)sx;
-        esto.sy = (int16_t)sy;
-        esto.escala = (int16_t)escala;
-        esto.entidad = i;
-        if (cuantos == NP_CARRETERA_A_LA_VEZ) {
-            /* Si no caben todos se quedan los que mas se ven, que son los mas
-               cercanos: el primero de la lista es el mas lejano. */
-            if (esto.escala <= visto[0].escala) continue;
-            cuantos--;
-            for (hueco = 0; hueco < cuantos; hueco++)
-                np_copiar_via(&visto[hueco], &visto[hueco + 1]);
-        }
-        for (hueco = cuantos; hueco > 0 && visto[hueco - 1].escala > esto.escala;
-             hueco--)
-            np_copiar_via(&visto[hueco], &visto[hueco - 1]);
-        np_copiar_via(&visto[hueco], &esto);
-        cuantos++;
-    }
+    uint8_t cuantos = np_carretera_trafico(w, visto, NP_CARRETERA_A_LA_VEZ);
+    uint8_t i;
     for (i = 0; i < cuantos; i++) {
         const NpEntity *e = &w->entities[visto[i].entidad];
         const NpActorDef *def = np_entity_def(e);
