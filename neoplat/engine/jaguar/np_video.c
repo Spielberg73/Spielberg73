@@ -122,6 +122,84 @@ static void np_volcar_lista(void)
         np_lista[i] = np_copia[i];
 }
 
+#if NP_VISTA_CARRETERA
+/* --- el retrazo por interrupcion ---------------------------------------
+ *
+ * Conduciendo, esta maquina no llega a 60: un frame de carretera tarda algo
+ * mas de un retrazo. Y como el chip **gasta** la lista segun la dibuja, el
+ * retrazo que pasaba mientras el juego pensaba pillaba una lista ya gastada y
+ * no dibujaba nada: la pantalla se quedaba en negro uno de cada dos frames, y
+ * desde fuera parecia que la carretera no se dibujaba en absoluto.
+ *
+ * Volcar varias veces seguidas desde el bucle principal tapa unos cuantos de
+ * esos retrazos (medido en el emulador: se ve el 33% con uno, el 50% juntando
+ * las lineas que se corren lo mismo, el 66% con dos volcados y el 75% con
+ * tres), pero nunca el ultimo: **el que pasa mientras el juego piensa**, que
+ * por definicion es cuando el bucle no esta mirando. Ese solo lo tapa una
+ * interrupcion. Con ella se ve el **100%**, y ademas el juego va mas deprisa,
+ * porque ya no gasta dos retrazos enteros esperando a nada.
+ *
+ * La lista que vuelca la interrupcion no puede ser la que esta escribiendo el
+ * juego (la pillaria a medio hacer, sin el STOP del final, y el chip se
+ * saldria de la lista). Por eso hay una tercera copia, la maestra: el juego
+ * termina su lista tranquilo en np_copia y solo entonces, con la interrupcion
+ * cerrada un momento, la pasa a la maestra de una pieza.
+ */
+static uint64_t np_maestra[NP_OBJETOS * 2];
+static uint16_t np_maestra_usados;
+static volatile uint8_t np_hubo_retrazo;
+
+static uint16_t np_cerrar_paso(void)
+{
+    uint16_t sr;
+    __asm__ volatile("move.w %%sr,%0\n\tor.w #0x0700,%%sr" : "=d"(sr) : : "memory");
+    return sr;
+}
+
+static void np_abrir_paso(uint16_t sr)
+{
+    __asm__ volatile("move.w %0,%%sr" : : "d"(sr) : "memory");
+}
+
+static void np_guardar_maestra(void)
+{
+    uint16_t i, sr = np_cerrar_paso();
+    for (i = 0; i <= np_usados; i++)
+        np_maestra[i] = np_copia[i];
+    np_maestra_usados = np_usados;
+    np_abrir_paso(sr);
+}
+
+static void __attribute__((interrupt_handler)) np_irq_video(void)
+{
+    uint16_t i;
+    for (i = 0; i <= np_maestra_usados; i++)
+        np_lista[i] = np_maestra[i];
+    np_hubo_retrazo = 1;
+    INT1 = 0x0101;                        /* servida: soltar el pestillo  */
+    INT2 = 0;
+}
+
+/* TOM no interrumpe por autovector: pone su propio numero de vector, el 64,
+ * que en el 68000 es la direccion $100. Comprobado poniendo la rutina solo
+ * ahi (se ve el 100% de los frames) y solo en el autovector de nivel 2, en
+ * $68 (la maquina se va a paseo: 0%). */
+static volatile uintptr_t np_tabla_vectores = 0;
+
+static void np_encender_irq(void)
+{
+    /* La tabla de vectores esta en el cero de la DRAM. El puntero se calcula
+       aparte porque el compilador, si le escribes directamente en la direccion
+       cero, avisa de que eso suele ser un error. Aqui no lo es. */
+    volatile uint32_t *vector = (volatile uint32_t *)np_tabla_vectores;
+    uint32_t rutina = NP_DIR(&np_irq_video);
+    vector[0x100 / 4] = rutina;
+    VI = np_vde;                          /* justo al empezar el retrazo  */
+    INT1 = 0x0001;                        /* dejar pasar la de video      */
+    __asm__ volatile("move.w #0x2000,%%sr" : : : "memory");
+}
+#endif
+
 /* --- arranque ----------------------------------------------------------- */
 
 static void np_init_video(void)
@@ -152,6 +230,10 @@ void np_jaguar_init(void)
     np_volcar_lista();
     OLP = (NP_DIR(np_lista) >> 16) | (NP_DIR(np_lista) << 16);  /* palabras cambiadas */
     VMODE = NP_VMODE;
+#if NP_VISTA_CARRETERA
+    np_guardar_maestra();                 /* antes de encenderla, que tenga que volcar */
+    np_encender_irq();
+#endif
 }
 
 /* --- escenario ---------------------------------------------------------- */
@@ -285,23 +367,44 @@ static void np_paleta_carretera(uint8_t fase)
     }
 }
 
-/* Y la lista: un objeto por linea, con la columna de la imagen que le toca. */
+/* Cuanto se corre la imagen en esta linea, ya recortado. */
+static int32_t np_carretera_off(uint16_t y)
+{
+    int32_t off = NP_CARRETERA_EJE - np_carretera_centro[y];
+    if (off < 0) off = 0;
+    if (off > NP_CARR_MARGEN) off = NP_CARR_MARGEN;
+    return off;
+}
+
+/* Y la lista. Un objeto por **tramo**, no por linea.
+ *
+ * La idea de partida era una linea un objeto, que es lo que el Object
+ * Processor hace de perlas. Pero cada objeto cuesta armarlo y volcarlo, y 224
+ * por frame no le caben al 68000 de esta maquina.
+ *
+ * Y no hacen falta 224. Un objeto de N lineas de alto dibuja N filas seguidas
+ * del mapa de bits, que es exactamente lo que pide la carretera: la linea `y`
+ * de la pantalla ensena la fila `y` de la imagen. Asi que las lineas seguidas
+ * que se corren **lo mismo** van en un solo objeto, y eso es casi todas: en
+ * recta la calzada no se mueve de lado, y en curva cambia de tramo en tramo.
+ * De 224 objetos se baja a unas pocas decenas, y el juego pasa de 20 imagenes
+ * por segundo a 30 (medido en el emulador). */
 static void np_objetos_carretera(const NpWorld *w)
 {
     uint16_t horizonte = np_carretera(w, np_carretera_centro);
-    uint16_t y;
+    uint16_t y = horizonte;
     np_paleta_carretera(np_carretera_fase(w));
-    for (y = horizonte; y < NP_SCREEN_H; y++) {
-        int32_t off = NP_CARRETERA_EJE - np_carretera_centro[y];
-        if (off < 0) off = 0;
-        if (off > NP_CARR_MARGEN) off = NP_CARR_MARGEN;
+    while (y < NP_SCREEN_H) {
+        int32_t off = np_carretera_off(y);
+        uint16_t y0 = y;
+        while (++y < NP_SCREEN_H && np_carretera_off(y) == off) ;
         /* La direccion salta de ocho en ocho pixeles -es lo que mide una frase
            de 64 bits a ocho bits por pixel- y lo que sobra lo pone la X del
            objeto, que si es por pixel. */
-        np_objeto(NP_DIR(np_fondo_bitmap) + (uint32_t)y * NP_MAPA_ANCHO
+        np_objeto(NP_DIR(np_fondo_bitmap) + (uint32_t)y0 * NP_MAPA_ANCHO
                   + ((uint32_t)off & ~7u),
-                  (int16_t)(-(off & 7)), (int16_t)y,
-                  NP_SCREEN_W + 8, 1, NP_MAPA_ANCHO / 8, 0);
+                  (int16_t)(-(off & 7)), (int16_t)y0,
+                  NP_SCREEN_W + 8, (uint16_t)(y - y0), NP_MAPA_ANCHO / 8, 0);
     }
 }
 #endif /* NP_VISTA_CARRETERA */
@@ -517,15 +620,41 @@ void np_video_frame(const NpWorld *w)
 #endif
 
     np_cerrar_lista();
+#if NP_VISTA_CARRETERA
+    np_guardar_maestra();                 /* ya esta entera: que la vea la IRQ */
+#endif
 }
 
 /* --- sincronizacion y mando --------------------------------------------- */
 
-void np_wait_vblank(void)
+#if !NP_VISTA_CARRETERA
+static void np_esperar_retrazo(void)
 {
     while ((VC & 0x7FF) >= np_vde) ;      /* salir del retrazo de ahora   */
     while ((VC & 0x7FF) < np_vde) ;       /* y esperar al siguiente       */
+}
+#endif
+
+void np_wait_vblank(void)
+{
+#if NP_VISTA_CARRETERA
+    /* Conduciendo se espera **a la interrupcion**, no al contador de linea.
+     *
+     * Mirando el contador no valia: entre la linea en la que interrumpe y el
+     * final de la cuenta solo hay diecisiete medias lineas, y volcar la lista
+     * tarda mas que eso. Cuando la rutina soltaba el mando, el contador ya
+     * habia dado la vuelta, asi que el bucle nunca llegaba a verlo pasado y
+     * se quedaba dando vueltas frame tras frame: la imagen se veia entera y
+     * quieta, porque el juego no avanzaba ni un paso.
+     *
+     * Con la bandera no hay ventana que perder: la pone la rutina y la ve el
+     * bucle cuando le toque. */
+    np_hubo_retrazo = 0;
+    while (!np_hubo_retrazo) ;
+#else
+    np_esperar_retrazo();
     np_volcar_lista();                    /* la lista de este frame       */
+#endif
 }
 
 /* El mando de la Jaguar es una matriz: se escribe una **palabra** con la fila

@@ -48,7 +48,9 @@
 #define HDE       REG16(0x03C)
 #define VDB       REG16(0x046)
 #define VDE       REG16(0x048)
-#define VI        REG16(0x04E)
+#define VI        REG16(0x04E)      /* media linea en la que interrumpe     */
+#define INT1      REG16(0x0E0)      /* permisos y pestillos de interrupcion */
+#define INT2      REG16(0x0E2)
 #define BG        REG16(0x058)
 #define CLUT      ((volatile uint16_t *)(uintptr_t)(TOM + 0x400))
 #define JOYSTICK  REG32(0x14000)    /* mando y botones, activos a nivel bajo */

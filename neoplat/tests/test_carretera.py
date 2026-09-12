@@ -462,6 +462,82 @@ class TestLaCarreteraEnAGA(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class TestLaCarreteraEnLaJaguar(unittest.TestCase):
+    """En la Jaguar hay que mirar dos cosas, y no son la misma.
+
+    El Object Processor **gasta** la lista de objetos segun la dibuja, asi que
+    el retrazo que pasa mientras el juego piensa se encontraba una lista ya
+    consumida y dejaba la pantalla en negro: salian dos frames de cada tres sin
+    imagen. Eso lo arregla volcar la lista desde la interrupcion de video.
+
+    Pero al hacerlo aparecio el fallo gemelo, y este engana: esperar el retrazo
+    mirando el contador de linea dejo de valer -entre la linea en la que
+    interrumpe y el final de la cuenta hay diecisiete medias lineas y volcar
+    tarda mas-, asi que el bucle se quedaba dando vueltas. **Se veia el 100% de
+    los frames, todos con la misma foto.** Una prueba que solo cuente colores
+    da eso por bueno.
+
+    Asi que aqui se exige lo uno y lo otro: que casi todos los frames traigan
+    imagen y que la imagen **cambie**.
+    """
+
+    def test_se_ve_en_todos_los_frames_y_ademas_el_juego_avanza(self):
+        import hashlib
+        sys.path.insert(0, os.path.join(KIT, "tests"))
+        from libretro import Emulador, buscar_core
+        import emulador_jaguar
+        from ngplat.build import build_project
+        from ngplat.codegen import generar_para_sistema
+        from ngplat.project import load_project
+        core = buscar_core(emulador_jaguar.CORE, "NEOPLAT_CORE_JAGUAR")
+        if not core:
+            self.skipTest("no esta instalado el core de Virtual Jaguar")
+        if not shutil.which("m68k-linux-gnu-gcc") and not shutil.which("m68k-elf-gcc"):
+            self.skipTest("no hay un compilador de 68000 instalado")
+        tmp = tempfile.mkdtemp(prefix="neoplat-jag-carretera-")
+        try:
+            proyecto = os.path.join(tmp, "circuito")
+            crear_proyecto(proyecto, "COSTA", "TEST", genero="carretera")
+            maquina = sistemas.obtener("jaguar")
+            build = build_project(load_project(proyecto), maquina.carretera_como)
+            maquina.preparar(build)
+            out = os.path.join(tmp, "build")
+            generar_para_sistema(build, out, maquina, "202")
+            hecho = subprocess.run(["make", "-C", out], capture_output=True,
+                                   text=True)
+            self.assertEqual(hecho.returncode, 0, hecho.stdout + hecho.stderr)
+            rom = [os.path.join(out, "rom", f)
+                   for f in os.listdir(os.path.join(out, "rom"))
+                   if f.endswith(".j64")][0]
+            emu = Emulador(core, sistema=tempfile.mkdtemp(prefix="neoplat-jag-"))
+            emu.cargar(rom)
+            emu.avanzar(200)
+            emu.pulsar(emulador_jaguar.EMPEZAR); emu.avanzar(6); emu.pulsar()
+            emu.avanzar(40)
+            emu.pulsar(emulador_jaguar.SALTAR)   # acelerar
+            emu.avanzar(60)
+            con_imagen, fotos = 0, []
+            for _ in range(40):
+                emu.avanzar(1)
+                ancho, alto, px = emu.frame
+                # la pantalla en negro tiene cuatro colores; la carretera, muchos
+                if len({p[:3] for p in px}) >= 8:
+                    con_imagen += 1
+                fotos.append(hashlib.md5(
+                    bytes(bytearray([c for p in px for c in p]))).hexdigest())
+            self.assertGreaterEqual(
+                con_imagen, 38,
+                "solo %d frames de 40 traen imagen: la lista se esta gastando "
+                "sin volver a volcarla" % con_imagen)
+            self.assertGreater(
+                len(set(fotos)), 1,
+                "los 40 frames son la misma foto: se ve, pero el juego no "
+                "avanza (el bucle se ha quedado esperando un retrazo que ya "
+                "paso)")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 _TAMANOS_C = """/* Que tamano elige el motor a cada distancia, en tiles. */
 #include <stdio.h>
 #include "np_world.h"

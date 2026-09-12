@@ -271,8 +271,7 @@ sonaba. El fallo estaba en la prueba: el botón de empezar en la Jaguar es
 Aquí la Jaguar hace de una vez lo que a la Mega Drive le cuesta una tabla y al
 Amiga una lista de copper. El Object Processor recorre la lista **en cada línea
 de barrido**, así que un mapa de bits de una sola línea de alto, con su propia
-X, **es** una entrada de scroll por línea. Doscientas veinticuatro de ésas y la
-carretera está puesta.
+X, **es** una entrada de scroll por línea.
 
 La imagen es la misma que se lleva la Mega Drive —512 de ancho, con las cuatro
 franjas dibujadas dentro— y se pinta una vez al entrar en el nivel. Las rayas
@@ -281,6 +280,57 @@ corren rotando la tabla de colores: doce palabras a la CLUT por frame.
 La dirección del objeto salta de ocho en ocho píxeles —lo que mide una frase de
 64 bits a ocho bits por píxel— y lo que sobra lo pone la X del objeto, que sí
 va por píxel.
+
+**No hacen falta 224 objetos.** La curva hace que muchas líneas seguidas se
+corran exactamente lo mismo, y un objeto puede tener varias líneas de alto: el
+motor recorre la pantalla de arriba abajo, junta las líneas que comparten
+desplazamiento y saca un objeto por tramo. De 224 se baja a unas pocas decenas.
+
+### Y por qué hacía falta la interrupción de vídeo
+
+Aun así, conduciendo esta máquina no llega a 60: un frame de carretera tarda
+algo más de un retrazo. Como el chip **gasta** la lista según la dibuja (la
+trampa 2 de arriba), el retrazo que pasaba mientras el juego pensaba se
+encontraba una lista consumida y no dibujaba nada. Medido en Virtual Jaguar,
+contando cuántos frames de sesenta traen imagen:
+
+| cómo se vuelca la lista | se ve |
+|---|---|
+| una vez por vuelta del bucle, 224 objetos | 33% |
+| juntando las líneas que se corren lo mismo | 50% |
+| y volcando dos veces | 66% |
+| y tres | 75% |
+| **desde la interrupción de vídeo** | **100%** |
+
+Volcar más veces desde el bucle tapa retrazos, pero nunca el último: **el que
+pasa mientras el juego piensa**, que por definición es cuando el bucle no está
+mirando. Ése sólo lo tapa una interrupción.
+
+Tres cosas que costaron, las tres medidas:
+
+**TOM no interrumpe por autovector.** Pone su propio número de vector, el 64,
+que en el 68000 es la dirección `$100`. Poniendo la rutina sólo ahí se ve el
+100%; poniéndola sólo en el autovector de nivel 2 (`$68`) la máquina se va a
+paseo y no se ve nada. `arranque.S` seguía apagando la interrupción con
+`VI = $FFFF`; ahora la enciende `np_video.c` al entrar, y sólo conduciendo.
+
+**La lista que vuelca la interrupción no puede ser la que escribe el juego**:
+la pillaría a medio hacer, sin el `STOP` del final, y el chip se saldría de la
+lista. Por eso hay una tercera copia, la maestra. El juego termina la suya
+tranquilo y sólo entonces, con la interrupción cerrada un momento, la pasa
+entera.
+
+**Y esperar el retrazo mirando el contador de línea deja de valer.** Entre la
+línea en la que interrumpe y el final de la cuenta hay diecisiete medias
+líneas, y volcar la lista tarda más que eso: cuando la rutina soltaba el mando,
+el contador ya había dado la vuelta, así que el bucle nunca llegaba a verlo
+pasado y se quedaba dando vueltas frame tras frame. La imagen se veía entera y
+quieta —el 100% de los frames con la misma foto—, porque el juego no avanzaba
+ni un paso. Ahora el bucle espera **una bandera que pone la rutina**, y no hay
+ventana que perder.
+
+De propina, el juego va más deprisa: ya no gasta dos retrazos enteros
+esperando a nada.
 
 ## Lo que aún no hace
 

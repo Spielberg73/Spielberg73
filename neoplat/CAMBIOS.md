@@ -2,8 +2,52 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.40.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.41.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.41
+
+**La carretera en la Jaguar: de un frame de cada tres a todos.**
+
+La Jaguar sí dibujaba la carretera; lo que pasaba es que casi nunca se veía. El
+Object Processor **gasta** la lista de objetos según la dibuja —le va restando
+de la altura y sumando a la dirección—, así que el retrazo que pasaba mientras
+el juego pensaba se encontraba una lista consumida y dejaba la pantalla en
+negro. Contando frames en Virtual Jaguar salían dos de cada tres en negro, y
+desde fuera parecía que la carretera no se dibujaba en absoluto.
+
+Tres cosas, por orden de lo que dio cada una:
+
+**Las líneas que se corren lo mismo van juntas.** La carretera eran 224
+objetos, uno por línea. La curva hace que muchas líneas seguidas tengan el
+mismo desplazamiento, y un objeto puede tener varias líneas de alto: juntando
+tramos se baja a unas pocas decenas. Del 33% al 50%.
+
+**Y la vuelca la interrupción de vídeo.** Volcar más veces desde el bucle tapa
+retrazos —66% con dos, 75% con tres—, pero nunca el último: el que pasa
+**mientras el juego piensa**, que por definición es cuando el bucle no está
+mirando. Con la interrupción se ve el **100%**, y además el juego va más
+deprisa, porque ya no gasta dos retrazos esperando a nada.
+
+Encenderla tuvo su ración de sorpresas, todas medidas en el emulador:
+
+- **TOM no interrumpe por autovector.** Pone su propio número de vector, el 64,
+  que en el 68000 es `$100`. Sólo ahí: se ve el 100%. Sólo en el autovector de
+  nivel 2 (`$68`): la máquina se va a paseo y no se ve nada.
+- **La lista que vuelca la interrupción no puede ser la que escribe el juego**
+  —la pillaría sin el `STOP` del final y el chip se saldría de la lista—, así
+  que hay una tercera copia, la maestra, que se llena de una pieza.
+- **Y esperar el retrazo mirando el contador de línea deja de valer.** Entre la
+  línea en la que interrumpe y el final de la cuenta hay diecisiete medias
+  líneas y volcar tarda más: el bucle nunca llegaba a ver el contador pasado y
+  se quedaba dando vueltas. La imagen se veía entera **y quieta** —el 100% de
+  los frames con la misma foto, con el crono parado—. Ahora el bucle espera una
+  bandera que pone la rutina.
+
+El aviso, para quien venga detrás: *se ve entero* y *el juego avanza* son dos
+cosas distintas, y una prueba que sólo cuente colores no distingue una de otra.
+
+Sigue sin estar: la Neo Geo y el X68000 todavía no dibujan la carretera.
 
 ## 1.40
 
