@@ -78,6 +78,9 @@ class X68000(Sistema):
     nombre = "x68000"
     bits_de_color = 5          # cinco bits por canal
     titulo = "Sharp X68000"
+    # la desliza tramo a tramo desde la interrupcion de rastreo del CRTC:
+    # ver np_video.c
+    dibuja_carreteras = True
     cpu = "68000 a 10 MHz"
     pantalla = (320, 224)
     limites = Limites(colores_por_paleta=16, paletas=MAX_BLOQUES, sprites=128,

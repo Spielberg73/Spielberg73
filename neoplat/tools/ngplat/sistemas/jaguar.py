@@ -46,7 +46,7 @@ class Jaguar(Sistema):
     dibuja_carreteras = True
     toca_muestras = True          # el DSP las lee del cartucho, byte a byte
     titulo = "Atari Jaguar"
-    cpu = "68000 a 13,3 MHz (+ GPU y DSP, sin usar)"
+    cpu = "68000 a 13,3 MHz (+ el DSP, que toca el sonido; el GPU, sin usar)"
     pantalla = (320, 224)
     limites = Limites(colores_por_paleta=256, paletas=1, sprites=48, tiles=MAX_TILES,
                       colores_en_pantalla=256)

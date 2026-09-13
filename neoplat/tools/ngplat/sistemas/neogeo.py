@@ -72,6 +72,8 @@ class NeoGeo(Sistema):
     bits_de_color = 5          # cinco bits por canal (mas el bit oscuro)
     toca_muestras = True          # los canales ADPCM-A del YM2610, con la ROM V1
     titulo = "Neo Geo (AES / MVS)"
+    # la dibuja en bandas, con el escalador de sprites: ver np_video.c
+    dibuja_carreteras = True
     cpu = "68000 a 12 MHz"
     pantalla = (320, 224)
     limites = Limites(colores_por_paleta=16, paletas=256, sprites=96, tiles=65536,

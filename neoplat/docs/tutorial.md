@@ -12,17 +12,19 @@ Lo primero que te pregunta es el **género**, con un menú:
 ```
 que tipo de juego quieres hacer?
 
-  1) plataformas   salto controlado en el aire, disparo y pisar enemigos
-  2) castlevania   salto sin control, latigo, escaleras y arma secundaria
-  3) comando       visto desde arriba: ocho direcciones, granadas y prisioneros
-  4) mazmorra      laberinto: la vida se gasta sola y los nidos sacan bichos
-  5) barrio        yo contra el barrio: se colocan, avisan y esperan turno
-  6) aventura      cargar con las cosas y abrir con ellas lo que no se pasa
-  7) filmation     una habitacion vista desde una esquina: cubos y salas
-  8) kung-fu       un templo de pantallas fijas: faroles, lianas y dos que
-                   te siguen
-  9) aventura grafica  se senala, no se anda: un cursor, cuatro verbos y una
-                   habitacion que contesta
+   1) plataformas       salto controlado en el aire, disparo y pisar enemigos
+   2) castlevania       salto sin control, latigo, escaleras y arma secundaria
+   3) comando           visto desde arriba: ocho direcciones y prisioneros
+   4) mazmorra          laberinto: la vida se gasta sola y los nidos sacan bichos
+   5) barrio            yo contra el barrio: se colocan, avisan y esperan turno
+   6) aventura          cargar con las cosas y abrir con ellas lo que no se pasa
+   7) filmation         una habitacion vista desde una esquina: cubos y salas
+   8) kung-fu           un templo de pantallas fijas: faroles, lianas y dos que
+                        te siguen
+   9) aventura grafica  se senala, no se anda: un cursor, cuatro verbos y una
+                        habitacion que contesta
+  10) carretera         un juego de conducir: dos marchas, trafico y el crono
+  11) vacio             nada hecho: un heroe, un suelo y una meta, y ya
 
 elige [1]:
 ```
@@ -33,7 +35,9 @@ tercero y el cuarto se ven **desde arriba**, así que no hay gravedad ni saltos
 y se anda en ocho direcciones (mira [«un juego visto desde
 arriba»](#un-juego-visto-desde-arriba) y [«una mazmorra»](#una-mazmorra) al
 final), y el noveno no se anda siquiera: se **señala** (mira [«una aventura
-gráfica»](#una-aventura-gráfica)). Si ya lo tienes claro, pásalo
+gráfica»](#una-aventura-gráfica)). El décimo es un juego de **conducir**, y el
+undécimo no es un género: es el que **no trae juego**, para hacérselo uno (mira
+[«empezar de cero»](#empezar-de-cero) al final). Si ya lo tienes claro, pásalo
 directo y se salta el menú:
 
 ```bash
@@ -951,6 +955,78 @@ verbos, una y otra vez, barajando el orden. Es lo mismo que hace una persona
 cuando se atasca, y si probándolo todo el juego no se acaba, es que no tiene
 solución. Hay además un control que **quita la barra** del sótano y exige que
 entonces el arcón no se abra.
+
+## Empezar de cero
+
+Los diez géneros de arriba traen un juego hecho. Está bien para ver cómo se
+escribe algo —es para lo que sirve este tutorial— pero es lo contrario de lo
+que hace falta cuando ya lo sabes y lo que quieres es **tu** juego: de un juego
+hecho se empieza **borrando**, y borrando en un `game.yaml` de trescientas
+líneas se rompe algo.
+
+Para eso está el undécimo:
+
+```bash
+./ngplat nuevo mijuego --genero vacio
+cd mijuego
+```
+
+Y eso es todo lo que hay:
+
+```
+mijuego/
+├── game.yaml
+├── .gitignore
+└── graficos/
+    ├── heroe.png
+    └── tiles.png
+```
+
+Dos PNG, que son los dos que el `game.yaml` nombra: si se copiaran los veinte
+del estilo, la carpeta con la que empiezas tendría diecinueve dibujos que no
+usas, que es justo lo que este género viene a quitar de en medio.
+
+El juego que sale **corre**: un héroe, un suelo llano y una meta al final.
+
+```
+........................................
+........................................
+..P.................................G...
+########################################
+```
+
+Llano a propósito. Lo primero que vas a hacer es cambiar el mapa, y una fila de
+almohadillas se entiende de un vistazo: cada carácter es una casilla, el `#` es
+el suelo, la `P` es por dónde entras y la `G` es la meta. Pruébalo antes de
+tocar nada —`../ngplat probar`— y tendrás algo que anda, salta y termina; a
+partir de ahí, lo que falle es tuyo y no de lo que venía puesto.
+
+No hay enemigos, ni objetos, ni música, ni parallax. Lo que sí hay, al final
+del archivo, es la **lista de lo que falta**: qué sección se llama cómo y para
+qué sirve.
+
+```yaml
+# LO QUE FALTA, Y COMO SE ANADE
+#
+#   enemigos:     bichos, con 'comportamiento:' (patrulla, volador,
+#                 perseguidor, saltarin, fijo, cocodrilo, balanceo) y, si
+#                 quieres que te tiren cosas, un bloque 'dispara:'
+#   objetos:      lo que se coge, con 'efecto:' (puntos, vida, salud,
+#                 llave, municion, mejora, subarma, bomba, llevar)
+#   ...
+```
+
+Ninguna hace falta para compilar: se van añadiendo cuando se necesitan, y cada
+una va al nivel de arriba del todo. La lista entera de lo que se puede escribir
+está en [docs/formato.md](formato.md).
+
+Y si en algún momento quieres ver cómo resuelve algo uno de los géneros —cómo
+se declara un jefe, cómo se escribe una canción, cómo se monta un guion—, créalo
+en otra carpeta y cópiale el trozo:
+
+```bash
+./ngplat nuevo /tmp/mirar --genero castlevania
+```
 
 ## Cuando algo falla
 

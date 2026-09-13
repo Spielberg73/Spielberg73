@@ -118,6 +118,138 @@ class TestCli(unittest.TestCase):
                       "el de latigo no trae el objeto que mejora el arma")
         self.assertNotIn("upgrade", {i.effect for i in plat.items.values()})
 
+    def test_el_proyecto_vacio_esta_vacio_de_verdad(self):
+        """'--genero vacio' es el unico que no trae juego: sirve para hacerse
+        el suyo, asi que lo que promete es que no haya nada que borrar.
+
+        No basta con mirar el yaml: se carga el proyecto y se cuenta lo que el
+        compilador ve. Y de paso se comprueba lo otro que promete -que se
+        compila y se juega tal cual-, porque un esqueleto que no arranca no
+        vale para empezar nada."""
+        from ngplat.project import load_project
+        destino = os.path.join(self.tmp, "vacio")
+        codigo, salida = self._ejecutar("nuevo", destino, "--genero", "vacio")
+        self.assertEqual(codigo, 0, salida)
+        p = load_project(destino)
+
+        self.assertEqual(p.enemies, {}, "el proyecto vacio trae enemigos")
+        self.assertEqual(p.items, {}, "el proyecto vacio trae objetos")
+        self.assertEqual(p.sound.musica, {}, "el proyecto vacio trae musica")
+        self.assertEqual(len(p.levels), 1,
+                         "el proyecto vacio trae mas de un nivel")
+        # y el nivel no tiene ni un simbolo que coloque nada
+        self.assertEqual(p.levels[0].spawns, {},
+                         "el nivel del proyecto vacio coloca entidades")
+        # pero se llega al final: el heroe entra por la izquierda y la meta
+        # esta a la derecha, sobre suelo llano
+        filas = p.levels[0].rows
+        self.assertTrue(any("P" in fila for fila in filas), "sin salida")
+        self.assertTrue(any("G" in fila for fila in filas), "sin meta")
+
+        # los graficos: solo los dos que el yaml nombra, ni uno mas. Si se
+        # copiaran los veinte del estilo, la carpeta con la que se empieza
+        # tendria diecinueve dibujos que no se usan.
+        graficos = sorted(os.listdir(os.path.join(destino, "graficos")))
+        self.assertEqual(graficos, ["heroe.png", "tiles.png"], graficos)
+        self.assertFalse(os.path.exists(os.path.join(destino, "sonidos")),
+                         "el proyecto vacio trae muestras que no usa")
+
+        # y compila y se previsualiza como cualquier otro
+        self.assertEqual(self._ejecutar("comprobar", destino)[0], 0)
+        self.assertEqual(self._ejecutar("probar", destino, "--no-abrir")[0], 0)
+
+    def test_el_proyecto_vacio_vale_para_las_ocho_maquinas(self):
+        """Lo minimo tiene que serlo para todas. Si una pidiera algo que el
+        esqueleto no trae -una capa, una cancion, un efecto con un nombre
+        concreto- se sabria aqui y no cuando alguien lo compilara."""
+        from ngplat import sistemas
+        destino = os.path.join(self.tmp, "vacio-ocho")
+        self.assertEqual(self._ejecutar("nuevo", destino,
+                                        "--genero", "vacio")[0], 0)
+        maquinas = [s.nombre for s in sistemas.disponibles()]
+        self.assertEqual(len(maquinas), 8, maquinas)
+        for maquina in maquinas:
+            codigo, salida = self._ejecutar("comprobar", destino,
+                                            "--sistema", maquina)
+            self.assertEqual(codigo, 0, "%s:\n%s" % (maquina, salida))
+
+    def test_lo_que_apunta_el_proyecto_vacio_existe_de_verdad(self):
+        """El `game.yaml` vacio termina con la lista de lo que falta: los
+        comportamientos, los efectos y las vistas que se pueden escribir.
+
+        Esa lista es lo unico que tiene delante quien empieza por ahi, asi que
+        si nombra algo que el compilador no acepta se le manda derecho a un
+        error. Aqui se comprueba contra las tablas del compilador, que son las
+        que mandan. Ya pasaba: la primera version de la lista traia dos
+        comportamientos que no existen ('saltador' y 'tirador'), un efecto que
+        tampoco ('invencible') y dos vistas que son generos y no vistas."""
+        from ngplat.project import BEHAVIORS, ITEM_EFFECTS, VISTAS
+        from ngplat.scaffold import GAME_YAML_VACIO
+
+        def entre(desde, hasta, texto):
+            trozo = texto[texto.index(desde) + len(desde):]
+            return trozo[:trozo.index(hasta)]
+
+        def nombres(trozo):
+            return [x.strip(" ,.'") for x in trozo.replace("\n#", " ").split()
+                    if x.strip(" ,.'").isidentifier()]
+
+        cuerpo = GAME_YAML_VACIO
+        for lista, tabla, donde in (
+                (entre("'comportamiento:' (", ")", cuerpo), BEHAVIORS,
+                 "comportamiento"),
+                (entre("con 'efecto:' (", ")", cuerpo), ITEM_EFFECTS, "efecto"),
+                (entre("'vista:' cambia el tipo de juego\n# entero (", ")",
+                       cuerpo), VISTAS, "vista")):
+            propuestos = [x for x in nombres(lista) if x not in ("que", "es",
+                                                                 "la", "de",
+                                                                 "aqui", "si",
+                                                                 "y", "o")]
+            self.assertTrue(propuestos, donde)
+            for nombre in propuestos:
+                self.assertIn(nombre, tabla,
+                              "el yaml vacio ofrece '%s' como %s y el "
+                              "compilador no lo conoce" % (nombre, donde))
+
+    def test_cada_genero_se_llama_por_su_nombre(self):
+        """`genero_de` devuelve un objeto por genero, y el menu lo lista con su
+        nombre y su resumen. El que no tiene el suyo cae en el de plataformas y
+        se anuncia como un juego de saltar sin serlo -le pasaba a 'carretera',
+        que salia dos veces en el menu como 'plataformas'-."""
+        from ngplat.scaffold import GENEROS, genero_de, menu_de_generos
+        for nombre in GENEROS:
+            g = genero_de(nombre, "bosque")
+            self.assertEqual(g.nombre, nombre,
+                             "'%s' se describe como '%s'" % (nombre, g.nombre))
+        # y en el menu no hay dos lineas que digan lo mismo
+        resumenes = [genero_de(n, "bosque").resumen for n in GENEROS]
+        self.assertEqual(len(set(resumenes)), len(GENEROS),
+                         "dos generos prometen lo mismo: " + repr(resumenes))
+        salida = io.StringIO()
+        menu_de_generos(io.StringIO("\n"), salida)
+        texto = salida.getvalue()
+        for nombre in GENEROS:
+            self.assertIn(genero_de(nombre, "bosque").titulo, texto, nombre)
+
+    def test_el_menu_ofrece_el_vacio_y_el_ultimo(self):
+        """El menu de `ngplat nuevo` sin `--genero` los lista todos, y el que
+        no trae juego va el ultimo: los diez de antes son juegos hechos y este
+        es el que no lo es."""
+        from ngplat.scaffold import GENEROS, menu_de_generos
+        self.assertEqual(GENEROS[-1], "vacio")
+        salida = io.StringIO()
+        # Enter: se queda con el de por defecto, que sigue siendo el primero
+        elegido = menu_de_generos(io.StringIO("\n"), salida)
+        self.assertEqual(elegido, "plataformas")
+        texto = salida.getvalue()
+        self.assertIn("vacio", texto)
+        self.assertIn("%d) vacio" % len(GENEROS), texto,
+                      "el vacio no sale el ultimo del menu:\n" + texto)
+        # y eligiendolo por numero sale el vacio
+        self.assertEqual(
+            menu_de_generos(io.StringIO("%d\n" % len(GENEROS)), io.StringIO()),
+            "vacio")
+
     def test_las_escaleras_estan_en_los_dos_niveles(self):
         """La mecanica que da nombre al genero tiene que salir en todo el juego.
 

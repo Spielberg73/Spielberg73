@@ -3837,6 +3837,154 @@ niveles:
 
 
 
+
+# ------------------------------------------------------------- el vacio
+#
+# El ultimo de la lista no es un genero: es **no elegir ninguno**. Los otros
+# diez traen un juego hecho -niveles, bichos, objetos, musica- y eso esta muy
+# bien para ver como se escribe algo, pero es lo contrario de lo que quiere
+# quien ya lo sabe y viene a hacerse el suyo: de un juego hecho se empieza
+# **borrando**, y borrando en un yaml de trescientas lineas se rompe algo.
+#
+# Asi que este trae lo minimo que el compilador acepta y se juega: un heroe,
+# un suelo y una meta al final. Ni un enemigo, ni un objeto, ni una nota. Lo
+# que si trae son los huecos apuntados -que seccion falta, como se llama y
+# donde esta contada-, porque una carpeta vacia del todo tampoco ayuda: hay
+# que saber que se puede escribir.
+
+VACIO_ANCHO = 40
+
+
+def _nivel_vacio() -> List[str]:
+    """El nivel de partida: suelo llano, el heroe a la izquierda, la meta al
+    final.
+
+    Llano a proposito. Lo primero que hace cualquiera al abrir esto es cambiar
+    el mapa, y un mapa de una sola fila de almohadillas se entiende de un
+    vistazo: se ve que cada caracter es una casilla y que el '#' es el suelo.
+    Con plataformas colocadas ya habria que averiguar antes que significa cada
+    cosa.
+    """
+    a = VACIO_ANCHO
+    return [
+        _fila("", a),
+        _fila("", a),
+        _fila("", a),
+        _fila("", a),
+        _fila("", a),
+        _fila("", a),
+        _fila("", a),
+        _fila("", a),
+        _fila("", a),
+        _fila("", a),
+        _fila("", a),
+        _fila("", a),
+        _fila("", a),
+        _fila("", a),
+        _poner(a, {2: "P", 36: "G"}),
+        _suelo(a, []),
+    ]
+
+
+GAME_YAML_VACIO = """# Proyecto NeoPlat vacio: el esqueleto, para hacerselo uno.
+#
+#   ngplat probar     -> abre el preview jugable en el navegador
+#   ngplat compilar   -> genera el proyecto en C y las ROMs
+#
+# Aqui **no hay juego**: hay un heroe, un suelo llano y una meta al final. Se
+# compila y se juega tal cual -se puede andar, saltar y llegar al final-, y a
+# partir de ahi se anade escribiendo. Las secciones que faltan estan apuntadas
+# abajo del todo, con el nombre que llevan y donde estan contadas.
+#
+# Los graficos son PNG normales de hasta 15 colores (mas el transparente). Los
+# dos que hay -el heroe y los tiles- estan para que esto arranque: cambialos
+# por los tuyos, del tamano que quieras, y ajusta 'frame:' y 'caja:'.
+
+juego:
+  titulo: "{titulo}"
+  autor: "{autor}"
+  jugadores: 1         # 1 o 2 a la vez, cada uno con su mando
+  vidas: 3
+  tiempo: 0            # segundos por nivel (0 = sin limite)
+  camara: scroll       # scroll (el escenario se desliza) o pantallas
+  fondo: "#101830"
+
+jugador:
+  sprite: graficos/heroe.png
+  frame: [16, 16]      # tamano de cada fotograma de la hoja
+  caja: [10, 15]       # caja de colision (mas estrecha que el dibujo)
+  velocidad: 1.6       # pixeles por frame
+  aceleracion: 0.30
+  friccion: 0.35
+  salto: 4.3
+  gravedad: 0.28
+  doble_salto: no
+  animaciones:
+    quieto: {{frames: [0], velocidad: 30}}
+    correr: {{frames: [1, 2, 3, 2], velocidad: 6}}
+    saltar: {{frames: [4]}}
+    caer:   {{frames: [5]}}
+    dano:   {{frames: [9]}}   # la pose de recibir un golpe
+
+# Cada caracter del mapa es una casilla de 16x16, y aqui se dice cual. 'tile'
+# es el numero de casilla dentro de la imagen (de izquierda a derecha y de
+# arriba abajo, empezando en 0) y 'tipo' es lo que hace: vacio, solido,
+# plataforma (se atraviesa por abajo), peligro, meta, escalera o agua.
+tiles:
+  imagen: graficos/tiles.png
+  leyenda:
+    '.': {{tile: 0, tipo: vacio}}
+    '#': {{tile: 1, tipo: solido}}
+    '=': {{tile: 2, tipo: plataforma}}
+    '^': {{tile: 3, tipo: peligro}}
+    'G': {{tile: 4, tipo: meta}}
+
+# Lo minimo para que suene algo. 'barrido' sube o baja el tono; con 'notas' se
+# escriben en espanol (do re mi fa sol la si) o en ingles, con el numero de
+# octava detras. Todo esto esta contado en docs/sonido.md.
+sonido:
+  efectos:
+    salto:   {{tipo: barrido, desde: 320, hasta: 900, duracion: 6}}
+    muerte:  {{notas: "sol4 mi4 do4 sol3", velocidad: 6}}
+    meta:    {{notas: "do5 mi5 sol5 do6", velocidad: 6}}
+
+# El mapa: una fila por linea, un caracter por casilla. La 'P' es donde
+# empieza el jugador y la 'G' es la meta. Se pueden poner los niveles que se
+# quieran, uno detras de otro.
+niveles:
+{niveles}
+# ---------------------------------------------------------------------------
+# LO QUE FALTA, Y COMO SE ANADE
+#
+# Nada de esto hace falta para que el juego compile: se va anadiendo cuando se
+# necesita. Cada seccion va al nivel de arriba del todo, sin sangrar, y el
+# orden entre ellas da igual.
+#
+#   enemigos:     bichos, con 'comportamiento:' (patrulla, volador,
+#                 perseguidor, saltarin, fijo, cocodrilo, balanceo) y, si
+#                 quieres que te tiren cosas, un bloque 'dispara:'
+#   generadores:  los nidos que sueltan bichos hasta que los revientas
+#   objetos:      lo que se coge, con 'efecto:' (puntos, vida, salud,
+#                 llave, municion, mejora, subarma, bomba, llevar)
+#   rompibles:    lo que no hace nada hasta que le pegas, y suelta algo
+#   plataformas:  las que van y vienen, y llevan encima al que se sube
+#   fondos:       capas de parallax, de la mas lejana a la mas cercana
+#   spawns:       que simbolo del mapa coloca cada enemigo y cada objeto
+#   sonido/musica: canciones por nivel, con su timbre de FM
+#   guiones:      dialogos, banderas y disparadores en el mapa
+#
+# Y en 'juego:' hay mas de lo que se ve aqui: 'vista:' cambia el tipo de juego
+# entero (lateral, que es la de aqui, cenital, cinta, isometrica, puntero o
+# carretera), 'sistema:' elige la maquina y 'amiga: 8colores' enciende el
+# doble plano del OCS.
+#
+# Todo esta en docs/formato.md, que es la lista entera de lo que se puede
+# escribir en este archivo. Y si lo que quieres es ver un juego hecho de cada
+# tipo, 'ngplat nuevo <carpeta> --genero <el que sea>' te lo deja escrito:
+# plataformas, castlevania, comando, mazmorra, barrio, aventura, filmation,
+# kungfu, grafica y carretera.
+"""
+
 # --------------------------------------------------------------- generos
 #
 # El **genero** decide como se juega y el **estilo** como se ve: son dos ejes
@@ -4160,9 +4308,11 @@ def _genero_castlevania(nombres: Dict[str, str]) -> Genero:
     )
 
 
+# El orden es el del menu, y 'vacio' va el ultimo a proposito: los diez
+# primeros son juegos hechos y este es el que no trae ninguno.
 GENEROS = ("plataformas", "castlevania", "comando", "mazmorra",
            "barrio", "aventura", "filmation", "kungfu", "grafica",
-           "carretera")
+           "carretera", "vacio")
 
 # Como se llama cada cosa en cada estilo de dibujo.
 _NOMBRES = {
@@ -4284,6 +4434,38 @@ def _genero_grafica(nombres: Dict[str, str], estilo: str) -> Genero:
     )
 
 
+def _genero_carretera(nombres: Dict[str, str], estilo: str) -> Genero:
+    """El de conducir: la calzada se va al horizonte y hay que no salirse.
+
+    Como los otros de plantilla propia, de este objeto solo se usa como se
+    llama y que promete. Faltaba, y sin el `genero_de("carretera")` caia en el
+    de plataformas: el menu de `ngplat nuevo` listaba el decimo como
+    'plataformas' otra vez y al crearlo se anunciaba como un juego de saltar.
+    """
+    return replace(
+        _genero_plataformas(nombres, estilo),
+        nombre="carretera",
+        titulo="carretera",
+        resumen=("un juego de conducir: la calzada se va al horizonte, dos "
+                 "marchas, trafico que adelantar y el crono como unica vida."),
+    )
+
+
+def _genero_vacio(nombres: Dict[str, str], estilo: str) -> Genero:
+    """El que no trae juego: un heroe, un suelo y una meta.
+
+    Como los de plantilla propia, de este objeto solo se usa como se llama y
+    que promete, que es lo que sale en el menu de `ngplat nuevo`.
+    """
+    return replace(
+        _genero_plataformas(nombres, estilo),
+        nombre="vacio",
+        titulo="vacio",
+        resumen=("nada hecho: un heroe, un suelo y una meta, y los huecos "
+                 "apuntados para escribir el tuyo desde cero."),
+    )
+
+
 def genero_de(nombre: str, estilo: str) -> Genero:
     nombres = _NOMBRES[estilo]
     if nombre == "castlevania":
@@ -4302,6 +4484,10 @@ def genero_de(nombre: str, estilo: str) -> Genero:
         return _genero_kungfu(nombres, estilo)
     if nombre == "grafica":
         return _genero_grafica(nombres, estilo)
+    if nombre == "carretera":
+        return _genero_carretera(nombres, estilo)
+    if nombre == "vacio":
+        return _genero_vacio(nombres, estilo)
     return _genero_plataformas(nombres, estilo)
 
 
@@ -4318,7 +4504,7 @@ def menu_de_generos(entrada=None, salida=None) -> str:
     opciones = [genero_de(n, "bosque") for n in GENEROS]
     salida.write("\n  Que tipo de juego quieres hacer?\n\n")
     for i, g in enumerate(opciones):
-        salida.write("    %d) %-13s %s\n" % (i + 1, g.titulo, g.resumen))
+        salida.write("   %2d) %-17s %s\n" % (i + 1, g.titulo, g.resumen))
     salida.write("\n  elige [1]: ")
     salida.flush()
     try:
@@ -4372,7 +4558,13 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
     creados: List[str] = []
 
     dibujos = art.todos() if estilo == "bosque" else art_hierro.todos()
-    if genero == "comando":
+    if genero == "vacio":
+        # Solo los dos que el yaml nombra. Copiar los veinte dibujos del
+        # estilo en una carpeta donde no se usa ninguno seria justo lo que
+        # este genero viene a evitar: sitio por el que empezar a borrar.
+        dibujos = {nombre: dibujos[nombre]
+                   for nombre in ("graficos/heroe.png", "graficos/tiles.png")}
+    elif genero == "comando":
         # Se ve desde arriba: el heroe de perfil, los tiles de plataformas y
         # los bichos de saltar no sirven de nada aqui, asi que los dibujos de
         # este genero pisan a los del estilo.
@@ -4415,11 +4607,25 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
         write_png(ruta, imagen)
         creados.append(relativo)
 
-    if estilo == "bosque":
+    if estilo == "bosque" and genero != "vacio":
         os.makedirs(os.path.join(destino, "sonidos"), exist_ok=True)
         for relativo, muestra in art_sonido.todos().items():
             escribir_wav(os.path.join(destino, relativo), muestra)
             creados.append(relativo)
+
+    if genero == "vacio":
+        contenido = GAME_YAML_VACIO.format(
+            titulo=titulo.upper()[:24], autor=autor[:24],
+            niveles=_nivel_yaml("NIVEL 1", _nivel_vacio(), "#101830"))
+        with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
+                  newline="\n") as fh:
+            fh.write(contenido)
+        creados.append("game.yaml")
+        with open(os.path.join(destino, ".gitignore"), "w", encoding="utf-8",
+                  newline="\n") as fh:
+            fh.write("build/\npreview.html\n.neoplat/\n")
+        creados.append(".gitignore")
+        return creados
 
     if genero == "comando":
         # Se sube: se empieza abajo y la meta esta arriba del todo.

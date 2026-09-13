@@ -51,10 +51,11 @@ def _cargar(ruta: str, sistema_nombre: str = ""):
     for warning in project.warnings:
         _aviso(warning)
     sistema = sistemas.obtener(sistema_nombre or project.system)
-    # La carretera todavia no la dibuja ninguna maquina: el motor la calcula
-    # -y el preview la pinta- pero los ocho dibujantes siguen pintando el mapa,
-    # que en este genero es el trazado y no lo que se ve. Mas vale decirlo aqui
-    # que dejar que alguien monte una ROM y se encuentre una pantalla de tiles.
+    # Desde 1.45 la dibujan las ocho, asi que hoy este aviso no salta nunca.
+    # Se queda porque el que no la dibuje es el estado de partida de cualquier
+    # maquina nueva -`dibuja_carreteras` vale False en `Sistema`- y mas vale
+    # decirlo aqui que dejar que alguien monte una ROM y se encuentre una
+    # pantalla de tiles: en este genero el mapa es el trazado, no lo que se ve.
     if project.view == "carretera" and not sistema.dibuja_carreteras:
         _aviso("%s todavia no dibuja la carretera: el juego compila y se juega "
                "igual, pero se vera el mapa (el trazado) en vez de la "
@@ -123,9 +124,17 @@ def cmd_comprobar(args: argparse.Namespace) -> int:
         print("  tiles de 8x8    %d  (%d KB en la ROM)"
               % (stats["tiles_8x8"], stats["bytes_tiles"] // 1024))
     if "dibujos_16x16" in stats:
-        print("  dibujos 16x16   %d  (%d KB de dibujos + %d KB de mascaras)"
-              % (stats["dibujos_16x16"], stats["bytes_dibujos"] // 1024,
-                 stats["bytes_mascaras"] // 1024))
+        # Las mascaras solo las hay donde el recorte del sprite lo hace la CPU
+        # o el blitter (Amiga y Atari ST). La Jaguar no las lleva: el recorte
+        # es del chip de objetos, asi que no las cuenta y aqui no se pide -que
+        # era lo que reventaba `ngplat comprobar --sistema jaguar`-.
+        if "bytes_mascaras" in stats:
+            print("  dibujos 16x16   %d  (%d KB de dibujos + %d KB de mascaras)"
+                  % (stats["dibujos_16x16"], stats["bytes_dibujos"] // 1024,
+                     stats["bytes_mascaras"] // 1024))
+        else:
+            print("  dibujos 16x16   %d  (%d KB de dibujos)"
+                  % (stats["dibujos_16x16"], stats["bytes_dibujos"] // 1024))
     if sistema.limites.paletas > 1:
         print("  paletas         %d de %d" % (stats["paletas"], sistema.limites.paletas))
     else:
@@ -544,10 +553,16 @@ def build_parser() -> argparse.ArgumentParser:
                               "direcciones y prisioneros), 'mazmorra' (un "
                               "laberinto: la vida se gasta sola y los nidos "
                               "sacan bichos), 'barrio' (tortas: enemigos que "
-                              "se colocan, avisan y esperan turno; codazo, "
-                              "patada en salto y carrera) o "
+                              "se colocan, avisan y esperan turno), "
                               "'aventura' (cargar con las cosas y abrir con "
-                              "ellas lo que no se pasa). Sin esto, se pregunta")
+                              "ellas lo que no se pasa), 'filmation' (una "
+                              "habitacion vista desde una esquina), 'kungfu' "
+                              "(un templo de pantallas fijas, faroles y "
+                              "lianas), 'grafica' (se senala, no se anda: un "
+                              "cursor y cuatro verbos), 'carretera' (un juego "
+                              "de conducir) o 'vacio' (nada hecho: el "
+                              "esqueleto minimo, para escribirlo tu). Sin "
+                              "esto, se pregunta")
     p_nuevo.set_defaults(func=cmd_nuevo)
 
     p_check = sub.add_parser("comprobar", aliases=["check"],

@@ -421,6 +421,19 @@ class TestNivelesJugables(unittest.TestCase):
         self.assertGreater(mundo["controles"], 0,
                            "no se cruza ningun control de paso")
 
+    def test_el_proyecto_vacio_tambien_se_termina(self):
+        """El genero 'vacio' no trae juego, pero tiene que traer uno que corra.
+
+        Es el unico que no tiene bichos, ni objetos, ni musica: si el esqueleto
+        minimo no se pudiera terminar, el que empieza por ahi no tendria manera
+        de saber si lo que no funciona es lo suyo o lo de partida."""
+        destino = os.path.join(self.tmp, "vacio")
+        crear_proyecto(destino, "VACIO", "TEST", genero="vacio")
+        resultado = self._jugar(destino)
+        self.assertEqual(resultado.returncode, 0,
+                         "el bot no puede terminar el proyecto vacio:\n"
+                         + resultado.stdout)
+
     def test_el_proyecto_de_kungfu_tambien_se_termina(self):
         """El genero de kung-fu no se pasa andando hacia la derecha: la puerta
         pide todos los faroles y los faroles estan arriba, en las vigas y al

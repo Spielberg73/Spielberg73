@@ -2,8 +2,82 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.45.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.46.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.46
+
+**`--genero vacio`: un proyecto sin juego, para hacerse el suyo.**
+
+Los diez géneros traen un juego hecho, y eso es lo que hacía falta mientras el
+kit estaba por demostrar. Pero es lo contrario de lo que quiere quien ya sabe
+escribir un `game.yaml` y viene a hacer **el suyo**: de un juego hecho se
+empieza **borrando**, y borrando en un archivo de trescientas líneas se rompe
+algo —un `spawns:` que nombra un bicho que ya no está, una canción que pide un
+nivel que ya no existe— y lo primero que se ve es un error del compilador en
+vez de un juego.
+
+Así que hay un undécimo que no es un género: es **no elegir ninguno**.
+
+```bash
+ngplat nuevo mijuego --genero vacio
+```
+
+Sale lo mínimo que el compilador acepta y se juega: un héroe, un suelo llano y
+una meta al final. Ni un enemigo, ni un objeto, ni una nota, ni una capa de
+parallax. En la carpeta caen **cuatro archivos**: el `game.yaml`, el
+`.gitignore` y los **dos** PNG que el yaml nombra —el héroe y los tiles—. Los
+demás dibujos del estilo no se copian —dieciocho, con el de bosque— ni las
+muestras de sonido: una carpeta llena de dibujos que no se usan es exactamente
+lo que este género viene a quitar de en medio.
+
+Lo que sí trae es **los huecos apuntados**. Al final del `game.yaml` hay una
+lista de las secciones que faltan —`enemigos:`, `generadores:`, `objetos:`,
+`rompibles:`, `plataformas:`, `fondos:`, `spawns:`, la música, los guiones—,
+qué hace cada una y dónde está contada. Una carpeta vacía del todo tampoco ayuda: hay que
+saber qué se puede escribir.
+
+El nivel es llano a propósito: una sola fila de almohadillas se entiende de un
+vistazo —cada carácter es una casilla— y lo primero que hace cualquiera es
+cambiarlo.
+
+Tres pruebas nuevas lo sujetan. Una carga el proyecto y cuenta lo que ve el
+compilador: cero enemigos, cero objetos, cero músicas, un nivel, dos PNG y
+ninguna carpeta de sonidos. Otra lo pasa por las **ocho** máquinas, porque lo
+mínimo tiene que serlo para todas. Y la tercera comprueba la lista de huecos
+contra las **tablas del compilador**: si ofrece un comportamiento, un efecto o
+una vista que no existe, manda al que empieza derecho a un error, y eso ya
+pasaba —la primera versión de la lista traía dos comportamientos inventados
+(`saltador`, `tirador`), un efecto que tampoco existe (`invencible`) y dos
+vistas que en realidad son géneros—. Encima, el bot del kit lo termina, como
+termina los otros diez: un esqueleto que no arranca no vale para empezar nada.
+
+**Tres cosas que salieron al hacerlo.**
+
+- **`ngplat comprobar --sistema jaguar` reventaba.** Con un `KeyError:
+  'bytes_mascaras'`, en cualquier proyecto, desde siempre: la línea que imprime
+  los dibujos pedía los bytes de las máscaras, y la Jaguar no las tiene —el
+  recorte del sprite lo hace el chip de objetos, no el blitter ni la CPU— así
+  que no las cuenta. No lo cazaba nadie porque las pruebas del CLI sólo miraban
+  Neo Geo, Mega Drive y Amiga; la prueba nueva de las ocho lo encontró a la
+  primera.
+- **El género `carretera` se anunciaba como el de plataformas.** No tenía su
+  propio objeto, así que `genero_de("carretera")` caía en el de saltar: el menú
+  de `ngplat nuevo` listaba el décimo como *"plataformas — saltar, pisar
+  enemigos y disparar"* por segunda vez, y al crear el proyecto se anunciaba
+  igual. Ahora tiene el suyo, y una prueba exige que **cada** género se llame
+  por su nombre y que no haya dos que prometan lo mismo.
+- **La Neo Geo y el X68000 decían que no dibujan la carretera.** El
+  `dibuja_carreteras` de las dos se quedó en `False` cuando se les puso (1.42 y
+  1.45), así que al compilar un juego de conducir para ellas salía un aviso de
+  que se vería el mapa en vez de la calzada. Se ve la calzada. Ya lo dicen las
+  ocho.
+
+Y de paso, lo que decían de más: `docs/jaguar.md` ponía que *"el GPU y el DSP
+están sin tocar"* cuando el DSP es el que toca el sonido desde hace versiones
+—y se le habían quedado dos *"las otras tres"* y un *"de las cuatro máquinas"*
+de cuando el kit tenía cuatro—, y el menú de géneros de `docs/tutorial.md` no
+listaba ni el de conducir ni éste.
 
 ## 1.45
 

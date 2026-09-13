@@ -7,7 +7,7 @@ las trampas que costaron encontrar.
 
 | | |
 |---|---|
-| CPU | Motorola **68000 a 13,3 MHz** — la misma familia que las otras tres |
+| CPU | Motorola **68000 a 13,3 MHz** — la misma familia que las otras siete |
 | Vídeo | **Object Processor**: recorre una lista de objetos en cada línea |
 | Color | 256 a la vez de una tabla, o 16 bits directos |
 | RAM | 2 MB de DRAM en `$000000` |
@@ -103,7 +103,7 @@ trampa en las dos, y no avisa.
 
 ## El parallax: otro objeto y ya está
 
-De las cuatro máquinas, la Jaguar es donde el parallax sale más barato. No hay
+De las ocho máquinas, la Jaguar es donde el parallax sale más barato. No hay
 que redibujar nada por frame: la capa es **otro objeto** de la lista, con su
 propio mapa de bits y su propia posición, y el chip lo compone antes que el
 escenario. Moverlo es cambiar dos números:
@@ -121,7 +121,7 @@ principio y no se nota el corte.
 Para que se vea por detrás, el objeto del escenario lleva **el color 0
 transparente**. Eso arregla de paso otra cosa: hasta ahora los huecos del
 escenario se veían negros (el color 0 de la tabla) en vez del color de fondo del
-nivel, que es lo que hacen las otras tres máquinas. Ahora por ahí se ve el
+nivel, que es lo que hacen las otras máquinas. Ahora por ahí se ve el
 `BG`, que es justo el `fondo:` del `game.yaml`.
 
 ## Muestras digitales
@@ -340,7 +340,8 @@ esperando a nada.
 - **Más de una capa de parallax.** Se dibuja una; cabrían más, porque cada capa
   es sólo un objeto más de la lista.
 - **Color directo.** Se usan los 256 de la tabla. La Jaguar puede hacer 16 bits
-  por píxel, y sería la única de las cuatro donde los PNG no habría que
+  por píxel, y sería la única de las ocho donde los PNG no habría que
   recortarlos: se verían tal cual.
-- **El GPU y el DSP** están sin tocar. Para un juego de plataformas no hacen
-  falta, pero ahí están.
+- **El GPU** está sin tocar. Para un juego de plataformas no hace falta, pero
+  ahí está. El **DSP** sí se usa: es el que toca el sonido, y lo cuenta la
+  sección de arriba.
