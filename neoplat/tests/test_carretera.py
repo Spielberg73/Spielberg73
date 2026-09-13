@@ -42,6 +42,100 @@ def _constantes_del_motor():
     return salida
 
 
+class TestLoQueDicenLasDocs(unittest.TestCase):
+    """Las cifras que la documentacion promete tienen que salir del motor.
+
+    `docs/formato.md` y `docs/tutorial.md` dicen que la curva mas cerrada que
+    se puede seguir desplaza **una casilla cada tres filas**, y que eso no
+    depende de la velocidad. No es una opinion: sale de dividir las dos cuentas
+    que hace np_player_update_carretera. Si alguien toca `volante` o `punta`
+    por defecto, o la formula del volante, esa frase se queda mintiendo y no lo
+    notaria nadie -de la documentacion no se queja ningun compilador-.
+    """
+
+    def test_la_curva_mas_cerrada_es_una_casilla_cada_tres_filas(self):
+        from ngplat.project import Coche
+        c = Coche()
+        # vy = velocidad ; vx = volante * velocidad / punta. Al dividirlas la
+        # velocidad se va: lo que el coche se desplaza por cada fila de 16 px
+        # es volante/punta, a cualquier velocidad.
+        por_fila = c.volante * 16.0 / c.punta
+        self.assertAlmostEqual(por_fila, 5.87, places=1,
+                               msg="las docs dicen 5,87 px de lado por fila")
+        filas = 16.0 / por_fila
+        self.assertLess(filas, 3.0,
+                        "una casilla cada tres filas ya no se sigue: hacen "
+                        "falta %.2f filas" % filas)
+        self.assertGreater(filas, 2.0,
+                           "una casilla cada dos filas se seguiria, y las docs "
+                           "dicen que no: bastan %.2f filas" % filas)
+
+    def test_el_volante_no_depende_de_la_velocidad(self):
+        """Y la otra mitad de la frase: frenar no traza mas fino.
+
+        Se comprueba sobre el motor de verdad, no sobre la formula. A cada
+        velocidad se mira lo que el coche se mueve **de lado por cada fila de
+        carretera**, que es `vx / vy`: si esa cuenta saliera distinta yendo
+        despacio, frenar trazaria mas fino y la documentacion mentiria.
+        """
+        import json
+        if not shutil.which("node"):
+            self.skipTest("node no esta instalado")
+        tmp = tempfile.mkdtemp(prefix="neoplat-volante-")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        proyecto = os.path.join(tmp, "circuito")
+        crear_proyecto(proyecto, "COSTA", "TEST", genero="carretera")
+        from ngplat.build import build_project
+        from ngplat.preview import build_data
+        from ngplat.project import load_project
+        datos = os.path.join(tmp, "datos.json")
+        d = build_data(build_project(load_project(proyecto), "franjas"))
+        for hoja in d["sheets"].values():
+            hoja["url"] = ""
+        with open(datos, "w", encoding="utf-8") as fh:
+            json.dump(d, fh)
+        guion = os.path.join(tmp, "volante.js")
+        with open(guion, "w", encoding="utf-8") as fh:
+            fh.write("""
+var NP = require(process.argv[2]);
+var data = JSON.parse(require("fs").readFileSync(process.argv[3], "utf8"));
+/* A cada velocidad, un frame girando a la derecha, y lo que sale de lado por
+   cada fila de 16 px de carretera. Se pone la velocidad a mano en vez de
+   acelerar: asi se miden velocidades que el circuito de ejemplo no deja
+   mantener -en cuanto tuerce, la hierba te frena- y la cuenta queda limpia. */
+var salida = [];
+[1.0, 2.0, 3.0, 4.5, 6.0].forEach(function (v) {
+  var w = NP.create(data);
+  w.step(NP.IN.START);
+  var p = w.players[0];
+  p.vy = -Math.round(v * 256);
+  w.step(NP.IN.RIGHT);
+  var vy = -p.vy / 256, vx = p.vx / 256;
+  salida.push({ v: v, vy: vy, vx: vx, porFila: vy > 0 ? vx * 16 / vy : 0 });
+});
+console.log(JSON.stringify(salida));
+""")
+        salida = subprocess.run(
+            ["node", guion, os.path.join(KIT, "preview", "np_core.js"), datos],
+            capture_output=True, text=True)
+        self.assertEqual(salida.returncode, 0, salida.stderr)
+        medidas = json.loads(salida.stdout)
+        velocidades = [m["vy"] for m in medidas]
+        self.assertGreater(max(velocidades), min(velocidades) * 3,
+                           "no se han medido velocidades de verdad distintas: "
+                           "%s" % medidas)
+        porfila = [m["porFila"] for m in medidas]
+        self.assertLess(
+            max(porfila) - min(porfila), 0.15,
+            "el desplazamiento de lado por fila cambia con la velocidad, y las "
+            "docs dicen que no -que frenar no traza mas fino-: %s" % medidas)
+        # y es el numero que dicen las docs
+        for m in medidas:
+            self.assertAlmostEqual(
+                m["porFila"], 5.87, places=1,
+                msg="las docs dicen 5,87 px de lado por fila: %s" % m)
+
+
 class TestLaCamaraEsLaMisma(unittest.TestCase):
     """Las cifras de la camara estan escritas dos veces -en el motor y en el
     compilador- porque el compilador tiene que dibujar lo que el motor va a

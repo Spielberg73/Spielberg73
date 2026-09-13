@@ -956,6 +956,142 @@ cuando se atasca, y si probándolo todo el juego no se acaba, es que no tiene
 solución. Hay además un control que **quita la barra** del sótano y exige que
 entonces el arcón no se abra.
 
+## Un juego de conducir
+
+```bash
+./ngplat nuevo micircuito --genero carretera
+cd micircuito
+../ngplat probar
+```
+
+Sale un Out Run: dos tramos —la costa y la montaña—, tráfico que adelantar,
+controles de paso y un coche con dos marchas. **← →** el volante, **B**
+acelerar, **↓** frenar y **A** cambia de marcha.
+
+Lo primero que hay que entender de este género es que **no es una vista
+nueva**:
+
+> El mapa es el **trazado de la carretera visto desde arriba**, y el coche lo
+> sube.
+
+Ábrelo en el editor (<kbd>E</kbd>) y lo verás: no hay una carretera dibujada,
+hay un mapa vertical, larguísimo, con una franja de asfalto que serpentea. Eso
+es lo que el coche recorre; lo de la pantalla es el mismo mapa proyectado.
+
+```
+,,,,,.....,,,,,        ',' la hierba: ahí no se corre
+,,,,,.....,,,,,        '.' el asfalto
+,,,,.....,,,,,,        y la carretera se va a la izquierda...
+,,,.....,,,,,,,
+,,.....,,,,,,,,
+```
+
+Y de ahí sale el juego entero, sin que nadie lo programe: **el coche va
+recto**. Nadie te mete en la curva. Si la carretera tuerce y tú no giras, te
+sales —y fuera del asfalto no se corre—.
+
+### Cuánto puede torcer una curva
+
+Esto conviene saberlo **antes** de dibujar un trazado, y es una división. El
+motor hace dos cuentas por frame:
+
+```
+vy = velocidad                       lo que sube por el mapa
+vx = volante * velocidad / punta     lo que se mueve de lado
+```
+
+Las dos van con la velocidad, así que al dividirlas se va: lo que el coche se
+desplaza **por cada fila de carretera** es `volante / punta`, y **no depende de
+a cuánto vayas**. Con los valores de serie, `2.2 × 16 / 6.0 = 5,87` píxeles por
+fila:
+
+> la curva más cerrada que se puede seguir desplaza **una casilla cada tres
+> filas**.
+
+Más cerrada que eso no se pasa, y **frenar no ayuda**: la línea que puedes
+trazar es la misma a 6.0 que a 1.0. Si quieres que se pasen curvas más
+cerradas, sube `volante:` o baja `punta:`; son la misma cuenta por los dos
+lados.
+
+```yaml
+coche:
+  volante: 2.2     # lo que se mueve de lado, a punta
+  punta: 6.0       # lo que corre con la marcha larga
+```
+
+Lo que sí se gana frenando es otra cosa: **el trompo sólo salta si ibas más
+rápido que `lento:`**, así que arrimarse despacio al quitamiedos no te hace dar
+vueltas. Frenar no traza más fino; frena para no estrellarte.
+
+### Dibuja una curva
+
+Cambia el mapa en el editor y pruébalo: el bot no te hace falta, conduce tú.
+Con la regla de arriba, una curva de una casilla cada tres filas se sigue
+pegado al borde, y una de una casilla cada seis se pasa sin pensar.
+
+### El crono es la vida
+
+Aquí no hay vida que perder de un golpe. Chocar contra el quitamiedos te hace
+un **trompo** —90 frames dando vueltas— y eso no te mata: te cuesta tiempo. Lo
+que te mata es que se acabe el reloj.
+
+```yaml
+juego:
+  tiempo: 60       # segundos. Los controles de paso lo alargan.
+```
+
+Y como sólo se gana tiempo **llegando**, los controles de paso son toda la
+economía del juego:
+
+```yaml
+tiles:
+  leyenda:
+    'K': {tile: 3, tipo: control}    # +20 segundos al cruzarlo
+```
+
+Ponlos donde el tramo se pone difícil y el juego se vuelve justo; ponlos
+demasiado juntos y ya no hay tensión. Con `tiempo: 0` no hay crono y se
+conduce sin prisa, que es lo que hace falta para probar un trazado nuevo.
+
+### El tráfico no son enemigos
+
+Son estorbos: suben por su carril, a lo suyo, y no te persiguen ni te disparan.
+Lo que decides es **por qué lado pasarlos**.
+
+```yaml
+enemigos:
+  rival:
+    comportamiento: trafico
+    velocidad: 2.6
+    vida: 99       # no se matan: se adelantan
+```
+
+El motor los dibuja encogidos según lo lejos que estén, así que el sprite se
+dibuja **al tamaño de cerca** y el kit saca los demás.
+
+### Los siete colores
+
+La calzada no es un dibujo: son siete colores que el motor pinta línea a línea,
+a franjas que corren hacia ti.
+
+```yaml
+carretera:
+  asfalto: ["#4a4a52", "#282830"]
+  arcen:   ["#d0d0d8", "#c02020"]
+  hierba:  ["#3a7a42", "#2c5434"]
+  raya:    "#e8e8f0"
+```
+
+Cámbialos y tienes otro sitio: arena y cielo, nieve, noche. Lo único que hay
+que respetar es que **los dos tonos de cada pareja se separen de verdad**: la
+Mega Drive y el Atari ST guardan tres bits por canal y dos tonos parecidos les
+caen en el mismo color, y entonces las franjas no se ven correr y parece que el
+coche está parado. `ngplat comprobar` te avisa si te pasa.
+
+Todo lo que se puede tocar está en [docs/formato.md](formato.md): la sección
+[`carretera`](formato.md#carretera) para los colores y
+[`coche`](formato.md#coche) para el motor, el freno y el volante.
+
 ## Empezar de cero
 
 Los diez géneros de arriba traen un juego hecho. Está bien para ver cómo se

@@ -3551,9 +3551,17 @@ GAME_YAML_CARRETERA = """# Proyecto NeoPlat de conducir: la carretera se va al h
 #   izquierda/derecha .. el volante
 #
 # Y la regla del genero, que no esta programada en ningun sitio: el coche va
-# **recto**. Si la carretera tuerce y tu no giras, te sales. Cuanto mas corres,
-# mas volante hace falta por frame para seguir la curva, asi que hay curvas que
-# a tope no se pasan. Levantar el pie no es perder tiempo: es no perderlo.
+# **recto**. Si la carretera tuerce y tu no giras, te sales, y fuera del asfalto
+# no se corre.
+#
+# Cuanto puede torcer una curva sale de una division: el coche sube `velocidad`
+# por frame y se mueve de lado `volante * velocidad / punta`, asi que lo que se
+# desplaza **por cada fila** es volante/punta y no depende de a cuanto vayas.
+# Con estos numeros son 5,87 pixeles por fila: la curva mas cerrada que se
+# sigue desplaza una casilla cada tres filas. Frenar no traza mas fino -la
+# linea es la misma a cualquier velocidad-; lo que se gana frenando es que el
+# trompo solo salta si ibas mas rapido que `lento:`, asi que arrimarse despacio
+# al quitamiedos no te hace dar vueltas.
 
 juego:
   titulo: "{titulo}"

@@ -2,8 +2,71 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.48.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.49.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.49
+
+**La carretera, documentada. Y una cosa que la documentación decía y el motor
+no hacía.**
+
+El género de conducir estaba terminado en las ocho máquinas desde 1.45 y
+**`docs/formato.md` no lo mencionaba ni una vez**. Ni la sección `carretera:`
+con sus siete colores, ni `coche:` con sus once cifras, ni `vista: carretera`,
+ni `tipo: control`, ni `tipo: lento`, ni `comportamiento: trafico`. Se podía
+jugar en ocho máquinas y no había dónde leer cómo se escribe.
+
+Ahora está:
+
+- **`docs/formato.md`**: la vista de carretera entera (qué es el mapa, el
+  mando, los tipos de casilla, el tráfico), y dos secciones nuevas,
+  [`carretera`](docs/formato.md#carretera) —los colores, por qué van en pares y
+  por qué hay que separarlos— y [`coche`](docs/formato.md#coche), con las once
+  claves, sus valores de serie y sus topes. De paso, a la tabla de tipos de
+  casilla le faltaban también `liana` y `lento`, y a la de comportamientos,
+  `trafico`.
+- **`docs/tutorial.md`**: «Un juego de conducir», con la idea de la que cuelga
+  todo (el mapa es el trazado visto desde arriba), cuánto puede torcer una
+  curva, el crono como única vida, el tráfico y los siete colores.
+- **`examples/costa-y-montana/`**: el tercer ejemplo del kit, y el primero que
+  no es de saltar. Lleva sólo los tres PNG que su `game.yaml` nombra —el coche,
+  el rival y las casillas del trazado—, porque aquí la calzada no es un dibujo.
+
+**Y lo que estaba mal.** Escribiendo lo de las curvas salió que el kit llevaba
+repitiendo una frase que su propio motor no cumple. Decía el README:
+
+> Cuanto más corres, más volante hace falta *por frame* para seguirla, y de ahí
+> sale el género entero: hay curvas que a tope no se pasan.
+
+Pues no. El motor hace estas dos cuentas por frame:
+
+```
+vy = velocidad
+vx = volante * velocidad / punta
+```
+
+Las dos van con la velocidad, así que al dividirlas **se va**: lo que el coche
+se desplaza de lado por cada fila de carretera es `volante / punta` y **no
+depende de a cuánto vayas**. Frenar no traza más fino. La línea que puedes
+seguir es la misma a 6.0 que a 1.0.
+
+Lo que sí es verdad, y es lo que ahora dicen las tres —README, formato y
+tutorial— es el número: con los valores de serie son `2.2 × 16 / 6.0 = 5,87`
+píxeles de lado por fila, o sea que **la curva más cerrada que se puede seguir
+desplaza una casilla cada tres filas**. Y lo que se gana frenando es otra cosa:
+el trompo sólo salta si ibas más rápido que `lento:`, así que arrimarse despacio
+al quitamiedos no te hace dar vueltas.
+
+Dos pruebas nuevas para que la documentación no se vuelva a separar del motor,
+que es lo que había pasado: una hace la división y exige que salgan los 5,87 y
+las tres filas; la otra conduce en el motor de verdad a cinco velocidades
+distintas —de 1.0 a 6.0— y exige que el desplazamiento por fila sea el mismo en
+las cinco. Comprobadas fallando con el volante puesto fijo en vez de
+proporcional.
+
+**Lo que sigue sin usarse**: el género de conducir genera `palmera.png` y
+`cartel.png` y ninguna plantilla los coloca. Están para quien quiera decorar el
+arcén, pero hoy no los pone nadie.
 
 ## 1.48
 

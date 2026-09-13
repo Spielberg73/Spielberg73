@@ -150,7 +150,7 @@ el nivel de partida.
 | `filmation` | una **habitación vista desde una esquina**, al estilo Knight Lore. El mapa ya no es lo que se ve: es la **planta** de la sala, y cada casilla lleva una **altura** —0 es suelo, 16 un cubo al que se sube de un salto, 32 dos alturas y 48 una pared—. Con ese número se escribe el escenario entero. El mando va a los ejes del mapa (en pantalla salen en diagonal), el salto **no se manda en el aire** y la cámara enseña la sala en la que estás y **salta** a la siguiente al cruzar. Saltar es la forma de esquivar: por encima de un pincho o de un bicho no pasa nada |
 | `kungfu` | un **templo de pantallas fijas**, al estilo Bruce Lee. Vas apagando **faroles** —la puerta no se abre hasta que estén todos— con **dos tipos detrás** que no son de la pantalla sino tuyos: al cambiar de cuadro vuelven a entrar por el borde por el que entras tú, así que correr no los quita. Y **se pegan entre ellos**, o sea que cruzarlos es una jugada. Se **trepa por lianas** —a una liana te agarras en el aire, se sube recta y desde ella se salta a donde sea— y el botón en el aire saca la **patada voladora**, que llega al doble y duele el doble |
 | `grafica` | una **aventura gráfica**, de las de señalar: aquí no se anda, se **señala**. El jugador es un **cursor** que no pesa, no choca, no cobra y no puede morir; el botón de saltar pasa entre **cuatro verbos** —mirar, coger, usar y hablar— y el de acción se lo aplica a la casilla que apuntas. Cada cosa de la habitación contesta **una cosa distinta a cada verbo**, y lo que te para no es un bicho: es lo que todavía no sabes. El ejemplo son dos habitaciones —un estudio y un sótano—, un retrato con el que se habla, un farol, una llave, una trampilla que pide las dos cosas y un arcón que no cede con las manos |
-| `carretera` | un **juego de conducir**, al estilo Out Run: la carretera se va hacia el horizonte y lo único que se hace es correr sin salirse. Por dentro **no es una vista nueva**: el mapa es el trazado de la carretera visto desde arriba y el coche lo sube, así que la curva no está programada —el coche va **recto**, y si la carretera tuerce y tú no giras, te sales—. Cuanto más corres, más volante hace falta *por frame* para seguirla, y de ahí sale el género entero: hay curvas que a tope no se pasan. Hay dos marchas (la corta empuja, la larga corre), tráfico que adelantar, y chocar no te quita vida: te hace un **trompo**, y eso cuesta tiempo. Los **controles de paso** regalan segundos, que es la única moneda que hay |
+| `carretera` | un **juego de conducir**, al estilo Out Run: la carretera se va hacia el horizonte y lo único que se hace es correr sin salirse. Por dentro **no es una vista nueva**: el mapa es el trazado de la carretera visto desde arriba y el coche lo sube, así que la curva no está programada —el coche va **recto**, y si la carretera tuerce y tú no giras, te sales—. Cuánto puede torcer una curva sale de una división —`volante / punta`, lo que el coche se desplaza de lado por cada fila de carretera—, y con los valores de serie son **una casilla cada tres filas**: más cerrada que eso no se pasa, y frenar no ayuda, porque esa línea es la misma a cualquier velocidad. Hay dos marchas (la corta empuja, la larga corre), tráfico que adelantar, y chocar no te quita vida: te hace un **trompo**, y eso cuesta tiempo. Los **controles de paso** regalan segundos, que es la única moneda que hay |
 | `vacio` | **ninguno de los diez**: un héroe, un suelo llano y una meta. No hay enemigos, ni objetos, ni música, ni parallax, y en la carpeta sólo caen los dos PNG que el `game.yaml` nombra. Compila y se juega tal cual —se anda, se salta y se llega al final—, y el propio archivo lleva apuntado abajo qué secciones faltan, cómo se llaman y dónde están contadas. Los otros diez enseñan cómo se escribe un juego; éste es para cuando ya lo sabes y lo que quieres es el tuyo, porque de un juego hecho se empieza **borrando** y en un yaml de trescientas líneas borrando se rompe algo |
 
 Si prefieres decirlo de una:
@@ -395,9 +395,9 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.48.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
-| `neoplat-kit-1.48.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.48.zip` | el `ngplat.exe` y su LEEME |
+| `neoplat-docs-1.49.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
+| `neoplat-kit-1.49.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.49.zip` | el `ngplat.exe` y su LEEME |
 
 El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
 plantillas; no necesita Python ni nada instalado. Con **doble clic** —sin
@@ -517,8 +517,9 @@ neoplat/
 │   └── np_bot.js           el bot que comprueba si un nivel se puede terminar
 ├── examples/
 │   ├── bosque-magico/      juego de ejemplo listo para compilar
-│   └── cueva-de-hierro/    el mismo motor con seis colores y parallax en Amiga
-└── tests/                  513 pruebas + 242 de jugabilidad + 81 del editor +
+│   ├── cueva-de-hierro/    el mismo motor con seis colores y parallax en Amiga
+│   └── costa-y-montana/    un juego de conducir: la calzada no es un dibujo
+└── tests/                  547 pruebas + 252 de jugabilidad + las del editor +
                             bot que se pasa los niveles + emuladores y navegador
 ```
 

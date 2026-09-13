@@ -154,7 +154,8 @@ calle está vacía. Dos es lo de los recreativos.
 
 ```yaml
 juego:
-  vista: cenital       # lateral (por defecto), cenital, cinta, isometrica o puntero
+  vista: cenital       # lateral (por defecto), cenital, cinta,
+                       # isometrica, puntero o carretera
 ```
 
 **`lateral`** es lo de siempre: hay gravedad, se salta, se mira a un lado o a
@@ -325,9 +326,9 @@ eso una habitación normal se queda en cinco o seis cubos y sobra sitio.
 #### La vista de puntero: la aventura gráfica
 
 **`puntero`** es la de las aventuras gráficas, y es la más distinta de las
-cinco: aquí no se anda por el escenario, se **señala**.
+seis: aquí no se anda por el escenario, se **señala**.
 
-| | las otras cuatro | puntero |
+| | las otras cinco | puntero |
 |---|---|---|
 | el jugador | un héroe: pesa, choca, cobra y se muere | **un cursor**: no pesa, no choca, no cobra y no puede morir |
 | el mando | mueve al héroe | mueve el cursor, y además **elige verbo** |
@@ -384,6 +385,109 @@ de sesenta veces repartidas por el mapa.
 merezca la pena poner, ni pinchos que pinchen, ni reloj, ni casilla de meta.
 Perder no es una posibilidad; lo único que puede pasar es que no sepas seguir.
 Por eso un juego de este género se escribe casi entero en `guiones:`.
+
+#### La vista de carretera: el juego de conducir
+
+**`carretera`** es la de los recreativos de conducir (Out Run, Chase H.Q.): la
+calzada se va hacia el horizonte y lo único que se hace es correr sin salirse.
+
+Y por dentro **no es una vista nueva**. Ésta es la idea de la que cuelga todo
+lo demás:
+
+> El mapa es el **trazado de la carretera visto desde arriba**, y el coche lo
+> sube. Lo que cambia no es el mundo: es **cómo se dibuja**.
+
+O sea que el motor no sabe de curvas. El coche va **recto** por un mapa
+vertical, como el de un juego de vista cenital, y lo que el jugador ve es ese
+mismo mapa proyectado en perspectiva. De ahí sale el género entero: si la
+carretera tuerce y tú no giras, **te sales** —nadie te está metiendo en la
+curva—, y fuera del asfalto no se corre. Eso no está programado en ninguna
+parte: sale solo de la cuenta.
+
+**Cuánto puede torcer una curva** lo dice una división, y conviene saberla
+antes de dibujar un trazado. El motor hace esto:
+
+```
+vy = velocidad                       (lo que sube por el mapa)
+vx = volante * velocidad / punta     (lo que se mueve de lado)
+```
+
+Las dos son proporcionales a la velocidad, así que al dividirlas se va: lo que
+el coche puede desplazarse **por cada fila de carretera** es `volante / punta`,
+y **no depende de a cuánto vayas**. Con los valores de serie son
+`2.2 × 16 / 6.0 = 5,87` píxeles por fila, o sea que la curva más cerrada que se
+puede seguir desplaza **una casilla cada tres filas**. Más que eso no se pasa,
+y frenar no ayuda: la línea que puedes trazar es la misma a 6.0 que a 1.0.
+
+Lo que sí cambia al frenar es **lo que cuesta tocar**: el trompo sólo salta si
+ibas más rápido que `lento`, así que arrimarse al quitamiedos despacio no te
+hace dar vueltas. Para que se pasen curvas más cerradas, sube `volante:` o baja
+`punta:` en [`coche`](#coche): es la misma cuenta por los dos lados.
+
+| | cenital | carretera |
+|---|---|---|
+| el mapa | lo que se ve | el **trazado**: no se dibuja, se recorre |
+| a dónde vas | a las ocho direcciones | siempre **hacia arriba**; el mando sólo mueve de lado |
+| la velocidad | fija | la llevas tú: acelerador, freno y dos marchas |
+| chocar | te quita vida | te hace un **trompo**: no mata, cuesta tiempo |
+| lo que se gana | puntos, objetos | **segundos**, en los controles de paso |
+| cómo se pierde | sin vidas | **sin tiempo** |
+
+**El mando**, que no es el de los demás géneros:
+
+| botón | qué hace |
+|---|---|
+| ← → | el volante |
+| acción (B) | **acelerar** |
+| abajo (↓) | frenar |
+| saltar (A) | cambia de **marcha**: corta o larga |
+
+Las dos marchas no son una caja de cambios: son el reparto de los recreativos.
+La corta empuja fuerte y se queda corta; la larga arranca despacio y es la que
+corre. Meter la larga demasiado pronto te deja clavado, y llevar la corta en
+una recta es tirar el tiempo.
+
+**El mapa se escribe como cualquier otro**, con la leyenda de siempre, y son
+sus tipos los que dibujan la carretera:
+
+```yaml
+tiles:
+  leyenda:
+    '.': {tile: 0, tipo: vacio}      # el asfalto: por aquí se corre
+    ',': {tile: 1, tipo: lento}      # fuera: no para, pero ahí no se corre
+    '#': {tile: 2, tipo: solido}     # el quitamiedos: chocar es un trompo
+    'K': {tile: 3, tipo: control}    # control de paso: regala segundos
+    'G': {tile: 3, tipo: meta}       # y la meta, al final del todo
+```
+
+El mapa va **de abajo arriba**: la salida (`P`) abajo del todo y la meta (`G`)
+arriba, y cuanto más largo, más carretera. Un tramo de 170 filas es un circuito
+de un par de minutos.
+
+**El tráfico** son enemigos con `comportamiento: trafico`: suben por su carril
+a lo suyo, no te persiguen ni te disparan. No son enemigos, son **estorbos**:
+lo que decides es por qué lado pasarlos.
+
+```yaml
+enemigos:
+  rival:
+    sprite: graficos/rival.png
+    comportamiento: trafico
+    velocidad: 2.6
+    vida: 99          # no se matan: se adelantan
+    puntos: 0
+```
+
+Los dibuja el motor **encogidos según lo lejos que estén**, de cinco tamaños
+—o seguido, en la Neo Geo, que tiene escalador por hardware—. El sprite se
+dibuja al tamaño de cerca y el kit saca los demás.
+
+**Lo que no hay en esta vista**: no hay salto, ni ataque, ni objetos que
+recoger, ni vida que perder de un golpe. Sólo hay el crono. Con `tiempo: 0` no
+hay ni eso y se conduce sin prisa, que sirve para probar un trazado.
+
+Los colores de la calzada van en [`carretera`](#carretera) y las cifras del
+coche en [`coche`](#coche).
 
 #### El salto
 
@@ -1044,8 +1148,10 @@ Tipos:
 | `meta` | termina el nivel |
 | `escalera` | escalera que **sube hacia la derecha** |
 | `escalera_izquierda` | escalera que **sube hacia la izquierda** |
-| `control` | punto de control: no estorba, pero apunta dónde reapareces |
+| `control` | punto de control: no estorba, pero apunta dónde reapareces (conduciendo, **regala segundos**) |
 | `cerrojo` | frena como una pared hasta que llegas con el objeto que pide |
+| `liana` | se trepa en vertical, y se agarra también en el aire |
+| `lento` | **no para, frena**: la hierba de una carretera, un arenal, un charco |
 | `decor` | se dibuja, no estorba |
 
 Atajos: `'#': 3` equivale a `{tile: 3, tipo: solido}`, y `'#': [3, plataforma]`
@@ -1108,6 +1214,7 @@ Comportamientos:
 | `perseguidor` | va hacia el jugador si está cerca, y **se planta en el borde** de un agujero en vez de tirarse | `rango`, `girar_en_borde` |
 | `saltarin` | salta cada cierto tiempo | `salto`, `intervalo` |
 | `fijo` | no se mueve | — |
+| `trafico` | sube por la carretera por su carril, a lo suyo (sólo en `vista: carretera`) | `velocidad` |
 | `cocodrilo` | abre y cierra la boca: cerrado es suelo, abierto muerde | `periodo`, `intervalo` |
 | `balanceo` | una liana que se columpia y de la que uno se cuelga | `largo`, `amplitud` |
 
@@ -1534,6 +1641,103 @@ spawns:
 La caja de colisión suele ser sólo la franja de arriba del dibujo (`caja: [32,
 6]` en un fotograma de 32×16): así el jugador se planta sobre la tabla y no
 flotando encima del hueco.
+
+## `carretera`
+
+Los siete colores con los que se pinta la calzada. Sólo la mira `vista:
+carretera`, y **entera es opcional**: sin ella sale una carretera gris con
+arcén rojo y blanco sobre hierba, la de los recreativos de siempre.
+
+```yaml
+carretera:
+  asfalto: ["#4a4a52", "#282830"]   # los dos tonos de la calzada
+  arcen:   ["#d0d0d8", "#c02020"]   # el borde a rayas
+  hierba:  ["#3a7a42", "#2c5434"]   # lo de fuera
+  raya:    "#e8e8f0"                # la línea del centro
+  ancho_arcen: 8                    # lo que mide el arcén a cada lado, en píxeles
+```
+
+**Van en pares, y ésa es toda la técnica del género.** La carretera se pinta a
+**franjas**: dos tonos que se alternan cada dos tramos y corren hacia ti según
+avanzas. Eso es lo que hace que se note la velocidad —no hay dibujo que mover,
+hay dos colores que se turnan— y es como se hacía en los recreativos.
+
+Son **siete colores y no un dibujo** a propósito. Así la calzada se pinta con
+lo que da cada máquina —el scroll por línea de la Mega Drive y del X68000, el
+copper del Amiga, sprites encogidos en la Neo Geo— sin gastar ni un tile, y la
+misma pantalla sale en las ocho.
+
+Con **un solo color** en vez de un par, esa franja se ve lisa: `asfalto:
+"#303038"` es una calzada sin rayas.
+
+> **Separa los dos tonos de verdad, no un matiz.** La máquina más corta de
+> color del kit —la Mega Drive y el Atari ST— guarda **tres bits por canal**, o
+> sea ocho niveles, y dos grises que se llevan ocho puntos le caen en el mismo.
+> Entonces la paleta rota igual, pero rota cuatro colores iguales, y la
+> carretera se ve lisa: parece que el coche está parado. Cada pareja va un
+> escalón entera (255/7 = 36 puntos). Si te pasas, `ngplat comprobar` avisa con
+> el nombre de la franja y el de la máquina.
+
+## `coche`
+
+Las cifras del juego de conducir: el motor, el freno y el volante. También
+**entera es opcional**: sin ella sale un coche que corre, frena y gira como el
+de un recreativo de los ochenta.
+
+```yaml
+coche:
+  punta: 6.0            # lo que corre con la marcha larga
+  punta_corta: 3.2      # y con la corta
+  acelera: 0.030        # lo que gana por frame con la larga
+  acelera_corta: 0.075  # y con la corta, que empuja más
+  frena: 0.140          # lo que pierde por frame con el freno
+  roce: 0.020           # y lo que pierde solo, sin tocar nada
+  volante: 2.2          # lo que se mueve de lado, a punta
+  lento: 1.6            # lo que corre como mucho fuera del asfalto
+  arrastre: 0.180       # lo que le roba por frame el suelo malo
+  trompo: 90            # frames dando vueltas después de un choque
+  control: 20           # segundos que regala cruzar un control de paso
+```
+
+| clave | por defecto | de | a |
+|---|---|---|---|
+| `punta` | 6.0 | 0.5 | 12.0 |
+| `punta_corta` | 3.2 | 0.3 | 12.0 |
+| `acelera` | 0.030 | 0.002 | 2.0 |
+| `acelera_corta` | 0.075 | 0.002 | 2.0 |
+| `frena` | 0.140 | 0.005 | 4.0 |
+| `roce` | 0.020 | 0.0 | 2.0 |
+| `volante` | 2.2 | 0.1 | 8.0 |
+| `lento` | 1.6 | 0.1 | 8.0 |
+| `arrastre` | 0.180 | 0.005 | 4.0 |
+| `trompo` | 90 | 0 | 255 |
+| `control` | 20 | 0 | 999 |
+
+Las velocidades van en **píxeles por frame**, igual que las de cualquier otro
+actor del kit, así que se comparan de un vistazo: un coche a 6.0 corre cuatro
+veces lo que un héroe a 1.5.
+
+Los topes no son por gusto. Una punta de 20 píxeles por frame se salta dos
+casillas enteras entre frame y frame, y el coche **atravesaría las vallas** sin
+enterarse.
+
+**`volante` es la cifra que decide el juego.** Es lo que el coche se mueve de
+lado a punta, y de ella sale qué curvas se pasan a tope y cuáles no. Súbela y
+el trazado se vuelve fácil; bájala y hay curvas que obligan a levantar el pie,
+que es donde está la gracia.
+
+**`lento` y `arrastre` son la penalización de salirse**: `arrastre` es lo que
+te roba por frame el suelo malo y `lento` el techo al que te deja. Salirse no
+mata —eso sería otro juego— pero cuesta segundos, y los segundos son la única
+moneda que hay.
+
+**`trompo`** son los frames dando vueltas después de chocar contra algo
+`solido`. Con `trompo: 0` chocar sólo te para.
+
+**`control`** son los segundos que da cruzar una casilla `tipo: control`. Es la
+moneda del género: aquí no se gana matando ni recogiendo, se gana **llegando**,
+y el premio es seguir jugando. Con `tiempo: 0` en `juego:` no hay crono y esto
+no hace nada.
 
 ## `fondos` (parallax)
 
