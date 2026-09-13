@@ -191,6 +191,19 @@ class _Parser:
         line = self.lines[self.pos]
         if line.text.startswith("- "):
             return self.parse_list(indent)
+        # Una coleccion en linea escrita **debajo** de su clave y sangrada:
+        #
+        #     objetos:
+        #       {}
+        #
+        # Es YAML del bueno y PyYAML lo lee, asi que esto tiene que leerlo
+        # igual: si no, el mismo game.yaml vale o no vale segun lo que tenga
+        # instalado quien lo abra -que es justo lo que paso con el juego de
+        # conducir, que salia de `ngplat nuevo` con un '{}' asi y reventaba en
+        # el ngplat.exe, donde no hay PyYAML-.
+        if line.text[:1] in "[{":
+            self.pos += 1
+            return _flow(line.text, line.no)
         return self.parse_map(indent)
 
     def parse_list(self, indent: int) -> List[Any]:

@@ -2,8 +2,54 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.47.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.48.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.48
+
+**El juego de conducir no abría en el `ngplat.exe`.**
+
+`ngplat nuevo --genero carretera` creaba el proyecto entero —los dibujos, los
+sonidos, el `game.yaml`— y al ir a abrirlo cortaba con:
+
+```
+error en game.yaml: se esperaba 'clave: valor' en '{}'
+```
+
+La plantilla dejaba la sección de objetos así, porque en un juego de conducir
+no hay nada que recoger:
+
+```yaml
+objetos:
+  # Sin objetos que recoger: aqui lo unico que se gana es tiempo.
+  {}
+```
+
+Eso es **YAML del bueno** —una colección en línea puesta debajo de su clave— y
+PyYAML lo lee sin pestañear. El kit trae además su propio analizador de
+repuesto, `miniyaml`, para no depender de nada; y ése no sabía leerlo: esperaba
+un `clave: valor` en cada línea del bloque.
+
+De ahí que no lo cazara nadie. La máquina donde se desarrolla tiene PyYAML, así
+que el proyecto abría y las **544 pruebas** pasaban. El `ngplat.exe` no lo
+lleva —es lo que lo hace un solo archivo sin instalar nada— y ahí no hay
+repuesto para el repuesto: el proyecto no abre y lo único que se ve es el error
+del analizador.
+
+Arreglado por los tres lados:
+
+- **La plantilla** escribe `objetos: {}` en una línea, que es lo que entienden
+  los dos.
+- **`miniyaml` ya lee una colección en línea debajo de su clave**, `{}` y `[]`,
+  porque el mismo `game.yaml` no puede valer o no valer según lo que tenga
+  instalado quien lo abra. Si el kit lo escribe, el kit lo lee.
+- **Y la prueba que faltaba**: todo lo que sale de `ngplat nuevo` —los once
+  géneros por los dos estilos, veintidós proyectos— se abre **a propósito con
+  `miniyaml`**, sin mirar si PyYAML está. Las demás pruebas cargan con
+  `load_project`, que usa PyYAML cuando lo hay, así que en la máquina de
+  desarrollo un yaml que sólo entiende PyYAML las pasa todas. Comprobada
+  fallando con el código de antes, y con el mismo mensaje que salía en
+  pantalla.
 
 ## 1.47
 

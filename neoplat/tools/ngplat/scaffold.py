@@ -3618,10 +3618,10 @@ enemigos:
     vida: 99
     puntos: 0
 
-objetos:
-  # Sin objetos que recoger: aqui lo unico que se gana es tiempo, y se gana
-  # llegando. Se deja el hueco para que anadir uno sea escribirlo.
-  {{}}
+# Sin objetos que recoger: aqui lo unico que se gana es tiempo, y se gana
+# llegando. Se deja el hueco -en la misma linea, que es como lo lee tambien el
+# analizador de repuesto- para que anadir uno sea escribirlo debajo.
+objetos: {{}}
 
 tiles:
   imagen: graficos/tiles.png
