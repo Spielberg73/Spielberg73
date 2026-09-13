@@ -45,9 +45,10 @@
  * registros que no se pueden releer.
  */
 #define NP_IOCS_CRTMOD   0x10     /* poner un modo de pantalla */
-#define NP_IOCS_SP_INIT  0xB0     /* preparar el chip de sprites */
-#define NP_IOCS_SP_ON    0xB1     /* y encenderlo */
 #define NP_IOCS_ADPCMOUT 0x60     /* soltar una muestra por el ADPCM */
+/* Las de sprites (_SP_INIT, $B0, y _SP_ON, $B1) **no se usan**: segun con que
+   Human68k se lance el juego, _SP_INIT no vuelve y el arranque se queda ahi
+   colgado. El chip lo enciende el motor con el bit 9 de BG_CTRL. */
 #define NP_MODO_ROM      3        /* 256x240 a 16 colores: el mas parecido */
 
 static __inline long np_iocs(long numero, long d1, long d2)
@@ -231,6 +232,13 @@ static __inline long np_iocs(long numero, long d1, long d2)
 #define NP_GVRAM         ((volatile uint16_t *)0xC00000)
 #define NP_GVRAM_ANCHO   512
 #define NP_GVRAM_ALTO    256
+/* El scroll de la grafica: R12 y R13, la pagina 0.
+ *
+ * El CRTC tiene cuatro pares (R12..R19), uno por pagina, y a 16 colores la
+ * pantalla es **la pagina 0**: las otras tres se quedan como esten. Escribir
+ * las cuatro con el mismo valor, que fue lo primero que se probo, no mueve
+ * nada -medido en el emulador: con R12 a 200 la calzada se corre 200 pixeles,
+ * y escribiendo ademas R14, R16 y R18 se queda clavada-. */
 #define NP_SCROLL_X      ((volatile uint16_t *)0xE80018)
 #define NP_SCROLL_Y      ((volatile uint16_t *)0xE8001A)
 #define NP_VC_GRAFICA    0x0001   /* VC_R2: la pagina 0 de la grafica */

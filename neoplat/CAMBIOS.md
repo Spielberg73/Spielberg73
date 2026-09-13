@@ -2,8 +2,58 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.44.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.45.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.45
+
+**La carretera en el X68000, que era la que faltaba: las ocho máquinas la
+dibujan.**
+
+Antes de dibujar nada había que arreglar lo de 1.43: **ningún** juego del kit
+llegaba a pantalla en px68k. El truco que lo cazó fue dejar de mirar la pantalla
+y ponerla a contar: cada paso del arranque pinta `paso * 8` líneas de GVRAM y se
+cuentan desde fuera las filas que no son negras. Así se ve hasta dónde llega el
+programa sin depender de la paleta ni de qué capa esté encendida —y lo que salió
+es que el juego **no pasaba del paso 2**.
+
+Ahí está `_SP_INIT`, la llamada del IOCS ($B0) que prepara el chip de sprites.
+**No vuelve.** Depende del Human68k con el que se lance el juego, y con el que
+el kit usa para probar se queda dentro para siempre. Tampoco hacía falta: el
+chip se enciende con el **bit 9 de `BG_CTRL`**, que el motor ya escribía. Fuera
+`_SP_INIT` y `_SP_ON`, y el platformer aparece en pantalla —el mismo binario de
+hace dos semanas incluido—.
+
+Y detrás, el segundo: **el scroll de la gráfica no se mueve** escribiendo los
+cuatro pares de registros. El CRTC tiene uno por página (R12..R19) y a 16
+colores la pantalla es la página 0; escribiendo los cuatro con el mismo valor se
+pisa además R20, el modo de memoria del CRTC, y el scroll se queda clavado.
+Medido: con R12 solo, la calzada se corre los 200 píxeles que se le piden;
+añadiendo R14, R16 y R18, cero.
+
+Con eso, la carretera. La calzada va en la pantalla **gráfica** —la de un píxel
+por palabra— y se desliza de verdad **línea a línea**, no de una pieza: el CRTC
+avisa con su interrupción de rastreo (R09 dice en qué línea, el aviso llega por
+el `GPIP6` del MFP, canal 14, vector $4E) y la rutina se limita a escribir el
+scroll del tramo siguiente y apuntar R09 al de después. Los tramos se preparan
+en el frame y se cambian de tabla en el retrazo, así que la interrupción nunca
+lee una lista a medio escribir. La capa BG se apaga: conduciendo no hay parallax
+que elegir, la calzada **es** lo que se ve, y el generador se la pone ahora a
+todos los niveles del juego (sin eso ningún nivel pedía capa y la pantalla
+gráfica salía vacía).
+
+Una prueba nueva en `tests/test_carretera.py`: arranca px68k, conduce, y exige
+que el eje de la calzada **cerca** y el eje **lejos** se hayan movido distinto.
+Comprobada fallando sin la interrupción: `0 not greater than 8 ... eso es un
+scroll unico, no uno por linea`.
+
+`docs/x68000.md` cuenta las dos medidas y la interrupción por tramo.
+
+Y de paso, dos casillas de la tabla del README que llevaban mintiendo desde
+1.38: el sonido de la Neo Geo ponía «YM2610 (SSG)» y el de la Mega Drive «PSG
+SN76489» —las dos tocan **FM** desde entonces—, y el parallax del X68000 ponía
+«no» cuando tiene una capa, la pantalla gráfica, que es justo la que ahora se
+lleva la calzada.
 
 ## 1.44
 

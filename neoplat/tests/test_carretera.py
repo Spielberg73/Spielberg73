@@ -777,6 +777,109 @@ class TestElOrdenDelTrafico(unittest.TestCase):
                 "le va a quedar el de la lista de entidades" % maquina)
 
 
+class TestLaCarreteraEnElX68000(unittest.TestCase):
+    """La ultima de las ocho, y la que mas vueltas dio.
+
+    El X68000 no tiene tabla de scroll por linea: tiene **un** registro para
+    toda la pantalla grafica, que es donde va la calzada. Con la curva eso no
+    vale -el eje de la calzada se va de 160 a 340 entre el horizonte y el
+    coche, medido en el motor-, asi que anclarlo en una sola linea deja el
+    coche fuera del asfalto.
+
+    Lo que si tiene es el aviso del CRTC: R09 dice en que linea avisar y el
+    aviso entra por GPIP6 del MFP. La carretera se desliza desde esa
+    interrupcion, un salto por **tramo** -las lineas seguidas que se corren lo
+    mismo van juntas- en vez de uno por linea.
+
+    Esta prueba mira las dos cosas: que la calzada esta puesta y que **se
+    desliza por lineas**. Lo segundo es lo que se cae si alguien vuelve al
+    scroll unico: con un solo registro la imagen se mueve entera, asi que la
+    distancia entre el eje de cerca y el de lejos seria siempre la misma.
+    """
+
+    def _arrancar(self):
+        sys.path.insert(0, os.path.join(KIT, "tests"))
+        from libretro import buscar_core, Emulador
+        import emulador_x68000 as ex
+        from ngplat.build import build_project
+        from ngplat.codegen import generar_para_sistema
+        from ngplat.project import load_project
+        if not buscar_core(ex.CORE, "NEOPLAT_CORE_X68000"):
+            self.skipTest("no esta instalado el core de px68k")
+        if not ex._buscar_roms() or not ex._buscar_human68k():
+            self.skipTest("faltan las ROMs del X68000 o el disco de Human68k")
+        if not shutil.which("m68k-linux-gnu-gcc") and not shutil.which("m68k-elf-gcc"):
+            self.skipTest("no hay un compilador de 68000 instalado")
+        tmp = tempfile.mkdtemp(prefix="neoplat-x68-carretera-")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        proyecto = os.path.join(tmp, "circuito")
+        crear_proyecto(proyecto, "COSTA", "TEST", genero="carretera")
+        maquina = sistemas.obtener("x68000")
+        build = build_project(load_project(proyecto), maquina.carretera_como)
+        maquina.preparar(build)
+        out = os.path.join(tmp, "build")
+        generar_para_sistema(build, out, maquina, "202")
+        hecho = subprocess.run(["make", "-C", out], capture_output=True, text=True)
+        self.assertEqual(hecho.returncode, 0, hecho.stdout + hecho.stderr)
+        juego = [f for f in os.listdir(os.path.join(out, "disco"))
+                 if f.endswith(".X")][0]
+        sistema, disco = ex.preparar(os.path.join(out, "disco", juego))
+        emu = Emulador(buscar_core(ex.CORE, "NEOPLAT_CORE_X68000"), sistema=sistema)
+        emu.cargar(disco)
+        self.assertTrue(ex._esperar_al_juego(emu),
+                        "el juego no ha llegado a pedir su modo de pantalla")
+        emu.pulsar("START"); emu.avanzar(6); emu.pulsar(); emu.avanzar(60)
+        emu.pulsar("B")                  # el acelerador
+        return emu
+
+    @staticmethod
+    def _eje(frame, fila):
+        """El centro del asfalto en esa fila: los grises, que ni el cielo ni la
+        hierba ni los arcenes lo son."""
+        ancho, alto, px = frame
+        xs = [x for x in range(ancho)
+              for r, g, b in (px[fila * ancho + x][:3],)
+              if abs(r - g) < 24 and abs(g - b) < 24 and r < 170]
+        return (xs[0] + xs[-1]) // 2 if xs else None
+
+    def test_la_calzada_se_desliza_linea_a_linea(self):
+        from ngplat import carretera as carr
+        emu = self._arrancar()
+        emu.avanzar(40)
+        ancho, alto, px = emu.frame
+        cielo = {p[:3] for p in px[:(carr.HORIZONTE - 16) * ancho]}
+        self.assertLessEqual(
+            len(cielo), 4,
+            "por encima del horizonte tendria que haber solo cielo, y hay %d"
+            " colores" % len(cielo))
+        anchos = []
+        for fila in (carr.HORIZONTE + 16, alto - 8):
+            xs = [x for x in range(ancho)
+                  for r, g, b in (px[fila * ancho + x][:3],)
+                  if abs(r - g) < 24 and abs(g - b) < 24 and r < 170]
+            anchos.append(len(xs))
+        self.assertTrue(anchos[0], "junto al horizonte no se ve calzada")
+        self.assertGreater(anchos[1], anchos[0] * 3,
+                           "la calzada no se abre: %r" % anchos)
+
+        # Y lo que prueba la interrupcion: la separacion entre el eje de cerca
+        # y el de lejos **cambia**. Con un solo registro de scroll la imagen se
+        # mueve entera y esa distancia seria siempre la misma.
+        separaciones = []
+        for _ in range(10):
+            emu.avanzar(15)
+            lejos = self._eje(emu.frame, carr.HORIZONTE + 16)
+            cerca = self._eje(emu.frame, alto - 8)
+            if lejos is not None and cerca is not None:
+                separaciones.append(cerca - lejos)
+        self.assertGreater(len(separaciones), 4,
+                           "no se ha podido seguir la calzada: %r" % separaciones)
+        self.assertGreater(
+            max(separaciones) - min(separaciones), 8,
+            "el eje de cerca y el de lejos se mueven igual (%r): eso es un "
+            "scroll unico, no uno por linea" % separaciones)
+
+
 _TAMANOS_C = """/* Que tamano elige el motor a cada distancia, en tiles. */
 #include <stdio.h>
 #include "np_world.h"

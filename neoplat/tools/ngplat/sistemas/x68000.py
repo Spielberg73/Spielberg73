@@ -460,6 +460,14 @@ def _capas_gvram(build: Build) -> Dict[str, object]:
     # ninguna. El numero es el indice + 1, como la musica.
     de_nivel = [(nivel.layers[0] + 1) if nivel.layers else 0
                 for nivel in build.levels]
+    # Conduciendo, **la capa es la carretera** y la lleva cualquier nivel: la
+    # calzada en perspectiva no es un parallax que el nivel elija, es lo unico
+    # que se ve. Sin esto ningun nivel pedia capa (los de conducir no llevan
+    # parallax) y la pantalla grafica se quedaba vacia: se veia el color de
+    # fondo y nada mas.
+    if build.asfalto is not None and build.asfalto in build.layers:
+        carretera = build.layers.index(build.asfalto) + 1
+        de_nivel = [carretera for _ in build.levels]
     return {"datos": bytes(datos), "capas": capas, "de_nivel": de_nivel}
 
 def _c_bytes(datos, por_linea=16) -> str:

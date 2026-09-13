@@ -67,13 +67,25 @@ static void np_limpiar_capa(void)
 
 void np_video_init(void)
 {
-    /* Primero la ROM: _CRTMOD deja la pantalla puesta y _SP_INIT/_SP_ON dejan
-       el chip de sprites preparado. Es la unica forma de heredar el
-       temporizado bueno de los registros del CRTC, que son de solo escritura y
-       no se pueden releer. */
+    /* Primero la ROM: _CRTMOD deja la pantalla puesta. Es la unica forma de
+       heredar el temporizado bueno de los registros del CRTC, que son de solo
+       escritura y no se pueden releer.
+
+       Y **solo** _CRTMOD. Aqui tambien se llamaba a _SP_INIT y _SP_ON para
+       preparar el chip de sprites, y eso era una bomba de relojeria: segun con
+       que Human68k se lanzara el juego, _SP_INIT **no vuelve**. El juego se
+       quedaba colgado ahi para siempre -pantalla negra en el modo de la ROM,
+       sin llegar nunca a escribir su temporizado- y desde fuera parecia que no
+       arrancaba. Se encontro pintando en la pantalla grafica una marca por
+       cada paso del arranque y contando desde el emulador cuantas lineas
+       salian: la marca de antes de _SP_INIT, y ninguna de las de despues.
+
+       No hacen falta: el chip de sprites lo enciende el propio motor con el
+       bit 9 de BG_CTRL, ahi abajo, y el reparto de patrones y paletas lo hace
+       np_subir_patrones/np_subir_paletas. Quitarlas no cambia lo que se ve
+       -comprobado en el emulador, con los sprites del jugador y las monedas en
+       su sitio- y el juego arranca con cualquier disco de sistema. */
     np_iocs(NP_IOCS_CRTMOD, NP_MODO_ROM, 0);
-    np_iocs(NP_IOCS_SP_INIT, 0, 0);
-    np_iocs(NP_IOCS_SP_ON, 0, 0);
 
     /* Y encima, el temporizado nuestro: 320x224, que es la pantalla del kit.
        El chip de sprites lo aguanta -esta comprobado en el emulador- asi que
@@ -154,6 +166,16 @@ static void np_scroll(const NpWorld *w)
  * que tocar nada por frame mas que dos registros.
  */
 
+/* Mueve la pantalla grafica: la pagina 0, que es la que se ve a 16 colores
+   (ver np_x68k.h). Lo que se ve en la columna X de la pantalla es la columna
+   X + scroll de la imagen, asi que para poner la columna `c` de la imagen en
+   la `p` de la pantalla se escribe c - p. */
+static void np_grafica_scroll(uint16_t x)
+{
+    *NP_SCROLL_X = x;
+    *NP_SCROLL_Y = 0;
+}
+
 static const NpCapaX68k *np_capa_puesta;
 
 static void np_capa_borrar(void)
@@ -207,8 +229,7 @@ static void np_capa_scroll(const NpWorld *w)
     int32_t x;
     if (!np_capa_puesta) return;
     x = (w->cam_x * (int32_t)np_capa_puesta->speed) >> 8;
-    *NP_SCROLL_X = (uint16_t)(x & (NP_GVRAM_ANCHO - 1));
-    *NP_SCROLL_Y = 0;
+    np_grafica_scroll((uint16_t)(x & (NP_GVRAM_ANCHO - 1)));
 }
 
 /* --- los actores -------------------------------------------------------- */
@@ -253,6 +274,167 @@ static void np_dibujar_actor(const NpActorDef *def, int32_t x, int32_t y,
     }
 }
 
+#if NP_VISTA_CARRETERA
+/* --- la carretera --------------------------------------------------------
+ *
+ * Aqui la calzada no se dibuja: se **desliza**, igual que en la Mega Drive. La
+ * imagen en perspectiva la trae hecha el compilador -512 de ancho, con las
+ * cuatro franjas dentro- y va en la pantalla grafica, que en el modo del kit
+ * es una pagina de 512 que se repite sola. Pintarla por frame no cabria: un
+ * pixel es una palabra, y son 36.000 escrituras largas, tres veces el frame.
+ *
+ * El escenario de tiles no se dibuja en absoluto: en esta vista el mapa es el
+ * trazado de la carretera, no lo que se ve. La capa BG se deja en blanco y lo
+ * unico que queda por encima de la grafica son los sprites y el marcador.
+ *
+ * Y las franjas que corren hacia ti tampoco se dibujan: son cuatro huecos de
+ * paleta por cosa, rotados un paso por frame. Doce palabras a la paleta
+ * grafica, que es donde vive la carretera. */
+static void np_carretera_paleta(uint8_t fase)
+{
+    const uint8_t *huecos = np_carretera_huecos;
+    uint8_t grupo, i;
+    uint16_t copia[NP_CARRETERA_GRUPOS * NP_CARRETERA_FRANJAS];
+    if (!np_capa_puesta) return;
+    /* de la ficha de la capa, que es de donde salio la paleta grafica */
+    for (grupo = 0; grupo < NP_CARRETERA_GRUPOS; grupo++)
+        for (i = 0; i < NP_CARRETERA_FRANJAS; i++)
+            copia[grupo * NP_CARRETERA_FRANJAS + i] =
+                np_capa_puesta->paleta[huecos[grupo * NP_CARRETERA_FRANJAS + i]];
+    for (grupo = 0; grupo < NP_CARRETERA_GRUPOS; grupo++) {
+        const uint8_t *cuatro = &huecos[grupo * NP_CARRETERA_FRANJAS];
+        for (i = 0; i < NP_CARRETERA_FRANJAS; i++)
+            NP_PALETA_GFX[cuatro[i]] =
+                copia[grupo * NP_CARRETERA_FRANJAS
+                      + ((i + fase) & (NP_CARRETERA_FRANJAS - 1))];
+    }
+}
+
+/* Un tamano de la calzada, con sprites. Se le da la esquina de arriba a la
+   izquierda, igual que a np_dibujar_actor. */
+static void np_bloque_carretera(const NpCarreteraTam *tam, int32_t x, int32_t y,
+                                uint8_t frame)
+{
+    uint16_t base = (uint16_t)(tam->first_tile + (uint16_t)frame
+                               * tam->cols * tam->rows);
+    uint8_t c, r;
+    for (c = 0; c < tam->cols; c++)
+        for (r = 0; r < tam->rows; r++) {
+            int32_t sx = x + c * 16;
+            int32_t sy = y + r * 16;
+            if (sx <= -16 || sx >= NP_ANCHO) continue;
+            if (sy <= -16 || sy >= NP_ALTO) continue;
+            np_sprite((int16_t)sx, (int16_t)sy,
+                      (uint8_t)(base + c * tam->rows + r), tam->palette, 0);
+        }
+}
+
+/* La calzada, deslizada **linea a linea**.
+ *
+ * El scroll de la pantalla grafica es uno para toda la pantalla, y con la
+ * curva eso no vale: el eje de la calzada se va de 160 a 340 entre el
+ * horizonte y el coche, asi que anclarlo en una sola linea deja el coche fuera
+ * del asfalto. Medido en el motor con el circuito del andamiaje.
+ *
+ * Lo que si tiene esta maquina es lo que dice np_x68k.h: el CRTC avisa cuando
+ * el haz llega a la linea que diga R09, y ese aviso entra en el MFP por GPIP6.
+ * Asi que la carretera se desliza desde esa interrupcion: cada vez que salta,
+ * escribe el scroll de su tramo y deja R09 en la linea del siguiente.
+ *
+ * No hacen falta 224 saltos. La curva hace que muchas lineas seguidas se
+ * corran lo mismo, asi que el frame se reparte en tramos -una entrada por
+ * cambio- y salen unas pocas decenas. Es la misma cuenta que en la Jaguar.
+ *
+ * La tabla va **doble**: el juego llena una mientras la interrupcion lee la
+ * otra, y se cambian en el retrazo. Si se escribiera la que se esta leyendo,
+ * el haz pillaria medio tramo del frame de antes y medio del nuevo. */
+static int16_t np_centro_de_linea[NP_SCREEN_H];
+
+#define NP_CARRETERA_TRAMOS 96
+
+typedef struct {
+    uint16_t linea;              /* donde empieza el tramo */
+    uint16_t scroll;             /* lo que hay que poner en R12 */
+} NpTramoVia;
+
+static NpTramoVia np_tramos[2][NP_CARRETERA_TRAMOS];
+static uint8_t np_tramos_n[2];
+static volatile uint8_t np_tramo_tabla;   /* la que lee la interrupcion */
+static volatile uint8_t np_tramo_i;       /* por que tramo va */
+static uint8_t np_tramo_lleno;            /* la que esta llenando el juego */
+
+/* Lo que hay que poner en R12 para que el eje de la calzada caiga donde dice
+   la proyeccion en esa linea. */
+static uint16_t np_via_scroll(uint16_t y)
+{
+    return (uint16_t)((NP_CARRETERA_EJE - np_centro_de_linea[y])
+                      & (NP_GVRAM_ANCHO - 1));
+}
+
+/* La interrupcion de rastreo: escribe el scroll de este tramo y apunta al
+   siguiente. Corta y sin llamadas, que salta unas cuantas veces por frame. */
+static void __attribute__((interrupt_handler)) np_irq_rastreo(void)
+{
+    uint8_t tabla = np_tramo_tabla;
+    uint8_t i = np_tramo_i;
+    if (i < np_tramos_n[tabla]) {
+        *NP_SCROLL_X = np_tramos[tabla][i].scroll;
+        i++;
+        np_tramo_i = i;
+        /* la linea del siguiente, o fuera de pantalla si era el ultimo */
+        *NP_CRTC_R09 = (uint16_t)(i < np_tramos_n[tabla]
+                                  ? np_tramos[tabla][i].linea : 0x3FF);
+    }
+    *NP_MFP_ISRA = (uint8_t)~NP_MFP_RASTERE;   /* un cero reconoce, ver MC68901 */
+}
+
+static void np_carretera_irq_init(void)
+{
+    volatile uint32_t *vector = (volatile uint32_t *)0;
+    /* El MFP del X68000 pone sus vectores a partir del $40; GPIP6 es su canal
+       14, asi que el vector es el $4E. */
+    vector[0x4E] = (uint32_t)(uintptr_t)&np_irq_rastreo;
+    *NP_MFP_AER &= (uint8_t)~NP_MFP_RASTERE;   /* avisa al bajar, como el CRTC */
+    *NP_MFP_DDR &= (uint8_t)~NP_MFP_RASTERE;   /* GPIP6 es entrada */
+    *NP_MFP_IERA |= NP_MFP_RASTERE;
+    *NP_MFP_IMRA |= NP_MFP_RASTERE;
+    __asm__ volatile ("andi.w #0xF8FF,%sr");   /* que pasen las del MFP */
+}
+
+static void np_carretera_desliza(const NpWorld *w)
+{
+    uint16_t horizonte = np_carretera(w, np_centro_de_linea);
+    uint8_t tabla = np_tramo_lleno;
+    uint8_t n = 0;
+    uint16_t y, antes;
+
+    if (horizonte >= NP_SCREEN_H) return;
+    /* Una entrada por **cambio** de scroll, no por linea. */
+    antes = np_via_scroll(horizonte);
+    np_tramos[tabla][n].linea = horizonte;
+    np_tramos[tabla][n].scroll = antes;
+    n++;
+    for (y = (uint16_t)(horizonte + 1); y < NP_SCREEN_H; y++) {
+        uint16_t ahora = np_via_scroll(y);
+        if (ahora == antes) continue;
+        if (n >= NP_CARRETERA_TRAMOS) break;
+        np_tramos[tabla][n].linea = y;
+        np_tramos[tabla][n].scroll = ahora;
+        n++;
+        antes = ahora;
+    }
+    np_tramos_n[tabla] = n;
+
+    /* Y el cambio, en el retrazo: aqui no hay haz dibujando. */
+    np_tramo_lleno = np_tramo_tabla;
+    np_tramo_tabla = tabla;
+    np_tramo_i = 0;
+    *NP_SCROLL_X = np_tramos[tabla][0].scroll;   /* lo de arriba del horizonte */
+    *NP_SCROLL_Y = 0;
+    *NP_CRTC_R09 = np_tramos[tabla][0].linea;
+}
+#endif /* NP_VISTA_CARRETERA */
+
 /* --- un frame ----------------------------------------------------------- */
 
 void np_video_frame(const NpWorld *w)
@@ -274,10 +456,24 @@ void np_video_frame(const NpWorld *w)
         /* por donde no hay capa ni sprite se ve el color 0 de la paleta
            grafica, asi que ese es el fondo del nivel */
         np_capa_nivel(w);
-        NP_PALETA_GFX[0] = w->level->background;
+        NP_PALETA_GFX[0] = (uint16_t)w->level->background;
+#if NP_VISTA_CARRETERA
+        /* Conduciendo no hay escenario que dibujar: en esta vista el mapa es
+           el trazado de la carretera. La capa BG se **apaga** entera (el chip
+           se queda encendido, que de el salen los sprites) y lo que se ve es
+           la pantalla grafica con la calzada, mas los sprites encima. */
+        np_limpiar_capa();
+        *NP_BG0_X = 0;
+        *NP_BG0_Y = 0;
+        *NP_BG_CTRL = NP_BG_CHIP_ON;
+        np_carretera_irq_init();
+        (void)c;
+#else
         for (c = columna - 1; c <= columna + NP_COLUMNAS + 1; c++)
             np_columna_escenario(w, c);
+#endif
     } else {
+#if !NP_VISTA_CARRETERA
         while (ultima_columna < columna) {          /* avanzando a la derecha */
             ultima_columna++;
             np_columna_escenario(w, ultima_columna + NP_COLUMNAS);
@@ -286,10 +482,16 @@ void np_video_frame(const NpWorld *w)
             ultima_columna--;
             np_columna_escenario(w, ultima_columna - 1);
         }
+#endif
     }
 
+#if NP_VISTA_CARRETERA
+    np_carretera_paleta(np_carretera_fase(w));
+    np_carretera_desliza(w);
+#else
     np_scroll(w);
     np_capa_scroll(w);
+#endif
 
     np_sprite_siguiente = 0;
     /* De mas lejos a mas cerca: en la vista de cinta los actores se pisan a
@@ -303,7 +505,38 @@ void np_video_frame(const NpWorld *w)
        el vblank y el juego entero se vaya a la mitad de velocidad. Medido: la
        melodia pasa de 16 notas de 16 a 4. */
     orden = np_orden_dibujo(w, &cuantas);
-#if NP_VISTA_ISO
+#if NP_VISTA_CARRETERA
+    /* Lo que hay en la calzada va donde dice la proyeccion y del tamano que le
+       toca, y en el orden que dice el motor: de lejos a cerca. */
+    {
+        NpEnLaVia visto[NP_CARRETERA_A_LA_VEZ];
+        uint8_t cuantos = np_carretera_trafico(w, visto, NP_CARRETERA_A_LA_VEZ);
+        uint8_t j;
+        for (j = 0; j < cuantos; j++) {
+            const NpEntity *e = &w->entities[visto[j].entidad];
+            const NpActorDef *def = np_entity_def(e);
+            const NpCarreteraTam *tam = np_carretera_dibujo(def, visto[j].escala);
+            if (!tam) continue;
+            /* El dibujo viene centrado y apoyado abajo en su bloque. */
+            np_bloque_carretera(tam,
+                                visto[j].sx - tam->cols * 16 / 2,
+                                visto[j].sy - tam->rows * 16,
+                                np_actor_frame(def, e->anim, e->anim_frame));
+        }
+    }
+    for (i = 0; i < NP_MAX_PLAYERS; i++) {
+        const NpActorDef *def = &np_player_def.actor;
+        const NpPlayer *p = &w->players[i];
+        int32_t cx, cy;
+        if (!np_player_visible(w, i)) continue;
+        /* El coche va en un sitio fijo abajo: la camara le sigue. Sin espejo,
+           que se ve de culo. */
+        np_carretera_coche(w, i, &cx, &cy);
+        np_dibujar_actor(def, cx, cy,
+                         np_actor_frame(def, p->anim, p->anim_frame), 0);
+    }
+    (void)orden; (void)cuantas;
+#elif NP_VISTA_ISO
     for (i = 0; i < cuantas; i++) {
         const NpActorDef *def;
         int32_t sx, sy;
