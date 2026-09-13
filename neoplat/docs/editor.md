@@ -4,6 +4,12 @@ El preview que abre `ngplat probar` **es** el editor. No hay que instalar nada
 ni cambiar de programa: pulsas <kbd>E</kbd> y el juego se pausa para que lo
 edites; <kbd>Enter</kbd> y lo estás jugando otra vez.
 
+Las dos maneras de volver al juego —<kbd>Enter</kbd> («probar el nivel») y
+<kbd>E</kbd> («volver a jugar»)— llevan lo que hayas dibujado. Si has tocado el
+escenario, el nivel **empieza de nuevo**: hace falta, porque podrías estar justo
+donde acabas de pintar una pared. Si no lo has tocado, sigues jugando donde
+estabas.
+
 ```bash
 ngplat probar          # abre el juego; pulsa E para editar
 ```

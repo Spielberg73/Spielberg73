@@ -13,6 +13,7 @@
 (function (root) {
   "use strict";
 
+  var TILE_EMPTY = 0;
   var TILE_SOLID = 1, TILE_PLATFORM = 2, TILE_HAZARD = 3, TILE_GOAL = 4;
   var TILE_LOCK = 9;            /* la puerta que pide algo para abrirse */
   var TILE_CLIMB = 10;          /* la liana: se trepa y se coge en el aire */
@@ -891,7 +892,11 @@
 
   function piso(w, x, y) {
     var k = w.tileKindAt(x, y);
-    return k === TILE_SOLID || k === TILE_PLATFORM;
+    if (k === TILE_SOLID || k === TILE_PLATFORM) return true;
+    /* Y la punta de un bambu, si tiene aire encima: ahi se sale de pie al
+       llegar arriba. La misma regla que np_core.js, que si el bot no la
+       supiera planearia caidas por una columna que la punta corta. */
+    return k === TILE_CLIMB && w.tileKindAt(x, y - 1) === TILE_EMPTY;
   }
 
   function seguro(w, x, y) {

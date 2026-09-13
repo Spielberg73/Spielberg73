@@ -332,6 +332,39 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
         filas = pagina.evaluate("() => window.NeoPlat.editor.modelo.filas[window.NeoPlat.editor.nivel]")
         exigir(filas[6][12:17] == "#####", "el rectangulo no se pinta")
 
+        # --- lo que pintas en el escenario se juega al volver -------------
+        #
+        # Con "probar el nivel" (Enter) siempre funciono, pero volviendo con el
+        # boton de modo -o con la tecla E- no: el lapiz escribe en el modelo
+        # del editor y DATA no se enteraba, asi que se volvia al juego con el
+        # mapa de antes y no habia manera de ver un retoque sin recargar el
+        # proyecto entero.
+        marca = pagina.evaluate("""() => { const e = window.NeoPlat.editor;
+            e.herramienta = 'lapiz'; e.simbolo = '#';
+            e.empezarCambio(); e.pintar(2, 2, false); e.terminarCambio();
+            return { pendiente: e.pendiente(),
+                     enElMotor: window.NeoPlat.world.level.cells[
+                         2 * window.NeoPlat.world.level.width + 2],
+                     solido: window.NeoPlat.data.tiles.index['#'] }; }""")
+        print("pintado en (2,2):", json.dumps(marca))
+        exigir(marca["pendiente"], "pintar no deja el escenario pendiente")
+        exigir(marca["enElMotor"] != marca["solido"],
+               "el lapiz ha tocado el mapa del motor por su cuenta")
+        pagina.keyboard.press("e")             # volver a jugar, sin darle a Enter
+        pagina.wait_for_timeout(400)
+        despues = pagina.evaluate("""() => ({
+            editando: window.NeoPlat.editor.activo,
+            enElMotor: window.NeoPlat.world.level.cells[
+                2 * window.NeoPlat.world.level.width + 2],
+            solido: window.NeoPlat.data.tiles.index['#'] })""")
+        print("al volver a jugar:", json.dumps(despues))
+        exigir(not despues["editando"], "la tecla E no vuelve al juego")
+        exigir(despues["enElMotor"] == despues["solido"],
+               "al volver a jugar el escenario sigue siendo el de antes: lo "
+               "pintado no llega al motor hasta recargar el proyecto")
+        pagina.keyboard.press("e")             # y de vuelta al editor
+        pagina.wait_for_timeout(300)
+
         # propiedades en vivo
         pagina.click("#pestanas button[data-panel=juego]")
         pagina.wait_for_timeout(200)

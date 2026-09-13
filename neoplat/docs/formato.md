@@ -923,10 +923,17 @@ estés pidiendo: eso es lo que sirve para pasar de una liana a la de al lado o
 para caer en una viga. Y **un golpe te tira**, igual que de una escalera: por
 eso trepar delante de un bicho es una decisión y no un trámite.
 
-Al llegar arriba del todo se sale de pie en el borde. Ojo al dibujar el mapa:
-la casilla en la que apareces es la de la punta de la liana, así que si ahí no
-hay nada sólido, te caes. Lo normal es saltar de lado a una viga desde un poco
-más abajo.
+**Al llegar arriba del todo se sale de pie en la punta**, y la punta se pisa:
+te quedas ahí, a la altura del borde de esa casilla, y desde ahí se anda hacia
+los lados. Es lo que hace que el bambú del género de kung-fu funcione —va
+pegado a una viga y a su misma altura: se sube, se sale arriba y se pasa a la
+viga andando—.
+
+La punta es sólo la punta: hace falta que la casilla de **encima** sea aire.
+Una liana que **cuelga** de una viga tiene ahí la viga, y entonces no hay punta
+que pisar —hay techo—, así que esa cuerda no tapa el paso por debajo. Y el
+resto de la liana se atraviesa siempre: tanto trepando como dejándose caer por
+ella.
 
 Sin `trepa:` —o con `trepa: 0`— el juego no lleva lianas y esos tiles se quedan
 de adorno.

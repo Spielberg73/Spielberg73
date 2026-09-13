@@ -1135,6 +1135,23 @@
       return -1;
     }
 
+    /* La huella del escenario: con que mapas y con que propiedades de nivel
+     * se lleno DATA la ultima vez.
+     *
+     * Hace falta porque dibujar **no** toca el motor: el lapiz escribe en
+     * `editor.modelo.filas` y DATA no se entera hasta que alguien llama a
+     * `aplicarAlMotor`. Comparandola con la de ahora se sabe si hay algo
+     * dibujado que el juego todavia no tiene. */
+    function huellaDelMapa() {
+      return JSON.stringify([editor.modelo.filas, editor.modelo.niveles]);
+    }
+    var huellaAplicada = null;
+
+    /** Hay cambios del escenario que el motor todavia no tiene? */
+    editor.pendiente = function () {
+      return huellaAplicada === null || huellaAplicada !== huellaDelMapa();
+    };
+
     function aplicarAlMotor() {
       var j = editor.modelo.jugador;
       var p = DATA.player;
@@ -1196,6 +1213,7 @@
       DATA.amiga_modo = editor.modelo.juego.amiga;
       aplicarSonido();
       for (var i = 0; i < editor.modelo.filas.length; i++) reconstruirNivel(i);
+      huellaAplicada = huellaDelMapa();
     }
 
     /**
@@ -2083,6 +2101,9 @@
 
     editor.salir = function () { editor.activo = false; };
 
+    /* Recien creado, DATA y el modelo dicen lo mismo: el modelo sale de DATA.
+       Sin esto, `pendiente()` diria que si nada mas abrir el editor. */
+    huellaAplicada = huellaDelMapa();
     revisar();
     return editor;
   }

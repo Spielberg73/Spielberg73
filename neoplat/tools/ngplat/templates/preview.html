@@ -1372,9 +1372,7 @@
     ctx: ctx,
     dibujarFrame: drawFrame,
     alJugar: function () {
-      world = NPCore.create(DATA);
-      world.step(NPCore.IN.START);
-      if (editor.nivel > 0) world.loadLevel(editor.nivel);
+      reiniciarMundo();
       modoJuego();
     },
     alCambiar: function () { refrescarEditor(); }
@@ -3289,9 +3287,28 @@
     refrescarEditor();
   }
 
+  /* Empieza el nivel otra vez con lo que haya ahora en DATA. */
+  function reiniciarMundo() {
+    world = NPCore.create(DATA);
+    world.step(NPCore.IN.START);
+    if (editor.nivel > 0) world.loadLevel(editor.nivel);
+  }
+
   function modoJuego() {
     audio.reanudar();
     document.body.classList.remove("editando");
+    /* Dibujar en el escenario no toca el motor: el lapiz escribe en el modelo
+       del editor y DATA no se entera. "probar el nivel" si lo llevaba, pero
+       este boton -y la tecla E- no, asi que se volvia al juego con el mapa de
+       antes y parecia que el editor no servia para nada hasta recargar el
+       proyecto. Ahora, si hay algo pendiente, se lleva al motor y el nivel
+       empieza de nuevo: hace falta empezarlo, porque el jugador podria estar
+       justo donde se acaba de pintar una pared. Si no se ha tocado el mapa no
+       se reinicia nada y se sigue jugando donde se estaba. */
+    if (editor.pendiente()) {
+      editor.aplicarAlMotor();
+      reiniciarMundo();
+    }
     editor.salir();
     tamanoCanvas(false);
     elEditor.classList.remove("visible");

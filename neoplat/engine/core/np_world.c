@@ -362,6 +362,28 @@ static np_fix np_move_y(const NpWorld *w, np_fix x, np_fix y,
                     /* las plataformas solo frenan si venias por encima */
                     stops = (old_bottom < ty * NP_TILE);
                 }
+                if (!stops && kind == NP_TILE_CLIMB && !drop_through) {
+                    /* **La punta de un bambu se pisa**, y solo la punta: la
+                       casilla de arriba tiene que ser **aire**. El resto de
+                       la cuerda se sigue atravesando, y quien baja por ella
+                       pasa `drop_through` y tampoco la nota.
+
+                       Sin esto, al llegar arriba del bambu el motor te dejaba
+                       de pie a la altura justa de la viga de al lado -que es
+                       lo que dice el comentario de np_climb_update- pero con
+                       aire debajo de los pies, asi que al frame siguiente te
+                       caias. En el genero de Bruce Lee el bambu acaba al lado
+                       de una viga y a su misma altura: se sube, se sale de pie
+                       en la punta y se anda hasta la viga.
+
+                       Lo de exigir aire encima no es un detalle: una liana que
+                       **cuelga** de una viga tiene su casilla de arriba tapada
+                       por ella, y esa no se pisa -ahi no hay punta, hay techo-.
+                       Si se pisara, la cuerda que cuelga del centro de una viga
+                       taparia el paso justo debajo. */
+                    stops = (old_bottom < ty * NP_TILE)
+                            && np_tile_visto(w, tx, ty - 1) == NP_TILE_EMPTY;
+                }
                 if (stops) {
                     ny = NP_I2F(ty * NP_TILE - bh);
                     *hit_down = 1;

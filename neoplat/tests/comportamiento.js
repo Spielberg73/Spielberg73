@@ -1419,6 +1419,82 @@ prueba("al acabarse la liana por arriba se sale de pie", function () {
   assert.ok(NP.F2I(p.y) < 9 * 16, "no ha llegado arriba: y=" + NP.F2I(p.y));
 });
 
+/* El bambu del genero de Bruce Lee: una liana pegada a una viga, con la punta
+   a la misma altura que ella.
+
+     fila  3   ...====|...     la viga, y la punta del bambu a su lado
+     fila  4   .......|...
+     ...
+     fila 12   .......|...
+     fila 13   ##########      el suelo
+*/
+function conBambuJuntoAViga() {
+  var filas = [];
+  for (var y = 0; y < 13; y++) filas.push(".".repeat(24));
+  filas.push("#".repeat(24));
+  var f = filas[3].split("");
+  f[3] = "="; f[4] = "="; f[5] = "="; f[6] = "=";
+  filas[3] = f.join("");
+  for (var y2 = 3; y2 <= 12; y2++) {
+    var g = filas[y2].split(""); g[7] = "|"; filas[y2] = g.join("");
+  }
+  return filas;
+}
+
+prueba("arriba del bambu uno se queda de pie en la punta", function () {
+  /* Era el fallo: el motor te soltaba a la altura justa de la viga pero con
+     aire debajo de los pies, asi que al frame siguiente te caias hasta abajo
+     y subir no servia de nada. La punta de un bambu se pisa. */
+  var w = mundo(ponerP(conBambuJuntoAViga(), 12, 1), { trepa: 1.0 });
+  var p = plantar(w, 7, 13);
+  w.step(NP.IN.UP);
+  correr(w, 400, NP.IN.UP);
+  assert.strictEqual(p.trepa, 0, "sigue colgado por encima del final");
+  var arriba = NP.F2I(p.y);
+  assert.ok(arriba < 4 * 16, "no ha llegado a la punta: y=" + arriba);
+  correr(w, 30, 0);
+  assert.strictEqual(NP.F2I(p.y), arriba,
+                     "se ha caido de la punta: de y=" + arriba + " a y=" + NP.F2I(p.y));
+});
+
+prueba("desde la punta del bambu se anda a la viga de al lado", function () {
+  var w = mundo(ponerP(conBambuJuntoAViga(), 12, 1), { trepa: 1.0 });
+  var p = plantar(w, 7, 13);
+  w.step(NP.IN.UP);
+  correr(w, 400, NP.IN.UP);
+  var arriba = NP.F2I(p.y);
+  correr(w, 18, NP.IN.LEFT);
+  correr(w, 30, 0);
+  assert.ok(NP.F2I(p.x) < 7 * 16, "no se ha movido a la viga: x=" + NP.F2I(p.x));
+  assert.strictEqual(NP.F2I(p.y), arriba,
+                     "se ha caido al pasar a la viga: y=" + NP.F2I(p.y));
+});
+
+prueba("la liana que cuelga de una viga no tiene punta que pisar", function () {
+  /* La otra mitad de la regla: si encima de la liana hay viga, ahi no hay
+     punta, hay techo. Si se pisara, una cuerda colgada del centro de una viga
+     taparia el paso justo debajo de ella. */
+  var filas = [];
+  for (var y = 0; y < 13; y++) filas.push(".".repeat(24));
+  filas.push("#".repeat(24));
+  var f = filas[4].split("");
+  for (var i = 5; i <= 10; i++) f[i] = "=";
+  filas[4] = f.join("");
+  for (var y2 = 5; y2 <= 12; y2++) {
+    var g = filas[y2].split(""); g[10] = "|"; filas[y2] = g.join("");
+  }
+  var w = mundo(ponerP(filas, 12, 1), { trepa: 1.0 });
+  var p = w.players[0], a = w.data.player.actor;
+  /* se deja caer por la columna de la liana, desde debajo de la viga */
+  p.x = NP.I2F(10 * 16 + 8 - Math.floor(a.box_w / 2));
+  p.y = NP.I2F(5 * 16);
+  p.vx = 0; p.vy = 0;
+  correr(w, 90, 0);
+  assert.ok(NP.F2I(p.y) > 11 * 16,
+            "la cuerda que cuelga de la viga le ha parado a media caida: y="
+            + NP.F2I(p.y));
+});
+
 prueba("saltar suelta la liana y da impulso", function () {
   var w = mundoLiana(6, 12, 5);
   var p = plantar(w, 5, 13);

@@ -74,6 +74,61 @@ prueba("el modelo sale del proyecto", function () {
   assert.strictEqual(e.modelo.niveles[0].nombre, DATA.levels[0].name);
 });
 
+/* ------------------------------------------- lo que el motor ya tiene
+ *
+ * Dibujar **no** toca el motor: el lapiz escribe en `modelo.filas` y DATA no
+ * se entera hasta `aplicarAlMotor`. Quien vuelve a jugar tiene que saber si
+ * queda algo por llevar, porque si no se vuelve al juego con el mapa de antes
+ * -que es lo que pasaba con el boton "volver a jugar" y con la tecla E-.
+ */
+
+prueba("recien abierto no hay nada pendiente", function () {
+  var e = nuevoEditor();
+  assert.strictEqual(e.pendiente(), false,
+                     "dice que hay cambios sin haber tocado nada");
+});
+
+prueba("dibujar deja el escenario pendiente de llevar al motor", function () {
+  var e = nuevoEditor();
+  var antes = e.data.levels[0].cells.slice();
+  e.simbolo = "#";
+  e.empezarCambio();
+  e.pintar(3, 3, false);
+  e.terminarCambio();
+  assert.strictEqual(e.pendiente(), true, "dibujar no deja nada pendiente");
+  assert.deepStrictEqual(e.data.levels[0].cells, antes,
+                         "el lapiz ha tocado DATA por su cuenta");
+  e.aplicarAlMotor();
+  assert.strictEqual(e.pendiente(), false, "sigue pendiente despues de llevarlo");
+  assert.notDeepStrictEqual(e.data.levels[0].cells, antes,
+                            "se ha llevado al motor y el mapa no ha cambiado");
+  assert.strictEqual(e.data.levels[0].cells[3 * e.data.levels[0].width + 3],
+                     e.data.tiles.index["#"],
+                     "la casilla que se pinto no esta en el mapa del motor");
+});
+
+prueba("cambiar el nombre de un nivel tambien queda pendiente", function () {
+  /* Las propiedades de nivel van en la misma huella que el mapa: el fondo y
+     la musica de un nivel se ven jugando igual que las casillas. */
+  var e = nuevoEditor();
+  e.ponerPropiedad("nivel", "nombre", "OTRO");
+  assert.strictEqual(e.pendiente(), false,
+                     "ponerPropiedad ya lo lleva al motor: no deberia quedar nada");
+  assert.strictEqual(e.data.levels[0].name, "OTRO");
+});
+
+prueba("deshacer hasta el principio deja de estar pendiente", function () {
+  var e = nuevoEditor();
+  e.simbolo = "#";
+  e.empezarCambio();
+  e.pintar(3, 3, false);
+  e.terminarCambio();
+  assert.strictEqual(e.pendiente(), true, "la prueba no vale: no hay cambio");
+  e.deshacer();
+  assert.strictEqual(e.pendiente(), false,
+                     "despues de deshacerlo todo sigue diciendo que hay cambios");
+});
+
 /* -------------------------------------------------------- herramientas */
 
 prueba("lapiz: pinta y borra", function () {

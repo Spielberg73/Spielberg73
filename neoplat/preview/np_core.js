@@ -465,6 +465,10 @@
           var stops = blocks(kind);
           if (!stops && kind === TILE_PLATFORM && !dropThrough)
             stops = oldBottom < ty * TILE;
+          /* la punta de un bambu se pisa, si tiene aire encima: ver np_world.c */
+          if (!stops && kind === TILE_CLIMB && !dropThrough)
+            stops = oldBottom < ty * TILE
+                    && this.tileVisto(tx, ty - 1) === TILE_EMPTY;
           if (stops) { ny = I2F(ty * TILE - bh); out.hitDown = 1; dy = 0; break; }
         }
       } else {

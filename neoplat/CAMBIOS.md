@@ -2,8 +2,66 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.46.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.47.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.47
+
+**Dos fallos que se notan jugando.**
+
+**Arriba del bambú no se llegaba a subir.** Se trepaba por la liana, se llegaba
+al final y el jugador se caía hasta el suelo, así que subir no servía de nada.
+
+El motor sí hacía la mitad de lo que había que hacer: al acabarse la liana por
+arriba te dejaba **de pie en el borde**, a la altura exacta de la viga de al
+lado —el género de Bruce Lee coloca el bambú pegado a una viga y a su misma
+altura, y de ahí se sale andando—. Lo que faltaba era lo otro: **debajo de los
+pies no había nada**. La casilla que uno pisa al llegar arriba es la punta del
+propio bambú, y una liana no frena a nadie, así que al frame siguiente la
+gravedad se lo llevaba.
+
+Ahora **la punta de un bambú se pisa**, y sólo la punta: hace falta que la
+casilla de encima sea aire. El resto de la cuerda se sigue atravesando —trepar
+es pasar por dentro— y quien baja por ella no la nota, porque baja con
+`drop_through`, el mismo permiso con el que se atraviesan las plataformas.
+
+Lo de exigir aire encima no es un detalle de más: una liana que **cuelga** de
+una viga tiene la casilla de arriba tapada por ella, y ahí no hay punta, hay
+techo. Si también se pisara, una cuerda colgada del centro de una viga taparía
+el paso justo por debajo —y eso se vio en cuanto se probó: con la primera
+versión de la regla, el bot dejó de poder terminar el segundo nivel del templo,
+que es justo el que tiene una liana colgando de una viga—.
+
+Va en las dos copias del motor (C y JavaScript, que `test_paridad.py` obliga a
+comportarse igual) y también en el bot: el bot planea caídas por una columna, y
+si no supiera que la punta la corta, planearía rutas que el juego no permite.
+Tres pruebas nuevas en `tests/comportamiento.js`: que arriba se queda de pie,
+que desde ahí se anda a la viga, y que una liana colgada de una viga no para a
+quien cae por ella.
+
+**Y lo que dibujabas en el escenario no se jugaba hasta recargar el proyecto.**
+
+El editor tiene dos maneras de volver al juego: el botón **"probar el nivel"**
+(y Enter), y el botón de modo **"volver a jugar"** (y la tecla **E**). Sólo la
+primera llevaba el mapa al motor. La segunda se limitaba a esconder el editor,
+así que se volvía a un juego que seguía con el escenario de antes y parecía que
+el editor no servía para nada hasta recargar el proyecto entero.
+
+Es que **dibujar no toca el motor**: el lápiz escribe en el modelo del editor y
+`DATA` no se entera hasta que alguien llama a `aplicarAlMotor`. Cambiar una
+propiedad sí lo llamaba —por eso la física sí se notaba al momento— pero pintar
+no.
+
+Ahora el editor sabe si le queda algo por llevar (`editor.pendiente()`, que
+compara el escenario de ahora con el que se llevó la última vez) y al volver al
+juego, si lo hay, se lleva y **el nivel empieza de nuevo**. Empezarlo hace
+falta: el jugador podía estar justo donde se acaba de pintar una pared. Si no
+se ha tocado el mapa no se reinicia nada y se sigue jugando donde se estaba.
+
+Cuatro pruebas en `tests/editor.js` y una en el navegador de verdad
+(`tests/navegador.py`): pintar una casilla, volver con **E** —sin darle a
+Enter— y exigir que el mapa del motor la tenga. Comprobada fallando con el
+código de antes: *"al volver a jugar el escenario sigue siendo el de antes"*.
 
 ## 1.46
 
