@@ -15,6 +15,12 @@
 #include "np_types.h"
 
 #define NP_SND_RUIDO 0x80        /* bit del volumen: usar el generador de ruido */
+/* Bit del volumen: esta nota es **demasiado aguda** para la onda de tabla del
+ * timbre y hay que tocarla con la cuadrada de siempre. Lo decide el compilador
+ * mirando el periodo (ver tools/ngplat/fm.py): una onda de dieciseis muestras
+ * se queda sin notas por encima de 1788 Hz, y a esa altura el timbre ya no se
+ * oye de todos modos. Solo lo miran las maquinas sin FM. */
+#define NP_SND_CUADRADA 0x40
 
 typedef struct {
     uint16_t periodo;
@@ -79,5 +85,24 @@ extern const uint16_t np_snd_musica_count;
 extern const NpFmTimbre np_fm_timbres[];
 extern const uint8_t np_fm_musica[];
 extern const uint16_t np_fm_timbre_count;
+
+/* --- el timbre en las maquinas sin FM -----------------------------------
+ *
+ * El Amiga, el A1200, el CD32 y la Jaguar no tienen con que sintetizar una
+ * FM, pero **si** saben tocar una muestra en bucle, que es de lo que va su
+ * canal de sonido. Asi que el compilador dibuja un ciclo de la onda del
+ * timbre -`np_snd_ondas`, `np_snd_onda_muestras` bytes con signo por timbre-
+ * y el juego lo toca en bucle en vez de la cuadrada de dos bytes.
+ *
+ * `np_snd_onda_musica` dice con que onda suena cada pista (dos por cancion,
+ * en el mismo orden que np_snd_musica): 0 = la cuadrada de siempre, y si no,
+ * el indice de la onda **mas uno**.
+ *
+ * Las generan solo las maquinas sin FM; en las demas no existen.
+ */
+extern const int8_t np_snd_ondas[];
+extern const uint8_t np_snd_onda_musica[];
+extern const uint16_t np_snd_onda_count;
+extern const uint16_t np_snd_onda_muestras;
 
 #endif /* NP_SONIDO_H */

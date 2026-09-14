@@ -429,6 +429,53 @@ def onda(t: Timbre, puntos: int = 512) -> List[float]:
     return [v / tope for v in salida]
 
 
+# Cuantas muestras tiene un ciclo de la onda que se llevan las maquinas **sin**
+# FM. El numero no es una preferencia: sale de Paula.
+#
+# Un canal de Paula repite una onda de N muestras a `periodo = reloj / (Hz * N)`
+# y el periodo no puede bajar de 124, asi que cuantas mas muestras tenga el
+# ciclo, **antes se queda sin notas agudas**:
+#
+#     8 muestras  -> hasta 3575 Hz    16 muestras -> hasta 1788 Hz
+#    32 muestras  -> hasta  894 Hz
+#
+# La nota mas alta de las canciones que trae el kit es un mi6, 1318 Hz, asi que
+# 32 no llega y 16 llega con margen. Con 16 muestras caben ocho armonicos, que
+# es de sobra para distinguir una flauta de un organo o de un metal. Por encima
+# del tope, el que toca se vuelve a la onda cuadrada de dos muestras: a esa
+# altura el filtro de Paula ya se ha comido los armonicos que hacen el timbre.
+ONDA_MUESTRAS = 16
+
+
+# A cuanto llega la onda. **64 y no 127** a proposito: es lo que vale la onda
+# cuadrada de dos bytes que el kit lleva usando desde el principio, y el
+# timbre no puede cambiar lo fuerte que suena la musica -si sonara al doble,
+# taparia a los efectos, que van por otro canal-. Lo que cambia el timbre es la
+# forma de la onda, no su tamano.
+ONDA_TOPE = 32
+
+
+def onda_bytes(t: Timbre, muestras: int = ONDA_MUESTRAS) -> List[int]:
+    """Un ciclo del timbre en bytes con signo, listo para Paula.
+
+    Se toma la misma onda que dibuja el preview (`onda`) a mucha resolucion y
+    se promedia por tramos, en vez de coger una muestra de cada tantas: asi un
+    timbre con un armonico agudo no se convierte en otra cosa por caer el punto
+    donde no debe. Es un filtro de media, que es lo que hace falta antes de
+    bajar de 512 puntos a 16.
+    """
+    fino = onda(t, 512)
+    por_tramo = len(fino) // muestras
+    salida = []
+    for i in range(muestras):
+        trozo = fino[i * por_tramo:(i + 1) * por_tramo]
+        salida.append(sum(trozo) / float(len(trozo)))
+    tope = max(abs(v) for v in salida) or 1.0
+    return [max(-ONDA_TOPE, min(ONDA_TOPE,
+                                int(round(v * ONDA_TOPE / tope))))
+            for v in salida]
+
+
 def armonicos(t: Timbre, cuantos: int = ARMONICOS) -> Tuple[List[float], List[float]]:
     """La onda del timbre en armonicos: (parte real, parte imaginaria).
 
@@ -457,3 +504,51 @@ def armonicos_todos() -> Dict[str, Dict[str, List[float]]]:
         real, imag = armonicos(t)
         salida[nombre] = {"real": real, "imag": imag}
     return salida
+
+
+def tabla_de_ondas_c(sonido, orden_musica) -> Tuple[List[str], List[int]]:
+    """`np_snd_ondas[]` y `np_snd_onda_musica[]`, para las maquinas **sin** FM.
+
+    Es el gemelo pobre de `tabla_c`: alli el timbre se le manda al chip y lo
+    sintetiza el; aqui no hay chip que lo haga, asi que el compilador dibuja un
+    ciclo de esa onda y la maquina lo toca en bucle como si fuera una muestra
+    cualquiera. Un timbre se convierte en dieciseis bytes.
+
+    Devuelve las lineas de C y, aparte, con que onda suena cada pista (dos por
+    cancion, en el orden de `orden_musica`): 0 = la cuadrada de siempre, y si
+    no, el indice de la onda mas uno.
+    """
+    usados: List[str] = []
+    reparto: List[int] = []
+    for nombre in orden_musica:
+        timbres = sonido.musica[nombre].timbres
+        for p in range(2):
+            cual = timbres[p] if p < len(timbres) else ""
+            if not cual or cual not in TIMBRES:
+                reparto.append(0)        # sin timbre: la cuadrada de siempre
+                continue
+            if cual not in usados:
+                usados.append(cual)
+            reparto.append(usados.index(cual) + 1)
+
+    lineas = [
+        "/* Un ciclo de cada timbre, en bytes con signo. Los toca el canal en",
+        " * bucle, como una muestra: es lo mas parecido a la FM que se puede",
+        " * hacer sin un chip que la sintetice. %d muestras por ciclo -por que" % ONDA_MUESTRAS,
+        " * ese numero y no otro, en tools/ngplat/fm.py-. */",
+        "const int8_t np_snd_ondas[] = {",
+    ]
+    if usados:
+        for nombre in usados:
+            datos = onda_bytes(TIMBRES[nombre])
+            lineas.append("    /* %s */" % nombre)
+            lineas.append("    " + ", ".join("%d" % v for v in datos) + ",")
+    else:
+        lineas.append("    0")
+    lineas.append("};")
+    lineas.append("const uint8_t np_snd_onda_musica[] = {")
+    lineas.append("    " + (", ".join(str(v) for v in reparto) if reparto else "0"))
+    lineas.append("};")
+    lineas.append("const uint16_t np_snd_onda_count = %d;" % len(usados))
+    lineas.append("const uint16_t np_snd_onda_muestras = %d;" % ONDA_MUESTRAS)
+    return lineas, reparto

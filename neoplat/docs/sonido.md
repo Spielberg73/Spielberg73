@@ -70,8 +70,52 @@ cuatro en cuatro y en la OPM, de ocho en ocho. Que sigan coincidiendo lo
 comprueba `tests/test_sistemas.py`,
 `test_el_timbre_de_fm_vale_igual_para_los_dos_chips`.
 
-Las máquinas sin FM leen `timbres:` y lo ignoran: tocan las mismas notas con lo
-que tengan.
+**Un timbre sin chip que lo sintetice.** El Amiga, el A1200 y el CD32 no
+tienen FM, pero sí saben tocar una muestra en bucle, que es de lo que va un
+canal de Paula. Así que el compilador **dibuja un ciclo** de la onda del timbre
+—dieciséis bytes con signo— y el juego lo toca en vez de la onda cuadrada de
+dos bytes de siempre. El mismo `timbres:` que le dice al YM2612 cómo conectar
+sus operadores le dice a Paula qué forma tiene la onda.
+
+Dieciséis muestras no es un capricho: sale de Paula. Un canal repite un ciclo
+de N muestras a `periodo = reloj / (Hz × N)`, y el periodo no puede bajar de
+124, así que cuantas más muestras tenga el ciclo **antes se queda sin notas
+agudas**:
+
+| muestras por ciclo | hasta |
+|---|---|
+| 8 | 3575 Hz |
+| **16** | **1788 Hz** |
+| 32 | 894 Hz |
+
+La nota más alta de las canciones que trae el kit es un mi6 (1318 Hz), así que
+32 no llega y 16 llega con margen; y con dieciséis caben ocho armónicos, de
+sobra para distinguir una flauta de un órgano. Por encima del tope, esa nota se
+toca con la cuadrada: a esa altura el filtro de Paula ya se ha comido los
+armónicos que hacen el timbre.
+
+La onda llega a **64 y no a 127** a propósito, que es lo que vale la cuadrada
+de siempre: el timbre cambia la forma de la onda, no lo fuerte que suena la
+música. Con 127 la música del título sonaba al doble (2609 contra 1230, medido
+en PUAE) y tapaba los efectos, que van por otro canal.
+
+Qué se oye, medido en un Amiga emulado nota a nota —la mediana de veinticuatro
+ventanas de media nota, con la misma canción y los mismos timbres cambiados en
+el `game.yaml`—:
+
+| timbre | 2º armónico | 3º |
+|---|---|---|
+| `flauta` | 0,003 | 0,004 |
+| `cuadrada` | 0,217 | 0,247 |
+
+La flauta es un seno pelado y la cuadrada lo trae todo, que es exactamente lo
+que dicen ser.
+
+**La Jaguar y el Atari ST todavía no.** La Jaguar podría —sus ondas las genera
+el DSP de Jerry, y una tabla de dieciséis entradas le cabe— pero eso es tocar
+el programa del DSP y su presupuesto de ciclos, y no está hecho. El ST no
+puede: su YM2149 sólo hace ondas cuadradas y no tiene con qué leer una muestra.
+Las dos leen `timbres:` y tocan las mismas notas con lo que tienen.
 
 Se usan tres voces: melodía, acompañamiento y efectos. En la Mega Drive, el
 Amiga y el Atari ST el reproductor va en C dentro del propio juego
@@ -253,10 +297,12 @@ prueba los compara paso a paso sobre una tanda de melodías, barridos y ruidos
   YM2149 del ST no puede, salvo moviendo el volumen a mano desde la CPU, así
   que ahí no las habrá. El compilador avisa de los efectos que se quedarían
   mudos por no llevar notas al lado.
-- **El timbre en las máquinas sin FM.** El Amiga, el CD32, la Jaguar y el Atari
-  ST leen `timbres:` y lo ignoran: tocan las mismas notas con la onda que
-  tienen. Lo que se podría hacer es lo contrario de lo que parece: en vez de
-  imitar la FM, generar de una vez la onda del timbre y que Paula o el DSP la
-  toquen como cualquier otra muestra.
+- **El timbre en la Jaguar.** El Amiga, el A1200 y el CD32 ya lo tocan con la
+  onda de tabla (arriba). La Jaguar podría hacer lo mismo, pero sus ondas las
+  genera el DSP de Jerry en su manejador de I2S —una cuadrada de siete
+  instrucciones por canal, veinte mil veces por segundo—, así que cambiarla por
+  una tabla es tocar el programa del DSP y volver a medir su presupuesto de
+  ciclos. En el **Atari ST** no habrá: su YM2149 sólo hace ondas cuadradas y no
+  tiene con qué leer una muestra.
 - **Envolventes.** El SSG y Paula pueden hacer que una nota decaiga sola; ahora
   el volumen es constante mientras dura.

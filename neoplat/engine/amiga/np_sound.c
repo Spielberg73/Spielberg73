@@ -39,6 +39,12 @@ typedef struct {
     uint8_t contador;
     uint8_t activo;
     uint8_t bucle;
+    /* El timbre de este canal: 0 = la cuadrada de siempre, y si no el indice
+       de la onda en np_snd_ondas **mas uno**, como en np_snd_onda_musica. */
+    uint8_t onda;
+    /* Y cual esta puesta ahora mismo en el registro, para no volver a
+       escribirla en cada nota: cambiar la onda para si el canal. */
+    uint8_t onda_puesta;
 } NpCanal;
 
 static NpCanal np_canales[NP_CANALES];
@@ -101,6 +107,11 @@ static void np_paula_muestra(uint8_t canal, const NpSndMuestra *m, uint8_t volum
     }
     AUDLC(canal) = NP_DIR(np_silencio);             /* al acabar, callado */
     AUDLEN(canal) = 1;
+    /* Una muestra escribe AUDLC por su cuenta, sin pasar por np_poner_onda,
+       asi que lo que este canal tiene cargado ya no es lo que creia: hay que
+       decirlo, o la siguiente nota se tocaria con el silencio que acaba de
+       quedarse puesto y no se oiria nada. */
+    np_canales[canal].onda_puesta = 0xFF;
 }
 
 void np_sound_init(void)
@@ -114,17 +125,41 @@ void np_sound_init(void)
     for (i = 0; i < NP_CANALES; i++) {
         np_canales[i].paso = 0;
         np_canales[i].activo = 0;
+        np_canales[i].onda = 0;
+        np_canales[i].onda_puesta = 0;   /* la cuadrada, que es la que se acaba
+                                            de poner en el bucle de arriba */
     }
     np_musica_actual = 0xFF;
 }
 
-static void np_arrancar(uint8_t canal, const NpSndPaso *secuencia, uint8_t bucle)
+/* Poner en el canal la onda que le toca: la del timbre, o la cuadrada.
+ *
+ * `onda` es lo que guarda np_snd_onda_musica: 0 la cuadrada de siempre y si no
+ * el indice de la onda mas uno. No hace nada si ya esta puesta, porque
+ * escribirla para el DMA del canal y eso se oye. */
+static void np_poner_onda(uint8_t canal, uint8_t onda)
+{
+    NpCanal *c = &np_canales[canal];
+    if (c->onda_puesta == onda) return;
+    c->onda_puesta = onda;
+    if (onda == 0 || np_snd_onda_count == 0) {
+        np_paula_onda(canal, np_onda_cuadrada, 1);
+        return;
+    }
+    np_paula_onda(canal,
+                  &np_snd_ondas[(onda - 1) * np_snd_onda_muestras],
+                  (uint16_t)(np_snd_onda_muestras / 2));
+}
+
+static void np_arrancar(uint8_t canal, const NpSndPaso *secuencia, uint8_t bucle,
+                        uint8_t onda)
 {
     np_canales[canal].paso = secuencia;
     np_canales[canal].inicio = secuencia;
     np_canales[canal].contador = 1;
     np_canales[canal].activo = secuencia ? 1 : 0;
     np_canales[canal].bucle = bucle;
+    np_canales[canal].onda = secuencia ? onda : 0;
     if (!secuencia) np_paula_callar(canal);
 }
 
@@ -134,12 +169,16 @@ static void np_tocar_musica(uint8_t indice)
     if (indice == np_musica_actual) return;
     np_musica_actual = indice;
     if (indice == 0xFF || indice >= np_snd_musica_count) {
-        np_arrancar(0, 0, 0);
-        np_arrancar(1, 0, 0);
+        np_arrancar(0, 0, 0, 0);
+        np_arrancar(1, 0, 0, 0);
         return;
     }
-    np_arrancar(0, np_snd_musica[indice * 2], 1);
-    np_arrancar(1, np_snd_musica[indice * 2 + 1], 1);
+    /* Cada pista con el timbre que diga el game.yaml: el compilador ya ha
+       dibujado un ciclo de esa onda y ha puesto los periodos que le tocan. */
+    np_arrancar(0, np_snd_musica[indice * 2], 1,
+                np_snd_onda_musica[indice * 2]);
+    np_arrancar(1, np_snd_musica[indice * 2 + 1], 1,
+                np_snd_onda_musica[indice * 2 + 1]);
 #else
     (void)indice;
 #endif
@@ -163,6 +202,11 @@ static void np_avanzar(uint8_t canal)
             np_paula_nota(NP_CANAL_RUIDO, 320, (uint8_t)(paso->volumen & 0x0F));
             np_paula_callar(canal);
         } else {
+            /* Las notas que no caben en la onda del timbre -demasiado agudas
+               para el periodo minimo de Paula- vienen marcadas y se tocan con
+               la cuadrada. El resto, con la onda de la pista. */
+            np_poner_onda(canal,
+                          (paso->volumen & NP_SND_CUADRADA) ? 0 : c->onda);
             np_paula_nota(canal, paso->periodo, (uint8_t)(paso->volumen & 0x0F));
             if (canal == 2) np_paula_callar(NP_CANAL_RUIDO);
         }
@@ -188,11 +232,11 @@ void np_sound_update(const NpWorld *w)
                 if (indice < np_snd_efecto_count) {
                     const NpSndMuestra *m = &np_snd_muestras[indice];
                     if (m->largo) {
-                        np_arrancar(2, 0, 0);       /* callar las notas */
+                        np_arrancar(2, 0, 0, 0);    /* callar las notas */
                         np_paula_muestra(2, m, 15);
                         np_pcm_restan = m->frames;
                     } else {
-                        np_arrancar(2, np_snd_efectos[indice], 0);
+                        np_arrancar(2, np_snd_efectos[indice], 0, 0);
                         np_pcm_restan = 0;
                     }
                 }

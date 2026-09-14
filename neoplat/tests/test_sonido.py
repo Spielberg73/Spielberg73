@@ -5,7 +5,10 @@ comandos como los que manda el 68000 y se comprueba que escribe en el YM2610
 los periodos y volumenes que corresponden a las notas del game.yaml.
 """
 
+import json
 import os
+import subprocess
+import sys
 import unittest
 
 import comun
@@ -54,6 +57,197 @@ class TestNotas(unittest.TestCase):
         # do0 son unos 16 Hz: el periodo se sale de los 12 bits del chip
         with self.assertRaises(ProjectError):
             sonido_mod.parsear_notas("do0", 4, 12, "t")
+
+
+class TestElTimbreSinChipDeFm(unittest.TestCase):
+    """El timbre en el Amiga, el A1200, el CD32 y la Jaguar.
+
+    Esas cuatro no tienen con que sintetizar una FM, pero si saben tocar una
+    muestra en bucle. Asi que el compilador dibuja **un ciclo** de la onda del
+    timbre y el juego la toca en vez de la cuadrada de dos bytes de siempre.
+
+    Aqui se comprueba lo que tiene que cumplir esa onda antes de llegar a
+    ninguna maquina: que suene a lo que dice, que quepa y que no cambie lo
+    fuerte que suena la musica.
+    """
+
+    def test_cada_timbre_tiene_su_forma(self):
+        """Lo que distingue a un timbre de otro son sus armonicos, y con
+        dieciseis muestras todavia se notan: una flauta es un seno pelado y una
+        cuadrada lo trae todo. Si esto se cayera, los ocho timbres sonarian
+        igual y la onda de tabla no serviria de nada."""
+        import math
+        from ngplat import fm
+
+        def armonicos(onda):
+            n = len(onda)
+            salida = []
+            for k in range(1, 6):
+                c = sum(onda[i] * math.cos(2 * math.pi * k * i / n) for i in range(n))
+                sn = sum(onda[i] * math.sin(2 * math.pi * k * i / n) for i in range(n))
+                salida.append(math.hypot(c, sn) * 2.0 / n)
+            base = salida[0] or 1.0
+            return [v / base for v in salida]
+
+        flauta = armonicos(fm.onda_bytes(fm.por_nombre("flauta")))
+        cuadrada = armonicos(fm.onda_bytes(fm.por_nombre("cuadrada")))
+        # la flauta es un seno: fundamental y nada mas
+        self.assertLess(max(flauta[1:]), 0.05,
+                        "la flauta trae armonicos y deberia ser un seno: %s" % flauta)
+        # la cuadrada, lo contrario
+        self.assertGreater(max(cuadrada[1:]), 0.2,
+                           "la cuadrada no trae armonicos: %s" % cuadrada)
+        # y entre los ocho no hay dos iguales
+        formas = {}
+        for nombre in fm.nombres():
+            forma = tuple(round(v, 2) for v in armonicos(fm.onda_bytes(fm.por_nombre(nombre))))
+            self.assertNotIn(forma, formas,
+                             "'%s' y '%s' suenan igual: %s"
+                             % (nombre, formas.get(forma), forma))
+            formas[forma] = nombre
+
+    def test_la_onda_no_sube_el_volumen_de_la_musica(self):
+        """El timbre cambia la **forma** de la onda, no su tamano.
+
+        Se mide en el emulador: con la onda a 127 la musica del titulo sonaba
+        al doble que con la cuadrada de siempre (2609 contra 1230) y tapaba los
+        efectos, que van por otro canal. A 32 sale 1301, que es la misma.
+        """
+        from ngplat import fm
+        self.assertEqual(fm.ONDA_TOPE, 32,
+                         "cambiar el tope cambia lo fuerte que suena la musica "
+                         "en las cuatro maquinas sin FM: esta medido")
+        for nombre in fm.nombres():
+            onda = fm.onda_bytes(fm.por_nombre(nombre))
+            self.assertEqual(len(onda), fm.ONDA_MUESTRAS, nombre)
+            self.assertLessEqual(max(abs(v) for v in onda), fm.ONDA_TOPE, nombre)
+            # y llega al tope: una onda a media altura sonaria floja
+            self.assertGreaterEqual(max(abs(v) for v in onda), fm.ONDA_TOPE - 1,
+                                    "'%s' no llega al tope: %s" % (nombre, onda))
+
+    def test_las_notas_salen_afinadas_con_la_onda_de_tabla(self):
+        """El periodo de Paula depende de cuantas muestras tiene el ciclo, asi
+        que con dieciseis sale un numero ocho veces mas pequeno que con la
+        cuadrada -y por tanto ocho veces mas basto-. Hay que comprobar que aun
+        asi las notas caen donde tienen que caer: un cent es la centesima parte
+        de un semitono y cinco no los oye nadie."""
+        import math
+        from ngplat import fm
+        from ngplat.sonido import PAULA_CLOCK, frecuencia_de_nota, NOTAS
+        peor = 0.0
+        for octava in range(3, 7):
+            for nombre in NOTAS:
+                hz = frecuencia_de_nota(NOTAS[nombre], octava)
+                if PAULA_CLOCK / (hz * fm.ONDA_MUESTRAS) < 124:
+                    continue          # de ahi para arriba se usa la cuadrada
+                periodo = int(round(PAULA_CLOCK / (hz * fm.ONDA_MUESTRAS)))
+                real = PAULA_CLOCK / (periodo * float(fm.ONDA_MUESTRAS))
+                peor = max(peor, abs(1200.0 * math.log(real / hz, 2)))
+        self.assertLess(peor, 5.0,
+                        "con la onda de tabla la peor nota se va %.1f cents" % peor)
+
+    def test_las_notas_agudas_se_vuelven_a_la_cuadrada(self):
+        """Por encima de lo que da el periodo minimo de Paula la onda de tabla
+        no llega, y el compilador marca esas notas para que se toquen con la
+        cuadrada. Sin eso saldrian desafinadas hacia abajo, que es lo que hace
+        el recorte del periodo."""
+        from ngplat import fm
+        from ngplat.sonido import PAULA_CLOCK, PAULA_MIN_PERIOD
+        tope = PAULA_CLOCK / (PAULA_MIN_PERIOD * float(fm.ONDA_MUESTRAS))
+        self.assertGreater(tope, 1700,
+                           "la onda de tabla se queda sin notas demasiado "
+                           "pronto: %.0f Hz" % tope)
+        # y la nota mas alta de las canciones del kit tiene que caber
+        self.assertGreater(tope, 1318.5,
+                           "un mi6 -la nota mas alta que trae el kit- ya no "
+                           "cabe en la onda de tabla: tope %.0f Hz" % tope)
+
+
+class TestElTimbreSeOyeEnElAmiga(unittest.TestCase):
+    """Y que no se quede en la teoria: que se oiga en un Amiga emulado.
+
+    Se compila **el mismo juego dos veces**, una con todas las pistas en
+    `flauta` y otra en `cuadrada`, y se escucha la melodia en PUAE. Son los dos
+    extremos de los ocho timbres: la flauta es un seno pelado -sin armonicos- y
+    la cuadrada los trae todos. Si el timbre no llegara a Paula, los dos
+    disquetes sonarian igual.
+
+    Medido, nota a nota (la mediana de veinticuatro ventanas de media nota):
+
+        flauta      h2 = 0.00   h3 = 0.01
+        cuadrada    h2 = 0.21   h3 = 0.25
+
+    Los dos discos se escuchan en **procesos aparte** porque el core de PUAE no
+    se deja arrancar dos veces en el mismo (ver _comprobar_amiga en
+    test_sistemas.py).
+    """
+
+    def _disco(self, tmp, timbre):
+        import re
+        from ngplat.scaffold import crear_proyecto
+        proyecto = os.path.join(tmp, timbre)
+        crear_proyecto(proyecto, timbre.upper(), "TEST")
+        ruta = os.path.join(proyecto, "game.yaml")
+        with open(ruta, encoding="utf-8") as fh:
+            texto = fh.read()
+        # todas las pistas de todas las canciones con el mismo timbre
+        texto, cuantas = re.subn(r"^(\s*)timbres:.*$",
+                                 r"\1timbres: [%s, %s]" % (timbre, timbre),
+                                 texto, flags=re.M)
+        self.assertGreater(cuantas, 0, "el proyecto de ejemplo no trae timbres:")
+        with open(ruta, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(texto)
+        hecho = subprocess.run(
+            [sys.executable, "-m", "ngplat.cli", "compilar", proyecto,
+             "--sistema", "amiga", "--make"],
+            capture_output=True, text=True,
+            env=dict(os.environ, PYTHONPATH=os.path.join(KIT, "tools")))
+        self.assertEqual(hecho.returncode, 0,
+                         "no compila:\n" + hecho.stdout + hecho.stderr)
+        discos = os.path.join(proyecto, "build", "amiga", "disco")
+        adf = [f for f in os.listdir(discos) if f.endswith(".adf")]
+        self.assertTrue(adf, "no hay disquete en " + discos)
+        return os.path.join(discos, adf[0])
+
+    def _armonicos(self, adf):
+        hecho = subprocess.run(
+            [sys.executable, os.path.join(KIT, "tests", "timbre_amiga.py"), adf],
+            capture_output=True, text=True)
+        self.assertEqual(hecho.returncode, 0, hecho.stdout + hecho.stderr)
+        return json.loads(hecho.stdout.strip().splitlines()[-1])
+
+    def test_el_timbre_que_pide_el_yaml_es_el_que_toca_paula(self):
+        import shutil
+        import tempfile
+        sys.path.insert(0, os.path.join(KIT, "tests"))
+        import emulador_amiga
+        from libretro import buscar_core
+        if not buscar_core(emulador_amiga.CORE, "NEOPLAT_CORE_AMIGA"):
+            self.skipTest("no esta instalado el core de PUAE")
+        if not any(shutil.which(c) for c in ("m68k-amigaos-gcc", "m68k-elf-gcc",
+                                             "m68k-linux-gnu-gcc")):
+            self.skipTest("no hay un compilador de 68000 instalado")
+        tmp = tempfile.mkdtemp(prefix="neoplat-timbre-")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        flauta = self._armonicos(self._disco(tmp, "flauta"))
+        cuadrada = self._armonicos(self._disco(tmp, "cuadrada"))
+        print("flauta:   %s" % flauta)
+        print("cuadrada: %s" % cuadrada)
+        self.assertNotIn("error", flauta, flauta)
+        self.assertNotIn("error", cuadrada, cuadrada)
+        # No se exige que los dos pillen las mismas notas: la musica lleva
+        # sonando desde que arranco el disquete y AROS no tarda siempre lo
+        # mismo. Da igual, porque lo que se mide -cuantos armonicos tiene- es
+        # de la **forma** de la onda y no de la nota que toque.
+        self.assertLess(max(flauta["h2"], flauta["h3"]), 0.08,
+                        "la flauta trae armonicos y es un seno pelado: el "
+                        "timbre no esta llegando a Paula (%s)" % flauta)
+        self.assertGreater(max(cuadrada["h2"], cuadrada["h3"]), 0.15,
+                           "la cuadrada no trae armonicos: %s" % cuadrada)
+        self.assertGreater(max(cuadrada["h2"], cuadrada["h3"]),
+                           max(flauta["h2"], flauta["h3"]) * 3,
+                           "los dos timbres suenan casi igual: %s y %s"
+                           % (flauta, cuadrada))
 
 
 class TestGemeloEnJavaScript(unittest.TestCase):

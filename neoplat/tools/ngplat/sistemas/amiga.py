@@ -25,7 +25,8 @@ from .. import gfx, gfx_amiga
 from ..build import Build
 from ..errors import ProjectError
 from ..paths import fuente_del_kit
-from ..sonido import PAULA_CLOCK, periodo_paula, tabla_de_muestras_c
+from ..sonido import (PAULA_CLOCK, PAULA_MAX_PERIOD, PAULA_MIN_PERIOD,
+                      periodo_paula, tabla_de_muestras_c)
 from .base import Limites, Salida, Sistema, registrar
 
 # El mapa de bits del escenario ocupa lo mismo pase lo que pase (22 KB por
@@ -534,13 +535,30 @@ def _colores_c(build: Build, colores: List[int]) -> List[str]:
     return lineas
 
 
-def _secuencia_c(nombre: str, pasos) -> List[str]:
+def _secuencia_c(nombre: str, pasos, muestras: int = 2) -> List[str]:
+    """Una secuencia de notas, ya en periodos de Paula.
+
+    `muestras` es lo que mide un ciclo de la onda con la que va a sonar: 2 si
+    es la cuadrada de siempre y `fm.ONDA_MUESTRAS` si la pista lleva timbre.
+    El periodo depende de eso -reloj / (hercios * muestras)-, asi que la misma
+    nota sale con un numero distinto segun con que se toque.
+
+    Y por eso hace falta el aviso por nota: con una onda de dieciseis muestras
+    el periodo baja de 124 -lo minimo que da la DMA de Paula- a partir de unos
+    1788 Hz, y ahi la nota saldria desafinada. Esas se marcan con
+    NP_SND_CUADRADA y se tocan con la cuadrada, que llega hasta arriba.
+    """
     lineas = ["static const NpSndPaso %s[] = {" % nombre]
     for paso in pasos:
         duracion = max(1, int(paso.duracion))
         volumen = (paso.volumen & 0x0F) | (0x80 if paso.ruido else 0)
-        # una onda cuadrada de dos bytes: periodo = reloj / (2 * hercios)
-        periodo = periodo_paula(paso.frecuencia, muestras=2)
+        crudo = (PAULA_CLOCK / (paso.frecuencia * muestras)
+                 if paso.frecuencia > 0 else PAULA_MAX_PERIOD)
+        if muestras > 2 and crudo < PAULA_MIN_PERIOD:
+            periodo = periodo_paula(paso.frecuencia, muestras=2)
+            volumen |= 0x40            # NP_SND_CUADRADA
+        else:
+            periodo = periodo_paula(paso.frecuencia, muestras=muestras)
         while duracion > 0:
             trozo = min(255, duracion)
             lineas.append("    { %d, %d, 0x%02x }," % (periodo, trozo, volumen))
@@ -570,11 +588,19 @@ def _sonido_c(build: Build) -> str:
     for i, nombre in enumerate(efectos):
         partes.extend(_secuencia_c("np_sfx%d" % i, sonido.efectos[nombre].pasos))
         partes.append("")
+    # Las ondas de los timbres, y con cual suena cada pista. Hay que sacarlas
+    # antes de escribir las secuencias: el periodo de cada nota depende de
+    # cuantas muestras tiene el ciclo con el que va a sonar.
+    from .. import fm
+    lineas_ondas, reparto = fm.tabla_de_ondas_c(sonido, build.music_order)
     for i, nombre in enumerate(build.music_order):
         tema = sonido.musica[nombre]
         for p in range(2):
             pista = tema.pistas[p] if p < len(tema.pistas) else []
-            partes.extend(_secuencia_c("np_mus%d_%d" % (i, p), pista))
+            onda = reparto[i * 2 + p] if i * 2 + p < len(reparto) else 0
+            partes.extend(_secuencia_c(
+                "np_mus%d_%d" % (i, p), pista,
+                muestras=fm.ONDA_MUESTRAS if onda else 2))
         partes.append("")
 
     partes.append("const NpSndPaso *const np_snd_efectos[] = {")
@@ -593,6 +619,8 @@ def _sonido_c(build: Build) -> str:
     partes.append("};")
     partes.append("const uint16_t np_snd_efecto_count = %d;" % len(efectos))
     partes.append("const uint16_t np_snd_musica_count = %d;" % len(build.music_order))
+    partes.append("")
+    partes.extend(lineas_ondas)
     partes.append("")
     lineas, bytes_pcm = tabla_de_muestras_c(
         [sonido.efectos[n] for n in efectos], PCM_RITMO, 50,

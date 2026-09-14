@@ -37,7 +37,7 @@ binario —lo único que cambia es que va en un CD y no en un disquete—.
 | Escenario | columnas de sprites | plano A del VDP | mapa de bits + blitter | igual, con 8 bitplanes | mapa de bits lineal | bitplanes, movidos por la CPU | capa de fondo del chip |
 | Actores | sprites | sprites del VDP | blitter con máscara | blitter con máscara | objetos del chip | dibujados a mano, con máscara | sprites de 16×16 |
 | Colores | 4096 en pantalla | 4 paletas de 16 | una de 32, o dos de 8 | una de **256**, o dos de 16, **de 24 bits** | una tabla de 256 | una de 16 | 16 bloques de 16 |
-| Sonido | YM2610 (FM) por Z80 | YM2612 (FM) | Paula (4 canales) | Paula (4 canales) | los DAC, por el DSP de Jerry | YM2149 | YM2151 (FM) y ADPCM |
+| Sonido | YM2610 (FM) por Z80 | YM2612 (FM) | Paula (4 canales, con el timbre en onda de tabla) | igual que el Amiga | los DAC, por el DSP de Jerry | YM2149 | YM2151 (FM) y ADPCM |
 | Parallax | sí | una capa | una capa (`amiga: 8colores`) | una capa, con 16 colores por plano | una capa | una capa (`camara: pantallas`) | una capa (la pantalla gráfica) |
 | Sale | ROMs de cartucho | `.bin` con cabecera y suma | disquete `.adf` arrancable | disquete `.adf` arrancable | cartucho `.j64` | disquete `.st` arrancable | `.X` de Human68k y disquete `.xdf` |
 
@@ -395,9 +395,9 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.49.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
-| `neoplat-kit-1.49.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.49.zip` | el `ngplat.exe` y su LEEME |
+| `neoplat-docs-1.50.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
+| `neoplat-kit-1.50.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.50.zip` | el `ngplat.exe` y su LEEME |
 
 El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
 plantillas; no necesita Python ni nada instalado. Con **doble clic** —sin
@@ -519,7 +519,7 @@ neoplat/
 │   ├── bosque-magico/      juego de ejemplo listo para compilar
 │   ├── cueva-de-hierro/    el mismo motor con seis colores y parallax en Amiga
 │   └── costa-y-montana/    un juego de conducir: la calzada no es un dibujo
-└── tests/                  547 pruebas + 252 de jugabilidad + las del editor +
+└── tests/                  552 pruebas + 252 de jugabilidad + las del editor +
                             bot que se pasa los niveles + emuladores y navegador
 ```
 

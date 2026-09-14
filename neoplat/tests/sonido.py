@@ -41,6 +41,24 @@ def mono(muestras):
     return [x - medio for x in suma]
 
 
+def izquierdo(muestras):
+    """Solo el canal izquierdo, sin la componente continua.
+
+    Paula reparte sus cuatro canales por hardware y no se puede cambiar: el 0 y
+    el 3 salen por la **izquierda** y el 1 y el 2 por la derecha. El kit pone
+    la melodia en el 0, el acompanamiento en el 1 y los efectos en el 2, asi
+    que mirando solo la izquierda se oye la melodia **sin** el acompanamiento
+    encima. Mezclarlos -que es lo que hace `mono`- vale para medir si suena
+    algo, pero para leer la partitura de la melodia estorba: los armonicos del
+    acompanamiento caen encima de las notas que se buscan.
+    """
+    izq = muestras[0::2]
+    if not izq:
+        return list(izq)
+    medio = sum(izq) / len(izq)
+    return [x - medio for x in izq]
+
+
 def nivel(muestras):
     """Cuanto suena (valor eficaz, 0 = silencio)."""
     canal = mono(muestras) if muestras and len(muestras) % 2 == 0 else list(muestras)
@@ -67,6 +85,12 @@ def nota_dominante(muestras, ritmo, escala=None):
     quinta y media por encima), asi que a cada candidata se le suma un poco de
     lo que tienen sus armonicos: si no, a veces gana el tercero en vez de la
     nota de verdad.
+
+    Y desde que las maquinas sin FM tocan el **timbre** -una onda de tabla en
+    vez de la cuadrada- hay que contar tambien el **segundo**, que en una
+    cuadrada no existe pero en un organo o en un metal es de lo mas fuerte que
+    hay. Suena justo una octava por encima, asi que sin contarlo la nota de
+    arriba le ganaba a la de verdad de vez en cuando.
     """
     canal = mono(muestras)
     if not canal or nivel(canal) < 1.0:
@@ -75,6 +99,7 @@ def nota_dominante(muestras, ritmo, escala=None):
     mejor = None
     for nombre, hz in escala:
         peso = (energia(canal, ritmo, hz)
+                + energia(canal, ritmo, hz * 2.0) / 2.0
                 + energia(canal, ritmo, hz * 3.0) / 3.0
                 + energia(canal, ritmo, hz * 5.0) / 5.0)
         if mejor is None or peso > mejor[2]:
@@ -137,7 +162,7 @@ def _bloques(muestras, ritmo, frames, fps, cuantos, desde=0):
         trozo = muestras[principio:principio + por_bloque]
         if len(trozo) < por_bloque:
             break
-        salida.append(mono(trozo[margen:por_bloque - margen]))
+        salida.append(izquierdo(trozo[margen:por_bloque - margen]))
     return salida
 
 

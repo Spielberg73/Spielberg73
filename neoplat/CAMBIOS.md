@@ -2,8 +2,75 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.49.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.50.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.50
+
+**El timbre suena en el Amiga, el A1200 y el CD32.**
+
+`timbres:` lo leían tres máquinas —las que llevan chip de FM— y las otras
+cinco lo ignoraban: tocaban las mismas notas con la onda cuadrada que tuvieran.
+O sea que el mismo `game.yaml` sonaba a dos cosas distintas según dónde, que es
+justo la regla que el kit se impone en todo lo demás.
+
+La solución es lo contrario de lo que parece: **no se imita la FM**. El Amiga no
+tiene con qué sintetizarla, pero sí sabe tocar una muestra en bucle, que es de
+lo que va un canal de Paula. Así que el compilador **dibuja un ciclo** de la
+onda del timbre —dieciséis bytes con signo— y el juego lo toca en vez de la
+cuadrada de dos bytes de siempre. Un timbre se convierte en dieciséis bytes.
+
+**Dieciséis, y no otro número.** Sale de Paula, no del gusto de nadie. Un canal
+repite un ciclo de N muestras a `periodo = reloj / (Hz × N)` y el periodo no
+puede bajar de 124, así que cuantas más muestras tenga el ciclo, antes se queda
+sin notas agudas: con 8 se llega a 3575 Hz, con 16 a 1788 y con 32 a 894. La
+nota más alta de las canciones del kit es un mi6 —1318 Hz—, así que 32 no llega
+y 16 llega con margen; y con dieciséis caben ocho armónicos, de sobra para
+distinguir una flauta de un órgano. Por encima del tope la nota se marca y se
+toca con la cuadrada, que llega hasta arriba: a esa altura el filtro de Paula ya
+se ha comido los armónicos que hacen el timbre.
+
+**Y llega a 64, no a 127.** Es lo que vale la cuadrada de siempre. Con 127 la
+música del título sonaba **al doble** que antes —2609 contra 1230, medido en
+PUAE— y tapaba los efectos, que van por otro canal; con 64 sale 1301, la misma
+de siempre. El timbre cambia la forma de la onda, no lo fuerte que suena.
+
+**Qué se oye.** Se compila el mismo juego dos veces, con todas las pistas en
+`flauta` y con todas en `cuadrada`, y se escucha en un Amiga emulado nota a
+nota (la mediana de veinticuatro ventanas de media nota):
+
+| timbre | 2º armónico | 3º |
+|---|---|---|
+| `flauta` | 0,003 | 0,004 |
+| `cuadrada` | 0,217 | 0,247 |
+
+La flauta es un seno pelado y la cuadrada lo trae todo: exactamente lo que
+dicen ser. Esa es la prueba nueva de `tests/test_sonido.py`, y está comprobada
+fallando con el timbre desconectado a mano en el driver —ahí los dos disquetes
+dan lo mismo—. Van con ella otras cuatro que sujetan la onda antes de llegar a
+ninguna máquina: que los ocho timbres tienen formas distintas, que ninguno se
+pasa del tope, que las notas salen afinadas a menos de cinco cents pese a que
+el periodo es ocho veces más basto, y que el mi6 cabe.
+
+**Dos cosas que salieron midiendo.**
+
+- **El analizador de las pruebas escuchaba en mono**, y eso mezclaba la melodía
+  con el acompañamiento. Paula reparte sus canales por hardware —el 0 y el 3 a
+  la izquierda, el 1 y el 2 a la derecha— y el kit pone la melodía en el 0, así
+  que ahora se lee sólo la izquierda. Con la cuadrada de siempre el resultado
+  pasó de 15 notas de 16 a **16 de 16**.
+- **El arranque del disquete no tarda siempre lo mismo.** La sonda esperaba 22
+  segundos fijos y el mismo `.adf` unas veces estaba tocando y otras no
+  (medido: a los 22 silencio, a los 30 sonando). Ahora **espera a que suene**,
+  hasta un minuto.
+
+**Lo que falta.** La Jaguar podría hacer lo mismo —una tabla de dieciséis
+entradas le cabe— pero sus ondas las genera el DSP de Jerry en su manejador de
+I2S, una cuadrada de siete instrucciones por canal veinte mil veces por
+segundo: cambiarla por una tabla es tocar el programa del DSP y volver a medir
+su presupuesto de ciclos, y eso no está hecho. El **Atari ST** no puede: su
+YM2149 sólo hace ondas cuadradas y no tiene con qué leer una muestra. Las dos
+siguen tocando las mismas notas con lo que tienen.
 
 ## 1.49
 
