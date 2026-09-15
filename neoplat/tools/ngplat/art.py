@@ -38,6 +38,8 @@ PALETA: Dict[str, RGBA] = {
     "ojo":     (255, 255, 255, 255),
     "meta":    (96, 216, 232, 255),
     "meta2":   (48, 152, 184, 255),
+    "agua":    (48, 104, 184, 255),
+    "agua2":   (24, 64, 136, 255),
 }
 
 
@@ -196,16 +198,95 @@ def _heroe_agachado() -> Image:
     return c.image
 
 
+def _heroe_nadando(brazo_arriba: bool) -> Image:
+    """Nadando en la superficie: el cuerpo dentro y la cabeza fuera.
+
+    Va **erguido y bajo en el cuadro**, no tumbado: eso es lo que dice de un
+    vistazo que la cabeza esta fuera del agua. El cuerpo empieza cuatro filas
+    mas abajo que de pie, que es mas o menos por donde le llega la linea del
+    agua a alguien que asoma. Son dos fotogramas -el brazo que sale y el que
+    entra- porque una brazada quieta no es una brazada.
+    """
+    c = Lienzo(16, 16)
+    piel, pelo, camisa, linea = (
+        PALETA["piel"], PALETA["pelo"], PALETA["camisa"], PALETA["linea"],
+    )
+    top = 4
+    c.rect(5, top, 6, 2, pelo)                     # la cabeza, fuera del agua
+    c.rect(5, top + 2, 6, 4, piel)
+    c.px(6, top + 3, linea)
+    c.px(9, top + 3, linea)
+    c.rect(6, top + 5, 4, 1, linea)                # boca
+
+    c.rect(5, top + 6, 6, 5, camisa)               # el tronco, ya mojado
+    if brazo_arriba:
+        c.rect(12, top + 2, 2, 2, piel)            # el brazo sale del agua
+        c.rect(11, top + 4, 2, 2, camisa)
+        c.rect(2, top + 7, 3, 1, piel)             # y el otro estirado atras
+    else:
+        c.rect(11, top + 6, 3, 2, piel)            # el brazo entra
+        c.rect(2, top + 5, 2, 2, piel)             # y el otro sale por detras
+    return c.image
+
+
+def _heroe_buceando(patada: bool) -> Image:
+    """Buceando: todo el cuerpo debajo, **tumbado** y mirando hacia delante.
+
+    Es la diferencia que se ve: nadando va de pie y buceando va horizontal.
+    Los dos fotogramas son la patada de las piernas, que es lo que mueve a
+    alguien debajo del agua.
+    """
+    c = Lienzo(16, 16)
+    piel, pelo, camisa, panta, bota, linea = (
+        PALETA["piel"], PALETA["pelo"], PALETA["camisa"],
+        PALETA["panta"], PALETA["bota"], PALETA["linea"],
+    )
+    fila = 6                                       # tumbado, a media altura
+    c.rect(11, fila, 4, 2, pelo)                   # la cabeza, por delante
+    c.rect(11, fila + 2, 4, 3, piel)
+    c.px(13, fila + 3, linea)                      # el ojo, de perfil
+
+    c.rect(5, fila + 1, 6, 4, camisa)              # el tronco, horizontal
+    c.rect(13, fila - 1, 3, 1, piel)               # los brazos, estirados
+    c.rect(15, fila, 1, 1, piel)
+
+    if patada:
+        c.rect(1, fila + 1, 4, 2, panta)           # las piernas, arriba
+        c.rect(0, fila, 2, 1, bota)
+        c.rect(2, fila + 3, 3, 2, panta)
+        c.rect(1, fila + 5, 2, 1, bota)
+    else:
+        c.rect(1, fila + 2, 4, 3, panta)           # y juntas
+        c.rect(0, fila + 4, 2, 1, bota)
+        c.rect(0, fila + 2, 1, 1, bota)
+    return c.image
+
+
+# Las once poses de siempre, y las cuatro del agua detras.
+#
+# El agua va **aparte y apagada por defecto** por lo mismo que los cocodrilos y
+# la liana que se columpia: cuatro fotogramas de mas son 1280 bytes en el
+# ejecutable de Amiga, y el juego que sale de `ngplat nuevo` tiene que caber en
+# un Amiga 500 de 512 KB, donde el sistema da unos 190 KB y quedan unos
+# setecientos bytes libres. Un juego con agua se dibuja la hoja con `agua=True`
+# -es lo que hace tests/test_niveles.py para probar la charca- y en un A1200,
+# un CD32, una Mega Drive, un X68000 o una Jaguar sobra sitio de largo.
 HEROE_POSES = 11
+HEROE_POSES_AGUA = 15
 
 
-def heroe() -> Image:
-    hoja = Lienzo(16 * HEROE_POSES, 16)
-    for pose in range(HEROE_POSES):
+def heroe(agua: bool = False) -> Image:
+    poses = HEROE_POSES_AGUA if agua else HEROE_POSES
+    hoja = Lienzo(16 * poses, 16)
+    for pose in range(poses):
         if pose == 8:
             dibujo = _heroe_de_espaldas()
         elif pose == 10:
             dibujo = _heroe_agachado()
+        elif pose in (11, 12):
+            dibujo = _heroe_nadando(pose == 11)
+        elif pose in (13, 14):
+            dibujo = _heroe_buceando(pose == 13)
         else:
             dibujo = _heroe_frame(pose)
         hoja.blit(pose * 16, 0, dibujo)
@@ -745,13 +826,46 @@ def _tile_control() -> Image:
     return c.image
 
 
-def tileset() -> Image:
+def _tile_agua(superficie: bool) -> Image:
+    """El agua. Dos casillas: la de la superficie y la del fondo.
+
+    Las dos son agua para el motor -se nada en cualquiera de las dos-, pero se
+    dibujan distinto porque el jugador tiene que ver **donde acaba el agua**:
+    si el fondo y la superficie fueran iguales no se sabria a que altura se
+    saca la cabeza, y sacar la cabeza es justo lo que decide entre nadar y
+    bucear. Por eso la de arriba lleva la cresta de espuma en las dos primeras
+    filas, que es la linea que hay que mirar.
+    """
+    c = Lienzo(16, 16)
+    agua, agua2, espuma = PALETA["agua"], PALETA["agua2"], PALETA["meta"]
+    c.rect(0, 0, 16, 16, agua)
+    if superficie:
+        c.rect(0, 0, 16, 2, espuma)
+        for x in range(0, 16, 4):                    # la cresta, picada
+            c.px(x + 1, 2, espuma)
+        c.rect(0, 3, 16, 1, PALETA["meta2"])
+    for y in (5, 11):                                # dos ondas por casilla
+        for x in range(0, 16, 8):
+            c.rect(x + 1, y, 5, 1, agua2)
+            c.px(x + 6, y + 1, agua2)
+    c.rect(0, 15, 16, 1, agua2)
+    return c.image
+
+
+def tileset(agua: bool = False) -> Image:
+    """Las nueve casillas de siempre, y las dos del agua detras si se piden.
+
+    El agua va apagada por defecto por lo mismo que las poses de nadar: dos
+    casillas de mas son varios cientos de bytes en el ejecutable, y el juego
+    que sale de `ngplat nuevo` tiene que caber en un Amiga 500."""
     tiles = [
         _tile_vacio(), _tile_suelo(), _tile_plataforma(),
         _tile_pinchos(), _tile_meta(), _tile_tierra(),
         _tile_escalera(True), _tile_escalera(False),
         _tile_control(),
     ]
+    if agua:
+        tiles += [_tile_agua(True), _tile_agua(False)]
     hoja = Lienzo(16 * len(tiles), 16)
     for i, tile in enumerate(tiles):
         hoja.blit(i * 16, 0, tile)

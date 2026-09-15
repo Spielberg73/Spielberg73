@@ -544,9 +544,10 @@ tiles): dibújalo mirando a la derecha y ya.
 **Animaciones**: `frames` es la lista de fotogramas y `velocidad` los frames de
 juego que dura cada uno (más alto = más lento). Ranuras que entiende el motor:
 `quieto`, `correr`, `saltar`, `caer`, `dano`, `atacar`, `subir`,
-`agachado`. Si falta
-alguna, se usa la más parecida (`caer` cae en `saltar`, y todo lo demás en
-`quieto`). `subir` es la de la escalera y `dano` la de recibir un golpe.
+`agachado`, `arriba`, `abajo`, `remate`, `patada`, `nadar` y `bucear`. Si falta
+alguna, se usa la más parecida (`caer` cae en `saltar`, `nadar` y `bucear` caen
+en `saltar` y `caer`, y todo lo demás en `quieto`). `subir` es la de la
+escalera y `dano` la de recibir un golpe.
 
 Con **`bucle: no`** la animación se queda en el último fotograma en vez de
 volver a empezar. Es lo que hace falta en `atacar` cuando el ataque tiene
@@ -1042,6 +1043,131 @@ ella.
 Sin `trepa:` —o con `trepa: 0`— el juego no lleva lianas y esos tiles se quedan
 de adorno.
 
+### Agua: nadar y bucear
+
+```yaml
+tiles:
+  leyenda:
+    '~': {tile: 9, tipo: agua}      # la superficie, con su cresta de espuma
+    'w': {tile: 10, tipo: agua}     # el fondo
+
+jugador:
+  brazada: 2.0          # 0 = las casillas de agua no hacen nada
+  aire: 240             # frames buceando antes de empezar a ahogarse (0 = nunca)
+  ahogo: 45             # frames entre punto y punto de vida sin aire
+  animaciones:
+    nadar:  {frames: [11, 12], velocidad: 8}
+    bucear: {frames: [13, 14], velocidad: 6}
+```
+
+El agua **no para y no mata**: cambia cómo te mueves mientras estás dentro. Una
+casilla de agua se atraviesa por los cuatro lados igual que el aire, y lo que
+hace es esto:
+
+- se cae mucho más despacio (`gravedad_agua`) y con un tope de hundimiento
+  (`hundimiento`), así que no te vas al fondo de golpe;
+- de lado se avanza menos (`velocidad_agua`): el agua agarra;
+- el botón de saltar deja de ser un salto y pasa a ser **una brazada**
+  (`brazada`), que empuja hacia arriba y se puede repetir todas las veces que
+  quieras: es lo único que te mantiene arriba.
+
+**Hay dos estados y los decide la cabeza**, no los pies. El motor mira dos
+puntos: el centro de la caja te dice si estás en el agua, y el píxel de arriba
+del todo si te has sumergido. De ahí salen las dos posturas:
+
+| dónde estás | postura | qué pasa |
+|---|---|---|
+| el centro en el agua y la cabeza fuera | `nadar` | respiras, y la brazada te **saca del agua** (`salto_agua`) |
+| todo el cuerpo dentro | `bucear` | se gasta el aire |
+
+Nadando en la superficie el motor te **sujeta a flote**: mientras no toques el
+botón no subes más. Sin eso, la franja de seis píxeles en la que la cabeza
+asoma se cruza en dos frames y la postura de nadar no se llegaría a ver nunca.
+
+**El aire** sólo baja buceando, y se rellena entero en cuanto sacas la cabeza:
+no hay que administrar nada, hay que subir. Cuando llega a cero se pierde un
+punto de vida en ese mismo momento y otro cada `ahogo` frames exactos. Ahogarse
+**se salta la invulnerabilidad**: que un bicho te haya rozado hace medio
+segundo no para la cuenta atrás. Con `aire: 0` no se ahoga nadie: el agua es
+sólo una forma de moverse.
+
+Lo demás se rellena solo a partir de las cifras de tierra, así que meter agua
+en un juego es escribir **una línea**:
+
+| si no lo pones | vale |
+|---|---|
+| `gravedad_agua` | la cuarta parte de `gravedad` |
+| `hundimiento` | un tercio de `max_caida` |
+| `velocidad_agua` | dos tercios de `velocidad` |
+| `salto_agua` | lo mismo que `salto` |
+| `ahogo` | 60 frames (un punto de vida por segundo) |
+
+Sin `brazada:` —o con `brazada: 0`— el juego no lleva agua y esas casillas se
+quedan de adorno. Y no se quedan de adorno sólo en pantalla: el compilador
+**borra el agua entera** del ejecutable, igual que hace con los cocodrilos y
+con la liana que se columpia.
+
+**Una charca se cava, no se apoya.** La superficie del agua tiene que quedar a
+la altura de la tierra por la que se anda, o parecerá un bloque de agua puesto
+encima del suelo; y por debajo del fondo tiene que haber casilla sólida, porque
+el agua no te sujeta y por debajo del mapa se cae uno al vacío. Con dos
+casillas de hondo basta: con una sola no cabe la cabeza debajo y no se llega a
+bucear.
+
+### El agua **no viene puesta** en el juego de partida
+
+Igual que el cocodrilo y la liana que se columpia, y por lo mismo. El juego que
+crea `ngplat nuevo` tiene que arrancar en un **Amiga 500 de 512 KB**, donde el
+sistema da unos 190 KB y quedan unos setecientos bytes libres, caber en un
+disquete de Atari ST y correr a 60 imágenes por segundo en una Neo Geo que ya
+gasta **198838 de los 200000 ciclos** que da un frame. El agua cuesta, medido:
+
+- unos **2 KB de código** en el 68000 (nadar, bucear, el aire y las dos poses);
+- **1280 bytes** de las cuatro poses nuevas del héroe y varios cientos más de
+  las dos casillas de agua del tileset;
+- y dos ranuras de animación en cada actor, que engordan `NpActorDef` un 15% y
+  mueven los desplazamientos de medio motor.
+
+Con todo puesto, el ejecutable de Amiga pasa de 193356 bytes a más de 195000 y
+AROS contesta «not enough memory available»: el disquete arranca y el juego no
+llega a salir. En un **A1200, un CD32, una Mega Drive, un X68000 o una Jaguar
+sobra sitio de largo**, así que el andamiaje deja las líneas escritas y
+comentadas y quitarles la almohadilla es todo lo que hay que hacer.
+
+Son tres cosas, y están apuntadas en el `game.yaml` que te crea `ngplat nuevo`:
+
+1. **Las cifras**, en `jugador:` — `brazada:`, `aire:` y `ahogo:`.
+2. **Las dos posturas**, en `animaciones:` — `nadar:` y `bucear:`.
+3. **Las dos casillas**, en `tiles: leyenda:` — `'~'` y `'w'`.
+
+Y falta el dibujo: la hoja del héroe necesita **cuatro fotogramas más** (los
+11 y 12 nadando, los 13 y 14 buceando) y el tileset **dos casillas más**. Se
+dibujan en el editor (<kbd>E</kbd> → dibujos), o se generan con el mismo
+dibujante que usa el andamiaje:
+
+```python
+from ngplat import art
+from ngplat.png import write_png
+write_png("graficos/heroe.png", art.heroe(agua=True))
+write_png("graficos/tiles.png", art.tileset(agua=True))
+```
+
+Y la charca, cavada en el primer nivel. Se le quitan **dos filas de cielo** de
+arriba (estaban vacías) y se le ponen **dos de tierra** abajo, con lo que el
+nivel sigue midiendo dieciséis filas y la cámara no se entera:
+
+```
+P.......s...V...k.^.........s...........c...G...
+####################~~~~~~~~######..############
+,,,,,,,,,,,,,,,,,,,,wwwwwwww,,,,,,..,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,..,,,,,,,,,,,,
+```
+
+(La llave se adelanta de la columna 22 a la 16: en su sitio de siempre quedaría
+flotando sobre el agua.) Esto es exactamente lo que hace
+`tests/test_niveles.py`, que pega el agua así y comprueba con el bot que la
+charca se puede cruzar.
+
 ### `entre_ellos`: que los bichos se peguen entre ellos
 
 ```yaml
@@ -1152,6 +1278,7 @@ Tipos:
 | `cerrojo` | frena como una pared hasta que llegas con el objeto que pide |
 | `liana` | se trepa en vertical, y se agarra también en el aire |
 | `lento` | **no para, frena**: la hierba de una carretera, un arenal, un charco |
+| `agua` | se nada y se bucea: otra gravedad, otra velocidad y el aire contado |
 | `decor` | se dibuja, no estorba |
 
 Atajos: `'#': 3` equivale a `{tile: 3, tipo: solido}`, y `'#': [3, plataforma]`

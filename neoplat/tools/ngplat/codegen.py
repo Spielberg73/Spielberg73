@@ -44,26 +44,39 @@ def _array(values: Sequence[int], per_line: int = 16, fmt: str = "%d") -> str:
     return "\n".join(lines)
 
 
-def _anim_arrays(prefix: str, build_actor) -> str:
+# Cuantas ranuras de animacion se escriben en el C.
+#
+# El motor las lleva todas -en el preview, que es JavaScript, no hay nada que
+# ahorrar- pero en el C se escriben **las que el juego usa de verdad**: doce, o
+# catorce si lleva agua. NpActorDef va metido dentro de la definicion del
+# jugador y de la de cada bicho, asi que dos ranuras de mas mueven los
+# desplazamientos de medio motor: 1,1 KB de codigo en el 68000, medido en el
+# juego de ejemplo. Tiene que dar lo mismo que NP_ANIM_SLOTS de gamedata.h o el
+# C no compila, asi que sale del mismo sitio: si hay agua o no.
+def _ranuras(build: Build) -> int:
+    return len(ANIM_SLOTS) if build.project.player.swim_stroke else len(ANIM_SLOTS) - 2
+
+
+def _anim_arrays(prefix: str, build_actor, ranuras: int) -> str:
     out: List[str] = []
-    for slot, anim in enumerate(build_actor.anims):
+    for slot, anim in enumerate(build_actor.anims[:ranuras]):
         frames = ", ".join(str(f) for f in anim.frames)
         out.append("static const uint8_t %s_anim%d[] = { %s };" % (prefix, slot, frames))
     return "\n".join(out)
 
 
-def _actor_vacio() -> str:
+def _actor_vacio(ranuras: int) -> str:
     """Un NpActorDef a cero, para las tablas que no tienen ningun elemento.
 
-    Las ranuras de animacion se cuentan a partir de ANIM_SLOTS y no a mano:
-    anadir una (como paso con la de atacar) rompia esto en silencio."""
-    ranuras = ", ".join(["{ 0, 0, 0, 0 }"] * len(ANIM_SLOTS))
-    return "{ 0, 0, 1, 1, 0, 0, 0, 16, 16, { %s } }" % ranuras
+    Las ranuras de animacion se cuentan y no se escriben a mano: anadir una
+    (como paso con la de atacar) rompia esto en silencio."""
+    huecos = ", ".join(["{ 0, 0, 0, 0 }"] * ranuras)
+    return "{ 0, 0, 1, 1, 0, 0, 0, 16, 16, { %s } }" % huecos
 
 
-def _actor_def(prefix: str, values: Dict[str, object]) -> str:
+def _actor_def(prefix: str, values: Dict[str, object], ranuras: int) -> str:
     anims = []
-    for slot, anim in enumerate(values["anims"]):          # type: ignore[index]
+    for slot, anim in enumerate(values["anims"][:ranuras]):  # type: ignore[index]
         anims.append(
             "        { %s_anim%d, %d, %d, %d }"
             % (prefix, slot, anim["count"], anim["speed"], anim["loop"])
@@ -131,6 +144,10 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     kinds, graphics = tile_tables(build)
     palettes = build.paletas
 
+    # El agua no se dice aqui sino en np_ranuras.h, que lo lee np_types.h: ver
+    # _ranuras_h.
+    hay_agua = 1 if project.player.swim_stroke else 0
+    ranuras = _ranuras(build)
     header = [HEADER_NOTE, "#ifndef GAMEDATA_H", "#define GAMEDATA_H", "",
               '#include "np_game.h"', ""]
     header.append("#define NP_PALETTE_COUNT %d" % len(palettes))
@@ -175,6 +192,8 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     header.append("#define NP_HAY_COCODRILOS %d"
                   % (1 if "cocodrilo" in _ias else 0))
     header.append("#define NP_HAY_BALANCEO %d" % (1 if "balanceo" in _ias else 0))
+    # NP_HAY_AGUA ya esta puesto arriba del todo, antes del include: ver alli
+    # por que no puede ir aqui.
     header.append("#define NP_VISTA_CARRETERA %d"
                   % (1 if project.view == "carretera" else 0))
     # La columna de la imagen de la carretera por la que pasa el eje de la
@@ -385,19 +404,25 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("")
 
     # --- jugador
-    src.append(_anim_arrays("np_player", build.player))
+    src.append(_anim_arrays("np_player", build.player, ranuras))
     if build.attack is not None:
-        src.append(_anim_arrays("np_attack", build.attack))
+        src.append(_anim_arrays("np_attack", build.attack, ranuras))
     for i, arma in enumerate(build.subs):
-        src.append(_anim_arrays("np_sub%d" % i, arma))
+        src.append(_anim_arrays("np_sub%d" % i, arma, ranuras))
     pv = player_values(project)
     src.append("const NpPlayerDef np_player_def = {")
-    src.append(_actor_def("np_player", actor_def_values(build.player)) + ",")
+    src.append(_actor_def("np_player", actor_def_values(build.player), ranuras) + ",")
     src.append("    %d, %d, %d, %d," % (pv["speed"], pv["accel"], pv["friction"], pv["air_accel"]))
     src.append("    %d, %d, %d, %d, %d," % (pv["jump"], pv["jump_cut"], pv["gravity"],
                                             pv["max_fall"], pv["bounce"]))
     src.append("    %d, %d," % (pv["knockback"], pv["stair_speed"]))
     src.append("    %d,   /* lo que se sube por una liana */" % pv["climb_speed"])
+    src.append("    %d, %d, %d, %d, %d,   /* el agua: brazada, gravedad, "
+               "hundimiento, nado y salida */"
+               % (pv["swim_stroke"], pv["swim_gravity"], pv["swim_sink"],
+                  pv["swim_speed"], pv["swim_out"]))
+    src.append("    %d, %d,   /* el aire que aguanta y cada cuanto se ahoga */"
+               % (pv["breath"], pv["drown"]))
     src.append("    %d, %d," % (pv["invuln"], pv["stun"]))
     src.append("    %d,   /* desgaste */" % pv["wear"])
     src.append("    %d, %d,   /* el agarre: cuanto dura y con cuanta fuerza lanza */"
@@ -415,9 +440,9 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("    /* ataque */")
     src.append("    {")
     if build.attack is not None:
-        src.append(_actor_def("np_attack", actor_def_values(build.attack)) + ",")
+        src.append(_actor_def("np_attack", actor_def_values(build.attack), ranuras) + ",")
     else:
-        src.append("    " + _actor_vacio() + ",")
+        src.append("    " + _actor_vacio(ranuras) + ",")
     src.append("        %d, %d, %d, %d, %d, %d,"
                % (av["speed"], av["range"], av["cooldown"], av["duration"],
                   av["windup"], av["range_step"]))
@@ -439,11 +464,11 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("/* Armas secundarias, en el orden de 'secundarias:'. */")
     src.append("const NpSubDef np_subs[] = {")
     if not build.subs:
-        src.append("    { %s, 0, 0, 0, 0, 0, 0, 0, 0, 0 }" % _actor_vacio())
+        src.append("    { %s, 0, 0, 0, 0, 0, 0, 0, 0, 0 }" % _actor_vacio(ranuras))
     for i, arma in enumerate(build.subs):
         sv = sub_values(arma.actor)
         src.append("    {")
-        src.append(_actor_def("np_sub%d" % i, actor_def_values(arma)) + ",")
+        src.append(_actor_def("np_sub%d" % i, actor_def_values(arma), ranuras) + ",")
         src.append("        %d, %d, %d, %d, %d, %d, %d, %d, %d"
                    % (sv["speed"], sv["gravity"], sv["jump"], sv["range"],
                       sv["cooldown"], sv["kind"], sv["cost"], sv["damage"],
@@ -465,7 +490,7 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     # --- enemigos
     for i, enemy in enumerate(build.enemies):
         src.append("/* enemigo %d: %s */" % (i, enemy.name))
-        src.append(_anim_arrays("np_enemy%d" % i, enemy))
+        src.append(_anim_arrays("np_enemy%d" % i, enemy, ranuras))
     src.append("const NpEnemyDef np_enemies[] = {")
     if not build.enemies:
         # Los veintidos ceros de un enemigo que no existe. Van uno a uno y no
@@ -473,11 +498,11 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
         # juego sin enemigos -una aventura grafica, por ejemplo- es lo que hace
         # que esta linea se compile de verdad alguna vez.
         src.append("    { %s, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 0,"
-                   "      0, 0, 0, 0, 0, 0, 0, 0 }" % _actor_vacio())
+                   "      0, 0, 0, 0, 0, 0, 0, 0 }" % _actor_vacio(ranuras))
     for i, enemy in enumerate(build.enemies):
         ev = enemy_values(enemy)
         src.append("    {")
-        src.append(_actor_def("np_enemy%d" % i, actor_def_values(enemy)) + ",")
+        src.append(_actor_def("np_enemy%d" % i, actor_def_values(enemy), ranuras) + ",")
         src.append("        %d, %d, %d, %d, %d," % (ev["speed"], ev["gravity"], ev["jump"],
                                                     ev["range"], ev["amplitude"]))
         src.append("        %d, %d, %d," % (ev["period"], ev["interval"], ev["score"]))
@@ -499,14 +524,14 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     # --- los prisioneros: se sueltan tocandolos y se pierden a tiros
     src.append("/* Los prisioneros, en el orden de 'prisioneros:'. */")
     for i, pri in enumerate(build.prisoners):
-        src.append(_anim_arrays("np_prisoner%d" % i, pri))
+        src.append(_anim_arrays("np_prisoner%d" % i, pri, ranuras))
     src.append("const NpPrisonerDef np_prisoners[] = {")
     if not build.prisoners:
-        src.append("    { %s, 0, 0, 0 }" % _actor_vacio())
+        src.append("    { %s, 0, 0, 0 }" % _actor_vacio(ranuras))
     for i, pri in enumerate(build.prisoners):
         pv = prisoner_values(pri)
         src.append("    {")
-        src.append(_actor_def("np_prisoner%d" % i, actor_def_values(pri)) + ",")
+        src.append(_actor_def("np_prisoner%d" % i, actor_def_values(pri), ranuras) + ",")
         src.append("        %d, %d, %d" % (pv["score"], pv["speed"], pv["escape"]))
         src.append("    }," if i + 1 < len(build.prisoners) else "    }")
     src.append("};")
@@ -515,15 +540,15 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
 
     src.append("/* Los generadores de bichos, en el orden de 'generadores:'. */")
     for i, gen in enumerate(build.generators):
-        src.append(_anim_arrays("np_generator%d" % i, gen))
+        src.append(_anim_arrays("np_generator%d" % i, gen, ranuras))
     indice_enemigos = {b.name: i for i, b in enumerate(build.enemies)}
     src.append("const NpGeneratorDef np_generators[] = {")
     if not build.generators:
-        src.append("    { %s, 0, 0, 0, 0, 0 }" % _actor_vacio())
+        src.append("    { %s, 0, 0, 0, 0, 0 }" % _actor_vacio(ranuras))
     for i, gen in enumerate(build.generators):
         gv = generator_values(gen, indice_enemigos)
         src.append("    {")
-        src.append(_actor_def("np_generator%d" % i, actor_def_values(gen)) + ",")
+        src.append(_actor_def("np_generator%d" % i, actor_def_values(gen), ranuras) + ",")
         src.append("        %d, %d, %d, %d, %d"
                    % (gv["score"], gv["cooldown"], gv["health"], gv["enemy"],
                       gv["cap"]))
@@ -535,14 +560,14 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     # --- lo que tiran los enemigos que llevan `dispara:`
     src.append("/* Los disparos de los enemigos, en el orden de 'dispara:'. */")
     for i, disparo in enumerate(build.enemy_shots):
-        src.append(_anim_arrays("np_eshot%d" % i, disparo))
+        src.append(_anim_arrays("np_eshot%d" % i, disparo, ranuras))
     src.append("const NpEnemyShotDef np_enemy_shots[] = {")
     if not build.enemy_shots:
-        src.append("    { %s, 0, 0, 0, 0 }" % _actor_vacio())
+        src.append("    { %s, 0, 0, 0, 0 }" % _actor_vacio(ranuras))
     for i, disparo in enumerate(build.enemy_shots):
         sv = enemy_shot_values(disparo)
         src.append("    {")
-        src.append(_actor_def("np_eshot%d" % i, actor_def_values(disparo)) + ",")
+        src.append(_actor_def("np_eshot%d" % i, actor_def_values(disparo), ranuras) + ",")
         src.append("        %d, %d, %d, %d"
                    % (sv["speed"], sv["range"], sv["cooldown"], sv["damage"]))
         src.append("    }," if i + 1 < len(build.enemy_shots) else "    }")
@@ -556,14 +581,14 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     sub_index = {arma.name: i for i, arma in enumerate(build.subs)}
     for i, item in enumerate(build.items):
         src.append("/* objeto %d: %s */" % (i, item.name))
-        src.append(_anim_arrays("np_item%d" % i, item))
+        src.append(_anim_arrays("np_item%d" % i, item, ranuras))
     src.append("const NpItemDef np_items[] = {")
     if not build.items:
-        src.append("    { %s, 0, 0, 1 }" % _actor_vacio())
+        src.append("    { %s, 0, 0, 1 }" % _actor_vacio(ranuras))
     for i, item in enumerate(build.items):
         iv = item_values(item, sub_index)
         src.append("    {")
-        src.append(_actor_def("np_item%d" % i, actor_def_values(item)) + ",")
+        src.append(_actor_def("np_item%d" % i, actor_def_values(item), ranuras) + ",")
         src.append("        %d, %d, %d" % (iv["score"], iv["effect"], iv["amount"]))
         src.append("    }," if i + 1 < len(build.items) else "    }")
     src.append("};")
@@ -586,14 +611,14 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     # --- plataformas moviles
     for i, plat in enumerate(build.platforms):
         src.append("/* plataforma %d: %s */" % (i, plat.name))
-        src.append(_anim_arrays("np_plat%d" % i, plat))
+        src.append(_anim_arrays("np_plat%d" % i, plat, ranuras))
     src.append("const NpPlatformDef np_platforms[] = {")
     if not build.platforms:
-        src.append("    { %s, 0, 0, 0 }" % _actor_vacio())
+        src.append("    { %s, 0, 0, 0 }" % _actor_vacio(ranuras))
     for i, plat in enumerate(build.platforms):
         pv = platform_values(plat)
         src.append("    {")
-        src.append(_actor_def("np_plat%d" % i, actor_def_values(plat)) + ",")
+        src.append(_actor_def("np_plat%d" % i, actor_def_values(plat), ranuras) + ",")
         src.append("        %d, %d, %d" % (pv["speed"], pv["distance"], pv["axis"]))
         src.append("    }," if i + 1 < len(build.platforms) else "    }")
     src.append("};")
@@ -604,14 +629,14 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     item_index = {b.name: i for i, b in enumerate(build.items)}
     for i, rom in enumerate(build.breakables):
         src.append("/* rompible %d: %s */" % (i, rom.name))
-        src.append(_anim_arrays("np_rompible%d" % i, rom))
+        src.append(_anim_arrays("np_rompible%d" % i, rom, ranuras))
     src.append("const NpBreakableDef np_breakables[] = {")
     if not build.breakables:
-        src.append("    { %s, 0, 0, 1 }" % _actor_vacio())
+        src.append("    { %s, 0, 0, 1 }" % _actor_vacio(ranuras))
     for i, rom in enumerate(build.breakables):
         bv = breakable_values(rom, item_index)
         src.append("    {")
-        src.append(_actor_def("np_rompible%d" % i, actor_def_values(rom)) + ",")
+        src.append(_actor_def("np_rompible%d" % i, actor_def_values(rom), ranuras) + ",")
         src.append("        %d, %d, %d" % (bv["score"], bv["drop"], bv["health"]))
         src.append("    }," if i + 1 < len(build.breakables) else "    }")
     src.append("};")
@@ -621,13 +646,13 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     # --- los cubos de la vista isometrica
     for i, cubo in enumerate(build.blocks):
         src.append("/* cubo %d: %s */" % (i, cubo.name))
-        src.append(_anim_arrays("np_cubo%d" % i, cubo))
+        src.append(_anim_arrays("np_cubo%d" % i, cubo, ranuras))
     src.append("const NpBlockDef np_bloques[] = {")
     if not build.blocks:
-        src.append("    { %s }" % _actor_vacio())
+        src.append("    { %s }" % _actor_vacio(ranuras))
     for i, cubo in enumerate(build.blocks):
         src.append("    {")
-        src.append(_actor_def("np_cubo%d" % i, actor_def_values(cubo)))
+        src.append(_actor_def("np_cubo%d" % i, actor_def_values(cubo), ranuras))
         src.append("    }," if i + 1 < len(build.blocks) else "    }")
     src.append("};")
     src.append("const uint8_t np_bloque_count = %d;" % len(build.blocks))
@@ -757,9 +782,52 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("")
 
     return {
+        "src/np_ranuras.h": _ranuras_h(hay_agua, ranuras),
         "src/gamedata.h": "\n".join(header) + "\n",
         "src/gamedata.c": "\n".join(src) + "\n",
     }
+
+
+def _ranuras_h(hay_agua: int, ranuras: int) -> str:
+    """El archivo mas pequeno que genera ngplat, y va aparte por una razon.
+
+    Lleva dos cosas: cuantas ranuras de animacion tiene cada actor y si el
+    juego lleva agua. Las dos las necesita np_types.h para **medir las
+    estructuras**, asi que tienen que estar puestas antes de que se lea la
+    primera linea de tipos del motor. Dichas en gamedata.h llegarian tarde:
+    gamedata.h incluye np_game.h, pero np_world.c incluye antes np_world.h, y
+    en ese orden los tipos ya se han medido con las catorce ranuras. Un archivo
+    sin includes que se lee desde dentro de np_types.h no tiene ese problema:
+    lo vean por donde lo vean, todos los .c miden igual.
+
+    Y medir igual no es una manera de hablar: si dos .c del mismo juego usaran
+    NpActorDef de tamanos distintos, el enlazador no diria nada y el juego se
+    volveria loco en la maquina.
+    """
+    return "\n".join([
+        HEADER_NOTE,
+        "#ifndef NP_RANURAS_H",
+        "#define NP_RANURAS_H",
+        "",
+        "/* Cuantas ranuras de animacion lleva cada actor: doce, o catorce si",
+        "   el juego lleva agua (las dos ultimas son nadar y bucear).",
+        "",
+        "   No es tacaneria. NpActorDef va metido dentro de la definicion del",
+        "   jugador y de la de cada bicho, asi que dos ranuras de mas mueven",
+        "   los desplazamientos de medio motor: 1,1 KB de codigo de mas en el",
+        "   68000, medido en el juego de ejemplo. En un Amiga 500 de 512 KB",
+        "   eso es la diferencia entre arrancar y que el sistema conteste",
+        '   "not enough memory available". */',
+        "#define NP_ANIM_SLOTS %d" % ranuras,
+        "",
+        "/* Y si el juego lleva agua, para borrar al compilar lo que sobra:",
+        "   nadar y bucear son otros 2 KB que un juego sin `brazada:` no tiene",
+        "   por que pagar. Igual que NP_HAY_COCODRILOS y NP_HAY_BALANCEO. */",
+        "#define NP_HAY_AGUA %d" % hay_agua,
+        "",
+        "#endif",
+        "",
+    ])
 
 
 def copy_engine(out_dir: str, sistema=None) -> List[str]:

@@ -589,12 +589,20 @@
 
     /* ----------------------------------------------------- animaciones */
     /*
-     * Las ocho ranuras que entiende el motor, en el orden en el que las
+     * Las catorce ranuras que entiende el motor, en el orden en el que las
      * guarda `actor.anims` (el mismo de ANIM_SLOTS en build.py). El nombre es
      * el que se escribe en el game.yaml.
+     *
+     * Van las catorce y no las ocho de siempre porque la posicion en esta
+     * lista **es** la ranura del motor: dejarse una por el camino corre todas
+     * las de detras, y ademas las que faltaban no habia forma de tocarlas
+     * desde el editor. Cada juego usa las suyas -un juego cenital no nada y
+     * uno de plataformas no anda de espaldas- y las que no use se quedan
+     * vacias, que es lo que ya hacian.
      */
     editor.RANURAS = ["quieto", "correr", "saltar", "caer", "dano", "atacar",
-                      "subir", "agachado"];
+                      "subir", "agachado", "arriba", "abajo", "remate",
+                      "patada", "nadar", "bucear"];
 
     /** Que actor del game.yaml es una hoja de dibujo. */
     editor.actorDeHoja = function (hoja) {
@@ -2027,7 +2035,8 @@
       DATA.tiles.chars.forEach(function (ch, i) {
         if (ch === " ") return;
         var tipos = ["vacio", "solido", "plataforma", "peligro", "meta", "decorado",
-                     "escalera", "escalera izq", "punto de control", "cerrojo"];
+                     "escalera", "escalera izq", "punto de control", "cerrojo",
+                     "liana", "lento", "agua"];
         var etiqueta = tipos[DATA.tiles.kind[i]] || "tile";
         /* Un cerrojo se llama por lo que pide: en una aventura hay tres y
            puestos en la paleta como "cerrojo" a secas no habria manera de

@@ -202,6 +202,9 @@ TILE_KINDS = {
     "lento": "lento", "hierba": "lento", "arena": "lento", "barro": "lento",
     "arcen": "lento", "arcén": "lento", "cesped": "lento", "césped": "lento",
     "gravilla": "lento", "charco": "lento", "rough": "lento", "slow": "lento",
+    # agua: ni para ni mata, cambia como te mueves mientras estas dentro
+    "agua": "agua", "water": "agua", "mar": "agua", "rio": "agua", "río": "agua",
+    "lago": "agua", "nadar": "agua", "swim": "agua",
 }
 
 TILE_KIND_ID = {"empty": 0, "solid": 1, "platform": 2, "hazard": 3, "goal": 4,
@@ -212,7 +215,9 @@ TILE_KIND_ID = {"empty": 0, "solid": 1, "platform": 2, "hazard": 3, "goal": 4,
                 # la liana: se trepa en vertical y se coge en el aire
                 "climb": 10,
                 # el suelo malo: se pasa, pero ahi no se corre
-                "lento": 11}
+                "lento": 11,
+                # el agua: se nada, se bucea y se gasta el aire
+                "agua": 12}
 
 BEHAVIORS = {
     "patrulla": "patrol", "patrol": "patrol", "andar": "patrol", "walker": "patrol",
@@ -325,6 +330,18 @@ class Player(Actor):
     # Lo que se sube por una liana. A cero el juego no lleva lianas y las
     # casillas trepables no hacen nada, que es como estaba el kit.
     climb_speed: float = 0.0
+    # --- el agua ---------------------------------------------------------
+    # Con `brazada:` a cero el juego **no lleva agua**: las casillas de agua no
+    # hacen nada, igual que las de liana sin `trepa:`. Los demas numeros solo
+    # se miran si hay brazada, y los que valen 0 se rellenan solos a partir de
+    # las cifras de tierra: asi poner agua es escribir una linea.
+    swim_stroke: float = 0.0      # lo que empuja cada brazada (0 = sin agua)
+    swim_gravity: float = 0.0     # 0 = la cuarta parte de la de fuera
+    swim_sink: float = 0.0        # 0 = un tercio del tope de caida
+    swim_speed: float = 0.0       # 0 = dos tercios de lo que se anda
+    swim_out: float = 0.0         # 0 = el salto de siempre
+    breath: int = 0               # frames de aire buceando (0 = no se ahoga)
+    drown: int = 0                # frames entre punto y punto sin aire
     crouch: bool = False          # si se puede agachar con abajo
     crouch_h: int = 0             # alto de la caja agachado (0 = tres cuartos)
     attack: Optional["Attack"] = None
@@ -977,6 +994,10 @@ ANIM_ALIASES = {
     # la patada voladora: pegar en el aire es otro golpe y otro dibujo
     "patada": "patada", "kick": "patada", "patada_voladora": "patada",
     "voladora": "patada",
+    # el agua: nadando en la superficie y buceando, que son dos posturas
+    "nadar": "swim", "nadando": "swim", "swim": "swim", "brazada": "swim",
+    "bucear": "dive", "buceando": "dive", "dive": "dive", "sumergido": "dive",
+    "buceo": "dive",
 }
 
 STANDARD_ANIMS = ["idle", "run", "jump", "fall", "hurt"]
@@ -1620,6 +1641,19 @@ def _read_player(node: Node, root: str) -> Player:
                              0.0, 0.0, 8.0),
         climb_speed=node.num(["climb_speed", "velocidad_trepa", "trepa",
                               "liana", "trepar"], 0.0, 0.0, 8.0),
+        swim_stroke=node.num(["brazada", "swim_stroke", "nadar", "nado"],
+                             0.0, 0.0, 12.0),
+        swim_gravity=node.num(["gravedad_agua", "swim_gravity", "hundirse"],
+                              0.0, 0.0, 4.0),
+        swim_sink=node.num(["hundimiento", "swim_sink", "max_hundirse"],
+                           0.0, 0.0, 12.0),
+        swim_speed=node.num(["velocidad_agua", "swim_speed", "nado_velocidad"],
+                            0.0, 0.0, 12.0),
+        swim_out=node.num(["salto_agua", "swim_out", "salir_agua"],
+                          0.0, 0.0, 12.0),
+        breath=node.int_(["aire", "breath", "aliento", "oxigeno", "oxígeno"],
+                         0, 0, 3600),
+        drown=node.int_(["ahogo", "drown", "ahogarse"], 0, 0, 600),
         crouch=node.bool_(["crouch", "agachado", "agacharse", "agachar"], False),
         crouch_h=node.int_(["crouch_h", "caja_agachado", "alto_agachado"], 0, 0, 64),
         attack=_read_attack(node.child("attack", "ataque"), root),
@@ -1635,6 +1669,25 @@ def _read_player(node: Node, root: str) -> Player:
     # lo que hace que una escalera sea un sitio incomodo donde te pueden cazar.
     if not player.stair_speed:
         player.stair_speed = player.speed / 2.0
+    # El agua se enciende con **una linea**, `brazada:`, y el resto se rellena
+    # solo a partir de las cifras de tierra. Las proporciones no son un gusto:
+    # son las que hacen que el agua se note sin que deje de responder.
+    if player.swim_stroke:
+        if not player.swim_gravity:
+            # una cuarta parte: dentro del agua uno se hunde, no se cae
+            player.swim_gravity = player.gravity / 4.0
+        if not player.swim_sink:
+            # y lo que se hunde tiene tope, mucho mas bajo que el de caer
+            player.swim_sink = player.max_fall / 3.0
+        if not player.swim_speed:
+            # de lado se va a dos tercios: el agua agarra
+            player.swim_speed = player.speed * 2.0 / 3.0
+        if not player.swim_out:
+            # salir a la orilla cuesta lo que un salto de los de siempre
+            player.swim_out = player.jump
+        if player.breath and not player.drown:
+            # sin aire, un punto de vida por segundo
+            player.drown = 60
     # Agachado, la caja baja una cuarta parte por arriba: los pies se quedan
     # donde estan y lo que pasa por encima ya no te toca. Es lo que hace que
     # agacharse sirva para algo mas que para la pose.
@@ -1666,6 +1719,13 @@ def _read_player(node: Node, root: str) -> Player:
         "stun", "aturdido", "aturdimiento",
         "stair_speed", "velocidad_escalera", "escalera",
         "climb_speed", "velocidad_trepa", "trepa", "liana", "trepar",
+        "brazada", "swim_stroke", "nadar", "nado",
+        "gravedad_agua", "swim_gravity", "hundirse",
+        "hundimiento", "swim_sink", "max_hundirse",
+        "velocidad_agua", "swim_speed", "nado_velocidad",
+        "salto_agua", "swim_out", "salir_agua",
+        "aire", "breath", "aliento", "oxigeno", "oxígeno",
+        "ahogo", "drown", "ahogarse",
         "crouch", "agachado", "agacharse", "agachar",
         "crouch_h", "caja_agachado", "alto_agachado",
         "sub", "secundaria", "arma_secundaria",

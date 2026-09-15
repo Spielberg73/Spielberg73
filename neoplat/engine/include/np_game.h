@@ -148,6 +148,36 @@ typedef struct {
      * nada. Va aparte de `stair_speed` porque una liana no es una escalera:
      * se coge en el aire y se sube recta. */
     np_fix climb_speed;
+    /* --- el agua ---------------------------------------------------------
+     *
+     * Con `swim_stroke` a cero -lo normal- el juego **no lleva agua**: las
+     * casillas de agua no hacen nada y todo esto se queda quieto, igual que
+     * pasa con las lianas y `climb_speed`.
+     *
+     * Dentro del agua no se salta: se **brazea**. El boton de saltar da un
+     * empujon hacia arriba de `swim_stroke` y se puede repetir en mitad del
+     * agua, tantas veces como se pulse; la gravedad tira mucho menos
+     * (`swim_gravity`) y lo que se hunde uno tiene tope (`swim_sink`). De lado
+     * se va mas despacio (`swim_speed`), que es lo que hace que el agua se
+     * note en las manos y no solo en los ojos.
+     *
+     * Y al salir por arriba, `swim_out`: el impulso con el que se sale del
+     * agua de un brazeo. Sin el, llegar al borde de una charca y no poder
+     * subirte a la orilla seria lo normal, que es de las cosas que peor
+     * sientan en un juego de plataformas.
+     */
+    np_fix swim_stroke;      /* lo que empuja cada brazada */
+    np_fix swim_gravity;     /* la gravedad dentro del agua */
+    np_fix swim_sink;        /* lo maximo que se hunde por frame */
+    np_fix swim_speed;       /* lo que se avanza de lado nadando */
+    np_fix swim_out;         /* el impulso al salir del agua por arriba */
+    /* El aire que aguanta buceando, en frames. Se gasta **solo con la cabeza
+     * debajo**: nadando en la superficie se recupera, y de golpe. Al llegar a
+     * cero empieza a quitar un punto de vida cada `drown` frames, que es lo
+     * que convierte una galeria inundada en una cuenta atras. Cero = no se
+     * ahoga nunca, que es lo que querra quien ponga agua de adorno. */
+    uint16_t breath;
+    uint16_t drown;          /* frames entre punto y punto de vida, sin aire */
     uint16_t invuln, stun;
     /* Frames que tarda en irse un punto de vida **sola**, sin que nadie te
      * toque. Cero -lo normal- quiere decir que la vida solo se pierde a

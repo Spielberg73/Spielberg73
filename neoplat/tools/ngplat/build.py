@@ -32,8 +32,10 @@ MAX_ENTIDADES = 64
 
 # Las dos ultimas solo se usan en vista cenital (el heroe de espaldas y de
 # frente); en lateral se quedan en su sustituto y no estorban.
+# Y las dos ultimas son las del agua: nadando en la superficie y buceando. El
+# orden es el de NP_ANIM_* en engine/include/np_types.h y no puede cambiar.
 ANIM_SLOTS = ["idle", "run", "jump", "fall", "hurt", "attack", "stair", "crouch",
-              "up", "down", "remate", "patada"]
+              "up", "down", "remate", "patada", "swim", "dive"]
 SIN_STEPS = 64
 
 
@@ -918,6 +920,13 @@ def player_values(project: Project) -> Dict[str, object]:
         "knockback": to_fixed(p.knockback), "stun": p.stun,
         "stair_speed": to_fixed(p.stair_speed),
         "climb_speed": to_fixed(p.climb_speed),
+        # el agua: con `swim_stroke` a 0 el motor ni la mira
+        "swim_stroke": to_fixed(p.swim_stroke),
+        "swim_gravity": to_fixed(p.swim_gravity),
+        "swim_sink": to_fixed(p.swim_sink),
+        "swim_speed": to_fixed(p.swim_speed),
+        "swim_out": to_fixed(p.swim_out),
+        "breath": p.breath, "drown": p.drown,
         "coyote": p.coyote, "jump_buffer": p.jump_buffer, "wear": p.wear,
         # el agarre: con `grab_time` a 0 el motor ni lo mira
         "grab_time": p.grab_time, "grab_damage": p.grab_damage,

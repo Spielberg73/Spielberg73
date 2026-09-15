@@ -170,9 +170,10 @@ que este viva dentro del kit:
   fotogramas y la velocidad que tiene ese actor en el `game.yaml`, mientras
   dibujas.
 
-**Y se edita ahí mismo.** Debajo de la vista previa están las ocho ranuras que
-entiende el motor —`quieto`, `correr`, `saltar`, `caer`, `dano`, `atacar`,
-`subir` y `agachado`— y, de la elegida, **qué fotogramas usa** (`0, 1, 2, 1`),
+**Y se edita ahí mismo.** Debajo de la vista previa están las catorce ranuras
+que entiende el motor —`quieto`, `correr`, `saltar`, `caer`, `dano`, `atacar`,
+`subir`, `agachado`, `arriba`, `abajo`, `remate`, `patada`, `nadar` y
+`bucear`— y, de la elegida, **qué fotogramas usa** (`0, 1, 2, 1`),
 **cuánto dura cada uno** y **si se repite**. Se aplica al momento: pulsa
 <kbd>Enter</kbd> y el personaje ya se mueve así. Al guardar, la animación entra
 en el `game.yaml` en una línea (`correr: {frames: [1, 2, 3, 2], velocidad: 6}`).

@@ -2794,9 +2794,10 @@
     if (!selector) return;
     selector.innerHTML = "";
     var actor = actorDeHoja(dib.hoja);
-    /* Las ocho ranuras que entiende el motor, con el nombre que llevan en el
-       game.yaml. Antes salian cinco y las tres ultimas -atacar, subir y
-       agachado- no habia forma de verlas ni de tocarlas desde el editor. */
+    /* Las catorce ranuras que entiende el motor, con el nombre que llevan en
+       el game.yaml. Antes salian cinco, luego ocho, y las que se quedaban
+       fuera -entre ellas nadar y bucear- no habia forma de verlas ni de
+       tocarlas desde el editor. */
     var nombres = editor.RANURAS;
     /* El escenario y las capas de fondo no se animan: ahi la vista previa no
        dice nada y estorba. */

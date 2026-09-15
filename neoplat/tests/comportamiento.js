@@ -34,29 +34,31 @@ var LEYENDA = { ".": 0, "#": 1, "=": 2, "^": 3, "G": 4, "/": 5, "\\": 6, "!": 7,
                    Se escribe "|" y no "T" porque "T" ya es el tablon. */
                 "|": 14,
                 /* y el disparador de guiones: casilla vacia que lanza uno */
-                "D": 15 };
-var TIPOS = [0, 1, 2, 3, 4, 6, 7, 8, 9, 9, 1, 1, 1, 1, 10, 0];
+                "D": 15,
+                /* y el agua: se nada, se bucea y se gasta el aire */
+                "~": 16 };
+var TIPOS = [0, 1, 2, 3, 4, 6, 7, 8, 9, 9, 1, 1, 1, 1, 10, 0, 12];
 /* que objeto abre cada tile: el objeto mas uno, 0 = no es cerrojo */
-var NECESITA = [0, 0, 0, 0, 0, 0, 0, 0, 6, 7, 0, 0, 0, 0, 0, 0];
+var NECESITA = [0, 0, 0, 0, 0, 0, 0, 0, 6, 7, 0, 0, 0, 0, 0, 0, 0];
 /* lo que levanta cada tile (solo lo mira la vista isometrica) y con que cubo
    se dibuja: el indice en `bloques` mas uno, 0 = no se dibuja */
-var ALTOS =   [0, 0, 0, 0, 0, 0, 0, 0, 48, 48, 4, 16, 48, 48, 0, 0];
-var BLOQUES = [0, 0, 0, 0, 0, 0, 0, 0,  1,  1, 1,  1,  1,  0,  0, 0];
+var ALTOS =   [0, 0, 0, 0, 0, 0, 0, 0, 48, 48, 4, 16, 48, 48, 0, 0, 0];
+var BLOQUES = [0, 0, 0, 0, 0, 0, 0, 0,  1,  1, 1,  1,  1,  0,  0, 0, 0];
 /* El disparador ("D", el simbolo 15) lanza el primer guion; los demas no
    lanzan nada. `una_vez` lo cambia cada prueba que lo necesite. */
-var GUIONES_DE_TILE = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1];
-var UNA_VEZ_DE_TILE = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+var GUIONES_DE_TILE = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0];
+var UNA_VEZ_DE_TILE = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 /* La aventura grafica: que guion contesta cada casilla a cada verbo. Por
    defecto ninguna contesta nada; cada prueba pone la fila que necesita. Las
    cuatro filas son mirar, coger, usar y hablar, en ese orden. */
 var VERBOS_DE_TILE = [
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 ];
 /* y que dibujo se ve debajo de cada casilla si un guion la quita */
-var DEBAJO_DE_TILE = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+var DEBAJO_DE_TILE = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
 function anim(frames, speed) {
   return { frames: frames, count: frames.length, speed: speed || 8, loop: 1 };
@@ -69,8 +71,10 @@ function actor(boxW, boxH) {
     frames: 1, frame_w: 16, frame_h: 16, sheet: "x",
     /* doce ranuras: las ocho de siempre, las dos de la vista cenital (de
        espaldas y de frente), la del remate y la de la patada voladora */
+    /* Las catorce ranuras de NP_ANIM_* (las dos ultimas, nadar y bucear). */
     anims: [anim([0]), anim([0]), anim([0]), anim([0]), anim([0]), anim([0]),
-            anim([0]), anim([0]), anim([0]), anim([0]), anim([0]), anim([0])]
+            anim([0]), anim([0]), anim([0]), anim([0]), anim([0]), anim([0]),
+            anim([0]), anim([0])]
   };
 }
 
@@ -156,6 +160,18 @@ function datos(filas, opciones) {
       /* lo que se avanza por frame en una escalera; 0 = no se pueden subir */
       stair_speed: fx(opciones.escalera === undefined ? 0.8 : opciones.escalera),
       climb_speed: fx(opciones.trepa === undefined ? 0 : opciones.trepa),
+      /* el agua: con `brazada` a 0 el juego no lleva agua. Los demas salen de
+         las cifras de tierra, igual que los rellena el compilador. */
+      swim_stroke: fx(opciones.brazada || 0),
+      swim_gravity: fx(opciones.gravedadAgua === undefined
+                       ? (opciones.gravedad === undefined ? 0.4 : opciones.gravedad) / 4
+                       : opciones.gravedadAgua),
+      swim_sink: fx(opciones.hundimiento === undefined ? 2.0 : opciones.hundimiento),
+      swim_speed: fx(opciones.velocidadAgua === undefined ? 1.0 : opciones.velocidadAgua),
+      swim_out: fx(opciones.saltoAgua === undefined ? 4.0 : opciones.saltoAgua),
+      aire: 0,
+      breath: opciones.aire === undefined ? 0 : opciones.aire,
+      drown: opciones.ahogo === undefined ? 60 : opciones.ahogo,
       coyote: opciones.coyote === undefined ? 6 : opciones.coyote,
       jump_buffer: opciones.buffer === undefined ? 6 : opciones.buffer,
       double_jump: opciones.doubleJump ? 1 : 0,
@@ -1493,6 +1509,160 @@ prueba("la liana que cuelga de una viga no tiene punta que pisar", function () {
   assert.ok(NP.F2I(p.y) > 11 * 16,
             "la cuerda que cuelga de la viga le ha parado a media caida: y="
             + NP.F2I(p.y));
+});
+
+/* ------------------------------------------------------------- el agua
+ *
+ * Una charca de cinco filas con suelo debajo:
+ *
+ *   fila  7   ..........      aire
+ *   fila  8   ...~~~~~...     la superficie
+ *   ...
+ *   fila 12   ...~~~~~...     el fondo del agua
+ *   fila 13   ##########      el suelo
+ */
+function conCharca(desde, hasta, izq, der) {
+  var filas = [], y, x;
+  for (y = 0; y < 13; y++) filas.push(".".repeat(24));
+  filas.push("#".repeat(24));
+  for (y = desde; y <= hasta; y++) {
+    var f = filas[y].split("");
+    for (x = izq; x <= der; x++) f[x] = "~";
+    filas[y] = f.join("");
+  }
+  return filas;
+}
+
+function mundoCharca(opciones) {
+  opciones = opciones || {};
+  if (opciones.brazada === undefined) opciones.brazada = 2.6;
+  return mundo(ponerP(conCharca(8, 12, 8, 16), 12, 1), opciones);
+}
+
+prueba("en el fondo de la charca se esta buceando", function () {
+  var w = mundoCharca({ health: 5 });
+  var p = plantar(w, 12, 13);
+  assert.strictEqual(p.agua, 2, "en el fondo no se esta buceando");
+  assert.strictEqual(p.anim, 13, "la pose no es la de bucear (13)");
+});
+
+prueba("sin brazada el agua no hace nada", function () {
+  /* Igual que las lianas sin `trepa:`: un juego que no lleva agua se comporta
+     exactamente como antes, y las casillas de agua son decorado. */
+  var w = mundoCharca({ brazada: 0, health: 5 });
+  var p = plantar(w, 12, 13);
+  correr(w, 30, 0);
+  assert.strictEqual(p.agua, 0, "sin brazada el motor se cree que hay agua");
+});
+
+prueba("brazeando se sube, y sin tocar nada se hunde", function () {
+  var w = mundoCharca({ health: 5, aire: 600 });
+  var p = plantar(w, 12, 13);
+  var fondo = NP.F2I(p.y), i;
+  for (i = 0; i < 120; i++) w.step(i % 6 === 0 ? NP.IN.JUMP : 0);
+  var arriba = NP.F2I(p.y);
+  assert.ok(arriba < fondo - 40,
+            "brazeando no se sube: de " + fondo + " a " + arriba);
+  correr(w, 80, 0);
+  assert.ok(NP.F2I(p.y) > arriba + 20,
+            "sin brazear no se hunde: se ha quedado en " + NP.F2I(p.y));
+});
+
+prueba("dentro del agua se cae mucho mas despacio que fuera", function () {
+  /* Es la mitad de lo que hace que el agua se note: la misma caida, dentro y
+     fuera, con los mismos numeros de tierra. */
+  function caida(conAgua) {
+    var filas = conCharca(8, 12, 8, 16);
+    if (!conAgua) filas = conCharca(8, 12, 22, 23);   /* el agua, lejos */
+    var w = mundo(ponerP(filas, 12, 1), { brazada: 2.6, health: 5, aire: 600 });
+    var p = w.players[0], a = w.data.player.actor;
+    p.x = NP.I2F(12 * 16 + 8 - Math.floor(a.box_w / 2));
+    p.y = NP.I2F(8 * 16);            /* justo en la superficie */
+    p.vx = 0; p.vy = 0;
+    var y0 = NP.F2I(p.y);
+    correr(w, 30, 0);
+    return NP.F2I(p.y) - y0;
+  }
+  var mojado = caida(true), seco = caida(false);
+  assert.ok(seco > mojado * 1.5,
+            "en el agua se cae casi igual que fuera: " + mojado + " px contra " + seco);
+});
+
+prueba("con la cabeza fuera se nada, con la cabeza dentro se bucea", function () {
+  /* Las dos maneras de estar mojado, que son dos poses y dos reglas: en la
+     superficie se respira y debajo se gasta el aire. */
+  var w = mundoCharca({ health: 5, aire: 600 });
+  var p = plantar(w, 12, 13);
+  var vistos = {}, i;
+  for (i = 0; i < 200; i++) {
+    w.step(i % 6 === 0 ? NP.IN.JUMP : 0);
+    vistos[p.agua] = (vistos[p.agua] || 0) + 1;
+    if (p.agua === 1) vistos.poseNadar = p.anim;
+    if (p.agua === 2) vistos.poseBucear = p.anim;
+  }
+  assert.ok(vistos[2] > 10, "no se ha buceado nunca: " + JSON.stringify(vistos));
+  assert.ok(vistos[1] > 10,
+            "no se ha llegado a nadar en la superficie: " + JSON.stringify(vistos));
+  assert.strictEqual(vistos.poseNadar, 12, "nadando la pose no es la de nadar");
+  assert.strictEqual(vistos.poseBucear, 13, "buceando la pose no es la de bucear");
+});
+
+prueba("buceando se gasta el aire y al acabarse se pierde vida", function () {
+  /* Se mide **cuando** cae cada punto en vez de contar frames a mano: el
+     primero se va en cuanto se acaba el aire y a partir de ahi uno cada
+     `ahogo:` frames, que es lo que hay que comprobar. */
+  var w = mundoCharca({ health: 5, aire: 60, ahogo: 20 });
+  var p = plantar(w, 12, 13);
+  var vida = p.health, caidas = [], i;
+  assert.strictEqual(vida, 5, "no empieza con toda la vida");
+  for (i = 0; i < 160 && p.health > 1; i++) {
+    w.step(0);
+    if (p.health < vida) { caidas.push(i); vida = p.health; }
+  }
+  assert.ok(caidas.length >= 3,
+            "buceando no se pierde vida: " + JSON.stringify(caidas));
+  assert.ok(caidas[0] >= 55 && caidas[0] <= 65,
+            "el primer punto no cae al acabarse el aire (60 frames), sino en "
+            + caidas[0]);
+  assert.strictEqual(caidas[1] - caidas[0], 20,
+                     "entre punto y punto no pasan los 20 frames de `ahogo:`");
+  assert.strictEqual(caidas[2] - caidas[1], 20, "y el ritmo no se mantiene");
+});
+
+prueba("sin `aire:` no se ahoga nadie", function () {
+  /* El agua de adorno: se nada y se bucea, pero no hay cuenta atras. */
+  var w = mundoCharca({ health: 5, aire: 0 });
+  var p = plantar(w, 12, 13);
+  correr(w, 400, 0);
+  assert.strictEqual(p.health, 5, "se ha ahogado sin llevar aire el juego");
+  assert.strictEqual(p.agua, 2, "ha dejado de bucear");
+});
+
+prueba("sacando la cabeza se recupera el aire de golpe", function () {
+  /* Subir a respirar tiene que servir de algo aunque sea un momento: si el
+     aire se recuperara poco a poco, una galeria larga seria imposible. */
+  var w = mundoCharca({ health: 5, aire: 120 });
+  var p = plantar(w, 12, 13);
+  correr(w, 60, 0);
+  assert.ok(p.aire < 70, "el aire no ha bajado: " + p.aire);
+  var i;
+  for (i = 0; i < 120; i++) w.step(i % 6 === 0 ? NP.IN.JUMP : 0);
+  assert.strictEqual(p.aire, 120,
+                     "al sacar la cabeza no se ha llenado el aire: " + p.aire);
+});
+
+prueba("desde la superficie se sale del agua de un brazeo", function () {
+  /* Llegar al borde de una charca y no poder subirte a la orilla es de las
+     cosas que peor sientan en un juego de plataformas. */
+  var w = mundoCharca({ health: 5, aire: 600, saltoAgua: 4.5 });
+  var p = plantar(w, 12, 13);
+  var i, salio = false;
+  for (i = 0; i < 300 && !salio; i++) {
+    w.step(i % 6 === 0 ? NP.IN.JUMP : 0);
+    if (p.agua === 0 && NP.F2I(p.y) < 8 * 16) salio = true;
+  }
+  assert.ok(salio, "brazeando no se sale del agua: y=" + NP.F2I(p.y) +
+                   " agua=" + p.agua);
 });
 
 prueba("saltar suelta la liana y da impulso", function () {

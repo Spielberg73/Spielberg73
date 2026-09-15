@@ -562,8 +562,10 @@ def comprobar(preview: str, capturas: str = "capturas") -> int:
             document.querySelectorAll('#dib-animacion option')).map(o => o.textContent)""")
         print("ranuras de animacion:", json.dumps(ranuras))
         exigir(ranuras == ["quieto", "correr", "saltar", "caer", "dano",
-                           "atacar", "subir", "agachado"],
-               "el editor no ensena las ocho animaciones del motor: %s" % ranuras)
+                           "atacar", "subir", "agachado", "arriba", "abajo",
+                           "remate", "patada", "nadar", "bucear"],
+               "el editor no ensena las catorce animaciones del motor: %s"
+               % ranuras)
         pagina.select_option("#dib-animacion", "1")
         pagina.wait_for_timeout(150)
         pagina.fill("#dib-anim-frames", "3, 2, 1")

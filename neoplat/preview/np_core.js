@@ -41,6 +41,8 @@
   var TILE_CLIMB = 10;
   /* suelo que no para pero frena: hierba, arena, el arcen de una carretera */
   var TILE_LENTO = 11;
+  /* el agua: ni para ni mata, cambia como te mueves dentro (ver np_types.h) */
+  var TILE_AGUA = 12;
   var AI_PATROL = 0, AI_FLYER = 1, AI_CHASER = 2, AI_JUMPER = 3;
   /* el trafico de un juego de conducir: sube por su carril, a lo suyo */
   var AI_TRAFICO = 5;
@@ -65,7 +67,9 @@
       /* solo en vista cenital: de espaldas y de frente */
       ANIM_UP = 8, ANIM_DOWN = 9,
       /* el ultimo golpe de una serie, el que tumba */
-      ANIM_FINISH = 10, ANIM_KICK = 11;
+      ANIM_FINISH = 10, ANIM_KICK = 11,
+      /* el agua: nadando en la superficie y buceando */
+      ANIM_SWIM = 12, ANIM_DIVE = 13;
   var KIND_ENEMY = 0, KIND_ITEM = 1, KIND_SHOT = 2, KIND_PLATFORM = 3;
   var KIND_BREAKABLE = 4, KIND_SUBSHOT = 5, KIND_MELEE = 6;
   var KIND_ENEMY_SHOT = 7;      /* lo que tira un enemigo con `dispara:` */
@@ -149,6 +153,8 @@
            carrera y el doble toque que la enciende */
         fuerte: 0, carrera: 0, toque: 0, toqueDir: 0,
         stairs: 0, trepa: 0, stairDir: 1,
+        /* el agua: 0 fuera, 1 nadando, 2 buceando; y el aire que queda */
+        agua: 0, aire: 0, ahogo: 0,
         /* el coche: la marcha metida, el trompo y hacia donde gira */
         marcha: 0, trompo: 0, ladeo: 0
       });
@@ -608,6 +614,8 @@
     p.crouch = 0;
     this.whipOff(quien);
     p.stairs = 0; p.trepa = 0; p.stairDir = 1;
+    /* se sale del agua y con el aire lleno. Igual que en C. */
+    p.agua = 0; p.aire = d.breath || 0; p.ahogo = 0;
     /* el coche sale de parado, con la corta metida y sin dar vueltas */
     p.marcha = 0; p.trompo = 0; p.ladeo = 0;
     p.jumpsLeft = d.double_jump ? 1 : 0;
@@ -688,6 +696,18 @@
     if (this.state !== STATE.PLAY) return;
     if (++p.wearTimer < d.wear) return;
     p.wearTimer = 0;
+    if (p.health > 1) { p.health--; return; }
+    p.health = 0;
+    this.playerDie(quien);
+  };
+
+  /* Ahogarse: la vida que se va por quedarse debajo del agua. Mismo patron
+     que playerWear y por lo mismo -contra el agua no vale la invulnerabilidad
+     de haber cobrado hace un momento-. Igual que np_player_ahogar en C. */
+  World.prototype.playerAhogar = function (quien) {
+    var p = this.players[quien];
+    if (!p.playing || p.dying || this.state !== STATE.PLAY) return;
+    this.sfx |= SFX.HURT;
     if (p.health > 1) { p.health--; return; }
     p.health = 0;
     this.playerDie(quien);
@@ -1328,6 +1348,20 @@
     animSet(p, ANIM_STAIR);
     if (moviendo) animTick(a, p);
     return 1;
+  };
+
+  /* --- el agua. Gemelas de np_agua_at y np_agua_estado.
+     Dos puntos y no uno: el centro dice si estas dentro y la cabeza si te has
+     hundido del todo. 0 fuera, 1 nadando, 2 buceando. */
+  World.prototype.aguaAt = function (x, y) {
+    return this.tileVisto(F2I(x) >> TILE_SHIFT, F2I(y) >> TILE_SHIFT) === TILE_AGUA;
+  };
+
+  World.prototype.aguaEstado = function (quien) {
+    var a = this.data.player.actor, p = this.players[quien];
+    var cx = p.x + I2F(a.box_w) / 2;
+    if (!this.aguaAt(cx, p.y + I2F(a.box_h) / 2)) return 0;
+    return this.aguaAt(cx, p.y + I2F(1)) ? 2 : 1;
   };
 
   /* --- las lianas. Gemelas de np_climb_at, np_climb_mount y np_climb_update.
@@ -2319,6 +2353,25 @@
       if (p.balanceo > 0) return;
     }
 
+    /* El agua: como esta de mojado y la cuenta del aire. Gemelo del bloque de
+       np_player_update; lo que cambia el agua va mas abajo, en su sitio. */
+    if (d.swim_stroke) {
+      p.agua = this.aguaEstado(quien);
+      /* Sin `aire:` no se ahoga nadie. Igual que en C. */
+      if (p.agua === 2 && d.breath) {
+        if (p.aire) p.aire--;
+        else if (d.drown) {
+          /* El primer punto se va en el acto y luego uno cada `ahogo:` frames
+             justos: se baja la cuenta y se mira despues. Igual que en C. */
+          if (p.ahogo) p.ahogo--;
+          if (!p.ahogo) { p.ahogo = d.drown; this.playerAhogar(quien); }
+        }
+      } else {
+        p.aire = d.breath;
+        p.ahogo = 0;
+      }
+    }
+
     /* Con abajo, en el suelo: ni se anda ni se salta, pero se pega y el golpe
        sale por abajo. Igual que en np_player_update. */
     if (d.crouch_drop && p.onGround && (input & IN.DOWN)) {
@@ -2337,9 +2390,14 @@
     } else if (!d.air_control && !p.onGround) {
       /* El salto de las aventuras: al despegar se decide hacia donde vas y ya
          no se cambia. Igual que en np_player_update. */
-    } else if (dir > 0) { p.vx = approach(p.vx, d.speed, p.onGround ? d.accel : d.air_accel); p.facing = 1; }
-    else if (dir < 0) { p.vx = approach(p.vx, -d.speed, p.onGround ? d.accel : d.air_accel); p.facing = 0; }
-    else if (p.onGround) p.vx = approach(p.vx, 0, d.friction);
+    } else {
+      /* Nadando se va mas despacio y se frena sin pisar nada: el agua agarra. */
+      var tope = p.agua ? d.swim_speed : d.speed;
+      var paso = p.onGround ? d.accel : d.air_accel;
+      if (dir > 0) { p.vx = approach(p.vx, tope, paso); p.facing = 1; }
+      else if (dir < 0) { p.vx = approach(p.vx, -tope, paso); p.facing = 0; }
+      else if (p.onGround || p.agua) p.vx = approach(p.vx, 0, d.friction);
+    }
 
     /* El ataque va por flanco: mantener el boton no dispara sin parar. */
     this.playerAction(quien, input);
@@ -2355,7 +2413,16 @@
       p.jumpsLeft = d.double_jump ? 1 : 0;
     } else if (p.coyote) p.coyote--;
 
-    if (p.buffer && (p.coyote || p.jumpsLeft)) {
+    if (p.agua) {
+      /* En el agua no se salta: se brazea, y se puede repetir en mitad del
+         agua. Con la cabeza fuera empuja mas: asi se sale a la orilla. */
+      if (pressedJump) {
+        p.vy = -(p.agua === 1 ? d.swim_out : d.swim_stroke);
+        p.buffer = 0;
+        p.onGround = 0;
+        this.sfx |= SFX.JUMP;
+      }
+    } else if (p.buffer && (p.coyote || p.jumpsLeft)) {
       this.sfx |= p.coyote ? SFX.JUMP : SFX.DJUMP;
       if (!p.coyote) p.jumpsLeft--;
       p.vy = -d.jump;
@@ -2367,8 +2434,17 @@
     if (d.air_control && !(input & IN.JUMP) && p.vy < -d.jump_cut)
       p.vy = -d.jump_cut;
 
-    p.vy += d.gravity;
-    if (p.vy > d.max_fall) p.vy = d.max_fall;
+    if (p.agua) {
+      /* Dentro del agua no se cae: se hunde uno. Igual que en C. */
+      p.vy += d.swim_gravity;
+      if (p.vy > d.swim_sink) p.vy = d.swim_sink;
+      /* En la superficie se flota: subiendo se para al sacar la cabeza, salvo
+         que la brazada de este frame sea la de salir. Igual que en C. */
+      if (p.agua === 1 && p.vy < 0 && !pressedJump) p.vy = 0;
+    } else {
+      p.vy += d.gravity;
+      if (p.vy > d.max_fall) p.vy = d.max_fall;
+    }
 
     p.x = this.moveX(p.x, p.y, a.box_w, a.box_h, p.vx, moveOut);
     if (moveOut.hit) p.vx = 0;
@@ -2387,6 +2463,17 @@
       /* en el aire con `patada:`, la pose es la de la patada: lo que se ve
          tiene que ser lo que pega. Igual que np_player_update. */
       animSet(p, this.esPatada(quien) ? ANIM_KICK : ANIM_ATTACK);
+    else if (p.agua) {
+      /* En el agua manda el agua, tambien pisando el fondo. Quien no dibuje
+         la pose se queda con la de saltar o caer. Igual que en C. */
+      var pose = (p.agua === 2) ? ANIM_DIVE : ANIM_SWIM;
+      /* En C `anims` es un array de tamano fijo y la ranura existe siempre;
+         aqui viene de un JSON, asi que puede no estar. Es lo mismo que no
+         tener dibujo. */
+      if (!a.anims[pose] || a.anims[pose].count === 0)
+        pose = (p.vy < 0) ? ANIM_JUMP : ANIM_FALL;
+      animSet(p, pose);
+    }
     else if (!p.onGround) animSet(p, p.vy < 0 ? ANIM_JUMP : ANIM_FALL);
     else if (p.vx > idiv(FIX_ONE, 8) || p.vx < -idiv(FIX_ONE, 8)) animSet(p, ANIM_RUN);
     else animSet(p, ANIM_IDLE);

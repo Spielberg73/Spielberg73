@@ -91,6 +91,8 @@ Abre `game.yaml` y busca `niveles:`. El mapa son caracteres:
 - `P` dónde empiezas (solo una)
 - `#` suelo, `=` plataforma que se atraviesa desde abajo, `^` pinchos
 - `G` la meta
+- `~` la superficie del agua y `w` el fondo: ahí se nada y se bucea, si
+  enciendes el agua (viene apuntada y apagada; ver «5b. El agua»)
 - `s` una seta, `c` una moneda, `k` una llave, `T` un tablón que va y viene
   (mira `spawns:`)
 - `/` y `|` escaleras (en el género castlevania): te subes pulsando arriba
@@ -154,6 +156,53 @@ juego:
 Juegan los dos a la vez en la misma pantalla, cada uno con su mando y con sus
 vidas. En el preview el segundo va con <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>
 y salta con <kbd>G</kbd>.
+
+## 5b. El agua: nadar y bucear
+
+El juego que acabas de crear **no trae agua puesta**, pero la trae apuntada:
+busca en el `game.yaml` las líneas comentadas de `brazada:`. Quítales la
+almohadilla —a esas tres, a las dos de `nadar:`/`bucear:` y a las dos casillas
+`'~'` y `'w'` de la leyenda— y ya puedes cavar una charca. Viene apagada porque
+el agua son unos 2 KB de código y kilo y medio de dibujos, y este juego tiene
+que caber en un Amiga 500 de 512 KB; en un A1200, un CD32, una Mega Drive, un
+X68000 o una Jaguar sobra sitio. La receta entera —incluida la charca lista
+para copiar y las cuatro poses que hay que dibujarle al héroe— está en
+`docs/formato.md`.
+
+Con el agua puesta, cáete dentro: el héroe cambia de postura, se hunde despacio
+y el botón de saltar deja de ser un salto y pasa a ser **una brazada**, que
+puedes repetir todas las veces que quieras.
+
+Hay dos posturas y las decide **la cabeza**, no los pies. Con la cabeza fuera
+estás nadando: respiras, flotas y la siguiente brazada te saca del agua. Con
+todo el cuerpo dentro estás buceando, y ahí empieza a bajar el aire; cuando se
+acaba se va la vida de punto en punto hasta que subes. Saca la cabeza y el aire
+vuelve entero de golpe: el agua no es un recurso que administrar, es un sitio
+del que hay que subir.
+
+En el `game.yaml` el agua entera es esto:
+
+```yaml
+tiles:
+  leyenda:
+    '~': {tile: 9, tipo: agua}      # la superficie
+    'w': {tile: 10, tipo: agua}     # el fondo
+jugador:
+  brazada: 2.0        # 0 = las casillas de agua no hacen nada
+  aire: 240           # frames buceando antes de ahogarse (0 = nunca)
+```
+
+Lo demás —lo que se hunde uno, lo que avanza de lado, el impulso con el que
+sale— se rellena solo a partir de las cifras de tierra, y se puede tocar a mano
+(`gravedad_agua`, `hundimiento`, `velocidad_agua`, `salto_agua`). Sube
+`aire: 240` a `aire: 0` y el agua se queda en una forma distinta de moverse,
+sin ahogos.
+
+**Para cavar la tuya** hacen falta dos cosas: la fila del agua va **a ras del
+suelo** por el que se anda (si la pones encima parecerá un bloque de agua
+flotando) y por debajo del fondo tiene que haber tierra, porque el agua no te
+sujeta y por debajo del mapa se cae uno al vacío. Dos casillas de hondo es el
+mínimo: con una no cabe la cabeza debajo y no se llega a bucear.
 
 ## 6. Añade un enemigo nuevo (desde el editor)
 

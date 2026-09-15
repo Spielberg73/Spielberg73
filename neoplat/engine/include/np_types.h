@@ -78,6 +78,22 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
  * juego cenital, un arenal en uno de plataformas-, asi que no es de un genero:
  * es un tipo de suelo mas. */
 #define NP_TILE_LENTO   11
+/* **Agua.** Ni para ni mata: cambia como te mueves mientras estas dentro.
+ *
+ * Dentro del agua la gravedad es una fraccion de la de fuera -te hundes, no te
+ * caes-, el tope de caida es mucho mas bajo, y el boton de saltar deja de ser
+ * un salto y pasa a ser una **brazada**: empuja hacia arriba y se puede repetir
+ * en mitad del agua, que es de lo que va nadar. Con eso solo, un charco ya es
+ * otra cosa que un suelo.
+ *
+ * Y hay dos maneras de estar dentro, que no son la misma y por eso son dos
+ * dibujos: **nadando** en la superficie -con la cabeza fuera, que es donde se
+ * respira- y **buceando**, con todo el cuerpo debajo. Debajo se gasta el aire:
+ * un contador que baja y que, al llegar a cero, empieza a quitar vida. Es lo
+ * que convierte el agua en una cuenta atras en vez de un adorno.
+ *
+ * No es un pincho: aqui no te mata el agua, te mata quedarte. */
+#define NP_TILE_AGUA    12
 
 /* --- la vista de carretera (los juegos de conducir) ----------------------
  *
@@ -414,7 +430,23 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
  * dibujo. Sin `patada:` en el game.yaml este hueco se queda vacio y en el aire
  * se pega con el fotograma de siempre, que es como estaba el kit. */
 #define NP_ANIM_KICK 11
-#define NP_ANIM_SLOTS 12
+/* Y las dos del agua. **Son dos y no una** a proposito: nadando en la
+ * superficie el heroe brazea con la cabeza fuera y buceando va tumbado y
+ * entero debajo, que es otra postura. Quien no las traiga se queda con las de
+ * siempre -saltar y caer-, asi que un juego sin agua ni se entera. */
+#define NP_ANIM_SWIM 12          /* nadando en la superficie */
+#define NP_ANIM_DIVE 13          /* buceando, con todo el cuerpo debajo */
+
+/* Cuantas ranuras lleva de verdad cada actor: NP_ANIM_SLOTS, que lo dice el
+ * juego que se esta compilando en np_ranuras.h (lo genera ngplat al lado de
+ * gamedata.c). Son doce, o catorce si el juego lleva agua.
+ *
+ * Se lee **aqui dentro** y no en gamedata.h porque de este numero depende lo
+ * que mide NpActorDef, y NpActorDef va metido dentro de la definicion del
+ * jugador y de la de cada bicho: si un .c lo midiera con doce y otro con
+ * catorce, el enlazador no diria nada y el juego se volveria loco. Leyendolo
+ * desde el propio np_types.h, todos miden igual lo vean por donde lo vean. */
+#include "np_ranuras.h"
 
 /* Eventos de sonido que produce la simulacion (un bit cada uno). Coinciden con
  * EVENTO_BIT de tools/ngplat/sonido.py. La simulacion solo los marca; quien los

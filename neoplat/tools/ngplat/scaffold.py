@@ -54,8 +54,19 @@ def _suelo(ancho: int, huecos: List[tuple]) -> str:
 #     rebotado hacia delante y no puedes caer sobre pinchos
 #   - los pinchos van de uno en uno y con suelo llano antes y despues
 
+# La charca del primer nivel: en que columnas esta y lo honda que es.
+#
+# Va **cavada en el suelo**, no puesta encima: la superficie del agua queda a
+# la misma altura que la tierra por la que se anda, que es lo unico que parece
+# una charca. Para poder cavar hacen falta dos filas por debajo del suelo, y el
+# nivel mide dieciseis y no se toca: se le quitan dos filas de cielo de arriba
+# -que estaban vacias- y se le ponen dos de tierra abajo. Asi el escenario
+# entero sigue midiendo una pantalla y media y la camara no se entera.
+CHARCA_DESDE, CHARCA_HASTA = 20, 27
+
+
 def _nivel_1(llave: bool = False, escalera: bool = False,
-             control: bool = False) -> List[str]:
+             control: bool = False, charca: bool = False) -> List[str]:
     """Nivel de entrada: saltar, coger monedas, pisar un enemigo, esquivar pinchos.
 
     Con `llave`, en mitad del camino aparece la llave que pide la meta: se coge
@@ -71,11 +82,20 @@ def _nivel_1(llave: bool = False, escalera: bool = False,
     pinchos, que es donde duele volver a empezar) y una moneda se cambia por la
     mejora del arma. Se cambia, no se anade: cada sprite de mas en pantalla se
     paga y este nivel ya va al limite de la Neo Geo.
+
+    Con `charca` se cava una charca justo despues de los pinchos: se cae dentro
+    sin querer, que es la mejor forma de enterarse de que se puede nadar. Mide
+    dos casillas de honda porque con una sola no se llega a bucear -el heroe
+    mide quince pixeles y no le cabe la cabeza debajo- y ocho de ancha porque
+    con menos se cruza de un salto y nadie llegaria a mojarse.
     """
     a = ANCHO_1
     suelo_1 = {0: "P", 8: "s", 12: "V", 18: "^", 28: "s", 40: "c", 44: "G"}
     if llave:
-        suelo_1[22] = "k"
+        # con charca la llave se adelanta a antes de los pinchos: en su sitio
+        # de siempre -la columna 22- quedaria flotando sobre el agua, y una
+        # llave que hay que pescar es una llave que alguien se deja
+        suelo_1[16 if charca else 22] = "k"
     fila_13 = {22: "c", 33: "c"}
     if control:
         suelo_1[24] = "!"       # la antorcha, pasados los pinchos de la 18
@@ -97,7 +117,7 @@ def _nivel_1(llave: bool = False, escalera: bool = False,
         mezcla.update(escalones[fila])
         return mezcla
 
-    return [
+    filas = [
         _fila("", a),
         _fila("", a),
         _fila("", a),
@@ -118,6 +138,36 @@ def _nivel_1(llave: bool = False, escalera: bool = False,
         _poner(a, con_escalon(14, suelo_1)),
         _suelo(a, [] if escalera else [(34, 2)]),
     ]
+    return _con_charca(filas, escalera) if charca else filas
+
+
+def _con_charca(filas: List[str], escalera: bool) -> List[str]:
+    """Cava la charca en el primer nivel sin cambiar lo que mide.
+
+    Se quitan dos filas de cielo de las cuatro de arriba -sobraban- y se ponen
+    dos de tierra debajo del suelo. En esas dos filas nuevas va el fondo de la
+    charca, y el agujero del suelo se cava hasta abajo del todo: si se quedara
+    tapado por la tierra nueva dejaria de ser un agujero y el nivel perderia el
+    unico sitio donde hay que saltar de verdad.
+    """
+    a = ANCHO_1
+    filas = list(filas[2:])
+    agujero = [] if escalera else [(34, 2)]
+
+    def cava(fila: str, dentro: str) -> str:
+        celdas = list(fila)
+        for x in range(CHARCA_DESDE, CHARCA_HASTA + 1):
+            celdas[x] = dentro
+        return "".join(celdas)
+
+    # la fila del suelo: la superficie del agua, al ras de la tierra
+    filas[-1] = cava(filas[-1], "~")
+    # y debajo, dos de tierra: el fondo de la charca en la primera y la roca
+    # del fondo en la segunda, con el agujero cavado hasta abajo en las dos
+    tierra = _suelo(a, agujero).replace("#", ",")
+    filas.append(cava(tierra, "w"))
+    filas.append(tierra)
+    return filas
 
 
 def _nivel_2(control: bool = False, escalera: bool = False) -> List[str]:
@@ -396,13 +446,13 @@ jugador:
   salto: 4.3
   gravedad: 0.28
   doble_salto: no
-{fisica}  animaciones:
+{fisica}{nado}  animaciones:
     quieto: {{frames: [0], velocidad: 30}}
     correr: {{frames: [1, 2, 3, 2], velocidad: 6}}
     saltar: {{frames: [4]}}
     caer:   {{frames: [5]}}
     dano:   {{frames: [9]}}   # la pose de recibir un golpe
-{animos}{armas}
+{animos}{animos_agua}{armas}
 tiles:
   imagen: graficos/tiles.png
   leyenda:
@@ -412,7 +462,7 @@ tiles:
     '=': {{tile: 2, tipo: plataforma}}
     '^': {{tile: 3, tipo: peligro}}
     'G': {{tile: 4, tipo: meta}}
-{escaleras}{control}
+{escaleras}{control}{agua}
 enemigos:
 {bichos}{jefe}
 objetos:
@@ -3927,12 +3977,18 @@ jugador:
   salto: 4.3
   gravedad: 0.28
   doble_salto: no
+  # Descomenta esto y las casillas de 'tipo: agua' se podran nadar y bucear.
+  # Con brazada a cero -que es como esta ahora- no hacen nada.
+  # brazada: 2.0       # el impulso de cada brazada dentro del agua
+  # aire: 240          # frames buceando antes de ahogarse (0 = nunca)
   animaciones:
     quieto: {{frames: [0], velocidad: 30}}
     correr: {{frames: [1, 2, 3, 2], velocidad: 6}}
     saltar: {{frames: [4]}}
     caer:   {{frames: [5]}}
     dano:   {{frames: [9]}}   # la pose de recibir un golpe
+    # nadar:  {{frames: [11, 12], velocidad: 8}}   # con la cabeza fuera
+    # bucear: {{frames: [13, 14], velocidad: 6}}   # con todo el cuerpo dentro
 
 # Cada caracter del mapa es una casilla de 16x16, y aqui se dice cual. 'tile'
 # es el numero de casilla dentro de la imagen (de izquierda a derecha y de
@@ -4025,6 +4081,13 @@ class Genero:
     suelta: str                  # que suelta el rompible
     con_escaleras: bool          # si los niveles llevan una
     con_control: bool            # si los niveles llevan puntos de control
+    # El agua va en tres huecos y no en uno porque el yaml la reparte en tres
+    # sitios: las cifras del nado van con las del salto, las dos posturas van
+    # con las demas animaciones y las casillas van en la leyenda de tiles.
+    nado: str = ""               # las cifras de nadar, en `jugador:`
+    animos_agua: str = ""        # las posturas de nadar y bucear
+    agua: str = ""               # las filas de agua de la leyenda
+    con_charca: bool = False     # si el primer nivel lleva una charca
 
 
 # Los bichos de plataformas: el mismo dibujo con dos comportamientos, que es lo
@@ -4177,6 +4240,36 @@ def _genero_plataformas(nombres: Dict[str, str], estilo: str) -> Genero:
         suelta=nombres["moneda"],
         con_escaleras=False,
         con_control=False,
+        # El agua viene **apuntada y apagada**, igual que los cocodrilos y la
+        # liana que se columpia, y por lo mismo: este juego tiene que arrancar
+        # en un Amiga 500 de 512 KB, caber en un disquete de Atari ST y correr
+        # a 60 imagenes por segundo en una Neo Geo que ya gasta 198834 de los
+        # 200000 ciclos que da un frame. El agua son unos 2 KB de codigo en el
+        # 68000 mas dos ranuras de animacion en cada actor, y con ella puesta
+        # el ejecutable de Amiga pasa de 193048 bytes a 194604: el disquete
+        # arranca y el sistema ya no puede cargarlo.
+        #
+        # Asi que se dejan las lineas escritas y comentadas. Quitarles la
+        # almohadilla es todo lo que hay que hacer para tener agua -y el nivel
+        # de ejemplo con charca esta en docs/formato.md, listo para copiar-;
+        # en un A1200, un CD32, una Mega Drive, un X68000 o una Jaguar sobra
+        # sitio de largo.
+        nado=("  # El agua, apuntada y apagada. Para encenderla hay que quitarle las\n"
+              "  # almohadillas a estas tres lineas, a las dos de 'nadar:'/'bucear:' y a\n"
+              "  # las dos casillas de agua de la leyenda, y **dibujar el arte**: cuatro\n"
+              "  # poses mas en heroe.png (nadando y buceando) y dos casillas mas en\n"
+              "  # tiles.png. Viene apagada porque el agua son unos 2 KB de codigo mas\n"
+              "  # 1,5 KB de dibujos, y este juego tiene que caber en un Amiga 500 de\n"
+              "  # 512 KB. En un A1200, un CD32, una Mega Drive, un X68000 o una Jaguar\n"
+              "  # sobra sitio. La receta entera esta en docs/formato.md.\n"
+              "  # brazada: 2.0       # el impulso de cada brazada; sin esto no hay agua\n"
+              "  # aire: 240          # frames buceando antes de empezar a ahogarse\n"
+              "  # ahogo: 45          # frames entre punto y punto de vida sin aire\n"),
+        animos_agua=("    # nadar:  {frames: [11, 12], velocidad: 8}   # con la cabeza fuera\n"
+                     "    # bucear: {frames: [13, 14], velocidad: 6}   # con todo el cuerpo dentro\n"),
+        agua=("    # '~': {tile: 9, tipo: agua}     # la superficie, con su espuma\n"
+              "    # 'w': {tile: 10, tipo: agua}    # el fondo de la charca\n"),
+        con_charca=False,
     )
 
 
@@ -4829,7 +4922,7 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
         niveles = (
             _nivel_yaml("BOSQUE",
                         _nivel_1(llave=True, escalera=g.con_escaleras,
-                                 control=g.con_control),
+                                 control=g.con_control, charca=g.con_charca),
                         "#101830", musica=g.canciones[0], llaves=1)
             # el segundo nivel usa solo la capa lejana: se puede elegir por nivel
             + _nivel_yaml("CUEVA",
@@ -4853,6 +4946,9 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
         titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles,
         fisica=g.fisica, armas=g.armas, escaleras=g.escaleras, animos=g.animos,
         control=g.control, municion=g.municion, mejora=g.mejora,
+        # la plantilla de paleta corta no tiene estos huecos (ni casillas de
+        # agua en su tileset): se los pasa igual y str.format los ignora
+        nado=g.nado, animos_agua=g.animos_agua, agua=g.agua,
         musica=g.musica, eventos=g.eventos, arma=g.arma,
         spawns=g.spawns, suelta=g.suelta,
         bichos=g.bichos, bichos_spawn=g.bichos_spawn, jefe=g.jefe)

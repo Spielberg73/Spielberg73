@@ -141,7 +141,7 @@ el nivel de partida.
 
 | género | cómo se juega |
 |---|---|
-| `plataformas` | saltas, pisas enemigos y disparas, y el salto se corrige en el aire. Lo de toda la vida |
+| `plataformas` | saltas, pisas enemigos y disparas, y el salto se corrige en el aire. Lo de toda la vida. Trae además el **agua** apuntada y comentada: quitando tres almohadillas se nada, se bucea y se cuenta el aire |
 | `castlevania` | pegas con **látigo** (que se ve, y se alarga con cada mejora), te agachas, subes escaleras y tiras cuchillos o el hacha gastando munición. El salto **no** se corrige, un golpe te tira al vacío y hay puntos de control. Trae sus propios bichos: esqueleto, murciélago y un encapuchado de jefe |
 | `comando` | **se ve desde arriba**: andas en ocho direcciones, disparas hacia donde miras, tiras granadas con el botón de saltar y subes la pantalla rescatando prisioneros. Los soldados y las torretas **te disparan**; a los presos atados, no: si les das, los pierdes |
 | `mazmorra` | un **laberinto** visto desde arriba, al estilo Gauntlet. La vida **se gasta sola**, así que la partida es una cuenta atrás y hay que ir buscando comida; los **generadores** sueltan bichos sin parar hasta que los revientas, y la poción del botón de saltar se lleva por delante todo lo que se ve. La meta pide una llave que está al otro lado del laberinto |
@@ -328,6 +328,17 @@ se baja con abajo. Es un modo de movimiento aparte —sin gravedad, sin saltos y
 sin choques— del que se sale solo por los dos extremos, y del que un golpe te
 tira.
 
+Y hay **agua**: con `tipo: agua` en la leyenda y `brazada:` en el jugador, unas
+casillas dejan de ser aire y pasan a ser una charca. Dentro se cae despacio, se
+avanza menos y el botón de saltar es **una brazada** que se repite todas las
+veces que quieras. Hay dos posturas y las decide **la cabeza**: con la cabeza
+fuera nadas —respiras, flotas, y la siguiente brazada te saca del agua—, con
+todo el cuerpo dentro buceas y el aire empieza a bajar. Al acabarse se va la
+vida de punto en punto, y sacar la cabeza lo rellena entero de golpe. No viene
+puesta en el juego que sale de `ngplat nuevo` —no cabe en un Amiga 500, igual
+que los cocodrilos— pero sí **apuntada y comentada** en su `game.yaml`, con la
+receta y la charca de ejemplo en `docs/formato.md`.
+
 El marcador enseña **la vida**: `LIFE ###.` con los golpes que te quedan y los
 que has perdido, y a dos jugadores una barra por cabeza. Sale sola en cuanto el
 juego tiene `vida:` mayor que 1 —con un golpe no hay nada que mirar— y se apaga
@@ -395,9 +406,9 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.50.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
-| `neoplat-kit-1.50.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.50.zip` | el `ngplat.exe` y su LEEME |
+| `neoplat-docs-1.51.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
+| `neoplat-kit-1.51.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.51.zip` | el `ngplat.exe` y su LEEME |
 
 El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
 plantillas; no necesita Python ni nada instalado. Con **doble clic** —sin

@@ -209,6 +209,29 @@
         saltando = 0;
       }
 
+      /* En el agua no se anda: se brazea. Nada de lo de arriba sirve -no se
+         pisa suelo, no hay salto que medir y la orilla de enfrente no es una
+         pared que se suba-, asi que dentro del agua el bot hace lo unico que
+         se puede hacer: tirar hacia delante y dar brazadas.
+
+         El boton se aprieta cinco frames y se suelta tres, y las dos mitades
+         hacen falta. Soltarlo, porque el motor cuenta **el pulso** y no la
+         tecla: con el boton hundido se da una sola brazada y uno se va al
+         fondo. Y aguantarlo, porque el impulso con el que se sale del agua se
+         corta al soltar igual que el de un salto: dando toquecitos el bot
+         llegaba a la orilla de enfrente, se quedaba dos pixeles por debajo
+         del borde y no subia -x=438 nivel tras nivel-, que en un juego de
+         verdad es el jugador que no entiende por que no sale de la charca.
+
+         Sin esto el bot se atascaba contra la pared del agua, que es lo que
+         le contestaria el boton «¿se puede terminar?» del editor a cualquiera
+         que dibujara un rio en su juego. */
+      if (p.agua) {
+        input = NPCore.IN.RIGHT;
+        if ((i & 7) < 5) input |= NPCore.IN.JUMP;
+        saltando = 0;
+      }
+
       /* Un cuadro de texto para la partida hasta que se pulsa. El bot pulsa:
          si no, un juego con un cartel en el camino se le quedaria colgado y
          diria que el nivel no se puede terminar cuando si se puede. */

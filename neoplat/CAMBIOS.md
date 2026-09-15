@@ -2,8 +2,114 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.50.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.51.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.51
+
+**Se nada, se bucea y se cuenta el aire.**
+
+Una casilla nueva, `tipo: agua`, y una línea en el jugador, `brazada:`. El agua
+no para y no mata: cambia cómo te mueves mientras estás dentro. Se cae mucho
+más despacio y con tope de hundimiento, de lado se avanza menos —el agua
+agarra— y el botón de saltar deja de ser un salto y pasa a ser **una brazada**
+que se puede repetir todas las veces que quieras. Es lo único que te mantiene
+arriba.
+
+**Las dos posturas las decide la cabeza, no los pies.** El motor mira dos
+puntos: el centro de la caja dice si estás en el agua y el píxel de arriba del
+todo si te has sumergido. Con la cabeza fuera estás **nadando** —respiras,
+flotas y la siguiente brazada te saca del agua—; con todo el cuerpo dentro
+estás **buceando** y el aire empieza a bajar. Son dos animaciones nuevas,
+`nadar:` y `bucear:`, con sus fotogramas dibujados en la hoja del héroe (que
+pasa de once poses a quince): nadando el cuerpo va cuatro filas más abajo y con
+la cabeza fuera, buceando va tumbado y de frente.
+
+**En la superficie el motor te sujeta a flote**: mientras no toques el botón no
+subes más. Sin eso la franja de seis píxeles en la que la cabeza asoma se cruza
+en dos frames y la postura de nadar no se llegaría a ver nunca —medido: con la
+sujeción, de doscientos frames brazeando, sesenta y ocho se pasan nadando en la
+superficie—.
+
+**El aire sólo baja buceando** y se rellena entero en cuanto sacas la cabeza:
+el agua no es un recurso que administrar, es un sitio del que hay que subir. Al
+llegar a cero se pierde un punto de vida en ese mismo frame y otro cada `ahogo`
+frames **exactos** (la cuenta se resta y se comprueba, que si no el periodo
+sería `ahogo + 1`). Ahogarse se salta la invulnerabilidad, igual que el
+desgaste: que un bicho te haya rozado hace medio segundo no para la cuenta
+atrás. Con `aire: 0` no se ahoga nadie.
+
+Lo demás se rellena solo a partir de las cifras de tierra —la gravedad dentro
+del agua es la cuarta parte, el hundimiento un tercio del tope de caída, la
+velocidad dos tercios de la de correr y el impulso al salir el salto de
+siempre—, así que **meter agua en un juego es escribir una línea**.
+
+**Una charca se cava, no se apoya.** La superficie tiene que quedar a ras de la
+tierra por la que se anda —si no, parece un bloque de agua puesto encima del
+suelo— y debajo del fondo tiene que haber roca, porque el agua no te sujeta y
+por debajo del mapa se cae uno al vacío. Con dos casillas de hondo basta: con
+una no cabe la cabeza debajo y no se llega a bucear.
+
+**Pero no viene puesta en el juego de partida**, igual que el cocodrilo y la
+liana que se columpia y por lo mismo. Ese juego tiene que arrancar en un Amiga
+500 de 512 KB —donde el sistema da unos 190 KB y quedan unos setecientos bytes
+libres—, caber en un disquete de Atari ST y correr a 60 imágenes por segundo en
+una Neo Geo que ya gasta 198838 de los 200000 ciclos que da un frame. Y el agua
+cuesta, medido: unos 2 KB de código, 1280 bytes de las cuatro poses nuevas del
+héroe, varios cientos de las dos casillas del tileset y dos ranuras de
+animación en cada actor. Con todo puesto el ejecutable de Amiga pasaba de
+193356 bytes a más de 195000 y AROS contestaba «not enough memory available»:
+el disquete arrancaba y el juego no llegaba a salir. En un A1200, un CD32, una
+Mega Drive, un X68000 o una Jaguar sobra sitio de largo.
+
+Así que el andamiaje deja **las líneas escritas y comentadas** —las tres cifras,
+las dos posturas y las dos casillas— y quitarles la almohadilla es todo lo que
+hay que hacer; el dibujo (`art.heroe(agua=True)`, `art.tileset(agua=True)`) y la
+charca lista para copiar están en `docs/formato.md`. Y no se queda sin probar:
+`tests/test_niveles.py` pega el agua tal y como la explican las docs y manda al
+bot a cruzar la charca.
+
+**El bot sabe nadar.** El botón de «¿se puede terminar?» del editor le decía
+que no a cualquier nivel con un río: el bot se atascaba contra la pared del
+agua. Ahora dentro del agua tira hacia delante y brazea, apretando el botón
+cinco frames y soltándolo tres. Las dos mitades hacen falta: soltarlo porque el
+motor cuenta el pulso y no la tecla —con el botón hundido se da una sola
+brazada y uno se va al fondo—, y aguantarlo porque el impulso con el que se
+sale del agua se corta al soltar igual que el de un salto; a toquecitos el bot
+llegaba a la orilla de enfrente y se quedaba **dos píxeles** por debajo del
+borde, que es exactamente el jugador que no entiende por qué no sale de la
+charca.
+
+**Y un juego sin agua no paga el agua.** Esto es lo que más trabajo ha dado y
+no se ve por ninguna parte. El código del agua son unos 2 KB en el 68000, y la
+mecánica añade dos ranuras de animación a cada actor y tres campos al jugador.
+Nada de eso parece mucho hasta que se mide: `NpActorDef` va metido dentro de la
+definición del jugador y de la de cada bicho, y `NpPlayer` **mide 72 bytes
+justos**, que es donde gcc lo indexa barato —lo mismo que ya costó dos mil
+ciclos por frame en la Neo Geo cuando el balanceo intentó meter un campo de
+más—. Con las dos cosas puestas en todos los juegos, el ejemplo del kit pedía
+190,6 KB de RAM chip y AROS contestaba «not enough memory available».
+
+Así que el agua **se borra al compilar**, igual que los cocodrilos y el
+balanceo: `NP_HAY_AGUA` y `NP_ANIM_SLOTS` (doce, o catorce con agua) los pone
+`ngplat` en un archivo nuevo, `np_ranuras.h`, que lee el propio `np_types.h`.
+Va aparte y no en `gamedata.h` porque de esos dos números depende **lo que
+miden las estructuras**, y `gamedata.h` llegaba tarde: `np_world.c` incluye
+antes `np_world.h`, y en ese orden los tipos ya estaban medidos. Dos `.c` del
+mismo juego midiendo distinto es de las cosas que el enlazador no dice y la
+máquina sí. Y los tres campos del jugador van también detrás del `#if`, que si
+no la estructura pasaba de 72 bytes a 78 y se llevaba 960 bytes de código por
+delante con agua o sin ella.
+
+Medido al final: el ejemplo del kit y el juego que sale de `ngplat nuevo` ocupan
+**36 bytes menos** que antes del agua, y la Neo Geo gasta los mismos ciclos por
+frame.
+
+**El editor enseña las catorce animaciones.** Enseñaba ocho, y las otras seis
+—entre ellas las dos del agua— no había forma de verlas ni de tocarlas. La
+posición en esa lista **es** la ranura del motor, así que dejarse una por el
+camino corría todas las de detrás. Y la paleta de casillas ya sabe decir
+«liana», «lento» y «agua» en vez de llamarlas «tile».
 
 ## 1.50
 

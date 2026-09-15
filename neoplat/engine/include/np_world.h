@@ -63,6 +63,32 @@ typedef struct {
     uint8_t crouch;          /* 1 = agachado */
     int8_t stair_dir;        /* hacia donde avanza en x al subir: +1 o -1 */
     uint16_t wear_timer;     /* frames para el siguiente punto de `desgaste:` */
+    /* --- el agua ---------------------------------------------------------
+     *
+     * `agua` dice **como** estas mojado, que no es lo mismo que si lo estas:
+     *
+     *    0  fuera del agua;
+     *    1  nadando: el cuerpo dentro pero la cabeza fuera, que es donde se
+     *       respira. Aqui el aire se recupera;
+     *    2  buceando: hasta la cabeza. Aqui el aire se gasta.
+     *
+     * Son dos y no uno porque son dos dibujos y dos reglas, no un adorno.
+     *
+     * `aire` es lo que queda antes de empezar a ahogarse, en frames, y
+     * `ahogo` la cuenta atras del siguiente punto de vida cuando ya no queda.
+     *
+     * Los tres **solo existen si el juego lleva agua**, y por lo que dice el
+     * parrafo de arriba: esta estructura mide 72 bytes justos y ahi gcc la
+     * indexa barato. Con estos tres puestos siempre pasaria de 72 a 78, gcc
+     * cambiaria de estrategia y el juego de ejemplo se llevaria 960 bytes de
+     * codigo de mas en el 68000 -y ciclos por frame en la Neo Geo, que ya va
+     * a 198744 de los 200000- con agua o sin ella. Un juego sin `brazada:` no
+     * paga el agua. */
+#if NP_HAY_AGUA
+    uint8_t agua;
+    uint16_t aire;
+    uint16_t ahogo;
+#endif
     /* La tercera coordenada de la vista de cinta: lo alto que estas sobre el
        suelo, y a que velocidad subes o bajas. En las otras vistas valen cero
        siempre. `y` sigue siendo donde se dibuja, asi que la linea del suelo

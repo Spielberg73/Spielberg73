@@ -7,6 +7,7 @@ tiene una trampa injusta.
 """
 
 import json
+import re
 import os
 import shutil
 import subprocess
@@ -132,6 +133,58 @@ class TestNivelesJugables(unittest.TestCase):
         self.assertEqual(resultado.returncode, 0,
                          "el bot no puede terminar el juego con cocodrilos y "
                          "liana:\n" + resultado.stdout)
+
+    def test_con_una_charca_tambien_se_termina(self):
+        """El agua, pegada como la explica docs/formato.md: se le quitan las
+        almohadillas a las lineas que el andamiaje deja apuntadas y se cava una
+        charca en el primer nivel.
+
+        No viene puesta en el juego de partida -no cabe en un A500- asi que si
+        no se prueba aqui no la prueba nadie: el bot tiene que caerse dentro,
+        cruzarla brazeando y salir por la otra orilla, que es lo unico que
+        contesta de verdad si una charca se puede pasar."""
+        destino = os.path.join(self.tmp, "charca")
+        crear_proyecto(destino, "CHARCA", "TEST")
+        # 0) el arte del agua, que no viene puesto: cuatro poses mas en la hoja
+        #    del heroe (nadando y buceando) y dos casillas mas en el tileset
+        from ngplat import art
+        from ngplat.png import write_png
+        write_png(os.path.join(destino, "graficos", "heroe.png"),
+                  art.heroe(agua=True))
+        write_png(os.path.join(destino, "graficos", "tiles.png"),
+                  art.tileset(agua=True))
+        yaml = os.path.join(destino, "game.yaml")
+        with open(yaml, encoding="utf-8") as fh:
+            texto = fh.read()
+        # 1) encender el agua: las tres cifras, las dos posturas y las dos
+        #    casillas, que el andamiaje deja escritas y comentadas
+        for linea in ("  # brazada: 2.0", "  # aire: 240", "  # ahogo: 45",
+                      "    # nadar:", "    # bucear:",
+                      "    # '~':", "    # 'w':"):
+            self.assertIn(linea, texto, "el andamiaje ya no apunta %r" % linea)
+        texto = re.sub(r"^(\s*)# (brazada:|aire:|ahogo:|nadar:|bucear:|'~':|'w':)",
+                       r"\1\2", texto, flags=re.M)
+        # 2) cavar la charca: se le quitan dos filas de cielo al primer nivel y
+        #    se le ponen dos de tierra con el agua dentro, que es como se hace
+        #    una charca sin que se caiga uno del mapa por debajo
+        cielo = "\n      " + "." * 48
+        self.assertIn(cielo * 4, texto, "el primer nivel ya no empieza con cielo")
+        texto = texto.replace(cielo * 4, cielo * 2, 1)
+        suelo = "\n      ##################################..############"
+        self.assertIn(suelo, texto, "el primer nivel ya no acaba asi")
+        texto = texto.replace(
+            suelo,
+            "\n      ####################~~~~~~~~######..############"
+            "\n      ,,,,,,,,,,,,,,,,,,,,wwwwwwww,,,,,,..,,,,,,,,,,,,"
+            "\n      ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,..,,,,,,,,,,,,", 1)
+        # y la llave, que en su sitio de siempre quedaria flotando sobre el agua
+        texto = texto.replace("V.....^...k", "V...k.^....", 1)
+        with open(yaml, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(texto)
+        resultado = self._jugar(destino)
+        self.assertEqual(resultado.returncode, 0,
+                         "el bot no puede terminar el juego con charca:\n"
+                         + resultado.stdout)
 
     def test_el_proyecto_de_castlevania_tambien_se_termina(self):
         """El genero de latigo cambia la fisica entera -sin correccion del
