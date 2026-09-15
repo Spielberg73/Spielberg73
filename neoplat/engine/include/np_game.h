@@ -407,6 +407,15 @@ typedef struct {
     /* El guion que se lanza al empezar el nivel: indice + 1, 0 = ninguno. Es
        por donde entra un juego a contarte algo antes de dejarte jugar. */
     uint8_t guion;
+    /* 1 si este nivel tiene alguna casilla de agua.
+     *
+     * Existe por los ciclos, no por la mecanica: mirar cada frame si el
+     * jugador esta mojado son dos consultas al mapa, y medido en la Neo Geo
+     * con el banco del kit eso es **1870 ciclos por frame** de los 200000 que
+     * da la consola, se este mojando alguien o no. Un juego con agua suele
+     * tener la mayoria de los niveles secos, y con esto esos niveles pagan una
+     * comparacion y se acabo. Lo pone el compilador mirando el mapa. */
+    uint8_t hay_agua;
 } NpLevel;
 
 /* Tablas que genera el compilador (definidas en gamedata.c). */

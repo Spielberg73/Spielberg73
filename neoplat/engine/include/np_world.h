@@ -77,18 +77,18 @@ typedef struct {
      * `aire` es lo que queda antes de empezar a ahogarse, en frames, y
      * `ahogo` la cuenta atras del siguiente punto de vida cuando ya no queda.
      *
-     * Los tres **solo existen si el juego lleva agua**, y por lo que dice el
-     * parrafo de arriba: esta estructura mide 72 bytes justos y ahi gcc la
-     * indexa barato. Con estos tres puestos siempre pasaria de 72 a 78, gcc
-     * cambiaria de estrategia y el juego de ejemplo se llevaria 960 bytes de
-     * codigo de mas en el 68000 -y ciclos por frame en la Neo Geo, que ya va
-     * a 198744 de los 200000- con agua o sin ella. Un juego sin `brazada:` no
-     * paga el agua. */
-#if NP_HAY_AGUA
-    uint8_t agua;
-    uint16_t aire;
-    uint16_t ahogo;
-#endif
+     * Los tres **no estan aqui**: viven en tres arreglos sueltos dentro de
+     * np_world.c, indexados por jugador. Esta estructura mide 72 bytes justos
+     * y ahi gcc la indexa barato -lo dice el parrafo de la liana de arriba,
+     * que ya costo 2000 ciclos por frame por dos bytes-; metidos aqui la
+     * dejaban en 80.
+     *
+     * Y conviene decir lo que **no** costaba, porque se midio esperando otra
+     * cosa: sacarlos de aqui ahorra unos 1000 bytes de codigo en el 68000 pero
+     * solo 26 ciclos por frame en la Neo Geo. Los ciclos del agua no estaban
+     * en el tamano de la estructura sino en mirar cada frame si el jugador
+     * esta mojado, que es otra pelea (ver `hay_agua` del nivel). Aun asi se
+     * quedan fuera: el kilo de codigo es real y en un A500 se nota. */
     /* La tercera coordenada de la vista de cinta: lo alto que estas sobre el
        suelo, y a que velocidad subes o bajas. En las otras vistas valen cero
        siempre. `y` sigue siendo donde se dibuja, asi que la linea del suelo

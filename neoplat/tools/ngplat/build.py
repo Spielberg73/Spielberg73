@@ -111,6 +111,9 @@ class LevelBuild:
     # de la maquina. Vacio en las demas vistas.
     fondo: List[int] = field(default_factory=list)
     guion: int = 0                             # el de entrada, indice + 1
+    # Si el mapa trae alguna casilla de agua. El motor lo mira antes de sondear
+    # si el jugador esta mojado: en un nivel seco se ahorra el sondeo entero.
+    hay_agua: int = 0
 
 
 @dataclass
@@ -685,6 +688,10 @@ def build_project(project: Project, carretera_como: str = "franjas") -> Build:
             keys_needed=level.keys_needed,
             guion=(list(project.guiones).index(level.guion) + 1
                    if level.guion else 0),
+            # Si el mapa tiene agua. Se mira aqui, una vez al compilar, para
+            # que el motor no tenga que sondearlo sesenta veces por segundo en
+            # los niveles secos.
+            hay_agua=1 if any(tiles[c].kind == "agua" for c in cells) else 0,
         ))
 
     guion_pasos, guion_ini, guion_orden, dialogo = _armar_guiones(project)

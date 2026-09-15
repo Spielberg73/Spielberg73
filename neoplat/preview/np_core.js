@@ -2355,7 +2355,9 @@
 
     /* El agua: como esta de mojado y la cuenta del aire. Gemelo del bloque de
        np_player_update; lo que cambia el agua va mas abajo, en su sitio. */
-    if (d.swim_stroke) {
+    /* `hay_agua` del nivel va delante, igual que en C: en un nivel seco
+       esto es una comparacion y no dos consultas al mapa. */
+    if (d.swim_stroke && this.level && this.level.hay_agua) {
       p.agua = this.aguaEstado(quien);
       /* Sin `aire:` no se ahoga nadie. Igual que en C. */
       if (p.agua === 2 && d.breath) {

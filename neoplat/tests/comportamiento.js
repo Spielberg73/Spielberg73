@@ -373,6 +373,11 @@ function datos(filas, opciones) {
       cells: celdas,
       spawns: spawns, start: start, background: "#000000",
       keys_needed: opciones.llaves || 0,
+      /* Si el mapa trae agua. Se calcula igual que en build.py -mirando las
+         casillas- y no a mano, para que cualquier mundo de prueba que dibuje
+         una charca lo tenga puesto sin acordarse de nada. El motor lo usa para
+         no sondear el agua en los niveles secos. */
+      hay_agua: celdas.some(function (c) { return TIPOS[c] === 12; }) ? 1 : 0,
       music: opciones.musicaNivel || 0
     }],
     /* solo los numeros de cancion: para saber cual toca no hace falta ninguna

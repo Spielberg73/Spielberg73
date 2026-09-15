@@ -226,6 +226,8 @@ def build_data(build: Build) -> Dict[str, object]:
             "layers": list(level.layers),
             "music": level.music,
             "keys_needed": level.keys_needed,
+            # igual que en C: en un nivel seco el motor no sondea el agua
+            "hay_agua": level.hay_agua,
             "guion": level.guion,
             # la planta que se pisa y el dibujo del suelo de las salas (solo
             # los usa la vista isometrica)

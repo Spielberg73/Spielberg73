@@ -215,9 +215,23 @@ static int np_climb_at(const NpWorld *w, np_fix x, np_fix y)
  * una. `agua:` en la leyenda sin `brazada:` en el jugador ya era agua de
  * adorno, asi que no se pierde nada. */
 #if NP_HAY_AGUA
-#define NP_AGUA(p) ((p)->agua)
+/* El estado del agua, uno por jugador y **fuera de NpPlayer**.
+ *
+ * Dentro de la estructura la dejaban en 80 bytes en vez de 72, y 72 es donde
+ * gcc la indexa barato. Aqui fuera son tres arreglos de dos, se leen por el
+ * numero de jugador -que ya se tiene a mano en todos los sitios donde hace
+ * falta- y el juego que no lleva agua no los compila siquiera.
+ *
+ * Lo que se gana, medido: unos 1000 bytes de codigo en el 68000. Lo que **no**
+ * se gana, medido tambien y contra lo que se esperaba: 26 ciclos por frame en
+ * la Neo Geo. Los ciclos del agua estan en mirar cada frame si el jugador esta
+ * mojado, no en el tamano de la estructura. */
+static uint8_t np_agua[NP_MAX_PLAYERS];   /* 0 fuera, 1 nadando, 2 buceando */
+static uint16_t np_aire[NP_MAX_PLAYERS];  /* frames de aire que quedan */
+static uint16_t np_ahogo[NP_MAX_PLAYERS]; /* cuenta atras del siguiente punto */
+#define NP_AGUA(quien) np_agua[(quien)]
 #else
-#define NP_AGUA(p) 0
+#define NP_AGUA(quien) 0
 #endif
 
 #if NP_HAY_AGUA
@@ -753,9 +767,9 @@ static void np_player_reset(NpWorld *w, uint8_t quien)
     /* Se sale del agua y con el aire lleno: reaparecer dentro de una galeria
        inundada con el aire a cero seria morirse otra vez sin poder hacer nada. */
 #if NP_HAY_AGUA
-    p->agua = 0;
-    p->aire = np_player_def.breath;
-    p->ahogo = 0;
+    np_agua[quien] = 0;
+    np_aire[quien] = np_player_def.breath;
+    np_ahogo[quien] = 0;
 #endif
     p->marcha = 0;              /* el coche sale de parado, con la corta */
     p->trompo = 0;
@@ -3165,18 +3179,21 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
      * Sin `brazada:` en el game.yaml (`swim_stroke` a cero) el juego no lleva
      * agua, y entonces esto no llega ni a compilarse: NP_HAY_AGUA lo borra. */
 #if NP_HAY_AGUA
-    if (d->swim_stroke) {
-        p->agua = np_agua_estado(w, p, a);
+    /* `hay_agua` del nivel va **delante** de todo lo demas: en un nivel seco
+       esto es una comparacion y no las dos consultas al mapa, que en la Neo
+       Geo son 1870 ciclos de los 200000 que da un frame. */
+    if (d->swim_stroke && w->level && w->level->hay_agua) {
+        np_agua[quien] = np_agua_estado(w, p, a);
         /* Sin `aire:` no se ahoga nadie: es el agua de adorno, se nada y se
            bucea y no hay cuenta atras. Se mira aqui y no abajo porque con
            `breath` a cero `aire` vale siempre cero, y sin esta guarda el
            primer frame debajo del agua ya empezaria a quitar vida. */
-        if (p->agua == 2 && d->breath) {
+        if (np_agua[quien] == 2 && d->breath) {
             /* Buceando se gasta el aire. Al quedarse sin el no se muere de
                golpe: empieza a caer un punto de vida cada `ahogo:` frames, que
                da tiempo a subir a por aire si te queda algo de vida. */
-            if (p->aire) {
-                p->aire--;
+            if (np_aire[quien]) {
+                np_aire[quien]--;
             } else if (d->drown) {
                 /* El primer punto se va **en el acto**, en cuanto se acaba el
                    aire, y a partir de ahi uno cada `ahogo:` frames justos.
@@ -3185,17 +3202,17 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
                    golpe cae en el mismo frame en que se agota y el periodo
                    sale exacto. Con un else, entre golpe y golpe pasaria un
                    frame de mas. */
-                if (p->ahogo) p->ahogo--;
-                if (!p->ahogo) {
-                    p->ahogo = d->drown;
+                if (np_ahogo[quien]) np_ahogo[quien]--;
+                if (!np_ahogo[quien]) {
+                    np_ahogo[quien] = d->drown;
                     np_player_ahogar(w, quien);
                 }
             }
         } else {
             /* Con la cabeza fuera se respira, y de golpe: subir a por aire
                tiene que servir de algo aunque sea un momento. */
-            p->aire = d->breath;
-            p->ahogo = 0;
+            np_aire[quien] = d->breath;
+            np_ahogo[quien] = 0;
         }
     }
 #endif /* NP_HAY_AGUA */
@@ -3229,12 +3246,12 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
     } else {
         /* Nadando se va mas despacio, y eso es la mitad de lo que hace que el
            agua se note en las manos y no solo en los ojos. */
-        np_fix tope = NP_AGUA(p) ? d->swim_speed : d->speed;
+        np_fix tope = NP_AGUA(quien) ? d->swim_speed : d->speed;
         np_fix paso = p->on_ground ? d->accel : d->air_accel;
         if (dir > 0) { p->vx = np_approach(p->vx, tope, paso); p->facing = 1; }
         else if (dir < 0) { p->vx = np_approach(p->vx, -tope, paso); p->facing = 0; }
         /* En el agua se frena tambien sin pisar nada: el agua agarra. */
-        else if (p->on_ground || NP_AGUA(p))
+        else if (p->on_ground || NP_AGUA(quien))
             p->vx = np_approach(p->vx, 0, d->friction);
     }
 
@@ -3255,7 +3272,7 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
         p->coyote--;
     }
 
-    if (NP_AGUA(p)) {
+    if (NP_AGUA(quien)) {
         /* **En el agua no se salta: se brazea.** El boton empuja hacia arriba
            y se puede repetir en mitad del agua, tantas veces como se pulse: ni
            coyote, ni doble salto, ni suelo que pisar. Eso es nadar.
@@ -3264,7 +3281,7 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
            se sale del agua a la orilla. Sin eso, llegar al borde de una charca
            y no poder subirte es de las cosas que peor sientan. */
         if (pressed_jump) {
-            p->vy = -(NP_AGUA(p) == 1 ? d->swim_out : d->swim_stroke);
+            p->vy = -(NP_AGUA(quien) == 1 ? d->swim_out : d->swim_stroke);
             p->buffer = 0;
             p->on_ground = 0;
             w->sfx |= NP_SFX_JUMP;
@@ -3286,7 +3303,7 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
     if (d->air_control && !(input & NP_IN_JUMP) && p->vy < -d->jump_cut)
         p->vy = -d->jump_cut;
 
-    if (NP_AGUA(p)) {
+    if (NP_AGUA(quien)) {
         /* Dentro del agua no se cae: se hunde uno, que es otra cosa. La
            gravedad es una fraccion de la de fuera y lo que se baja tiene tope,
            asi que el fondo se alcanza despacio y siempre da tiempo a brazear. */
@@ -3300,7 +3317,7 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
            no llegaba a verse. Flotando, nadar es un sitio donde se **esta**.
            Para salir hay que querer: la brazada de este frame -que con la
            cabeza fuera vale `swim_out`- si se respeta. */
-        if (NP_AGUA(p) == 1 && p->vy < 0 && !pressed_jump) p->vy = 0;
+        if (NP_AGUA(quien) == 1 && p->vy < 0 && !pressed_jump) p->vy = 0;
     } else {
         p->vy += d->gravity;
         if (p->vy > d->max_fall) p->vy = d->max_fall;
@@ -3337,8 +3354,8 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
        Este trozo va con #if y no con la macro como los demas porque es el
        unico que **toca las dos ranuras nuevas**: sin agua no existen, y
        dejarlo escrito seria leer fuera de la tabla aunque nunca se ejecutara. */
-    else if (p->agua) {
-        uint8_t pose = (p->agua == 2) ? NP_ANIM_DIVE : NP_ANIM_SWIM;
+    else if (np_agua[quien]) {
+        uint8_t pose = (np_agua[quien] == 2) ? NP_ANIM_DIVE : NP_ANIM_SWIM;
         /* Quien no dibuje la pose se queda con la de siempre -subiendo, la de
            saltar; bajando, la de caer- en vez de con la de estar quieto, que
            es a donde cae np_anim_tick cuando una ranura esta vacia. Un juego
