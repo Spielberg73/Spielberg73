@@ -114,6 +114,15 @@ class LevelBuild:
     # Si el mapa trae alguna casilla de agua. El motor lo mira antes de sondear
     # si el jugador esta mojado: en un nivel seco se ahorra el sondeo entero.
     hay_agua: int = 0
+    # Y donde esta esa agua: el rectangulo que la envuelve, en pixeles y con
+    # los dos extremos dentro. En un nivel con charca el jugador esta fuera de
+    # ese rectangulo casi todo el rato, y comparar cuatro numeros es mucho mas
+    # barato que consultar el mapa. Vale (0, 0, 0, 0) si no hay agua.
+    agua_caja: Tuple[int, int, int, int] = (0, 0, 0, 0)
+    # Si el nivel trae alguna liana de las que se balancean. Mismo motivo que
+    # `hay_agua`: el pendulo se recorre entero cada frame, y en un nivel sin
+    # lianas eso es una vuelta a la lista de bichos para nada.
+    hay_balanceo: int = 0
 
 
 @dataclass
@@ -482,6 +491,33 @@ def _sin_table() -> List[int]:
     return [to_fixed(math.sin(2 * math.pi * i / SIN_STEPS)) for i in range(SIN_STEPS)]
 
 
+def _caja_del_agua(cells: List[int], tiles: List[TileDef],
+                   ancho: int) -> Optional[Tuple[int, int, int, int]]:
+    """El rectangulo que envuelve el agua del nivel, en pixeles, o None.
+
+    Existe por los ciclos y esta medido. El motor mira cada frame si el jugador
+    esta mojado, y esa consulta al mapa cuesta: en un Atari ST, con el nivel de
+    partida, era justo lo que le hacia perder el vblank en la pantalla mas
+    cargada -la del principio- y el juego entero bajaba de 50 imagenes por
+    segundo. Se nota en la musica, que va pegada al frame: de 16 notas de 16 a
+    10.
+
+    Con esto el sondeo solo ocurre donde puede haber agua. En el nivel de
+    partida la charca son ocho casillas de cuarenta y ocho, asi que el jugador
+    esta fuera del rectangulo el 85% del recorrido y ahi son cuatro
+    comparaciones de enteros.
+    """
+    mojadas = [i for i, c in enumerate(cells) if tiles[c].kind == "agua"]
+    if not mojadas:
+        return None
+    columnas = [i % ancho for i in mojadas]
+    filas = [i // ancho for i in mojadas]
+    # Los dos extremos entran: la casilla de la derecha del todo ocupa hasta su
+    # ultimo pixel, no hasta el primero.
+    return (min(columnas) * 16, min(filas) * 16,
+            max(columnas) * 16 + 15, max(filas) * 16 + 15)
+
+
 def build_project(project: Project, carretera_como: str = "franjas") -> Build:
     """Lee graficos, tiles, niveles y sonido, sin atarse a ninguna maquina.
 
@@ -618,6 +654,7 @@ def build_project(project: Project, carretera_como: str = "franjas") -> Build:
         height = len(level.rows)
         cells: List[int] = []
         spawns: List[Tuple[int, int, int, int]] = []
+        hay_balanceo = 0
         # Lo que se dibuja debajo de un bicho, un objeto o la salida. Por
         # defecto el '.' de la leyenda, y con `vacio:` en el nivel lo que diga:
         # en un juego con dos sitios que no se parecen -papel pintado arriba,
@@ -658,6 +695,8 @@ def build_project(project: Project, carretera_como: str = "franjas") -> Build:
                         py = y * 16 + (16 - actor.box_h) // 2
                     else:
                         py = y * 16 + 16 - actor.box_h
+                    if kind == 0 and actor.behavior == "balanceo":
+                        hay_balanceo = 1
                     spawns.append((max(0, px), max(0, py), kind, index))
                 else:
                     cells.append(tile_index[ch])
@@ -676,6 +715,7 @@ def build_project(project: Project, carretera_como: str = "franjas") -> Build:
             fondo, vista_w, vista_h = _fondo_de_salas(project, tileset,
                                                       len(tileset_remap))
             _cubos_por_sala(project, level, width, height, len(spawns))
+        agua_caja = _caja_del_agua(cells, tiles, width)
         levels.append(LevelBuild(
             name=level.name.upper()[:20],
             width=vista_w, height=vista_h, cells=cells, spawns=spawns,
@@ -688,10 +728,15 @@ def build_project(project: Project, carretera_como: str = "franjas") -> Build:
             keys_needed=level.keys_needed,
             guion=(list(project.guiones).index(level.guion) + 1
                    if level.guion else 0),
-            # Si el mapa tiene agua. Se mira aqui, una vez al compilar, para
-            # que el motor no tenga que sondearlo sesenta veces por segundo en
-            # los niveles secos.
-            hay_agua=1 if any(tiles[c].kind == "agua" for c in cells) else 0,
+            # Si el mapa tiene agua, y donde. Se mira aqui, una vez al
+            # compilar, para que el motor no tenga que sondearlo sesenta veces
+            # por segundo en los niveles secos ni en el resto del escenario.
+            hay_agua=1 if agua_caja else 0,
+            agua_caja=agua_caja or (0, 0, 0, 0),
+            # Y si lleva liana. Se mira por lo mismo: el paso del pendulo
+            # recorre la lista de bichos entera y en un nivel sin lianas eso
+            # son 4000 ciclos por frame de la Neo Geo tirados.
+            hay_balanceo=hay_balanceo,
         ))
 
     guion_pasos, guion_ini, guion_orden, dialogo = _armar_guiones(project)

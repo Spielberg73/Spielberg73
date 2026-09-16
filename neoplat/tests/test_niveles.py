@@ -97,10 +97,11 @@ class TestNivelesJugables(unittest.TestCase):
         docs/formato.md: la charca en el agujero del primer nivel y la liana
         sobre un barranco de tres casillas en el segundo.
 
-        No vienen en el juego de partida -no caben en un A500- asi que si no se
-        prueban aqui no las prueba nadie: el bot tiene que saber esperar en el
-        borde a que la liana venga y soltarse a medio subir, que es lo unico
-        que cruza el barranco."""
+        No vienen en el juego de partida -en la Neo Geo cuestan 16000 y 6000
+        ciclos por frame y no caben- asi que si no se prueban aqui no las
+        prueba nadie: el bot tiene que saber esperar en el borde a que la
+        liana venga y soltarse a medio subir, que es lo unico que cruza el
+        barranco."""
         destino = os.path.join(self.tmp, "pitfall")
         crear_proyecto(destino, "PITFALL", "TEST")
         yaml = os.path.join(destino, "game.yaml")
@@ -112,11 +113,11 @@ class TestNivelesJugables(unittest.TestCase):
         marca = "\nspawns:\n"
         self.assertIn(marca, texto)
         texto = texto.replace(marca, marca + "  C: cocodrilo\n  L: liana\n", 1)
-        # la charca: dos cocodrilos dentro del agujero del primer nivel
-        marca = "\n      ##################################..############"
+        # los cocodrilos, en la charca del primer nivel: dos bocas entre el agua
+        marca = "\n      ####################~~~~~~~~######..############"
         self.assertIn(marca, texto, "el primer nivel ya no acaba asi")
         texto = texto.replace(
-            marca, "\n      ##################################CC############", 1)
+            marca, "\n      ####################~C~~~~C~######..############", 1)
         # y el barranco con liana: de dos casillas a tres, con la liana atada
         # en la ultima y a la altura del salto
         marca = "\n      ########################..#####################..#######"
@@ -134,57 +135,36 @@ class TestNivelesJugables(unittest.TestCase):
                          "el bot no puede terminar el juego con cocodrilos y "
                          "liana:\n" + resultado.stdout)
 
-    def test_con_una_charca_tambien_se_termina(self):
-        """El agua, pegada como la explica docs/formato.md: se le quitan las
-        almohadillas a las lineas que el andamiaje deja apuntadas y se cava una
-        charca en el primer nivel.
+    def test_la_charca_del_juego_de_partida_se_cruza_a_nado(self):
+        """La charca **viene puesta** en el juego de partida, asi que lo que
+        hay que comprobar ya no es si se puede pegar: es que se cruza nadando.
 
-        No viene puesta en el juego de partida -no cabe en un A500- asi que si
-        no se prueba aqui no la prueba nadie: el bot tiene que caerse dentro,
-        cruzarla brazeando y salir por la otra orilla, que es lo unico que
-        contesta de verdad si una charca se puede pasar."""
+        Terminar el nivel no lo dice. Un bot que saltara por encima del agua,
+        o que la bordeara por arriba, daria el mismo `ok` y dejaria pasar una
+        charca por la que no se puede nadar. Por eso el bot cuenta los frames
+        que pasa dentro del agua y aqui se exige que sean unos cuantos: si un
+        dia el agua deja de mojar, esta prueba se entera y las demas no.
+        """
         destino = os.path.join(self.tmp, "charca")
         crear_proyecto(destino, "CHARCA", "TEST")
-        # 0) el arte del agua, que no viene puesto: cuatro poses mas en la hoja
-        #    del heroe (nadando y buceando) y dos casillas mas en el tileset
-        from ngplat import art
-        from ngplat.png import write_png
-        write_png(os.path.join(destino, "graficos", "heroe.png"),
-                  art.heroe(agua=True))
-        write_png(os.path.join(destino, "graficos", "tiles.png"),
-                  art.tileset(agua=True))
-        yaml = os.path.join(destino, "game.yaml")
-        with open(yaml, encoding="utf-8") as fh:
-            texto = fh.read()
-        # 1) encender el agua: las tres cifras, las dos posturas y las dos
-        #    casillas, que el andamiaje deja escritas y comentadas
-        for linea in ("  # brazada: 2.0", "  # aire: 240", "  # ahogo: 45",
-                      "    # nadar:", "    # bucear:",
-                      "    # '~':", "    # 'w':"):
-            self.assertIn(linea, texto, "el andamiaje ya no apunta %r" % linea)
-        texto = re.sub(r"^(\s*)# (brazada:|aire:|ahogo:|nadar:|bucear:|'~':|'w':)",
-                       r"\1\2", texto, flags=re.M)
-        # 2) cavar la charca: se le quitan dos filas de cielo al primer nivel y
-        #    se le ponen dos de tierra con el agua dentro, que es como se hace
-        #    una charca sin que se caiga uno del mapa por debajo
-        cielo = "\n      " + "." * 48
-        self.assertIn(cielo * 4, texto, "el primer nivel ya no empieza con cielo")
-        texto = texto.replace(cielo * 4, cielo * 2, 1)
-        suelo = "\n      ##################################..############"
-        self.assertIn(suelo, texto, "el primer nivel ya no acaba asi")
-        texto = texto.replace(
-            suelo,
-            "\n      ####################~~~~~~~~######..############"
-            "\n      ,,,,,,,,,,,,,,,,,,,,wwwwwwww,,,,,,..,,,,,,,,,,,,"
-            "\n      ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,..,,,,,,,,,,,,", 1)
-        # y la llave, que en su sitio de siempre quedaria flotando sobre el agua
-        texto = texto.replace("V.....^...k", "V...k.^....", 1)
-        with open(yaml, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(texto)
-        resultado = self._jugar(destino)
-        self.assertEqual(resultado.returncode, 0,
-                         "el bot no puede terminar el juego con charca:\n"
-                         + resultado.stdout)
+        build = cargar_demo(destino)
+        ruta = _datos(build, os.path.join(self.tmp, "charca.json"))
+        guion = (
+            "var NP = require(%r), NPBot = require(%r);\n"
+            "var r = NPBot.jugar(NP, JSON.parse(require('fs')"
+            ".readFileSync(%r, 'utf8')), 0);\n"
+            "console.log(JSON.stringify(r));\n"
+            % (os.path.join(KIT, "preview", "np_core.js"),
+               os.path.join(KIT, "preview", "np_bot.js"), ruta))
+        hecho = subprocess.run(["node", "-e", guion],
+                               capture_output=True, text=True)
+        self.assertEqual(hecho.returncode, 0, hecho.stdout + hecho.stderr)
+        r = json.loads(hecho.stdout)
+        self.assertTrue(r["ok"], "el bot no termina el primer nivel: %s" % r)
+        self.assertGreater(
+            r["nadados"], 30,
+            "el bot termina el nivel pero solo pasa %d frames en el agua: la "
+            "charca del juego de partida se esta cruzando sin nadar" % r["nadados"])
 
     def test_el_proyecto_de_castlevania_tambien_se_termina(self):
         """El genero de latigo cambia la fisica entera -sin correccion del
@@ -596,8 +576,8 @@ class TestNivelesJugables(unittest.TestCase):
             texto = fh.read()
         # la llave del andamiaje esta en el camino: se sube a la plataforma
         # mas alta, donde el bot no llega
-        assert "^...k" in texto, "el andamiaje ya no pone la llave asi"
-        texto = texto.replace("^...k", "^....", 1)
+        assert "k.^" in texto, "el andamiaje ya no pone la llave asi"
+        texto = texto.replace("k.^", "..^", 1)
         texto = texto.replace("      ..............................ccc",
                               "      ..............................ckc", 1)
         with open(ruta, "w", encoding="utf-8") as fh:

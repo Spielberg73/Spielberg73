@@ -2,8 +2,124 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.51.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.52.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.52
+
+**La charca ya viene puesta en el juego de partida, y el Amiga dice qué Amiga
+hace falta.**
+
+El juego que crea `ngplat nuevo` lleva ahora una charca en el primer nivel,
+justo pasados los pinchos: te caes dentro sin querer, que es la mejor forma de
+enterarse de que aquí se nada. Hasta la 1.51 el agua venía apuntada y comentada
+porque no cabía. Ahora cabe, y está medido en las dos máquinas que apretaban:
+
+- **Neo Geo.** El código del agua son 1934 ciclos por frame y el mapa de la
+  charca otros 1930, de los 200000 que da un frame — y el nivel gastaba ya
+  198838. No cabían, y la charca se los ha pagado quitando dos cosas de su
+  sitio: **una seta**, la del borde del agua (salías escurriendo y te la
+  comías), que son casi 4000 ciclos; y **una moneda**, la que quedaba encima,
+  que son 2000. El frame más caro gasta ahora **196646**: el juego va a 60
+  imágenes por segundo y encima sobran 3354.
+- **Amiga.** El ejecutable pasa de 190628 a 193740 bytes, y en un A500 de
+  512 KB caben unos 190 KB (194560): entra **por 820 bytes**. Arrancado en un
+  A500 emulado de 512 KB, no calculado.
+- **Atari ST.** Ésta costó un rato entenderla. Con la charca puesta el ST
+  perdía el vblank en la pantalla del principio del nivel —la más cargada— y
+  el juego entero bajaba de 50 imágenes por segundo. No se ve: se **oye**,
+  porque la música va pegada al frame, y la prueba del emulador la cazó
+  pasando de 16 notas de 16 a 10. Lo que costaba no era nadar: era mirar cada
+  frame si estabas mojado, que es una consulta al mapa con una multiplicación
+  de 32 bits detrás. Así que el compilador guarda ahora **el rectángulo que
+  ocupa el agua** de cada nivel y el motor sólo sondea dentro de él: en el
+  nivel de partida son cuatro comparaciones de enteros durante el 85% del
+  recorrido. Vuelve a 16 de 16, dentro y fuera del agua.
+
+La moneda no se quita por capricho. Donde estaba —dos filas por encima del
+agua— no se llegaba: saliendo de una brazada el héroe sube hasta la fila 11,75
+y ella está en la 11, así que se rozaba y no se cogía, que es peor que no
+ponerla. Y bajarla a la fila del agua, donde sí se pesca nadando, cuesta 3982
+ciclos en vez de 2000, porque ahí cae dentro del frame más caro —el jugador
+nadando, el agua y ella a la vez— y el nivel se iba a 200690. Medido las tres
+veces; es el tipo de cosa que no se adivina.
+
+**Y el agua ya no cuesta nada donde no hay agua.** El compilador marca cada
+nivel con `hay_agua` —y con el rectángulo que ocupa esa agua— y el motor lo
+mira antes de tocar el mapa: en un nivel seco son una comparación en vez de dos
+consultas, 1870 ciclos por frame de vuelta, y en un nivel con charca lo mismo
+mientras estés lejos de ella. El estado del agua (dentro, el aire, la cuenta atrás del ahogo) sale
+además de `NpPlayer` y pasa a tres arreglos sueltos, con lo que la estructura
+vuelve a medir los 72 bytes justos donde gcc la indexa barato.
+
+Conviene dejar dicho lo que **no** costaba, porque se midió esperando otra
+cosa: sacar esos tres campos de `NpPlayer` ahorra unos 1000 bytes de código en
+el 68000 pero sólo **26 ciclos** por frame en la Neo Geo. El gasto de verdad
+estaba en el mapa.
+
+**`amiga_ram:`: a qué Amiga apunta el juego.** Una línea nueva en `juego:` con
+`512K`, `1M` o `2M`. No cambia ni un byte de lo que se compila —el `.adf` que
+sale es el mismo—; lo que cambia es que el compilador sepa contra qué medir.
+
+El Amiga tiene un fallo que no avisa: si el ejecutable no cabe en la memoria de
+la máquina, el disquete arranca, AmigaDOS no puede cargar el juego y en la
+pantalla se queda el escritorio. Ni un mensaje, y desde fuera no se distingue
+de un disquete roto. Ahora `make` **para** antes de montar el disquete, dice
+cuánto ocupa y cuánto cabe, y no deja el ejecutable escrito (si lo dejara, el
+siguiente `make` lo vería más nuevo que el `.elf`, se lo saltaría y montaría el
+disquete igual). El A1200 y el CD32 no miran esa línea: llevan 2 MB de serie.
+
+Es RAM **chip**, no memoria a secas: el juego se carga entero en chip, así que
+la RAM *fast* de una ampliación no le sirve al ejecutable. Por eso la lista
+acaba en 2 MB, que es toda la chip que hay en un Amiga.
+
+**El disquete lleva un LEEME dentro** que dice qué Amiga hace falta, que
+arranca solo y dónde va el mando. Un `.adf` pasa de mano en mano y acaba en un
+Amiga que no es el de quien lo hizo; cuando no arranca, esto es lo que se echa
+de menos.
+
+**El emulador prueba la máquina que declara el juego**, no una más grande.
+Antes el A500 se probaba siempre con 1 MB: el disquete arrancaba en el banco y
+no en el A500 de quien lo jugara.
+
+**Y lo primero que encontró esa comprobación fueron cuatro juegos de partida
+que nunca arrancaron en un A500.** Castlevania (193 KB), filmation (197) y
+kung-fu (195) se pasaban de los 190 que deja libres la máquina, y en paleta
+corta también plataformas (210): el doble plano del OCS lleva dos mapas de bits
+en vez de uno, y eso son 20 KB más. Se compilaban, montaban su disquete y no
+arrancaban, y desde fuera no había forma de saberlo. Ahora declaran
+`amiga_ram: 1M`. Comprobado en un A500 emulado: el de paleta corta da el
+escritorio de AROS con 512 KB y el juego con un mega.
+
+Y para que no vuelva a pasar en silencio, una prueba nueva construye **los
+veintidós juegos de partida** (once géneros por dos estilos) para Amiga y los
+mide contra la máquina que cada uno declara. Cuando falle no será por el
+género: será que el motor ya no cabe donde cabía.
+
+**El bot cruza la charca nadando, y ahora se comprueba.** Terminar un nivel no
+dice si el agua se cruzó a nado o de un salto por encima. Resulta que el bot la
+cruzaba a saltitos —brazeaba siempre, y con la cabeza fuera la brazada vale el
+salto entero, así que salía disparado cada pocos frames: catorce frames mojado
+en una charca de ocho casillas— y el nivel daba `ok` igual. Ahora brazea sólo
+cuando bucea y cuando se atasca en la orilla, cruza en 126 frames dentro del
+agua, y la prueba cuenta esos frames.
+
+**La liana tambien deja de cobrar donde no hay lianas.** El paso del pendulo
+recorría la lista de bichos del nivel entera cada frame buscando lianas, y eso
+lo pagaba todo el juego tuviera lianas ese nivel o no: **4000 ciclos por
+frame** de los 200000 de la Neo Geo. Ahora el compilador marca cada nivel con
+`hay_balanceo` igual que con `hay_agua`, y un nivel sin lianas no entra ni al
+bucle. Es lo que hace que una liana en el segundo nivel salga por 198708 en vez
+de por 200650, o sea: de no caber a caber.
+
+**Y en el editor, cavar una charca ya sirve de algo.** El motor mira `hay_agua`
+—y ahora el rectángulo— antes de sondear el mapa, y el editor no los
+recalculaba: la charca que pintabas se veía y no se podía nadar hasta volver a
+compilar. Venía así desde la 1.51 y no lo probaba nadie; ahora sí.
+
+**El estilo de hierro también tiene agua**: cuatro poses de nadar y bucear y
+dos casillas, dibujadas con sus seis colores. Y su juego de partida lleva la
+misma charca, en la galería del primer nivel.
 
 ## 1.51
 

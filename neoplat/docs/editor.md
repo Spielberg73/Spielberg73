@@ -106,8 +106,10 @@ niveles: **nuevo** (nace con salida, meta y suelo, listo para jugar),
 ## Juego y física
 
 Título, autor, vidas, tiempo límite, la **máquina** para la que se compila
-(Neo Geo, Mega Drive, Amiga, Jaguar, Atari ST o X68000) y todos los ajustes del
-jugador con deslizadores: velocidad, salto, gravedad, aceleración, fricción,
+(Neo Geo, Mega Drive, Amiga, Jaguar, Atari ST o X68000), las dos opciones que
+sólo mira el Amiga —cómo reparte sus bitplanes y **a qué Amiga apunta el
+juego**, `512K`, `1M` o `2M`— y todos los ajustes del jugador con
+deslizadores: velocidad, salto, gravedad, aceleración, fricción,
 control en el aire, corte del salto, caída máxima, rebote, coyote, buffer de
 salto, vida, invulnerabilidad, retroceso al recibir un golpe, frames aturdido,
 velocidad al subir escaleras, alto de la caja agachado, doble salto, pisar

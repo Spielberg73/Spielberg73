@@ -78,6 +78,28 @@ function actor(boxW, boxH) {
   };
 }
 
+/* El indice de la liana en la lista de bichos del banco (patrulla, volador,
+   jefe, cocodrilo, balanceo). Hace falta para saber si un nivel de prueba
+   lleva liana, que es lo que decide si el motor recorre el pendulo. */
+var BICHO_LIANA = 4;
+
+/* El rectangulo que envuelve el agua del mapa, en pixeles y con los dos
+   extremos dentro. Gemelo de _caja_del_agua en build.py: el motor lo usa para
+   no sondear el agua fuera de donde la hay. */
+function cajaDelAgua(celdas, ancho) {
+  var x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1;
+  for (var i = 0; i < celdas.length; i++) {
+    if (TIPOS[celdas[i]] !== 12) continue;
+    var x = i % ancho, y = (i / ancho) | 0;
+    if (x < x0) x0 = x;
+    if (y < y0) y0 = y;
+    if (x > x1) x1 = x;
+    if (y > y1) y1 = y;
+  }
+  if (x1 < 0) return [0, 0, 0, 0];
+  return [x0 * 16, y0 * 16, x1 * 16 + 15, y1 * 16 + 15];
+}
+
 function datos(filas, opciones) {
   opciones = opciones || {};
   var alto = filas.length, ancho = filas[0].length;
@@ -373,11 +395,19 @@ function datos(filas, opciones) {
       cells: celdas,
       spawns: spawns, start: start, background: "#000000",
       keys_needed: opciones.llaves || 0,
-      /* Si el mapa trae agua. Se calcula igual que en build.py -mirando las
-         casillas- y no a mano, para que cualquier mundo de prueba que dibuje
-         una charca lo tenga puesto sin acordarse de nada. El motor lo usa para
-         no sondear el agua en los niveles secos. */
+      /* Si el mapa trae agua, y el rectangulo que la envuelve. Se calculan
+         igual que en build.py -mirando las casillas- y no a mano, para que
+         cualquier mundo de prueba que dibuje una charca los tenga puestos sin
+         acordarse de nada. El motor los usa para no sondear el agua ni en los
+         niveles secos ni fuera de donde la hay. */
       hay_agua: celdas.some(function (c) { return TIPOS[c] === 12; }) ? 1 : 0,
+      agua_caja: cajaDelAgua(celdas, ancho),
+      /* Y si lleva liana. El banco pone los bichos a mano y la liana es el
+         quinto de la lista, asi que basta mirar los spawns: el motor no
+         recorre el pendulo en los niveles que no tienen ninguna. */
+      hay_balanceo: spawns.some(function (s) {
+        return s[2] === 0 && s[3] === BICHO_LIANA;
+      }) ? 1 : 0,
       music: opciones.musicaNivel || 0
     }],
     /* solo los numeros de cancion: para saber cual toca no hace falta ninguna

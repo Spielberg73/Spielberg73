@@ -442,6 +442,22 @@ class TestDisquete(unittest.TestCase):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
 
+    def test_el_disco_lleva_un_leeme_con_la_maquina_que_hace_falta(self):
+        """Un .adf pasa de mano en mano y acaba en un Amiga que no es el de
+        quien lo hizo. Cuando no arranca, lo que falta es justo esto: un texto
+        dentro del disco que diga que maquina pide."""
+        tmp = tempfile.mkdtemp(prefix="neoplat-adf-")
+        try:
+            ruta = os.path.join(tmp, "juego.adf")
+            adf.crear_disco_de_juego(ruta, "MI JUEGO", "MiJuego", b"ejecutable",
+                                     "QUE HACE FALTA\n  Un Amiga con 1 MB.\n")
+            with open(ruta, "rb") as fh:
+                contenido = adf.leer(fh.read())
+            self.assertIn("LEEME", contenido, "el disquete no lleva LEEME")
+            self.assertIn("1 MB", contenido["LEEME"].decode("latin-1"))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
     def test_el_bitmap_marca_lo_ocupado(self):
         disco = adf.Disco("PRUEBA")
         disco.fichero("JUEGO", b"x" * 5000)
@@ -615,7 +631,7 @@ class TestProyectoGenerado(unittest.TestCase):
         for archivo in ("src/gamedata.c", "src/graficos.c", "src/sonido.c",
                         "src/np_video.c", "src/np_hud.c", "src/arranque.c",
                         "amiga.ld", "Makefile", "hacer_ejecutable.py",
-                        "hacer_adf.py"):
+                        "hacer_adf.py", "LEEME"):
             self.assertTrue(os.path.isfile(os.path.join(out, archivo)), archivo)
         with open(os.path.join(out, "src/graficos.c"), encoding="utf-8") as fh:
             texto = fh.read()
@@ -1366,6 +1382,52 @@ class TestCompilacionReal(unittest.TestCase):
         self.assertGreater(bss, 704 * 256 * 5 // 8)
         self.assertLess(bss + codigo_largo * 4, 512 * 1024)
 
+    def test_para_cuando_el_juego_no_cabe_en_el_amiga_declarado(self):
+        """El fallo mas caro del Amiga: el disquete arranca, el sistema no
+        puede cargar el juego y en la pantalla se queda el escritorio. Ni un
+        mensaje, y desde fuera no se distingue de un disquete roto.
+
+        Por eso `hacer_ejecutable.py` mide contra lo que deja libre la maquina
+        que declara `amiga_ram:` y **para** en vez de avisar. Lo que se
+        comprueba aqui es que para de verdad, que dice por que, y que no deja
+        el ejecutable escrito: si lo dejara, el siguiente `make` lo veria mas
+        nuevo que el .elf, se lo saltaria y montaria el disquete igual."""
+        out = self._construir("amiga")
+        elf = os.path.join(out, "juego.elf")
+        destino = os.path.join(self.tmp, "no-cabe")
+        hecho = subprocess.run(
+            [sys.executable, os.path.join(out, "hacer_ejecutable.py"),
+             elf, destino, "100"], capture_output=True, text=True)
+        self.assertNotEqual(hecho.returncode, 0,
+                            "el compilador deja pasar un juego que no cabe")
+        self.assertIn("amiga_ram", hecho.stderr,
+                      "no dice como arreglarlo:\n" + hecho.stderr)
+        self.assertFalse(os.path.exists(destino),
+                         "ha dejado escrito un ejecutable que no cabe")
+        # y con la memoria de verdad de la maquina, el mismo ELF pasa
+        hecho = subprocess.run(
+            [sys.executable, os.path.join(out, "hacer_ejecutable.py"),
+             elf, destino, "2048"], capture_output=True, text=True)
+        self.assertEqual(hecho.returncode, 0, hecho.stdout + hecho.stderr)
+        self.assertTrue(os.path.isfile(destino))
+
+    def test_el_makefile_del_amiga_lleva_la_memoria_declarada(self):
+        """`amiga_ram:` del game.yaml tiene que llegar hasta el Makefile: es
+        ahi donde se convierte en la comprobacion que para la compilacion."""
+        for kb, libre in ((512, 190), (1024, 702), (2048, 1726)):
+            build = cargar_demo(self.proyecto, "amiga")
+            build.project.amiga_ram = kb
+            out = os.path.join(self.tmp, "ram-%d" % kb)
+            generar_para_sistema(build, out, sistemas.obtener("amiga"), "202")
+            with open(os.path.join(out, "Makefile"), encoding="utf-8") as fh:
+                makefile = fh.read()
+            self.assertIn("LIBRE := %d" % libre, makefile,
+                          "con amiga_ram de %d KB el Makefile no mide contra "
+                          "%d KB" % (kb, libre))
+            with open(os.path.join(out, "LEEME"), encoding="utf-8") as fh:
+                leeme = fh.read()
+            self.assertIn("QUE HACE FALTA", leeme)
+
     def test_ninguna_maquina_genera_accesos_impares(self):
         """Lo mismo, pero sobre los fuentes de las cinco maquinas y sin enlazar:
         asi tambien entra la Neo Geo, que se construye con ngdevkit y aqui no
@@ -1602,6 +1664,52 @@ class TestCompilacionReal(unittest.TestCase):
                                 "una direccion se sale del hunk %d" % destino)
                 vistos += 1
         self.assertEqual(vistos, info["reloc_codigo"] + info["reloc_bss"])
+
+
+class TestCadaJuegoDePartidaCabeEnSuAmiga(unittest.TestCase):
+    """Los veintidos juegos de partida (once generos por dos estilos),
+    construidos de verdad y medidos contra el Amiga que declaran.
+
+    El Amiga no avisa: si el ejecutable no cabe en la memoria de la maquina, el
+    disquete arranca, AmigaDOS no puede cargar el juego y en la pantalla se
+    queda el escritorio. Sin esta prueba eso no lo ve nadie, y ya habia pasado:
+    hasta la 1.52 los juegos de partida de castlevania, filmation y kung-fu
+    median entre 193 y 197 KB y ninguno arrancaba en un A500 de serie, donde
+    caben 190. Ahora declaran `amiga_ram: 1M` y esto lo comprueba.
+
+    Es la prueba que hay que mirar cuando el motor engorde: lo que falla aqui
+    no es el genero, es que el motor ya no cabe donde cabia."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.cc = _compilador_68k()
+        if not cls.cc:
+            raise unittest.SkipTest("no hay un compilador de 68000 instalado")
+        cls.tmp = tempfile.mkdtemp(prefix="neoplat-cabe-")
+
+    @classmethod
+    def tearDownClass(cls):
+        if getattr(cls, "tmp", ""):
+            shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_todos_caben_en_la_maquina_que_declaran(self):
+        from ngplat.scaffold import GENEROS, crear_proyecto
+        malos = []
+        for genero in GENEROS:
+            for estilo in ("bosque", "hierro"):
+                destino = os.path.join(self.tmp, "%s-%s" % (genero, estilo))
+                crear_proyecto(destino, genero.upper(), "TEST",
+                               genero=genero, estilo=estilo)
+                build = cargar_demo(destino, "amiga")
+                out = os.path.join(destino, "build", "amiga")
+                generar_para_sistema(build, out, sistemas.obtener("amiga"), "202")
+                hecho = subprocess.run(["make", "-C", out],
+                                       capture_output=True, text=True)
+                if hecho.returncode != 0:
+                    malos.append("%s/%s: %s" % (genero, estilo,
+                                                hecho.stderr.strip().split("\n")[0]))
+        self.assertFalse(malos, "no caben en el Amiga que declaran:\n  "
+                                + "\n  ".join(malos))
 
 
 class TestMazmorraEnLaMaquina(unittest.TestCase):
@@ -1903,7 +2011,11 @@ class TestMuestras(unittest.TestCase):
 
     def _escuchar(self, sistema, ruta, sonido=False):
         import muestras
-        self.assertEqual(muestras.comprobar_maquina(sistema, ruta, sonido), 0,
+        from ngplat.project import load_project
+        # el Amiga se emula con la memoria que declara el juego: este proyecto
+        # lleva un tono de un segundo encima y pide un mega
+        ram = load_project(os.path.join(self.proyecto, "game.yaml")).amiga_ram
+        self.assertEqual(muestras.comprobar_maquina(sistema, ruta, sonido, ram), 0,
                          "la muestra digital no suena")
 
     def test_la_neogeo_toca_la_muestra(self):

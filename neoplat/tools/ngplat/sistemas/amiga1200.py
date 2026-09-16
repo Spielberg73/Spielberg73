@@ -47,6 +47,7 @@ class Amiga1200(Amiga):
     hud_doble = 15                             # el ultimo del plano de delante
     por_plano = 16                             # colores de cada plano en doble
     cpu_gcc = "-m68020"
+    ram_fija = 2048            # 2 MB de RAM chip de serie, sin nada que elegir
 
     notas = [
         "colores:  'amiga: 256colores' da 255 colores y ningun parallax;",

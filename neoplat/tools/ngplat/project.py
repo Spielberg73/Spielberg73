@@ -942,6 +942,7 @@ class Project:
     coche: Coche           # solo lo mira la vista de carretera
     asfalto: Carretera     # y los colores con los que se pinta
     amiga_modo: str        # "32colores" o "8colores"
+    amiga_ram: int         # KB del Amiga al que apunta el juego (512 = A500)
     player: Player
     tileset: Tileset
     tiles: Dict[str, TileDef]
@@ -1276,6 +1277,67 @@ MODOS_AMIGA = {
     "16colores": "8colores", "16": "8colores", "16_colores": "8colores",
     "parallax": "8colores", "doble_plano": "8colores", "dual": "8colores",
 }
+
+
+# Cuanta RAM tiene el Amiga al que apunta el juego, en KB, y cuanta deja libre
+# esa maquina para el ejecutable.
+#
+# De estos tres numeros **solo el primero esta medido**: en un A500 emulado de
+# 512 KB, despues de arrancar el sistema, quedan libres unos 190 KB de RAM chip,
+# que es toda la que hay -AmigaDOS carga los dos hunks del juego en chip, que es
+# la unica a la que llegan el copper, el blitter y Paula-. Con 189 arranca y con
+# 209 no. Los otros dos son esos 190 mas la memoria de mas, que es lo que
+# deberia pasar y no se ha comprobado maquina por maquina: para lo que sirven
+# -decir que un juego de 400 KB no cabe en un A500 y si en uno de 1 MB- sobra,
+# y quien apure el ultimo KB de un A1200 tendra que medirlo el.
+#
+# Que se sepa esto es lo que evita el peor fallo del Amiga: pasado ese limite
+# el disquete arranca, el sistema no puede cargar el juego y en la pantalla se
+# queda el escritorio. Ni un mensaje.
+#
+# Y es RAM **chip**, no memoria a secas. El juego se carga entero en chip -los
+# dos hunks se piden asi, porque es la unica a la que llegan el copper, el
+# blitter y Paula-, de modo que la RAM fast de una ampliacion no le sirve de
+# nada al ejecutable. Por eso la lista acaba en 2 MB: no hay Amiga con mas
+# memoria chip que esa, y ponerle ocho megas a un A1200 no hace que quepa un
+# juego mas grande.
+AMIGAS = {
+    512: ("un A500 de serie", 190),
+    1024: ("un Amiga con 1 MB de RAM chip (A500+, A600, A500 ampliado)", 702),
+    2048: ("un Amiga con 2 MB de RAM chip (A1200, A4000, CD32)", 1726),
+}
+
+# Como se escribe la memoria en el yaml. Se admite el numero de KB pelado y las
+# formas en las que se habla de estas maquinas: '512K', '1M', '1 mega'.
+RAM_AMIGA = {
+    "512": 512, "512k": 512, "512kb": 512, "0.5m": 512, "medio_mega": 512,
+    "1024": 1024, "1024k": 1024, "1m": 1024, "1mb": 1024, "1_mega": 1024,
+    "2048": 2048, "2048k": 2048, "2m": 2048, "2mb": 2048, "2_megas": 2048,
+}
+
+
+def _leer_ram_amiga(game: Node) -> int:
+    """A que Amiga apunta el juego, en KB de RAM.
+
+    No cambia ni un byte de lo que se compila: el .adf que sale es el mismo.
+    Lo que cambia es que el compilador sepa contra que medir. Sin esta linea
+    habria que elegir entre avisar siempre -y dar la lata a quien hace un juego
+    para A1200- o no avisar nunca, y no avisar nunca es como se descubre que el
+    disquete no arranca: enchufando el Amiga.
+    """
+    texto = game.raw("amiga_ram", "ram_amiga", "memoria_amiga", "ram")
+    if texto is None:
+        return 512
+    clave = str(texto).strip().lower().replace(" ", "_").replace("-", "_")
+    if clave not in RAM_AMIGA:
+        raise ProjectError(
+            "no entiendo la memoria de Amiga '%s'" % texto,
+            hint="pon '512K' (el A500 de serie), '1M' o '2M'. No hay mas: "
+                 "el juego se carga entero en RAM chip y ningun Amiga lleva "
+                 "mas de 2 MB de esa",
+            where="juego",
+        )
+    return RAM_AMIGA[clave]
 
 
 def _leer_modo_amiga(game: Node) -> str:
@@ -2557,6 +2619,7 @@ def load_project(path: str) -> Project:
     guion_nada = game.str_(["sin_efecto", "nada", "no_pasa_nada",
                             "por_defecto"], "") or ""
     amiga_modo = _leer_modo_amiga(game)
+    amiga_ram = _leer_ram_amiga(game)
     sistema = (game.str_(["system", "sistema", "maquina", "máquina"], "neogeo") or "neogeo")
     bg = game.raw("background", "fondo", "color_fondo")
     default_bg = parse_color(bg, "juego") if bg is not None else (16, 24, 48)
@@ -2802,6 +2865,7 @@ def load_project(path: str) -> Project:
         aggressive=aggressive,
         entre_ellos=entre_ellos,
         amiga_modo=amiga_modo,
+        amiga_ram=amiga_ram,
         time_limit=time_limit, hud=hud, player=player, tileset=tileset, tiles=tiles,
         enemies=enemies, items=items, platforms=platforms,
         breakables=breakables, blocks=blocks,

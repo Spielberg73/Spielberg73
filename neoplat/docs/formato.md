@@ -22,6 +22,7 @@ juego:
   camara: scroll            # scroll o pantallas
   amiga: 32colores          # solo en Amiga: 32colores o 8colores
                             # (en el A1200: 256colores o 16colores)
+  amiga_ram: 512K           # a qué Amiga apunta: 512K, 1M o 2M
   fondo: "#101830"          # color de fondo por defecto
   sistema: neogeo           # neogeo, megadrive, amiga, jaguar o atarist
 ```
@@ -67,6 +68,64 @@ En `8colores` casi ningún dibujo cabe tal cual, así que los colores que sobran
 se cambian por el más parecido de los que quedan y el compilador te dice
 cuántos ha tenido que aproximar. Si quieres mandar tú en los colores, dibuja
 con siete. Las demás máquinas ignoran esta opción.
+
+### `amiga_ram`: a qué Amiga apunta el juego
+
+```yaml
+juego:
+  amiga_ram: 1M      # 512K (el A500 de serie), 1M o 2M
+```
+
+No cambia ni un byte de lo que se compila: el `.adf` que sale es el mismo. Lo
+que cambia es que **el compilador sepa contra qué medir**.
+
+El Amiga tiene un fallo que no avisa: si el ejecutable no cabe en la memoria de
+la máquina, el disquete arranca, AmigaDOS no puede cargar el juego y en la
+pantalla se queda el escritorio. Ni un mensaje. Desde fuera no se distingue de
+un disquete roto, y el que lo prueba no es quien hizo el juego. Con esta línea,
+`make` **para** antes de montar el disquete y dice cuánto ocupa y cuánto cabe.
+
+| `amiga_ram` | la máquina | caben |
+|---|---|---|
+| `512K` | un A500 de serie | ~190 KB |
+| `1M` | A500+, A600, A500 ampliado | ~702 KB |
+| `2M` | A1200, A4000, CD32 | ~1726 KB |
+
+De esos tres números **sólo el primero está medido**: en un A500 emulado de
+512 KB, con 189 KB el juego arranca y con 209 no —y esos mismos 209 arrancan
+en cuanto la máquina tiene un mega—. Los otros dos son esos 190 más la memoria
+de más.
+
+Y es RAM **chip**, no memoria a secas: el juego se carga entero en chip —los
+dos hunks se piden así, porque es la única a la que llegan el copper, el
+blitter y Paula—, de modo que la RAM *fast* de una ampliación no le sirve de
+nada al ejecutable. Por eso la lista acaba en 2 MB: no hay Amiga con más
+memoria chip que ésa, y ponerle ocho megas a un A1200 no hace que quepa un
+juego más grande.
+
+El A1200 y el CD32 no miran esta línea: llevan 2 MB de serie y no hay nada que
+elegir. Y el disquete sale con un **LEEME dentro** que dice qué Amiga hace
+falta, que es lo que echa de menos cualquiera al que le pasas un `.adf` y no le
+arranca.
+
+**Los juegos de partida que piden un mega.** No todos caben en un A500 de
+serie, y hasta la 1.52 eso no lo sabía nadie: se compilaban, montaban su
+disquete y no arrancaban. Ahora lo declaran, y está medido género por género:
+
+| género | bosque | hierro |
+|---|---|---|
+| plataformas | 189 KB | **210 KB — 1M** |
+| castlevania | **193 KB — 1M** | **213 KB — 1M** |
+| filmation | **197 KB — 1M** | **196 KB — 1M** |
+| kung-fu | **195 KB — 1M** | **195 KB — 1M** |
+| comando, mazmorra, barrio, aventura, gráfica, carretera | 180–189 KB | 180–189 KB |
+
+Los de paleta corta pesan más y **no por los colores**: el doble plano del OCS
+lleva dos mapas de bits en vez de uno, y eso son unos 20 KB más de RAM chip.
+
+`tests/test_sistemas.py` construye los veintidós de verdad y los mide contra el
+Amiga que declaran. Cuando esa prueba falle no será por el género: será que el
+motor ya no cabe donde cabía.
 
 `sistema` decide para qué máquina se compila y con qué colores se dibuja el
 preview. También se puede elegir sin tocar el archivo, con `--sistema` en
@@ -1114,36 +1173,120 @@ el agua no te sujeta y por debajo del mapa se cae uno al vacío. Con dos
 casillas de hondo basta: con una sola no cabe la cabeza debajo y no se llega a
 bucear.
 
-### El agua **no viene puesta** en el juego de partida
+### El agua **viene puesta** en el juego de partida
 
-Igual que el cocodrilo y la liana que se columpia, y por lo mismo. El juego que
-crea `ngplat nuevo` tiene que arrancar en un **Amiga 500 de 512 KB**, donde el
-sistema da unos 190 KB y quedan unos setecientos bytes libres, caber en un
-disquete de Atari ST y correr a 60 imágenes por segundo en una Neo Geo que ya
-gasta **198838 de los 200000 ciclos** que da un frame. El agua cuesta, medido:
+El juego que crea `ngplat nuevo` lleva una charca en el primer nivel, justo
+pasados los pinchos: se cae uno dentro sin querer, que es la mejor forma de
+enterarse de que aquí se nada. Todo lo de arriba está ya escrito en su
+`game.yaml` y dibujado en sus PNG.
 
-- unos **2 KB de código** en el 68000 (nadar, bucear, el aire y las dos poses);
-- **1280 bytes** de las cuatro poses nuevas del héroe y varios cientos más de
-  las dos casillas de agua del tileset;
-- y dos ranuras de animación en cada actor, que engordan `NpActorDef` un 15% y
-  mueven los desplazamientos de medio motor.
+No salió gratis, y lo que costó está medido:
 
-Con todo puesto, el ejecutable de Amiga pasa de 193356 bytes a más de 195000 y
-AROS contesta «not enough memory available»: el disquete arranca y el juego no
-llega a salir. En un **A1200, un CD32, una Mega Drive, un X68000 o una Jaguar
-sobra sitio de largo**, así que el andamiaje deja las líneas escritas y
-comentadas y quitarles la almohadilla es todo lo que hay que hacer.
+| dónde | cuánto |
+| --- | --- |
+| Neo Geo, el código del agua | 1934 ciclos por frame de los 200000 |
+| Neo Geo, el mapa de la charca | 1930 ciclos más |
+| Donde no hay agua | **nada**: ver «lo que cuesta mirar si estás mojado» |
+| Amiga, el ejecutable | 3112 bytes: de 190628 a 193740 |
 
-Son tres cosas, y están apuntadas en el `game.yaml` que te crea `ngplat nuevo`:
+Los 3864 ciclos de la Neo Geo no cabían: el nivel gastaba ya 198838 de los
+200000. La charca se los ha pagado quitando dos cosas de su sitio: **una seta**
+—la del borde del agua, casi 4000 ciclos— y **una moneda** —la que quedaba
+encima, 2000—. Con eso el frame más caro gasta **196646** y el juego va a 60
+imágenes por segundo, comprobado en el banco; y encima sobran 3354 para lo que
+quieras poner tú.
 
-1. **Las cifras**, en `jugador:` — `brazada:`, `aire:` y `ahogo:`.
-2. **Las dos posturas**, en `animaciones:` — `nadar:` y `bucear:`.
-3. **Las dos casillas**, en `tiles: leyenda:` — `'~'` y `'w'`.
+En el Amiga entra por **820 bytes**: un A500 de 512 KB deja libres unos 190 KB
+(194560) y el ejecutable ocupa 193740. Está arrancado en un A500 emulado de
+512 KB, no calculado.
 
-Y falta el dibujo: la hoja del héroe necesita **cuatro fotogramas más** (los
-11 y 12 nadando, los 13 y 14 buceando) y el tileset **dos casillas más**. Se
-dibujan en el editor (<kbd>E</kbd> → dibujos), o se generan con el mismo
-dibujante que usa el andamiaje:
+#### Lo que cuesta mirar si estás mojado
+
+Cada frame, el motor tiene que saber si el jugador está en el agua, y eso es
+una consulta al mapa: una multiplicación de 32 bits que en un 68000 es una
+llamada a la biblioteca. Parece poco y no lo es, así que el compilador pone dos
+guardas delante, las dos calculadas al compilar:
+
+- **`hay_agua`**, un byte por nivel: si el mapa no tiene ni una casilla de
+  agua, el sondeo no llega a ocurrir. Un juego con agua suele tener la mayoría
+  de los niveles secos y ésos pagan una comparación.
+- **el rectángulo que envuelve el agua** del nivel, en píxeles: fuera de él
+  tampoco se sondea. En el nivel de partida la charca son ocho casillas de
+  cuarenta y ocho, así que son cuatro comparaciones de enteros durante el 85%
+  del recorrido.
+
+El segundo no es un adorno: sin él, el **Atari ST** perdía el vblank en la
+pantalla más cargada del primer nivel —la del principio— y el juego entero
+bajaba de 50 imágenes por segundo. Se oye en la música, que va pegada al frame:
+pasaba de 16 notas de 16 a 10. Con el rectángulo vuelve a 16 de 16, dentro y
+fuera del agua.
+
+**La liana lleva la misma guarda.** El paso del péndulo recorre la lista de
+bichos del nivel entera buscando lianas, y eso lo pagaba todo el juego tuviera
+lianas ese nivel o no: 4000 ciclos por frame de los 200000 de la Neo Geo. Ahora
+cada nivel lleva su `hay_balanceo` y el que no tiene ninguna no entra al bucle.
+La diferencia es de no caber a caber: una liana en el segundo nivel del juego de
+partida sale por **198708** ciclos en vez de por 200650.
+
+Lo que sigue fuera son **los cocodrilos y la liana que se columpia**, pero ya
+no por lo mismo, y conviene decirlo porque se volvió a medir:
+
+- **la liana ya cabe en la Neo Geo.** Costaba 4000 ciclos por frame —no 6000—
+  y los cobraba en todos los niveles, tuvieran liana o no; con `hay_balanceo`
+  por nivel, una liana en la cueva deja el frame más caro en **198708** de
+  200000 y el juego a 60. Lo que la deja fuera es el **Amiga**: su hoja son
+  48×48 por cinco fotogramas, 15 KB, y con ella el ejecutable pasa de 190 KB a
+  205 y deja de arrancar en un A500 de 512 KB. Se prefiere que el juego de
+  partida arranque en el A500 pelado; si a ti eso no te importa, pégala con la
+  receta de arriba y sube `amiga_ram: 1M`, que es exactamente para esto.
+- **los cocodrilos** siguen costando 16000 ciclos por frame, y de eso no hay en
+  ninguna de las máquinas estrechas.
+
+El motor los lleva los dos, los dibujos vienen con el proyecto y la receta para
+pegarlos está más arriba; en un A1200, un CD32, una Mega Drive, un X68000 o una
+Jaguar sobra sitio de largo.
+
+#### Quitar el agua
+
+Si tu juego no la usa, quítala y recupera los 3000 bytes y los 1934 ciclos:
+basta con **borrar `brazada:`** de `jugador:`. Sin esa línea el compilador
+borra el agua entera del ejecutable, y las casillas `tipo: agua` que queden en
+el mapa se vuelven decorado. Las dos posturas y las dos casillas de la leyenda
+se pueden dejar o quitar: ya no las mira nadie.
+
+#### La charca del juego de partida
+
+Así está cavada. Se le quitan **dos filas de cielo** de arriba (estaban vacías)
+y se le ponen **dos de tierra** abajo, con lo que el nivel sigue midiendo
+dieciséis filas y la cámara no se entera:
+
+```
+P.......s...V...k.^.....................c...G...
+####################~~~~~~~~######..############
+,,,,,,,,,,,,,,,,,,,,wwwwwwww,,,,,,..,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,..,,,,,,,,,,,,
+```
+
+Y tres cosas cambian de sitio al cavar:
+
+- **la llave** se adelanta de la columna 22 a la 16: en su sitio de siempre
+  quedaría flotando sobre la charca, y una llave que hay que pescar es una
+  llave que alguien se deja;
+- **la seta de la columna 28** desaparece: caía justo en el borde del agua
+  —salías escurriendo y te la comías— y es la que pagaba casi 4000 de los
+  ciclos que hacían falta;
+- **la moneda de la columna 22** se va con ella. Donde estaba —dos filas por
+  encima del agua— no se llegaba: saliendo de una brazada el héroe sube hasta
+  la fila 11,75 y la moneda está en la 11, así que se rozaba y no se cogía, que
+  es peor que no ponerla. Y bajarla a la fila del agua, donde sí se pesca
+  nadando, cuesta 3982 ciclos en vez de 2000: ahí cae dentro del frame más caro
+  —el jugador nadando, el agua y ella a la vez— y el nivel se va a 200690 de
+  los 200000. Medido las tres veces.
+
+Los dibujos del agua —las cuatro poses del héroe (11 y 12 nadando, 13 y 14
+buceando) y las dos casillas del tileset— los dibuja el andamiaje. Si te haces
+los tuyos, el editor los tiene (<kbd>E</kbd> → dibujos); y si quieres los del
+kit para un proyecto que ya existe:
 
 ```python
 from ngplat import art
@@ -1152,21 +1295,9 @@ write_png("graficos/heroe.png", art.heroe(agua=True))
 write_png("graficos/tiles.png", art.tileset(agua=True))
 ```
 
-Y la charca, cavada en el primer nivel. Se le quitan **dos filas de cielo** de
-arriba (estaban vacías) y se le ponen **dos de tierra** abajo, con lo que el
-nivel sigue midiendo dieciséis filas y la cámara no se entera:
-
-```
-P.......s...V...k.^.........s...........c...G...
-####################~~~~~~~~######..############
-,,,,,,,,,,,,,,,,,,,,wwwwwwww,,,,,,..,,,,,,,,,,,,
-,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,..,,,,,,,,,,,,
-```
-
-(La llave se adelanta de la columna 22 a la 16: en su sitio de siempre quedaría
-flotando sobre el agua.) Esto es exactamente lo que hace
-`tests/test_niveles.py`, que pega el agua así y comprueba con el bot que la
-charca se puede cruzar.
+`tests/test_niveles.py` juega esa charca con el bot y cuenta los frames que
+pasa dentro del agua: terminar el nivel no dice si se cruzó nadando o de un
+salto por encima, y eso es justo lo que hay que comprobar.
 
 ### `entre_ellos`: que los bichos se peguen entre ellos
 

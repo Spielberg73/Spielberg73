@@ -145,16 +145,83 @@ def _heroe_agachado() -> Image:
     return c.image
 
 
+def _heroe_nadando(brazo_arriba: bool) -> Image:
+    """Nadando en la superficie: el cuerpo dentro y la cabeza fuera.
+
+    Va erguido y bajo en el cuadro, igual que en el estilo de bosque: eso es
+    lo que dice de un vistazo que la cabeza esta fuera. Con seis colores la
+    capucha sigue siendo el rojo y la cara el claro, que es lo que hace que se
+    reconozca al heroe aunque solo asome media cabeza.
+    """
+    c = Lienzo(16, 16)
+    top = 4
+    c.rect(5, top, 6, 1, LINEA)                    # capucha, fuera del agua
+    c.rect(4, top + 1, 8, 3, ROJO)
+    c.rect(6, top + 2, 4, 2, CLARO)                # cara
+    c.px(6, top + 2, LINEA)
+    c.px(9, top + 2, LINEA)
+
+    c.rect(4, top + 5, 8, 5, ROJO)                 # el tronco, ya mojado
+    c.rect(4, top + 5, 1, 5, LINEA)
+    if brazo_arriba:
+        c.rect(12, top + 1, 2, 2, CLARO)           # el brazo sale del agua
+        c.rect(11, top + 3, 2, 2, ROJO)
+        c.rect(2, top + 6, 2, 1, CLARO)            # y el otro estirado atras
+    else:
+        c.rect(11, top + 5, 3, 2, CLARO)           # el brazo entra
+        c.rect(2, top + 4, 2, 2, CLARO)            # y el otro sale por detras
+    return c.image
+
+
+def _heroe_buceando(patada: bool) -> Image:
+    """Buceando: todo el cuerpo debajo, tumbado y mirando hacia delante.
+
+    Es la diferencia que se ve: nadando va de pie y buceando va horizontal.
+    Los dos fotogramas son la patada de las piernas, que es lo que mueve a
+    alguien debajo del agua.
+    """
+    c = Lienzo(16, 16)
+    fila = 6                                       # tumbado, a media altura
+    c.rect(11, fila, 4, 1, LINEA)                  # la capucha, por delante
+    c.rect(10, fila + 1, 5, 3, ROJO)
+    c.rect(11, fila + 2, 3, 2, CLARO)              # la cara, de perfil
+    c.px(13, fila + 2, LINEA)                      # el ojo
+
+    c.rect(4, fila + 1, 7, 4, ROJO)                # el tronco, horizontal
+    c.rect(4, fila + 4, 7, 1, LINEA)               # la sombra, debajo
+    c.rect(6, fila + 2, 3, 2, CLARO)               # el peto claro
+    c.rect(14, fila - 1, 2, 1, CLARO)              # los brazos, estirados
+
+    if patada:
+        c.rect(1, fila + 1, 3, 2, ROJO)            # las piernas, abiertas
+        c.px(0, fila, LINEA)
+        c.rect(1, fila + 4, 3, 2, ROJO)
+        c.px(0, fila + 5, LINEA)
+    else:
+        c.rect(1, fila + 2, 3, 3, ROJO)            # y juntas
+        c.rect(0, fila + 4, 1, 1, LINEA)
+    return c.image
+
+
+# Las once poses de siempre, y las cuatro del agua detras. El agua va aparte
+# por lo mismo que en el estilo de bosque: cuatro fotogramas de mas son 1280
+# bytes en el ejecutable de Amiga, y solo los paga el juego que nade.
 HEROE_POSES = 11
+HEROE_POSES_AGUA = 15
 
 
-def heroe() -> Image:
-    hoja = Lienzo(16 * HEROE_POSES, 16)
-    for i in range(HEROE_POSES):
+def heroe(agua: bool = False) -> Image:
+    poses = HEROE_POSES_AGUA if agua else HEROE_POSES
+    hoja = Lienzo(16 * poses, 16)
+    for i in range(poses):
         if i == 8:
             dibujo = _heroe_de_espaldas()
         elif i == 10:
             dibujo = _heroe_agachado()
+        elif i in (11, 12):
+            dibujo = _heroe_nadando(i == 11)
+        elif i in (13, 14):
+            dibujo = _heroe_buceando(i == 13)
         else:
             dibujo = _heroe_frame(i)
         hoja.blit(i * 16, 0, dibujo)
@@ -458,11 +525,34 @@ def _tile_control() -> Image:
     return c.image
 
 
-def tileset() -> Image:
+def _tile_agua(superficie: bool) -> Image:
+    """El agua de la cueva. Dos casillas: la superficie y el fondo.
+
+    Las dos son agua para el motor -se nada en cualquiera de las dos-, pero se
+    dibujan distinto porque el jugador tiene que ver **donde acaba el agua**:
+    la de arriba lleva la linea clara del ras y la de abajo no. Con seis
+    colores el agua es la roca oscura y sus reflejos la roca clara, que es
+    exactamente como se pintaba el agua en las maquinas de pocos colores.
+    """
+    c = Lienzo(16, 16)
+    c.rect(0, 0, 16, 16, ROCA2)
+    if superficie:
+        c.rect(0, 0, 16, 1, CLARO)                 # el ras, brillando
+        c.rect(0, 1, 16, 1, ROCA)
+    for x, y in ((2, 5), (9, 8), (5, 12), (12, 4)):
+        c.rect(x, y, 4, 1, ROCA)                   # los reflejos de dentro
+    c.rect(0, 15, 16, 1, LINEA)
+    return c.image
+
+
+def tileset(agua: bool = False) -> Image:
+    """Las nueve casillas de siempre, y las dos del agua detras si se piden."""
     tiles = [_tile_vacio(), _tile_roca(), _tile_viga(),
              _tile_pinchos(), _tile_puerta(), _tile_fondo(),
              _tile_escalera(True), _tile_escalera(False),
              _tile_control()]
+    if agua:
+        tiles += [_tile_agua(True), _tile_agua(False)]
     hoja = Lienzo(16 * len(tiles), 16)
     for i, tile in enumerate(tiles):
         hoja.blit(i * 16, 0, tile)
@@ -566,9 +656,9 @@ def cadena() -> Image:
     return art.liana(ROCA2, ROCA)
 
 
-def todos() -> Dict[str, Image]:
+def todos(agua: bool = False) -> Dict[str, Image]:
     return {
-        "graficos/heroe.png": heroe(),
+        "graficos/heroe.png": heroe(agua),
         "graficos/cocodrilo.png": cocodrilo(),
         "graficos/liana.png": cadena(),
         "graficos/enemigo.png": enemigo(),
@@ -584,6 +674,6 @@ def todos() -> Dict[str, Image]:
         "graficos/hacha.png": hacha(),
         "graficos/latigo.png": latigo(),
         "graficos/mejora.png": mejora(),
-        "graficos/tiles.png": tileset(),
+        "graficos/tiles.png": tileset(agua),
         "graficos/cueva.png": cueva(),
     }

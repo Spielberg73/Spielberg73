@@ -38,13 +38,27 @@ FRANJA_SUELO = (225, 250)    # el suelo del escenario, con sus bordes
 FRAMES_ANTES_DE_MEDIR = 110  # lo que tarda la camara en despegarse del borde
 
 
+# La RAM chip del Amiga emulado, del KB al indice que usa PUAE. El core no
+# admite megas: admite '1', '2', '3' y '4', que son 512 KB, 1 MB, 1,5 MB y
+# 2 MB. Se dice en KB y se traduce aqui porque un '2' suelto en una prueba no
+# dice nada, y poner un valor que no este en esa lista no falla: el core lo
+# ignora y la maquina arranca con lo que le parece, que es como se pierde media
+# tarde mirando una pantalla de cuatro colores.
+CHIP_PUAE = {512: "1", 1024: "2", 1536: "3", 2048: "4"}
+
+
 def comprobar(adf: str, capturas: str = "capturas", musica=None,
               salto=None, disparo=None, parallax: bool = False,
               pantallas: bool = False, titulo_musica: str = "",
-              modelo: str = "A500", iso: bool = False) -> int:
+              modelo: str = "A500", iso: bool = False, ram: int = 0) -> int:
     """`modelo` es la maquina que se emula: 'A500' (OCS, lo de siempre) o
     'A1200' (AGA). El disquete del A1200 lleva ocho bitplanes y en un A500 no
-    se veria nada, asi que cada uno se prueba en el suyo."""
+    se veria nada, asi que cada uno se prueba en el suyo.
+
+    `ram` son los KB de RAM chip que se le ponen a esa maquina, y salen de
+    `amiga_ram:` en el game.yaml: el juego dice a que Amiga apunta y se prueba
+    en ese, no en uno mas grande. Probarlo siempre con 1 MB era enganarse solo:
+    el disquete arrancaba en el banco y no en el A500 de quien lo jugara."""
     core = buscar_core(CORE, "NEOPLAT_CORE_AMIGA")
     if not core:
         print("el core de PUAE no esta instalado: se salta la prueba")
@@ -65,8 +79,9 @@ def comprobar(adf: str, capturas: str = "capturas", musica=None,
         "puae_model": modelo,           # A500: OCS, 68000, 512 KB de RAM chip
         "puae_video_standard": "PAL",
         # el A1200 lleva 2 MB de RAM chip de serie, y los ocho bitplanes los
-        # necesitan: el mapa de bits solo son ya 176 KB
-        "puae_chipmem_size": "2" if modelo != "A500" else "1",
+        # necesitan: el mapa de bits solo son ya 176 KB. El A500 se prueba con
+        # lo que declare el juego, que por defecto son los 512 KB de serie.
+        "puae_chipmem_size": CHIP_PUAE[ram or (512 if modelo == "A500" else 2048)],
     })
     emu.cargar(adf)
 
@@ -262,11 +277,14 @@ if __name__ == "__main__":
     # dejan en otra carpeta), asi que se puede decir donde esta
     proyecto = ""
     modelo = "A500"
+    ram = 0
     for opcion in opciones:
         if opcion.startswith("--proyecto="):
             proyecto = opcion.split("=", 1)[1]
         elif opcion.startswith("--modelo="):
             modelo = opcion.split("=", 1)[1]
+        elif opcion.startswith("--ram="):
+            ram = int(opcion.split("=", 1)[1])
     proyecto = proyecto or buscar_proyecto(disco)
     p = load_project(proyecto) if proyecto else None
     sys.exit(comprobar(disco, argumentos[1] if len(argumentos) > 1 else "capturas",
@@ -278,4 +296,8 @@ if __name__ == "__main__":
                        pantallas="--pantallas" in opciones
                                  or bool(p and p.camera == "pantallas"),
                        titulo_musica=p.sound.titulo if p else "",
-                       modelo=modelo))
+                       modelo=modelo,
+                       # la maquina la elige el juego: si declara 1 MB se
+                       # prueba con 1 MB, y si no declara nada, con los 512 KB
+                       # del A500 de serie
+                       ram=ram or (p.amiga_ram if p and modelo == "A500" else 0)))

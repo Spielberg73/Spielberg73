@@ -1364,6 +1364,20 @@
     return this.aguaAt(cx, p.y + I2F(1)) ? 2 : 1;
   };
 
+  /* Gemela de np_cerca_del_agua: si el jugador cae dentro del rectangulo que
+     ocupa el agua del nivel. Aqui no ahorra nada -el navegador va sobrado-
+     pero tiene que estar, porque decide lo mismo que en C y la paridad se
+     comprueba paso a paso. */
+  World.prototype.cercaDelAgua = function (quien) {
+    var caja = this.level.agua_caja, a = this.data.player.actor;
+    var p = this.players[quien];
+    if (!caja) return true;
+    var cx = F2I(p.x) + ((a.box_w / 2) | 0);
+    var arriba = F2I(p.y) + 1;
+    var medio = F2I(p.y) + ((a.box_h / 2) | 0);
+    return cx >= caja[0] && cx <= caja[2] && medio >= caja[1] && arriba <= caja[3];
+  };
+
   /* --- las lianas. Gemelas de np_climb_at, np_climb_mount y np_climb_update.
      Una liana no es una escalera: se coge en el aire y se sube recta. */
   World.prototype.climbAt = function (x, y) {
@@ -2355,10 +2369,11 @@
 
     /* El agua: como esta de mojado y la cuenta del aire. Gemelo del bloque de
        np_player_update; lo que cambia el agua va mas abajo, en su sitio. */
-    /* `hay_agua` del nivel va delante, igual que en C: en un nivel seco
-       esto es una comparacion y no dos consultas al mapa. */
+    /* Las dos guardas baratas van delante, igual que en C: `hay_agua` se
+       ahorra el sondeo en los niveles secos y el rectangulo se lo ahorra en el
+       resto del escenario de los que si tienen agua. */
     if (d.swim_stroke && this.level && this.level.hay_agua) {
-      p.agua = this.aguaEstado(quien);
+      p.agua = this.cercaDelAgua(quien) ? this.aguaEstado(quien) : 0;
       /* Sin `aire:` no se ahoga nadie. Igual que en C. */
       if (p.agua === 2 && d.breath) {
         if (p.aire) p.aire--;
@@ -3792,7 +3807,9 @@
        que hay delante ya esta en su sitio cuando tu llegas. Igual que en C. */
     if (this.carretera()) this.traficoPaso();
     this.cocodriloPaso();
-    this.balanceoPaso();
+    /* Y el pendulo solo en los niveles que llevan liana, igual que en C: ahi
+       se ahorra recorrer la lista de bichos entera cada frame. */
+    if (this.level && this.level.hay_balanceo) this.balanceoPaso();
 
     for (quien = 0; quien < MAX_PLAYERS; quien++) {
       var jugador = this.players[quien];

@@ -91,8 +91,8 @@ Abre `game.yaml` y busca `niveles:`. El mapa son caracteres:
 - `P` dónde empiezas (solo una)
 - `#` suelo, `=` plataforma que se atraviesa desde abajo, `^` pinchos
 - `G` la meta
-- `~` la superficie del agua y `w` el fondo: ahí se nada y se bucea, si
-  enciendes el agua (viene apuntada y apagada; ver «5b. El agua»)
+- `~` la superficie del agua y `w` el fondo: ahí se nada y se bucea (la charca
+  del primer nivel está hecha con eso; ver «5b. El agua»)
 - `s` una seta, `c` una moneda, `k` una llave, `T` un tablón que va y viene
   (mira `spawns:`)
 - `/` y `|` escaleras (en el género castlevania): te subes pulsando arriba
@@ -159,19 +159,10 @@ y salta con <kbd>G</kbd>.
 
 ## 5b. El agua: nadar y bucear
 
-El juego que acabas de crear **no trae agua puesta**, pero la trae apuntada:
-busca en el `game.yaml` las líneas comentadas de `brazada:`. Quítales la
-almohadilla —a esas tres, a las dos de `nadar:`/`bucear:` y a las dos casillas
-`'~'` y `'w'` de la leyenda— y ya puedes cavar una charca. Viene apagada porque
-el agua son unos 2 KB de código y kilo y medio de dibujos, y este juego tiene
-que caber en un Amiga 500 de 512 KB; en un A1200, un CD32, una Mega Drive, un
-X68000 o una Jaguar sobra sitio. La receta entera —incluida la charca lista
-para copiar y las cuatro poses que hay que dibujarle al héroe— está en
-`docs/formato.md`.
-
-Con el agua puesta, cáete dentro: el héroe cambia de postura, se hunde despacio
-y el botón de saltar deja de ser un salto y pasa a ser **una brazada**, que
-puedes repetir todas las veces que quieras.
+El juego que acabas de crear **ya trae una charca**, en el primer nivel, justo
+pasados los pinchos. Corre hacia la derecha y cáete dentro: el héroe cambia de
+postura, se hunde despacio y el botón de saltar deja de ser un salto y pasa a
+ser **una brazada**, que puedes repetir todas las veces que quieras.
 
 Hay dos posturas y las decide **la cabeza**, no los pies. Con la cabeza fuera
 estás nadando: respiras, flotas y la siguiente brazada te saca del agua. Con
@@ -203,6 +194,11 @@ suelo** por el que se anda (si la pones encima parecerá un bloque de agua
 flotando) y por debajo del fondo tiene que haber tierra, porque el agua no te
 sujeta y por debajo del mapa se cae uno al vacío. Dos casillas de hondo es el
 mínimo: con una no cabe la cabeza debajo y no se llega a bucear.
+
+**Y si no la quieres**, borra `brazada:` de `jugador:` y el compilador quita el
+agua entera del ejecutable: 3000 bytes menos en el Amiga y 1934 ciclos por
+frame menos en la Neo Geo. Las casillas `'~'` y `'w'` que dejes en el mapa se
+quedan de decorado.
 
 ## 6. Añade un enemigo nuevo (desde el editor)
 
@@ -331,6 +327,13 @@ el Amiga delante) y enciendes:
 cd build/amiga
 make run          # con FS-UAE instalado, mete el disquete y arranca
 ```
+
+**Y dile a qué Amiga apuntas**, con `amiga_ram:` en `juego:` — `512K` (el A500
+de serie, que es lo que trae el andamiaje), `1M` o `2M`. No cambia lo que se
+compila: lo que hace es que `make` **pare** si el juego no cabe en esa máquina,
+en vez de sacar un disquete que arranca y se queda en el escritorio sin decir
+nada. Dentro del `.adf` va además un LEEME diciendo qué Amiga hace falta, para
+cuando se lo pases a alguien.
 
 Y el del Atari ST es otro disquete de verdad: un `.st` de 720 KB con el juego
 en la carpeta `AUTO`, que es de donde TOS lo arranca solo al encender. Va en

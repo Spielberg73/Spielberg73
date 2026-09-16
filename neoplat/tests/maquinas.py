@@ -92,12 +92,17 @@ class _BancoNeoGeo:
         return self.maquina.escuchar(cuantos)
 
 
-def montar(sistema, ruta, sonido=False):
+def montar(sistema, ruta, sonido=False, ram=0):
     """Devuelve (emulador, boton de start, como esperar al titulo).
 
     `sonido` solo lo mira la Neo Geo, que no usa libretro sino el banco del
     kit: hay que darle el `Sonido` del proyecto para que monte el Z80 con su
-    ROM M1 y la ROM V1 de las muestras."""
+    ROM M1 y la ROM V1 de las muestras.
+
+    `ram` son los KB de RAM chip del Amiga, los que declara `amiga_ram:` en el
+    game.yaml. Solo lo mira el Amiga, y hace falta: un juego que pida un mega
+    metido en un A500 de 512 KB no arranca, y desde aqui eso se ve como un
+    juego mudo."""
     if sistema == "neogeo":
         return _BancoNeoGeo(ruta, sonido), "START", lambda emu: emu.avanzar(15)
 
@@ -107,7 +112,8 @@ def montar(sistema, ruta, sonido=False):
     elif sistema == "amiga":
         import emulador_amiga as maq
         opciones = {"puae_kickstart": "aros", "puae_model": "A500",
-                    "puae_video_standard": "PAL"}
+                    "puae_video_standard": "PAL",
+                    "puae_chipmem_size": maq.CHIP_PUAE[ram or 512]}
         # en el Amiga el start es el **disparo**: el segundo boton es el de
         # accion, para poder atacar
         empezar, esperar = "B", None

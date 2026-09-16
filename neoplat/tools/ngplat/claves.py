@@ -25,6 +25,7 @@ CAMPOS: Dict[str, Dict[str, List[str]]] = {
         "fondo": ["fondo", "background"],
         "camara": ["camara", "camera"],
         "amiga": ["amiga", "modo_amiga"],
+        "amiga_ram": ["amiga_ram", "ram_amiga", "memoria_amiga", "ram"],
     },
     "jugador": {
         "velocidad": ["velocidad", "speed"],
@@ -106,6 +107,7 @@ OPCIONES: Dict[str, List[str]] = {
     "camara": ["scroll", "pantallas"],
     "movimiento": ["horizontal", "vertical"],
     "amiga": ["32colores", "8colores"],
+    "amiga_ram": ["512K", "1M", "2M"],
 }
 
 # Rangos y paso de cada numero, para poder ofrecer controles con sentido.

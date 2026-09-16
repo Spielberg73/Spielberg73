@@ -19,7 +19,10 @@ de datos por bloque en vez de 512; a cambio, arranca en cualquier Amiga.
 El disco sale siempre igual byte a byte (las fechas son fijas), asi que dos
 compilaciones del mismo juego dan el mismo ADF.
 
-    python3 hacer_adf.py disco.adf "BOSQUE" BosqueMagico
+    python3 hacer_adf.py disco.adf "BOSQUE" BosqueMagico [ejecutable] [LEEME]
+
+El ultimo argumento es un archivo de texto que se copia al disquete tal cual.
+Ahi va lo unico que no se puede saber mirando el disquete: que Amiga hace falta.
 """
 
 from __future__ import annotations
@@ -362,10 +365,19 @@ def _leer_fichero(bloque, cabecera: int) -> bytes:
 # --------------------------------------------------------------- cli
 
 def crear_disco_de_juego(ruta: str, etiqueta: str, ejecutable: str,
-                         datos: bytes) -> Tuple[int, int]:
-    """Un disquete que arranca solo y ejecuta el juego."""
+                         datos: bytes, leeme: str = "") -> Tuple[int, int]:
+    """Un disquete que arranca solo y ejecuta el juego.
+
+    Con `leeme`, ademas del juego va un archivo de texto con las cuatro cosas
+    que no se pueden saber mirando el disquete y que hacen falta para jugar:
+    que Amiga se necesita, que arranca solo y donde va el mando. Un disquete
+    sin eso es un disquete que hay que probar para saber si funciona, y ahi es
+    donde se pierde la gente que no hizo el juego.
+    """
     disco = Disco(etiqueta)
     disco.fichero(ejecutable, datos)
+    if leeme:
+        disco.fichero("LEEME", leeme.encode("latin-1", "replace"))
     carpeta_s = disco.carpeta("s")
     arranque = ("; lo primero que hace el disco al arrancar\n%s\n" % ejecutable)
     disco.fichero("startup-sequence", arranque.encode("latin-1"), carpeta_s)
@@ -382,10 +394,18 @@ def main(argv: List[str]) -> int:
         return 1
     destino, etiqueta, ejecutable = argv[1], argv[2], argv[3]
     origen = argv[4] if len(argv) > 4 else ejecutable
+    leeme = ""
+    if len(argv) > 5 and argv[5]:
+        try:
+            with open(argv[5], encoding="latin-1") as fh:
+                leeme = fh.read()
+        except OSError:
+            leeme = ""      # sin LEEME el disquete sale igual: solo pierde el texto
     try:
         with open(origen, "rb") as fh:
             datos = fh.read()
-        tamano, libre = crear_disco_de_juego(destino, etiqueta, ejecutable, datos)
+        tamano, libre = crear_disco_de_juego(destino, etiqueta, ejecutable,
+                                             datos, leeme)
     except (OSError, ErrorAdf) as error:
         sys.stderr.write("error: %s\n" % error)
         return 1

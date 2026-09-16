@@ -618,6 +618,51 @@ prueba("el yaml recoge la camara y el modo de color del Amiga", function () {
   assert.ok(/^\s*amiga: 8colores\b/m.test(yaml), "falta el modo del Amiga");
 });
 
+prueba("cavar una charca en el editor deja el agua lista para nadar", function () {
+  /* El motor no sondea el agua a lo loco: mira antes si el nivel tiene alguna
+     casilla de agua y si el jugador esta dentro del rectangulo que la
+     envuelve. Los dos los calcula el compilador, asi que el editor tiene que
+     recalcularlos al pintar; si no, la charca que acabas de cavar se veria y
+     no se podria nadar hasta volver a compilar. */
+  var e = nuevoEditor();
+  /* El ejemplo del kit no lleva agua, asi que se le anade una casilla: lo que
+     se prueba es el editor, no el juego de ejemplo. */
+  var agua = e.data.tiles.kind.length;
+  e.data.tiles.kind.push(12);            /* 12 = NP_TILE_AGUA */
+  e.data.tiles.gfx.push(0);
+  e.data.tiles.index["~"] = agua;
+  assert.strictEqual(e.data.levels[e.nivel].hay_agua || 0, 0,
+    "el nivel ya traia agua");
+  e.simbolo = "~";
+  e.empezarCambio();
+  for (var x = 4; x <= 7; x++) e.pintar(x, 6, false);
+  e.terminarCambio();
+  e.aplicarAlMotor();
+  var nivel = e.data.levels[e.nivel];
+  assert.strictEqual(nivel.hay_agua, 1, "el nivel no se entera de que hay agua");
+  assert.deepStrictEqual(nivel.agua_caja,
+    [4 * 16, 6 * 16, 7 * 16 + 15, 6 * 16 + 15],
+    "el rectangulo del agua no es el que se acaba de pintar");
+  /* y al borrarla se apaga otra vez: si no, el nivel seguiria sondeando el
+     mapa sesenta veces por segundo por un agua que ya no esta */
+  e.simbolo = ".";
+  e.empezarCambio();
+  for (x = 4; x <= 7; x++) e.pintar(x, 6, false);
+  e.terminarCambio();
+  e.aplicarAlMotor();
+  assert.strictEqual(e.data.levels[e.nivel].hay_agua, 0,
+    "el nivel sigue creyendo que tiene agua despues de borrarla");
+});
+
+prueba("el yaml recoge a que Amiga apunta el juego", function () {
+  var e = nuevoEditor();
+  e.ponerPropiedad("juego", "amiga_ram", "1M");
+  var yaml = e.exportarYaml();
+  assert.ok(/^\s*amiga_ram: 1M\b/m.test(yaml), "falta la memoria del Amiga");
+  assert.strictEqual(e.data.amiga_ram, 1024,
+    "el editor guarda la memoria en KB, que es como la lee el compilador");
+});
+
 prueba("el yaml quita los enemigos borrados", function () {
   var e = nuevoEditor();
   var nombre = e.modelo.enemigos[0].nombre;

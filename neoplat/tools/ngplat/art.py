@@ -1068,9 +1068,15 @@ def liana(cuerda: RGBA = None, luz: RGBA = None) -> Image:
     return hoja.image
 
 
-def todos() -> Dict[str, Image]:
+def todos(agua: bool = False) -> Dict[str, Image]:
+    """Los veinte dibujos del estilo de bosque.
+
+    Con `agua`, el heroe sale con las cuatro poses de nadar y bucear detras y
+    el tileset con las dos casillas de agua: son 1,25 KB mas de dibujos, y
+    solo los paga el juego que nade.
+    """
     return {
-        "graficos/heroe.png": heroe(),
+        "graficos/heroe.png": heroe(agua),
         "graficos/enemigo.png": enemigo(),
         "graficos/murcielago.png": murcielago(),
         "graficos/cocodrilo.png": cocodrilo(),
@@ -1087,7 +1093,7 @@ def todos() -> Dict[str, Image]:
         "graficos/hacha.png": hacha(),
         "graficos/latigo.png": latigo(),
         "graficos/mejora.png": mejora(),
-        "graficos/tiles.png": tileset(),
+        "graficos/tiles.png": tileset(agua),
         "graficos/cielo.png": cielo(),
         "graficos/arboles.png": arboles(),
     }

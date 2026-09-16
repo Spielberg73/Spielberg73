@@ -228,6 +228,8 @@ def build_data(build: Build) -> Dict[str, object]:
             "keys_needed": level.keys_needed,
             # igual que en C: en un nivel seco el motor no sondea el agua
             "hay_agua": level.hay_agua,
+            "agua_caja": list(level.agua_caja),
+            "hay_balanceo": level.hay_balanceo,
             "guion": level.guion,
             # la planta que se pisa y el dibujo del suelo de las salas (solo
             # los usa la vista isometrica)
@@ -418,6 +420,7 @@ def build_data(build: Build) -> Dict[str, object]:
         "guion_nada": (list(project.guiones).index(project.guion_nada) + 1
                        if project.guion_nada else 0),
         "amiga_modo": project.amiga_modo,
+        "amiga_ram": project.amiga_ram,
         "sistema": sistema.nombre,
         # lo que aguanta la maquina, para que el editor de dibujos pueda avisar
         # antes de que el compilador te lo diga

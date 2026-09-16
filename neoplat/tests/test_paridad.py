@@ -528,10 +528,10 @@ enemigos:
             # el andamiaje pone la plataforma movil en el segundo nivel y la
             # traza no llega: se pone una a la salida del primero, encima del
             # jugador, para que se suba a ella y la traza compare tambien eso
-            marca = "\n      ......................c..........c.............."
+            marca = "\n      .................................c.............."
             assert marca in texto, "el primer nivel ya no tiene esa fila"
             texto = texto.replace(
-                marca, "\n      ..T...................c..........c..............", 1)
+                marca, "\n      ..T..............................c..............", 1)
         if genero == "mazmorra":
             # La pocima que limpia la pantalla esta al otro lado del laberinto
             # y el mando aleatorio no llega: se pone a la salida, con dos

@@ -70,12 +70,16 @@ SALTAR = {"neogeo": "A", "megadrive": "B", "amiga": "B", "jaguar": "A",
           "x68000": "A"}
 
 
-def comprobar_maquina(sistema, ruta, sonido=False) -> int:
-    """Monta el emulador de esa maquina y escucha. 0 = todo bien."""
+def comprobar_maquina(sistema, ruta, sonido=False, ram=0) -> int:
+    """Monta el emulador de esa maquina y escucha. 0 = todo bien.
+
+    `ram` son los KB del Amiga al que apunta el juego (`amiga_ram:`): se emula
+    esa maquina y no otra, que si no un juego que pida un mega no arranca en el
+    A500 de serie y desde aqui parece que lo que falla es el sonido."""
     if sistema not in SALTAR:
         print("%s no toca muestras digitales: no hay nada que escuchar" % sistema)
         return 0
-    emu, empezar, esperar = montar(sistema, ruta, sonido)
+    emu, empezar, esperar = montar(sistema, ruta, sonido, ram)
     if emu is None:
         print("falta el emulador de %s: se salta la prueba" % sistema)
         return 0

@@ -91,12 +91,29 @@ def _nivel_1(llave: bool = False, escalera: bool = False,
     """
     a = ANCHO_1
     suelo_1 = {0: "P", 8: "s", 12: "V", 18: "^", 28: "s", 40: "c", 44: "G"}
+    if charca:
+        # La seta de la columna 28 cae justo en el borde del agua: sales de la
+        # charca escurriendo y te la comes. Y ademas es la que hace que este
+        # nivel no quepa: en la Neo Geo un enemigo mas en pantalla son casi
+        # 4000 ciclos por frame de los 200000, que es justo lo que gastan el
+        # agua (1934) y la charca (1930). Sin ella el nivel va a 60.
+        del suelo_1[28]
     if llave:
         # con charca la llave se adelanta a antes de los pinchos: en su sitio
         # de siempre -la columna 22- quedaria flotando sobre el agua, y una
         # llave que hay que pescar es una llave que alguien se deja
         suelo_1[16 if charca else 22] = "k"
     fila_13 = {22: "c", 33: "c"}
+    if charca:
+        # Y la moneda que quedaba sobre la charca se va con ella. Donde estaba
+        # -dos filas por encima del agua- no se llegaba: saliendo de una
+        # brazada el heroe sube hasta la fila 11,75 y la moneda esta en la 11,
+        # asi que se rozaba y no se cogia, que es peor que no ponerla. Y
+        # bajarla a la fila del agua, donde si se pesca nadando, cuesta 3982
+        # ciclos por frame en la Neo Geo en vez de 2000: ahi cae dentro del
+        # frame mas caro -el jugador nadando, el agua y ella a la vez- y el
+        # nivel se va a 200690 de los 200000. Medido las tres veces.
+        del fila_13[22]
     if control:
         suelo_1[24] = "!"       # la antorcha, pasados los pinchos de la 18
         fila_13[33] = "M"       # la mejora del latigo, en vez de una moneda
@@ -434,6 +451,7 @@ juego:
   tiempo: 0            # segundos por nivel (0 = sin limite)
   camara: scroll       # scroll (el escenario se desliza) o pantallas
   amiga: 32colores     # solo en Amiga: 32colores o 8colores (con parallax)
+  amiga_ram: 512K      # a que Amiga apunta: 512K (el A500 de serie), 1M o 2M
   fondo: "#101830"
 
 jugador:
@@ -1060,13 +1078,13 @@ jugador:
   salto: 4.3
   gravedad: 0.28
   doble_salto: no
-{fisica}  animaciones:
+{fisica}{nado}  animaciones:
     quieto: {{frames: [0], velocidad: 30}}
     correr: {{frames: [1, 2, 3, 2], velocidad: 6}}
     saltar: {{frames: [4]}}
     caer:   {{frames: [5]}}
     dano:   {{frames: [9]}}   # la pose de recibir un golpe
-{animos}{armas}
+{animos}{animos_agua}{armas}
 tiles:
   imagen: graficos/tiles.png
   leyenda:
@@ -1076,7 +1094,7 @@ tiles:
     '=': {{tile: 2, tipo: plataforma}}
     '^': {{tile: 3, tipo: peligro}}
     'G': {{tile: 4, tipo: meta}}
-{escaleras}{control}
+{escaleras}{control}{agua}
 enemigos:
 {bichos}{jefe}
 objetos:
@@ -4087,6 +4105,7 @@ class Genero:
     nado: str = ""               # las cifras de nadar, en `jugador:`
     animos_agua: str = ""        # las posturas de nadar y bucear
     agua: str = ""               # las filas de agua de la leyenda
+    con_agua: bool = False       # si hay que dibujar el arte de nadar
     con_charca: bool = False     # si el primer nivel lleva una charca
 
 
@@ -4240,36 +4259,58 @@ def _genero_plataformas(nombres: Dict[str, str], estilo: str) -> Genero:
         suelta=nombres["moneda"],
         con_escaleras=False,
         con_control=False,
-        # El agua viene **apuntada y apagada**, igual que los cocodrilos y la
-        # liana que se columpia, y por lo mismo: este juego tiene que arrancar
-        # en un Amiga 500 de 512 KB, caber en un disquete de Atari ST y correr
-        # a 60 imagenes por segundo en una Neo Geo que ya gasta 198834 de los
-        # 200000 ciclos que da un frame. El agua son unos 2 KB de codigo en el
-        # 68000 mas dos ranuras de animacion en cada actor, y con ella puesta
-        # el ejecutable de Amiga pasa de 193048 bytes a 194604: el disquete
-        # arranca y el sistema ya no puede cargarlo.
+        # El agua **viene puesta**, y el primer nivel lleva una charca donde se
+        # cae sin querer nada mas pasar los pinchos: es la mejor forma de
+        # enterarse de que aqui se nada. Lo que cuesta esta medido y pagado:
         #
-        # Asi que se dejan las lineas escritas y comentadas. Quitarles la
-        # almohadilla es todo lo que hay que hacer para tener agua -y el nivel
-        # de ejemplo con charca esta en docs/formato.md, listo para copiar-;
-        # en un A1200, un CD32, una Mega Drive, un X68000 o una Jaguar sobra
-        # sitio de largo.
-        nado=("  # El agua, apuntada y apagada. Para encenderla hay que quitarle las\n"
-              "  # almohadillas a estas tres lineas, a las dos de 'nadar:'/'bucear:' y a\n"
-              "  # las dos casillas de agua de la leyenda, y **dibujar el arte**: cuatro\n"
-              "  # poses mas en heroe.png (nadando y buceando) y dos casillas mas en\n"
-              "  # tiles.png. Viene apagada porque el agua son unos 2 KB de codigo mas\n"
-              "  # 1,5 KB de dibujos, y este juego tiene que caber en un Amiga 500 de\n"
-              "  # 512 KB. En un A1200, un CD32, una Mega Drive, un X68000 o una Jaguar\n"
-              "  # sobra sitio. La receta entera esta en docs/formato.md.\n"
-              "  # brazada: 2.0       # el impulso de cada brazada; sin esto no hay agua\n"
-              "  # aire: 240          # frames buceando antes de empezar a ahogarse\n"
-              "  # ahogo: 45          # frames entre punto y punto de vida sin aire\n"),
-        animos_agua=("    # nadar:  {frames: [11, 12], velocidad: 8}   # con la cabeza fuera\n"
-                     "    # bucear: {frames: [13, 14], velocidad: 6}   # con todo el cuerpo dentro\n"),
-        agua=("    # '~': {tile: 9, tipo: agua}     # la superficie, con su espuma\n"
-              "    # 'w': {tile: 10, tipo: agua}    # el fondo de la charca\n"),
-        con_charca=False,
+        #   - en la Neo Geo, el agua son 1934 ciclos de codigo por frame y la
+        #     charca otros 1930 de mapa, de los 200000 que da un frame. No
+        #     cabian, y la charca se los ha pagado quitando dos cosas de su
+        #     sitio: **una seta** -la del borde del agua, casi 4000 ciclos- y
+        #     **una moneda** -la que quedaba encima, 2000-. Medido en el banco:
+        #     el frame mas caro gasta 196646 ciclos, o sea que el nivel va a 60
+        #     y encima sobran 3354.
+        #   - donde no hay agua no cuesta nada: el compilador marca cada nivel
+        #     con `hay_agua` y ademas el rectangulo que ocupa el agua, y el
+        #     motor no mira el mapa ni en los niveles secos ni fuera de ese
+        #     rectangulo. Sin eso, el Atari ST perdia el vblank en la pantalla
+        #     del principio y el juego entero bajaba de 50 imagenes por
+        #     segundo: se oia en la musica, que pasaba de 16 notas de 16 a 10.
+        #   - en el Amiga son 3112 bytes de ejecutable: de 190628 a 193740.
+        #     Ahi entra **por 820 bytes**, porque un A500 de 512 KB deja libres
+        #     unos 190 KB y eso son 194560. Esta arrancado en un A500 emulado
+        #     de 512 KB, no calculado. Es poco margen para lo que uno le quiera
+        #     anadir encima, y por eso existe `amiga_ram:` en `juego:`: se
+        #     declara la maquina a la que apunta el juego y el compilador avisa
+        #     -y para- si el ejecutable no le cabe, en vez de dejar un disquete
+        #     que arranca y se queda en el escritorio.
+        #
+        # Los cocodrilos y la liana que se columpia siguen fuera, pero ya no
+        # por lo mismo, y conviene dejarlo escrito porque se midio de nuevo:
+        #
+        #   - la **liana** ya cabe en la Neo Geo. Costaba 4000 ciclos por
+        #     frame -no 6000- y los cobraba en todos los niveles, tuvieran
+        #     liana o no; con `hay_balanceo` por nivel, una liana en la cueva
+        #     deja el frame mas caro en 198708 de 200000 y el juego a 60. Lo
+        #     que la deja fuera es el **Amiga**: su hoja son 48x48 por cinco
+        #     fotogramas, 15 KB, y con ella el ejecutable pasa de 190 KB a 205
+        #     y deja de arrancar en un A500 de 512 KB. Se prefiere que el juego
+        #     de partida arranque en el A500 pelado; quien quiera liana tiene
+        #     la receta en docs/formato.md y solo tiene que subir `amiga_ram:`.
+        #   - los **cocodrilos** siguen costando 16000 ciclos por frame, y de
+        #     eso no hay en ninguna maquina de las estrechas.
+        nado=("  # El agua. Con `brazada` puesta, las casillas de 'tipo: agua' se\n"
+              "  # nadan: dentro el salto pasa a ser una brazada, con la cabeza fuera\n"
+              "  # flotas y con la cabeza dentro se gasta el aire.\n"
+              "  brazada: 2.0       # el impulso de cada brazada; sin esto no hay agua\n"
+              "  aire: 240          # frames buceando antes de empezar a ahogarse\n"
+              "  ahogo: 45          # frames entre punto y punto de vida sin aire\n"),
+        animos_agua=("    nadar:  {frames: [11, 12], velocidad: 8}   # con la cabeza fuera\n"
+                     "    bucear: {frames: [13, 14], velocidad: 6}   # con todo el cuerpo dentro\n"),
+        agua=("    '~': {tile: 9, tipo: agua}     # la superficie, con su espuma\n"
+              "    'w': {tile: 10, tipo: agua}    # el fondo de la charca\n"),
+        con_agua=True,
+        con_charca=True,
     )
 
 
@@ -4567,6 +4608,51 @@ def _genero_vacio(nombres: Dict[str, str], estilo: str) -> Genero:
     )
 
 
+# A que Amiga apunta el juego de partida de cada genero. Los que no salen aqui
+# caben en un A500 de 512 KB, donde el sistema deja libres unos 190; estos no,
+# y va medido en KB de ejecutable con el mismo `hacer_ejecutable.py` que lo
+# comprueba al compilar. Un juego que no cabe no avisa: el disquete arranca,
+# AmigaDOS no puede cargarlo y en la pantalla se queda el escritorio, asi que
+# apuntar aqui a la maquina de verdad es lo que convierte eso en un mensaje.
+#
+# Los de paleta corta pesan mas y no por los colores: el doble plano del OCS
+# lleva **dos mapas de bits** en vez de uno, y eso son unos 20 KB de RAM chip.
+RAM_DEL_GENERO = {
+    ("plataformas", "hierro"): "1M",    # 210 KB
+    ("castlevania", "bosque"): "1M",    # 193 KB
+    ("castlevania", "hierro"): "1M",    # 213 KB
+    ("filmation", "bosque"): "1M",      # 197 KB
+    ("filmation", "hierro"): "1M",      # 196 KB
+    ("kungfu", "bosque"): "1M",         # 195 KB
+    ("kungfu", "hierro"): "1M",         # 195 KB
+}
+
+
+def _declarar_ram(contenido: str, ram: str) -> str:
+    """Escribe `amiga_ram:` en el yaml que acaba de salir de la plantilla.
+
+    Va aqui y no en cada plantilla porque son nueve plantillas y la memoria
+    depende del genero **y** del estilo: repetir la linea en todas seria
+    repetir nueve veces un numero que hay que volver a medir cada vez que el
+    motor engorde.
+    """
+    linea = ("  amiga_ram: %s        # a que Amiga apunta: 512K (el A500 de "
+             "serie), 1M o 2M" % ram)
+    lineas = contenido.split("\n")
+    for i, texto in enumerate(lineas):
+        if texto.startswith("  amiga_ram:"):
+            lineas[i] = linea
+            return "\n".join(lineas)
+    # detras de `amiga:` si la plantilla la trae, y si no detras del autor:
+    # la de conducir no habla del Amiga en ningun sitio
+    for clave in ("  amiga:", "  autor:", "  titulo:"):
+        for i, texto in enumerate(lineas):
+            if texto.startswith(clave):
+                lineas.insert(i + 1, linea)
+                return "\n".join(lineas)
+    raise ProjectError("la plantilla de este genero no tiene bloque 'juego:'")
+
+
 def genero_de(nombre: str, estilo: str) -> Genero:
     nombres = _NOMBRES[estilo]
     if nombre == "castlevania":
@@ -4650,6 +4736,8 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
             hint="los que hay son: %s" % ", ".join(GENEROS),
         )
     g = genero_de(genero, estilo)
+    # A que Amiga apunta este juego de partida. Ver RAM_DEL_GENERO.
+    ram = RAM_DEL_GENERO.get((genero, estilo), "512K")
     if os.path.exists(destino) and os.listdir(destino):
         raise ProjectError(
             "la carpeta '%s' ya existe y no esta vacia" % destino,
@@ -4658,7 +4746,8 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
     os.makedirs(os.path.join(destino, "graficos"), exist_ok=True)
     creados: List[str] = []
 
-    dibujos = art.todos() if estilo == "bosque" else art_hierro.todos()
+    dibujos = (art.todos(g.con_agua) if estilo == "bosque"
+               else art_hierro.todos(g.con_agua))
     if genero == "vacio":
         # Solo los dos que el yaml nombra. Copiar los veinte dibujos del
         # estilo en una carpeta donde no se usa ninguno seria justo lo que
@@ -4720,7 +4809,7 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
             niveles=_nivel_yaml("NIVEL 1", _nivel_vacio(), "#101830"))
         with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
                   newline="\n") as fh:
-            fh.write(contenido)
+            fh.write(_declarar_ram(contenido, ram))
         creados.append("game.yaml")
         with open(os.path.join(destino, ".gitignore"), "w", encoding="utf-8",
                   newline="\n") as fh:
@@ -4741,7 +4830,7 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
             musica=_MUSICA_COMANDO)
         with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
                   newline="\n") as fh:
-            fh.write(contenido)
+            fh.write(_declarar_ram(contenido, ram))
         creados.append("game.yaml")
         with open(os.path.join(destino, ".gitignore"), "w", encoding="utf-8",
                   newline="\n") as fh:
@@ -4763,7 +4852,7 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
             musica=_MUSICA_BARRIO)
         with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
                   newline="\n") as fh:
-            fh.write(contenido)
+            fh.write(_declarar_ram(contenido, ram))
         creados.append("game.yaml")
         with open(os.path.join(destino, ".gitignore"), "w", encoding="utf-8",
                   newline="\n") as fh:
@@ -4786,7 +4875,7 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
             musica=_MUSICA_GRAFICA)
         with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
                   newline="\n") as fh:
-            fh.write(contenido)
+            fh.write(_declarar_ram(contenido, ram))
         creados.append("game.yaml")
         with open(os.path.join(destino, ".gitignore"), "w", encoding="utf-8",
                   newline="\n") as fh:
@@ -4809,7 +4898,7 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
             musica=_MUSICA_AVENTURA)
         with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
                   newline="\n") as fh:
-            fh.write(contenido)
+            fh.write(_declarar_ram(contenido, ram))
         creados.append("game.yaml")
         with open(os.path.join(destino, ".gitignore"), "w", encoding="utf-8",
                   newline="\n") as fh:
@@ -4832,7 +4921,7 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
             musica=_MUSICA_FILMATION)
         with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
                   newline="\n") as fh:
-            fh.write(contenido)
+            fh.write(_declarar_ram(contenido, ram))
         creados.append("game.yaml")
         with open(os.path.join(destino, ".gitignore"), "w", encoding="utf-8",
                   newline="\n") as fh:
@@ -4855,7 +4944,7 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
             musica=_MUSICA_KUNGFU)
         with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
                   newline="\n") as fh:
-            fh.write(contenido)
+            fh.write(_declarar_ram(contenido, ram))
         creados.append("game.yaml")
         with open(os.path.join(destino, ".gitignore"), "w", encoding="utf-8",
                   newline="\n") as fh:
@@ -4888,7 +4977,7 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
             musica=_MUSICA_CARRETERA)
         with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
                   newline="\n") as fh:
-            fh.write(contenido)
+            fh.write(_declarar_ram(contenido, ram))
         creados.append("game.yaml")
         with open(os.path.join(destino, ".gitignore"), "w", encoding="utf-8",
                   newline="\n") as fh:
@@ -4910,7 +4999,7 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
             musica=_MUSICA_MAZMORRA)
         with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
                   newline="\n") as fh:
-            fh.write(contenido)
+            fh.write(_declarar_ram(contenido, ram))
         creados.append("game.yaml")
         with open(os.path.join(destino, ".gitignore"), "w", encoding="utf-8",
                   newline="\n") as fh:
@@ -4934,7 +5023,8 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
     else:
         niveles = (
             _nivel_yaml("GALERIA",
-                        _nivel_1(escalera=g.con_escaleras, control=g.con_control),
+                        _nivel_1(escalera=g.con_escaleras, control=g.con_control,
+                                 charca=g.con_charca),
                         "#14121e", musica=g.canciones[0])
             + _nivel_yaml("EL POZO",
                           _nivel_2(control=g.con_control,
@@ -4946,15 +5036,13 @@ def crear_proyecto(destino: str, titulo: str = "MI JUEGO", autor: str = "",
         titulo=titulo.upper()[:24], autor=autor[:24], niveles=niveles,
         fisica=g.fisica, armas=g.armas, escaleras=g.escaleras, animos=g.animos,
         control=g.control, municion=g.municion, mejora=g.mejora,
-        # la plantilla de paleta corta no tiene estos huecos (ni casillas de
-        # agua en su tileset): se los pasa igual y str.format los ignora
         nado=g.nado, animos_agua=g.animos_agua, agua=g.agua,
         musica=g.musica, eventos=g.eventos, arma=g.arma,
         spawns=g.spawns, suelta=g.suelta,
         bichos=g.bichos, bichos_spawn=g.bichos_spawn, jefe=g.jefe)
     with open(os.path.join(destino, "game.yaml"), "w", encoding="utf-8",
               newline="\n") as fh:
-        fh.write(contenido)
+        fh.write(_declarar_ram(contenido, ram))
     creados.append("game.yaml")
 
     with open(os.path.join(destino, ".gitignore"), "w", encoding="utf-8",

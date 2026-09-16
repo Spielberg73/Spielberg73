@@ -32,6 +32,22 @@
   var PASOS_HISTORIAL = 60;
   var VERSION_GUARDADO = 2;
 
+  /* El tipo de casilla del agua, el mismo numero que NP_TILE_AGUA en
+     np_types.h. Aqui hace falta para saber si un mapa recien dibujado tiene
+     charca. */
+  var TIPO_AGUA = 12;
+
+  /* Y el comportamiento de la liana que se balancea, el mismo numero que
+     NP_AI_BALANCEO en np_types.h: el motor no recorre el pendulo en los
+     niveles que no llevan ninguna, asi que hay que decirle a cuales van. */
+  var IA_BALANCEO = 7;
+
+  /* La memoria del Amiga: el compilador la guarda en KB y el yaml la escribe
+     como se habla de estas maquinas. Las dos tablas son la misma, de ida y de
+     vuelta. */
+  var AMIGA_RAM = { 512: "512K", 1024: "1M", 2048: "2M" };
+  var AMIGA_KB = { "512K": 512, "1M": 1024, "2M": 2048 };
+
   var NPYaml = (typeof require === "function" && typeof module !== "undefined")
     ? require("./np_yaml.js") : root.NPYaml;
   var NPBot = (typeof require === "function" && typeof module !== "undefined")
@@ -99,6 +115,9 @@
           vidas: DATA.lives, tiempo: DATA.time_limit,
           camara: DATA.camara_pantallas ? "pantallas" : "scroll",
           amiga: DATA.amiga_modo || "32colores",
+          /* En KB, que es como lo guarda el compilador; el desplegable ensena
+             '512K', '1M' y '2M', que es como se habla de estas maquinas. */
+          amiga_ram: AMIGA_RAM[DATA.amiga_ram || 512] || "512K",
           sistema: DATA.sistema || "neogeo"
         },
         jugador: {
@@ -1120,7 +1139,19 @@
       nivel.width = w;
       nivel.height = h;
       nivel.cells = celdas;
+      /* Si el mapa que se acaba de dibujar tiene agua, y donde. El motor las
+         mira antes de sondear si el jugador esta mojado, asi que si no se
+         recalculan aqui, cavar una charca en el editor la dejaria seca hasta
+         volver a compilar: se veria el agua y no se podria nadar. */
+      aguaDelNivel(nivel, celdas, w);
       nivel.spawns = spawns;
+      /* Y si entre lo que se acaba de colocar hay alguna liana. Mismo motivo
+         que el agua: sin esto, la liana que pintas se queda tiesa hasta
+         volver a compilar. */
+      nivel.hay_balanceo = spawns.some(function (s) {
+        var d = s[2] === 0 ? DATA.enemies[s[3]] : null;
+        return !!d && d.behavior === IA_BALANCEO;
+      }) ? 1 : 0;
       nivel.start = salida;
       nivel.rows = f.slice();
       nivel.name = props.nombre;
@@ -1130,6 +1161,24 @@
         : 0;
       nivel.layers = props.capas.map(indiceCapa).filter(function (i) { return i >= 0; });
       nivel.keys_needed = Math.max(0, Math.round(props.llaves || 0));
+    }
+
+    /* Gemela de _caja_del_agua en build.py: `hay_agua` y el rectangulo que
+       envuelve el agua, en pixeles y con los dos extremos dentro. */
+    function aguaDelNivel(nivel, celdas, ancho) {
+      var tipos = (DATA.tiles && DATA.tiles.kind) || [];
+      var x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1;
+      for (var i = 0; i < celdas.length; i++) {
+        if (tipos[celdas[i]] !== TIPO_AGUA) continue;
+        var x = i % ancho, y = (i / ancho) | 0;
+        if (x < x0) x0 = x;
+        if (y < y0) y0 = y;
+        if (x > x1) x1 = x;
+        if (y > y1) y1 = y;
+      }
+      nivel.hay_agua = x1 < 0 ? 0 : 1;
+      nivel.agua_caja = x1 < 0 ? [0, 0, 0, 0]
+        : [x0 * TILE, y0 * TILE, x1 * TILE + TILE - 1, y1 * TILE + TILE - 1];
     }
 
     function indiceMusica(nombre) {
@@ -1219,6 +1268,7 @@
       DATA.time_limit = Math.round(editor.modelo.juego.tiempo);
       DATA.camara_pantallas = editor.modelo.juego.camara === "pantallas" ? 1 : 0;
       DATA.amiga_modo = editor.modelo.juego.amiga;
+      DATA.amiga_ram = AMIGA_KB[editor.modelo.juego.amiga_ram] || 512;
       aplicarSonido();
       for (var i = 0; i < editor.modelo.filas.length; i++) reconstruirNivel(i);
       huellaAplicada = huellaDelMapa();

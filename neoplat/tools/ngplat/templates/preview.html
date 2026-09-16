@@ -1620,6 +1620,19 @@
       { valor: "8colores",
         texto: (aga ? "16" : "8") + " colores por plano (con parallax)" }
     ]);
+    /* A que Amiga apunta el juego. No cambia ni un byte de lo que se compila:
+       lo que hace es que el compilador sepa contra que medir y pare si el
+       ejecutable no cabe, en vez de dejar un disquete que arranca y se queda
+       en el escritorio. El A1200 y el CD32 llevan 2 MB de serie y no miran
+       esto, asi que ahi el desplegable sobra. */
+    if (!aga) {
+      campoLista(cont, "memoria del Amiga", "juego", "amiga_ram", null,
+                 j.amiga_ram, [
+        { valor: "512K", texto: "512 KB (el A500 de serie): caben 190 KB" },
+        { valor: "1M", texto: "1 MB (A500+, A600, ampliado): caben 702 KB" },
+        { valor: "2M", texto: "2 MB (A1200, A4000, CD32): caben 1726 KB" }
+      ]);
+    }
     campoLista(cont, "maquina", "juego", "sistema", null, j.sistema,
                (DATA.sistemas || []).map(function (m) {
                  return { valor: m.id, texto: m.nombre };

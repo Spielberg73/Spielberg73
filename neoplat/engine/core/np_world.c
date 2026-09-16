@@ -265,6 +265,23 @@ static uint8_t np_agua_estado(const NpWorld *w, const NpPlayer *p,
        el borde cae en la casilla de encima y contaria de mas. */
     return np_agua_at(w, cx, p->y + NP_I2F(1)) ? 2 : 1;
 }
+
+/* Si el jugador cae dentro del rectangulo que ocupa el agua de este nivel.
+ *
+ * Es la guarda barata de np_agua_estado: cuatro comparaciones de enteros en
+ * vez de una consulta al mapa, que lleva una multiplicacion de 32 bits y en un
+ * 68000 eso es una llamada a libgcc. Se comprueban los dos puntos que mira el
+ * sondeo -el centro de la caja y la cabeza- porque el de arriba puede estar
+ * dentro con el otro fuera. */
+static int np_cerca_del_agua(const NpLevel *l, const NpPlayer *p,
+                             const NpActorDef *a)
+{
+    int32_t cx = NP_F2I(p->x) + a->box_w / 2;
+    int32_t arriba = NP_F2I(p->y) + 1;
+    int32_t medio = NP_F2I(p->y) + a->box_h / 2;
+    return cx >= (int32_t)l->agua_x0 && cx <= (int32_t)l->agua_x1
+        && medio >= (int32_t)l->agua_y0 && arriba <= (int32_t)l->agua_y1;
+}
 #endif /* NP_HAY_AGUA */
 
 static int np_boxes_overlap(np_fix ax, np_fix ay, int aw, int ah,
@@ -3179,11 +3196,15 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
      * Sin `brazada:` en el game.yaml (`swim_stroke` a cero) el juego no lleva
      * agua, y entonces esto no llega ni a compilarse: NP_HAY_AGUA lo borra. */
 #if NP_HAY_AGUA
-    /* `hay_agua` del nivel va **delante** de todo lo demas: en un nivel seco
-       esto es una comparacion y no las dos consultas al mapa, que en la Neo
-       Geo son 1870 ciclos de los 200000 que da un frame. */
+    /* Las dos guardas baratas van **delante** de todo lo demas, y las dos
+       estan medidas. `hay_agua` se ahorra el sondeo entero en los niveles
+       secos -1870 ciclos por frame de los 200000 de la Neo Geo-; el
+       rectangulo se lo ahorra en el resto del escenario de los niveles que si
+       tienen agua, que es lo que le devolvio al Atari ST sus 50 imagenes por
+       segundo en la pantalla mas cargada del nivel de partida. */
     if (d->swim_stroke && w->level && w->level->hay_agua) {
-        np_agua[quien] = np_agua_estado(w, p, a);
+        np_agua[quien] = np_cerca_del_agua(w->level, p, a)
+                         ? np_agua_estado(w, p, a) : 0;
         /* Sin `aire:` no se ahoga nadie: es el agua de adorno, se nada y se
            bucea y no hay cuenta atras. Se mira aqui y no abajo porque con
            `breath` a cero `aire` vale siempre cero, y sin esta guarda el
@@ -5871,7 +5892,10 @@ static void np_play_step(NpWorld *w, uint16_t input, uint16_t input2)
     np_cocodrilo_paso(w);
 #endif
 #if NP_HAY_BALANCEO
-    np_balanceo_paso(w);
+    /* Y solo en los niveles que llevan liana: el paso recorre la lista de
+       bichos entera y en un nivel sin ninguna eso son 4000 ciclos por frame de
+       la Neo Geo para no encontrar nada. Igual que `hay_agua`. */
+    if (w->level && w->level->hay_balanceo) np_balanceo_paso(w);
 #endif
 
     for (quien = 0; quien < NP_MAX_PLAYERS; quien++) {

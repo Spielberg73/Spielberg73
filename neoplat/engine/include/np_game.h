@@ -416,6 +416,26 @@ typedef struct {
      * tener la mayoria de los niveles secos, y con esto esos niveles pagan una
      * comparacion y se acabo. Lo pone el compilador mirando el mapa. */
     uint8_t hay_agua;
+    /* Y donde esta esa agua: el rectangulo que la envuelve, en pixeles y con
+     * los dos extremos dentro. Solo vale algo si `hay_agua`.
+     *
+     * Tambien esta por los ciclos, y tambien esta medido. Con `hay_agua` solo,
+     * el nivel **que si** tiene charca paga la consulta al mapa en todo el
+     * recorrido, y en un Atari ST eso era justo lo que le hacia perder el
+     * vblank en la pantalla mas cargada -la del principio del nivel-: el juego
+     * entero bajaba de 50 imagenes por segundo, y se notaba en la musica, que
+     * va pegada al frame (de 16 notas de 16 a 10). Con el rectangulo el sondeo
+     * solo ocurre donde puede haber agua; fuera son cuatro comparaciones. */
+    uint16_t agua_x0, agua_y0, agua_x1, agua_y1;
+    /* 1 si este nivel tiene alguna liana de las que se balancean.
+     *
+     * Y una vez mas por los ciclos. El paso del pendulo recorre la lista de
+     * bichos del nivel entera para encontrar las lianas, y eso lo paga cada
+     * frame **todo** el juego, tenga lianas ese nivel o no: medido en la Neo
+     * Geo, 4000 ciclos por frame de los 200000. Con esto, un nivel sin lianas
+     * no entra ni al bucle, que es lo que permite que el juego de partida
+     * tenga una liana en la cueva sin que la charca del bosque lo pague. */
+    uint8_t hay_balanceo;
 } NpLevel;
 
 /* Tablas que genera el compilador (definidas en gamedata.c). */

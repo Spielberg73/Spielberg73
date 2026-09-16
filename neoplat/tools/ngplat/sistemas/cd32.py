@@ -74,9 +74,13 @@ class Cd32(Amiga1200):
 
         # el mismo ejecutable, otro envase
         del salida.archivos["hacer_adf.py"]
+        # y sin LEEME: ese texto esta para decir que Amiga hace falta, y aqui
+        # la maquina es una sola. Ademas habla de meter el disquete.
+        del salida.archivos["LEEME"]
         salida.archivos["hacer_iso.py"] = fuente_del_kit("iso.py")
+        _, libre, _maquina = self.memoria(build)
         salida.archivos["Makefile"] = _makefile(build, nombre, etiqueta,
-                                                self.cpu_gcc)
+                                                self.cpu_gcc, libre)
         salida.resumen = [linea for linea in salida.resumen
                           if not linea.startswith("disquete:")]
         salida.resumen.append(
@@ -88,7 +92,8 @@ class Cd32(Amiga1200):
         return salida
 
 
-def _makefile(build: Build, nombre: str, etiqueta: str, cpu: str) -> str:
+def _makefile(build: Build, nombre: str, etiqueta: str, cpu: str,
+              libre: int = 1726) -> str:
     """El mismo Makefile del Amiga con el ultimo paso cambiado: donde el A1200
     monta un disquete de 880 KB, aqui se monta un CD."""
     return """# %s para Amiga CD32, generado por NeoPlat.
@@ -146,9 +151,14 @@ all: $(ISO)
 juego.elf: $(OBJ)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJ)
 
+# LIBRE son los KB que deja libres la consola para el juego. El CD32 lleva 2 MB
+# de RAM chip de serie, asi que aqui no hay nada que declarar: si el ejecutable
+# se pasara de eso, `make` para y lo dice.
+LIBRE := %d
+
 $(JUEGO): juego.elf
 	@mkdir -p disco
-	$(PYTHON) hacer_ejecutable.py $< $@
+	$(PYTHON) hacer_ejecutable.py $< $@ $(LIBRE)
 
 # El .iso se graba en un CD-R o se mete en el emulador. Dentro va el ejecutable
 # y un S/Startup-Sequence que lo llama, que es lo que ejecuta la Kickstart.
@@ -165,7 +175,7 @@ clean:
 	rm -f $(OBJ) juego.elf $(JUEGO) $(ISO)
 
 .PHONY: all run clean
-""" % (build.project.title, cpu, nombre, nombre, etiqueta, nombre)
+""" % (build.project.title, cpu, nombre, nombre, etiqueta, libre, nombre)
 
 
 registrar(Cd32())

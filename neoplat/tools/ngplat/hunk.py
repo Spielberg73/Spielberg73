@@ -22,7 +22,12 @@ que hace este archivo, sin necesitar nada instalado:
 Los dos hunks se piden en RAM chip (HUNKF_CHIP), que es la unica a la que
 llegan el copper, el blitter y Paula.
 
-    python3 hacer_ejecutable.py juego.elf juego
+    python3 hacer_ejecutable.py juego.elf juego [KB_libres]
+
+El tercer argumento es lo que deja libre el Amiga al que apunta el juego, que
+sale de `amiga_ram:` en el game.yaml. Si el ejecutable no cabe, esto para: un
+disquete que arranca y no carga el juego es el fallo mas caro del Amiga, porque
+desde fuera no se distingue de un disquete roto.
 """
 
 from __future__ import annotations
@@ -194,29 +199,53 @@ def main(argv: List[str]) -> int:
         print(__doc__)
         return 1
     destino = argv[2] if len(argv) > 2 else "juego"
+    libre = int(argv[3]) if len(argv) > 3 else A500_LIBRE
     try:
         datos, info = convertir(argv[1])
     except ErrorHunk as error:
         sys.stderr.write("error: %s\n" % error)
         return 1
-    with open(destino, "wb") as fh:
-        fh.write(datos)
     kb = (info["codigo"] + info["bss"]) // 1024
     print("ejecutable de Amiga: %s (%d KB de codigo y datos, %d KB de BSS, "
           "%d direcciones corregidas)"
           % (destino, info["codigo"] // 1024, info["bss"] // 1024,
              info["reloc_codigo"] + info["reloc_bss"]))
-    # Todo esto -codigo, datos y BSS- lo reserva AmigaDOS en RAM chip, y en un
-    # A500 de 512 KB lo que queda libre despues del sistema son unos 190. Pasado
-    # eso el disquete arranca, el sistema no puede cargar el juego y en la
-    # pantalla se queda el escritorio: ni un mensaje. Esta medido en un A500
-    # emulado: con 189 KB arranca y con 197 no, y los mismos 197 arrancan si a
-    # la maquina se le pone un mega de RAM chip.
-    if kb > A500_LIBRE:
-        print("aviso  %d KB de RAM chip: en un A500 de 512 KB no arranca "
-              "(caben unos %d). Sigue valiendo para un A1200, un CD32 o un "
-              "A500 ampliado; para el A500 de serie hay que quitar dibujos, "
-              "que es lo que mas ocupa." % (kb, A500_LIBRE))
+    # Todo esto -codigo, datos y BSS- lo reserva AmigaDOS en RAM chip, que es la
+    # unica a la que llegan el copper, el blitter y Paula. En un A500 de 512 KB
+    # lo que queda libre despues del sistema son unos 190, y pasado eso el
+    # disquete arranca, el sistema no puede cargar el juego y en la pantalla se
+    # queda el escritorio con un mensaje que no ayuda: unas veces "not enough
+    # memory available" y otras "file is not executable", que es el mismo
+    # problema con dos nombres. Esta medido en un A500 emulado: con 189 KB
+    # arranca y con 209 no, y los mismos 209 arrancan con un mega.
+    #
+    # Por eso esto **para** en vez de avisar. Un aviso en mitad de un `make` de
+    # cincuenta lineas no lo lee nadie, y lo que hay al otro lado es un disquete
+    # que no se distingue de uno roto. Quien quiera el ejecutable igualmente
+    # sube `amiga_ram:` en el game.yaml y vuelve a compilar: son diez segundos,
+    # y asi queda escrito a que maquina apunta el juego.
+    #
+    # La comprobacion va **antes** de escribir el archivo, y no por elegancia:
+    # si el ejecutable se dejara en disco y luego fallara, `make` lo veria mas
+    # nuevo que el .elf en la siguiente pasada, se lo saltaria y montaria el
+    # disquete con el juego que no cabe.
+    if kb > libre:
+        sys.stderr.write(
+            "error: el juego ocupa %d KB de RAM chip y en esa maquina caben "
+            "unos %d.\n"
+            "       Sube 'amiga_ram:' en game.yaml (512K, 1M, 2M) para "
+            "apuntar a un Amiga\n"
+            "       con mas memoria, o quita dibujos, que es lo que mas "
+            "ocupa.\n" % (kb, libre))
+        return 1
+    with open(destino, "wb") as fh:
+        fh.write(datos)
+    if libre > A500_LIBRE and kb <= A500_LIBRE:
+        print("nota   cabe de sobra: %d KB de los %d de esa maquina, y ademas "
+              "entra en un A500 de 512 KB (caben %d)"
+              % (kb, libre, A500_LIBRE))
+    else:
+        print("memoria: %d KB de los %d que deja libres esa maquina" % (kb, libre))
     return 0
 
 

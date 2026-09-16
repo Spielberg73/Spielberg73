@@ -141,7 +141,7 @@ el nivel de partida.
 
 | género | cómo se juega |
 |---|---|
-| `plataformas` | saltas, pisas enemigos y disparas, y el salto se corrige en el aire. Lo de toda la vida. Trae además el **agua** apuntada y comentada: quitando tres almohadillas se nada, se bucea y se cuenta el aire |
+| `plataformas` | saltas, pisas enemigos y disparas, y el salto se corrige en el aire. Lo de toda la vida. Trae además una **charca** en el primer nivel: se nada, se bucea y se cuenta el aire |
 | `castlevania` | pegas con **látigo** (que se ve, y se alarga con cada mejora), te agachas, subes escaleras y tiras cuchillos o el hacha gastando munición. El salto **no** se corrige, un golpe te tira al vacío y hay puntos de control. Trae sus propios bichos: esqueleto, murciélago y un encapuchado de jefe |
 | `comando` | **se ve desde arriba**: andas en ocho direcciones, disparas hacia donde miras, tiras granadas con el botón de saltar y subes la pantalla rescatando prisioneros. Los soldados y las torretas **te disparan**; a los presos atados, no: si les das, los pierdes |
 | `mazmorra` | un **laberinto** visto desde arriba, al estilo Gauntlet. La vida **se gasta sola**, así que la partida es una cuenta atrás y hay que ir buscando comida; los **generadores** sueltan bichos sin parar hasta que los revientas, y la poción del botón de saltar se lleva por delante todo lo que se ve. La meta pide una llave que está al otro lado del laberinto |
@@ -334,10 +334,11 @@ avanza menos y el botón de saltar es **una brazada** que se repite todas las
 veces que quieras. Hay dos posturas y las decide **la cabeza**: con la cabeza
 fuera nadas —respiras, flotas, y la siguiente brazada te saca del agua—, con
 todo el cuerpo dentro buceas y el aire empieza a bajar. Al acabarse se va la
-vida de punto en punto, y sacar la cabeza lo rellena entero de golpe. No viene
-puesta en el juego que sale de `ngplat nuevo` —no cabe en un Amiga 500, igual
-que los cocodrilos— pero sí **apuntada y comentada** en su `game.yaml`, con la
-receta y la charca de ejemplo en `docs/formato.md`.
+vida de punto en punto, y sacar la cabeza lo rellena entero de golpe. El juego
+que sale de `ngplat nuevo` **ya trae una charca** en el primer nivel, justo
+pasados los pinchos: te caes dentro sin querer, que es la mejor forma de
+enterarse. Si no la quieres, borrar `brazada:` quita el agua entera del
+ejecutable.
 
 El marcador enseña **la vida**: `LIFE ###.` con los golpes que te quedan y los
 que has perdido, y a dos jugadores una barra por cabeza. Sale sola en cuanto el
@@ -406,9 +407,9 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.51.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
-| `neoplat-kit-1.51.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.51.zip` | el `ngplat.exe` y su LEEME |
+| `neoplat-docs-1.52.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
+| `neoplat-kit-1.52.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.52.zip` | el `ngplat.exe` y su LEEME |
 
 El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
 plantillas; no necesita Python ni nada instalado. Con **doble clic** —sin
@@ -639,9 +640,15 @@ Verificado aquí:
   en líneas de barrido dentro de un A500 emulado, parte por parte. Cómo se hizo,
   en [docs/amiga.md](docs/amiga.md).
 - **El disquete de Amiga arranca y se juega en un emulador**: las pruebas lo
-  meten en un A500 emulado (PUAE con la ROM libre de AROS), esperan a que
-  arranque solo, comprueban que sale el juego con su marcador, pulsan start y
-  juegan. Encontró un fallo en el bootblock que ninguna otra prueba veía.
+  meten en un A500 emulado (PUAE con la ROM libre de AROS) **con la memoria que
+  declara el juego** en `amiga_ram:`, esperan a que arranque solo, comprueban
+  que sale el juego con su marcador, pulsan start y juegan. Encontró un fallo
+  en el bootblock que ninguna otra prueba veía.
+- **Y que cada juego cabe en el Amiga que declara**: las pruebas construyen los
+  veintidós juegos de partida (once géneros por dos estilos) y miden el
+  ejecutable contra lo que deja libre esa máquina. Encontró cuatro que no
+  arrancaban en un A500 de serie y nadie lo sabía: el disquete se montaba igual
+  y en pantalla se quedaba el escritorio.
 - **Y el disquete también**: un `.adf` de 901120 bytes con bootblock `DOS\0`,
   sistema de ficheros OFS y `s/startup-sequence`. Las pruebas comprueban que
   **todas** las sumas de control cuadran (la del bootblock, con acarreo, y la de

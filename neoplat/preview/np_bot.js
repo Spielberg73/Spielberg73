@@ -65,6 +65,11 @@
        chocar de lado deja el impulso a cero y se cae en el mismo sitio. */
     var vistaPared = data.player.air_control ? vista : vista + 20;
     var maxX = 0, sinAvanzar = 0, muertes = 0, saltando = 0;
+    /* Frames que el bot ha pasado dentro del agua. Sale en el
+       resultado porque terminar un nivel con charca no dice si se
+       cruzo a nado o de un salto por encima, y eso es justo lo que
+       hay que comprobar cuando el juego ensena a nadar. */
+    var nadados = 0;
     /* Si el juego lleva ataque, el bot pega a lo que se le pone delante. Sin
        esto, en un juego de latigo -donde no se pisa a los enemigos- se metia
        de cabeza en el primero y moria una y otra vez: el nivel era perfecto y
@@ -212,24 +217,35 @@
       /* En el agua no se anda: se brazea. Nada de lo de arriba sirve -no se
          pisa suelo, no hay salto que medir y la orilla de enfrente no es una
          pared que se suba-, asi que dentro del agua el bot hace lo unico que
-         se puede hacer: tirar hacia delante y dar brazadas.
+         se puede hacer: tirar hacia delante y brazear cuando hace falta.
 
-         El boton se aprieta cinco frames y se suelta tres, y las dos mitades
-         hacen falta. Soltarlo, porque el motor cuenta **el pulso** y no la
-         tecla: con el boton hundido se da una sola brazada y uno se va al
-         fondo. Y aguantarlo, porque el impulso con el que se sale del agua se
-         corta al soltar igual que el de un salto: dando toquecitos el bot
-         llegaba a la orilla de enfrente, se quedaba dos pixeles por debajo
-         del borde y no subia -x=438 nivel tras nivel-, que en un juego de
-         verdad es el jugador que no entiende por que no sale de la charca.
+         Cuando hace falta es **buceando** (`agua` a 2), para subir a respirar,
+         y en la superficie solo cuando lleva un rato sin avanzar, que es la
+         orilla de enfrente. En la superficie y suelto, el motor deja flotar:
+         se avanza a la velocidad del nado sin tocar el boton.
 
-         Sin esto el bot se atascaba contra la pared del agua, que es lo que
-         le contestaria el boton «¿se puede terminar?» del editor a cualquiera
-         que dibujara un rio en su juego. */
+         Brazear siempre era lo de antes y estaba mal: con la cabeza fuera la
+         brazada vale `swim_out`, que es el salto entero, asi que el bot salia
+         disparado del agua cada pocos frames y cruzaba la charca a saltitos
+         por encima. El nivel se terminaba igual -por eso no se noto- y del
+         agua no se probaba nada: catorce frames mojado en una charca de ocho
+         casillas.
+
+         El pulso se da cinco frames de cada ocho, y las dos mitades hacen
+         falta. Soltarlo, porque el motor cuenta **el pulso** y no la tecla:
+         con el boton hundido se da una sola brazada y uno se va al fondo. Y
+         aguantarlo, porque el impulso de salir del agua se corta al soltar
+         igual que el de un salto: dando toquecitos el bot llegaba a la orilla
+         de enfrente, se quedaba dos pixeles por debajo del borde y no subia
+         -x=438 nivel tras nivel-, que en un juego de verdad es el jugador que
+         no entiende por que no sale de la charca. */
       if (p.agua) {
         input = NPCore.IN.RIGHT;
-        if ((i & 7) < 5) input |= NPCore.IN.JUMP;
+        if (p.agua === 2 || sinAvanzar > 8) {
+          if ((i & 7) < 5) input |= NPCore.IN.JUMP;
+        }
         saltando = 0;
+        nadados++;
       }
 
       /* Un cuadro de texto para la partida hasta que se pulsa. El bot pulsa:
@@ -240,20 +256,21 @@
       w.step(input);
 
       if (w.state === NPCore.STATE.LEVEL_END || w.state === NPCore.STATE.FINISHED) {
-        return { ok: true, frames: i, muertes: muertes, avance: NPCore.F2I(w.players[0].x) };
+        return { ok: true, frames: i, muertes: muertes, nadados: nadados,
+                 avance: NPCore.F2I(w.players[0].x) };
       }
       if (w.state === NPCore.STATE.DYING) {
         muertes++;
         var donde = NPCore.F2I(w.players[0].x);
         if (muertes > maxMuertes) {
-          return { ok: false, motivo: "el bot muere una y otra vez", muertes: muertes,
-                   avance: maxX, x: donde };
+          return { ok: false, motivo: "el bot muere una y otra vez",
+                   muertes: muertes, nadados: nadados, avance: maxX, x: donde };
         }
         while (w.state !== NPCore.STATE.PLAY && w.state !== NPCore.STATE.GAME_OVER &&
                w.state !== NPCore.STATE.TITLE) w.step(0);
         if (w.state !== NPCore.STATE.PLAY) {
-          return { ok: false, motivo: "se queda sin vidas", muertes: muertes,
-                   avance: maxX, x: donde };
+          return { ok: false, motivo: "se queda sin vidas",
+                   muertes: muertes, nadados: nadados, avance: maxX, x: donde };
         }
         w.players[0].lives = data.lives;
         maxX = 0;
@@ -261,12 +278,12 @@
       }
       if (NPCore.F2I(w.players[0].x) > maxX) { maxX = NPCore.F2I(w.players[0].x); sinAvanzar = 0; }
       else if (++sinAvanzar > 600) {
-        return { ok: false, motivo: motivo("se queda atascado"), muertes: muertes,
-                 avance: maxX, x: maxX };
+        return { ok: false, motivo: motivo("se queda atascado"),
+                 muertes: muertes, nadados: nadados, avance: maxX, x: maxX };
       }
     }
     return { ok: false, motivo: motivo("no llega a la meta a tiempo"),
-             muertes: muertes, avance: maxX, x: maxX };
+             muertes: muertes, nadados: nadados, avance: maxX, x: maxX };
   }
 
   /* ------------------------------------------------------------------ *

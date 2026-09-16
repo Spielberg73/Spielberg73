@@ -22,6 +22,7 @@ import os
 from typing import Dict, List
 
 from .. import gfx, gfx_amiga
+from .. import project as proyecto_mod
 from ..build import Build
 from ..errors import ProjectError
 from ..paths import fuente_del_kit
@@ -92,6 +93,11 @@ class Amiga(Sistema):
     hud_doble = COLOR_HUD_DOBLE
     por_plano = COLORES_POR_PLANO          # colores de cada plano en doble
     cpu_gcc = "-m68000"
+    # KB de RAM que tiene esta maquina cuando no hay nada que elegir. El OCS lo
+    # deja a 0 porque ahi si se elige: un A500 puede ir pelado con 512 KB o
+    # ampliado, y lo dice `amiga_ram:` en el game.yaml. El A1200 y el CD32
+    # llevan 2 MB de serie y no hay nada que declarar.
+    ram_fija = 0
     archivos_motor = [
         ("include/np_types.h", "src/np_types.h"),
         ("include/np_game.h", "src/np_game.h"),
@@ -333,6 +339,19 @@ class Amiga(Sistema):
                     break
         return avisos
 
+    # --- memoria -------------------------------------------------------
+
+    def memoria(self, build: Build):
+        """(KB de la maquina, KB libres para el juego, como se llama).
+
+        Lo que hace falta saber para contestar la unica pregunta que importa
+        en el Amiga: si el ejecutable va a caber. Sale de `amiga_ram:` en las
+        maquinas donde se elige y de la propia maquina en las que no.
+        """
+        kb = self.ram_fija or build.project.amiga_ram
+        nombre, libre = proyecto_mod.AMIGAS[kb]
+        return kb, libre, nombre
+
     # --- generacion ----------------------------------------------------
 
     def generar(self, build: Build, rom_id: str) -> Salida:
@@ -343,9 +362,16 @@ class Amiga(Sistema):
                                                         self.por_plano)
         salida.archivos["src/sonido.c"] = _sonido_c(build)
         nombre = _nombre_ejecutable(build)
+        _, libre, maquina = self.memoria(build)
+        # Lo que hay que tener para que el disquete arranque. En OCS es la
+        # memoria que declara el juego; en AGA manda el chipset, porque un
+        # disquete de ocho bitplanes en un A500 no se ve aunque le sobre RAM.
+        requisito = ("un Amiga con AGA (A1200, A4000 o CD32)" if self.aga
+                     else maquina)
         salida.archivos["Makefile"] = _makefile(build, nombre,
                                                 _etiqueta_disco(build.project.title),
-                                                self.cpu_gcc)
+                                                self.cpu_gcc, libre)
+        salida.archivos["LEEME"] = _leeme(build, requisito, nombre)
         salida.archivos["hacer_ejecutable.py"] = fuente_del_kit("hunk.py")
         salida.archivos["hacer_adf.py"] = fuente_del_kit("adf.py")
         salida.resumen.append(
@@ -366,9 +392,10 @@ class Amiga(Sistema):
                 % (sum(1 for e in build.project.sound.efectos.values() if e.digital),
                    PCM_RITMO, (build.pcm_bytes + 1023) // 1024))
         salida.resumen.append(
-            "disquete: disco/%s.adf (880 KB, arranca solo en %s)"
-            % (nombre, "un Amiga con AGA: A1200, A4000 o CD32" if self.aga
-               else "cualquier Amiga"))
+            "disquete: disco/%s.adf (880 KB, arranca solo, sin Workbench)" % nombre)
+        salida.resumen.append(
+            "maquina:  %s; caben %d KB de juego y si el ejecutable se pasa, "
+            "`make` para y lo dice" % (requisito, libre))
         return salida
 
 
@@ -632,7 +659,8 @@ def _sonido_c(build: Build) -> str:
     return "\n".join(partes)
 
 
-def _makefile(build: Build, nombre: str, etiqueta: str, cpu: str = "-m68000") -> str:
+def _makefile(build: Build, nombre: str, etiqueta: str,
+              cpu: str = "-m68000", libre: int = 190) -> str:
     return """# Makefile generado por ngplat para "%s" (Amiga).
 # Se reescribe en cada `ngplat compilar`: pon tus cambios en game.yaml.
 #
@@ -681,14 +709,19 @@ all: $(ADF)
 juego.elf: $(OBJ)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJ)
 
+# LIBRE son los KB que deja libres el Amiga al que apunta el juego, que sale de
+# `amiga_ram:` en el game.yaml. Si el ejecutable se pasa, esto para aqui: un
+# disquete que arranca y no carga el juego no se distingue de uno roto.
+LIBRE := %d
+
 $(JUEGO): juego.elf
 	@mkdir -p disco
-	$(PYTHON) hacer_ejecutable.py $< $@
+	$(PYTHON) hacer_ejecutable.py $< $@ $(LIBRE)
 
 # El .adf es la copia de un disquete: se mete en el emulador (o en un Gotek, o
 # en un Amiga de verdad con ADF Blitz) y arranca solo, sin Workbench.
-$(ADF): $(JUEGO) hacer_adf.py
-	$(PYTHON) hacer_adf.py $@ $(DISCO) %s $(JUEGO)
+$(ADF): $(JUEGO) hacer_adf.py LEEME
+	$(PYTHON) hacer_adf.py $@ $(DISCO) %s $(JUEGO) LEEME
 
 # Con un emulador instalado, `make run` mete el disquete y enciende el Amiga.
 EMU ?= fs-uae
@@ -699,7 +732,47 @@ clean:
 	rm -f $(OBJ) juego.elf $(JUEGO) $(ADF)
 
 .PHONY: all run clean
-""" % (build.project.title, cpu, nombre, nombre, etiqueta, nombre)
+""" % (build.project.title, cpu, nombre, nombre, etiqueta, libre, nombre)
+
+
+def _leeme(build: Build, maquina: str, ejecutable: str) -> str:
+    """El texto que va dentro del disquete, al lado del juego.
+
+    Un .adf que pasa de mano en mano acaba en un Amiga que no es el de quien lo
+    hizo, y ahi la pregunta siempre es la misma: por que no arranca. La mitad de
+    las veces la respuesta es la memoria, y no hay forma de averiguarlo mirando
+    el disco. Aqui esta escrita.
+    """
+    lineas = [
+        build.project.title,
+        "=" * len(build.project.title),
+        "",
+    ]
+    if build.project.author:
+        lineas += ["de %s" % build.project.author, ""]
+    lineas += [
+        "Hecho con NeoPlat.",
+        "",
+        "QUE HACE FALTA",
+        "  %s%s." % (maquina[0].upper(), maquina[1:]),
+        "",
+        "COMO SE JUEGA",
+        "  El disquete arranca solo: se mete en la disquetera y se enciende el",
+        "  Amiga. No hace falta Workbench ni disco duro.",
+        "",
+        "  El mando va en el puerto 2, que es el de abajo. Tambien valen las",
+        "  teclas: las flechas para moverse y la barra para saltar.",
+        "",
+        "SI NO ARRANCA",
+        "  Si al encender sale el escritorio en vez del juego -con un mensaje",
+        "  de memoria, o uno que dice que el archivo no es ejecutable-, es la",
+        "  memoria: hace falta la maquina de ahi arriba y en una mas corta el",
+        "  sistema no puede cargarlo. El disquete esta bien.",
+        "",
+        "  El juego es el archivo %s: desde el CLI se arranca a mano." % ejecutable,
+        "",
+    ]
+    return "\n".join(lineas)
 
 
 def _etiqueta_disco(titulo: str) -> str:

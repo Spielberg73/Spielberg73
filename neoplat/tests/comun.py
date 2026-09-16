@@ -148,6 +148,13 @@ def proyecto_con_muestra(destino: str, titulo: str = "MUESTRA") -> str:
     marca = "    salto:   {tipo: barrido, desde: 320, hasta: 900, duracion: 6}"
     assert marca in texto, "el andamiaje ya no trae el efecto de salto asi"
     texto = texto.replace(marca, "    salto:   {muestra: sonidos/tono.wav}", 1)
+    # El tono de un segundo son 11 KB de RAM chip mas, y con eso el ejecutable
+    # de Amiga se pasa por un kilobyte de los 190 que deja libres un A500 de
+    # serie. Asi que este proyecto apunta a un Amiga con un mega, que es la
+    # verdad: si no lo declarara, el compilador pararia -y haria bien-.
+    marca = "  amiga_ram: 512K"
+    assert marca in texto, "el andamiaje ya no declara la memoria del Amiga"
+    texto = texto.replace(marca, "  amiga_ram: 1M", 1)
     with open(yaml, "w", encoding="utf-8") as fh:
         fh.write(texto)
     return destino
