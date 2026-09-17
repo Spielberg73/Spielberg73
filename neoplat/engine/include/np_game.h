@@ -165,12 +165,19 @@ typedef struct {
      * agua de un brazeo. Sin el, llegar al borde de una charca y no poder
      * subirte a la orilla seria lo normal, que es de las cosas que peor
      * sientan en un juego de plataformas.
+     *
+     * Aparte del boton esta **arriba**, que sube mientras se aguanta
+     * (`swim_rise`). Las dos formas hacen falta y no son la misma: la brazada
+     * es un impulso que se gasta y sirve para salir de un tiron; arriba es ir
+     * hacia arriba como se va hacia los lados, sin prisa y sin punteria. Es lo
+     * primero que prueba cualquiera que se cae a una charca.
      */
     np_fix swim_stroke;      /* lo que empuja cada brazada */
     np_fix swim_gravity;     /* la gravedad dentro del agua */
     np_fix swim_sink;        /* lo maximo que se hunde por frame */
     np_fix swim_speed;       /* lo que se avanza de lado nadando */
     np_fix swim_out;         /* el impulso al salir del agua por arriba */
+    np_fix swim_rise;        /* lo que se sube por frame aguantando arriba */
     /* El aire que aguanta buceando, en frames. Se gasta **solo con la cabeza
      * debajo**: nadando en la superficie se recupera, y de golpe. Al llegar a
      * cero empieza a quitar un punto de vida cada `drown` frames, que es lo

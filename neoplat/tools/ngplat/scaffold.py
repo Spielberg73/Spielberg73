@@ -4268,16 +4268,16 @@ def _genero_plataformas(nombres: Dict[str, str], estilo: str) -> Genero:
         #     cabian, y la charca se los ha pagado quitando dos cosas de su
         #     sitio: **una seta** -la del borde del agua, casi 4000 ciclos- y
         #     **una moneda** -la que quedaba encima, 2000-. Medido en el banco:
-        #     el frame mas caro gasta 196646 ciclos, o sea que el nivel va a 60
-        #     y encima sobran 3354.
+        #     el frame mas caro gasta 196626 ciclos, o sea que el nivel va a 60
+        #     y encima sobran 3374.
         #   - donde no hay agua no cuesta nada: el compilador marca cada nivel
         #     con `hay_agua` y ademas el rectangulo que ocupa el agua, y el
         #     motor no mira el mapa ni en los niveles secos ni fuera de ese
         #     rectangulo. Sin eso, el Atari ST perdia el vblank en la pantalla
         #     del principio y el juego entero bajaba de 50 imagenes por
         #     segundo: se oia en la musica, que pasaba de 16 notas de 16 a 10.
-        #   - en el Amiga son 3112 bytes de ejecutable: de 190628 a 193740.
-        #     Ahi entra **por 820 bytes**, porque un A500 de 512 KB deja libres
+        #   - en el Amiga son 3196 bytes de ejecutable: de 190628 a 193824.
+        #     Ahi entra **por 736 bytes**, porque un A500 de 512 KB deja libres
         #     unos 190 KB y eso son 194560. Esta arrancado en un A500 emulado
         #     de 512 KB, no calculado. Es poco margen para lo que uno le quiera
         #     anadir encima, y por eso existe `amiga_ram:` en `juego:`: se
@@ -4300,8 +4300,9 @@ def _genero_plataformas(nombres: Dict[str, str], estilo: str) -> Genero:
         #   - los **cocodrilos** siguen costando 16000 ciclos por frame, y de
         #     eso no hay en ninguna maquina de las estrechas.
         nado=("  # El agua. Con `brazada` puesta, las casillas de 'tipo: agua' se\n"
-              "  # nadan: dentro el salto pasa a ser una brazada, con la cabeza fuera\n"
-              "  # flotas y con la cabeza dentro se gasta el aire.\n"
+              "  # nadan: arriba sube mientras lo aguantes, el boton de saltar pasa a\n"
+              "  # ser una brazada -que con la cabeza fuera te sube a la orilla-, con\n"
+              "  # la cabeza fuera flotas y con la cabeza dentro se gasta el aire.\n"
               "  brazada: 2.0       # el impulso de cada brazada; sin esto no hay agua\n"
               "  aire: 240          # frames buceando antes de empezar a ahogarse\n"
               "  ahogo: 45          # frames entre punto y punto de vida sin aire\n"),

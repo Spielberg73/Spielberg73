@@ -187,6 +187,9 @@ class TestParidad(unittest.TestCase):
         # misma cuenta, las dos trazas se separarian en cuanto alguien se
         # cuelgue.
         cls.variantes["pitfall"] = cls._preparar("scroll", pitfall=True)
+        # El agua: se sale nadando, para que la traza compare las dos cuentas
+        # del agua y las tres reglas que cambian el movimiento dentro.
+        cls.variantes["charca"] = cls._preparar("scroll", charca=True)
         # Y la cinta con la serie de golpes: puno, puno y remate. El remate
         # tumba, y un tumbado se mueve solo con el empujon que se llevo, asi
         # que si las dos no encadenaran igual, las entidades se separarian.
@@ -273,7 +276,7 @@ class TestParidad(unittest.TestCase):
                   combo=False, agarre=False, sin_llave=False,
                   sin_golpe=False, sin_relieve=False, sin_liana=False,
                   guiones=False, carretera=False, trafico=False,
-                  pitfall=False):
+                  pitfall=False, charca=False):
         proyecto_dir = os.path.join(
             cls.tmp, "juego-" + camara + ("-jefe" if jefe else "")
             + ("-dos" if dos else "") + ("-golpe" if golpe else "")
@@ -292,6 +295,7 @@ class TestParidad(unittest.TestCase):
             + ("-carretera" if carretera else "")
             + ("-trafico" if trafico else "")
             + ("-pitfall" if pitfall else "")
+            + ("-charca" if charca else "")
             + ("-" + genero if genero != "plataformas" else ""))
         crear_proyecto(proyecto_dir, "PARIDAD", "TEST", genero=genero)
         yaml = os.path.join(proyecto_dir, "game.yaml")
@@ -420,6 +424,20 @@ enemigos:
     velocidad: 2.4
     vida: 99
 """, 1)
+        if charca:
+            # El jugador sale dentro de la charca que el juego de partida trae
+            # en el primer nivel. Nadar es lo unico del motor que no se
+            # comparaba: la charca esta en el mapa desde la 1.52, pero el mando
+            # aleatorio no llega hasta ella, asi que aqui se empieza mojado.
+            #
+            # Hace falta: el agua lleva dos cuentas por frame -en que estado se
+            # esta y cuanto aire queda- y tres reglas que cambian el
+            # movimiento, y un decimal distinto entre los dos motores separa la
+            # traza en la primera brazada.
+            marca = "\n      P.......s...V...k.^...."
+            assert marca in texto, "el primer nivel ya no empieza asi"
+            texto = texto.replace(
+                marca, "\n      ........s...V...k.^.P..", 1)
         if pitfall:
             # Las dos mecanicas de Pitfall: el cocodrilo que abre y cierra las
             # fauces -y sobre el que se pisa cerrado- y la liana de la que uno
@@ -1491,6 +1509,31 @@ enemigos:
         cuenta distinta se nota antes, porque las dos mueven al jugador."""
         traza_c, traza_js = self._trazas(11, "pitfall")
         self.assertEqual(traza_c, traza_js)
+
+    def test_misma_traza_nadando(self):
+        """El agua, frame a frame y empezando dentro.
+
+        Es lo que mas se parece a tener otro motor mientras dura: la gravedad
+        es otra, lo que se anda de lado es otro, el boton de saltar hace otra
+        cosa y encima hay dos cuentas -el estado y el aire- que dependen de en
+        que casilla cae la cabeza. Un pixel de diferencia entre los dos motores
+        cambia de nadar a bucear y a partir de ahi ya no se parecen."""
+        traza_c, traza_js = self._trazas(13, "charca")
+        self.assertEqual(traza_c, traza_js)
+        # Y que la traza se moje de verdad: una variante que no llegara al
+        # agua compararia dos motores que no nadan y daria OK igual. La charca
+        # del juego de partida son las columnas 20 a 27 y la superficie esta
+        # en la fila 13, asi que dentro del agua la caja del jugador anda por
+        # los 190 pixeles para abajo.
+        mojados = 0
+        for linea in traza_c:
+            campos = linea.split()
+            x, y = int(campos[1]) // 256, int(campos[2]) // 256
+            if 20 * 16 <= x <= 27 * 16 and y >= 190:
+                mojados += 1
+        self.assertGreater(mojados, 60,
+                           "la traza solo pasa %d frames dentro de la charca: "
+                           "no esta comparando el agua" % mojados)
 
     def test_la_traza_tiene_contenido(self):
         lineas_c, _ = self._trazas(1)

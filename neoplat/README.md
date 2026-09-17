@@ -330,8 +330,9 @@ tira.
 
 Y hay **agua**: con `tipo: agua` en la leyenda y `brazada:` en el jugador, unas
 casillas dejan de ser aire y pasan a ser una charca. Dentro se cae despacio, se
-avanza menos y el botón de saltar es **una brazada** que se repite todas las
-veces que quieras. Hay dos posturas y las decide **la cabeza**: con la cabeza
+avanza menos, **arriba sube** mientras lo aguantes y el botón de saltar es
+**una brazada** que se repite todas las veces que quieras —y que con la cabeza
+fuera te sube a la orilla—. Hay dos posturas y las decide **la cabeza**: con la cabeza
 fuera nadas —respiras, flotas, y la siguiente brazada te saca del agua—, con
 todo el cuerpo dentro buceas y el aire empieza a bajar. Al acabarse se va la
 vida de punto en punto, y sacar la cabeza lo rellena entero de golpe. El juego
@@ -407,9 +408,9 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.52.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
-| `neoplat-kit-1.52.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.52.zip` | el `ngplat.exe` y su LEEME |
+| `neoplat-docs-1.53.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
+| `neoplat-kit-1.53.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.53.zip` | el `ngplat.exe` y su LEEME |
 
 El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
 plantillas; no necesita Python ni nada instalado. Con **doble clic** —sin

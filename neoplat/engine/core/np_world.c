@@ -229,9 +229,21 @@ static int np_climb_at(const NpWorld *w, np_fix x, np_fix y)
 static uint8_t np_agua[NP_MAX_PLAYERS];   /* 0 fuera, 1 nadando, 2 buceando */
 static uint16_t np_aire[NP_MAX_PLAYERS];  /* frames de aire que quedan */
 static uint16_t np_ahogo[NP_MAX_PLAYERS]; /* cuenta atras del siguiente punto */
+/* 1 mientras dura la brazada con la que se sale del agua. Existe porque la
+ * flotacion de la superficie corta cualquier subida, y sin esto cortaba
+ * tambien la de salir: el impulso valia un frame y al siguiente se quedaba en
+ * cero, asi que del agua no se salia nunca. */
+static uint8_t np_saliendo[NP_MAX_PLAYERS];
 #define NP_AGUA(quien) np_agua[(quien)]
+/* Los dos de salir van por macro, de leer y de escribir, igual que NP_AGUA:
+ * el bloque del agua se compila tambien en un juego sin agua -ahi es un
+ * `if (0)` que el compilador tira- y entonces el arreglo no existe. */
+#define NP_SALIENDO(quien) np_saliendo[(quien)]
+#define NP_SALIR(quien, v) (np_saliendo[(quien)] = (uint8_t)(v))
 #else
 #define NP_AGUA(quien) 0
+#define NP_SALIENDO(quien) 0
+#define NP_SALIR(quien, v) ((void)(v))
 #endif
 
 #if NP_HAY_AGUA
@@ -787,6 +799,7 @@ static void np_player_reset(NpWorld *w, uint8_t quien)
     np_agua[quien] = 0;
     np_aire[quien] = np_player_def.breath;
     np_ahogo[quien] = 0;
+    np_saliendo[quien] = 0;
 #endif
     p->marcha = 0;              /* el coche sale de parado, con la corta */
     p->trompo = 0;
@@ -3302,7 +3315,12 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
            se sale del agua a la orilla. Sin eso, llegar al borde de una charca
            y no poder subirte es de las cosas que peor sientan. */
         if (pressed_jump) {
-            p->vy = -(NP_AGUA(quien) == 1 ? d->swim_out : d->swim_stroke);
+            /* Con la cabeza fuera la brazada es la de salir, y esa **no la
+               corta la flotacion**: se apunta aqui y dura hasta que el impulso
+               se gasta. Sin esto valia un solo frame. */
+            uint8_t fuera = (uint8_t)(NP_AGUA(quien) == 1);
+            p->vy = -(fuera ? d->swim_out : d->swim_stroke);
+            NP_SALIR(quien, fuera);
             p->buffer = 0;
             p->on_ground = 0;
             w->sfx |= NP_SFX_JUMP;
@@ -3330,6 +3348,12 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
            asi que el fondo se alcanza despacio y siempre da tiempo a brazear. */
         p->vy += d->swim_gravity;
         if (p->vy > d->swim_sink) p->vy = d->swim_sink;
+        /* **Arriba sube**, mientras se aguante y a lo que se nada. Dentro del
+           agua uno se mueve igual en las cuatro direcciones, y esto es lo
+           primero que prueba cualquiera que se cae a una charca. La brazada
+           del boton sigue estando y no es lo mismo: aquella es un impulso que
+           se gasta y saca a la orilla de un tiron. */
+        if (input & NP_IN_UP) p->vy = -d->swim_rise;
         /* **En la superficie se flota.** Subiendo desde abajo, al sacar la
            cabeza se para ahi en vez de seguir de largo.
            Sin esto el agua casi no se ve: la franja en la que la cabeza esta
@@ -3338,7 +3362,10 @@ static void np_player_update(NpWorld *w, uint8_t quien, uint16_t input)
            no llegaba a verse. Flotando, nadar es un sitio donde se **esta**.
            Para salir hay que querer: la brazada de este frame -que con la
            cabeza fuera vale `swim_out`- si se respeta. */
-        if (NP_AGUA(quien) == 1 && p->vy < 0 && !pressed_jump) p->vy = 0;
+        if (NP_AGUA(quien) == 1 && p->vy < 0 && !pressed_jump
+            && !NP_SALIENDO(quien) && !(input & NP_IN_UP)) p->vy = 0;
+        /* y la brazada de salir se acaba cuando se acaba el impulso */
+        if (p->vy >= 0) NP_SALIR(quien, 0);
     } else {
         p->vy += d->gravity;
         if (p->vy > d->max_fall) p->vy = d->max_fall;

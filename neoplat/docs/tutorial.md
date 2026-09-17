@@ -161,8 +161,17 @@ y salta con <kbd>G</kbd>.
 
 El juego que acabas de crear **ya trae una charca**, en el primer nivel, justo
 pasados los pinchos. Corre hacia la derecha y cáete dentro: el héroe cambia de
-postura, se hunde despacio y el botón de saltar deja de ser un salto y pasa a
-ser **una brazada**, que puedes repetir todas las veces que quieras.
+postura y se hunde despacio.
+
+Para subir hay **dos formas, y conviene probar las dos**:
+
+- **arriba**, aguantado: subes mientras lo tengas pulsado, como quien nada. Es
+  lo que se hace para no hundirse y para asomar la cabeza.
+- **el botón de saltar**, que dentro del agua es **una brazada**: un empujón de
+  golpe que puedes repetir. Con la cabeza fuera empuja mucho más y es con lo
+  que te subes a la orilla — y, como cualquier salto del juego, **hay que
+  aguantarlo**: si lo sueltas enseguida, el impulso se corta y te quedas al
+  borde.
 
 Hay dos posturas y las decide **la cabeza**, no los pies. Con la cabeza fuera
 estás nadando: respiras, flotas y la siguiente brazada te saca del agua. Con
@@ -183,9 +192,10 @@ jugador:
   aire: 240           # frames buceando antes de ahogarse (0 = nunca)
 ```
 
-Lo demás —lo que se hunde uno, lo que avanza de lado, el impulso con el que
-sale— se rellena solo a partir de las cifras de tierra, y se puede tocar a mano
-(`gravedad_agua`, `hundimiento`, `velocidad_agua`, `salto_agua`). Sube
+Lo demás —lo que se hunde uno, lo que avanza de lado, lo que sube con arriba,
+el impulso con el que sale— se rellena solo a partir de las cifras de tierra, y
+se puede tocar a mano (`gravedad_agua`, `hundimiento`, `velocidad_agua`,
+`subida_agua`, `salto_agua`). Sube
 `aire: 240` a `aire: 0` y el agua se queda en una forma distinta de moverse,
 sin ahogos.
 

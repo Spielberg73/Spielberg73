@@ -340,6 +340,7 @@ class Player(Actor):
     swim_sink: float = 0.0        # 0 = un tercio del tope de caida
     swim_speed: float = 0.0       # 0 = dos tercios de lo que se anda
     swim_out: float = 0.0         # 0 = el salto de siempre
+    swim_rise: float = 0.0        # 0 = lo mismo que se nada de lado
     breath: int = 0               # frames de aire buceando (0 = no se ahoga)
     drown: int = 0                # frames entre punto y punto sin aire
     crouch: bool = False          # si se puede agachar con abajo
@@ -1713,6 +1714,8 @@ def _read_player(node: Node, root: str) -> Player:
                             0.0, 0.0, 12.0),
         swim_out=node.num(["salto_agua", "swim_out", "salir_agua"],
                           0.0, 0.0, 12.0),
+        swim_rise=node.num(["subida_agua", "swim_rise", "subir_agua"],
+                           0.0, 0.0, 12.0),
         breath=node.int_(["aire", "breath", "aliento", "oxigeno", "oxígeno"],
                          0, 0, 3600),
         drown=node.int_(["ahogo", "drown", "ahogarse"], 0, 0, 600),
@@ -1747,6 +1750,10 @@ def _read_player(node: Node, root: str) -> Player:
         if not player.swim_out:
             # salir a la orilla cuesta lo que un salto de los de siempre
             player.swim_out = player.jump
+        if not player.swim_rise:
+            # y subir aguantando arriba va a lo que se nada de lado: dentro del
+            # agua uno se mueve igual en las cuatro direcciones
+            player.swim_rise = player.swim_speed
         if player.breath and not player.drown:
             # sin aire, un punto de vida por segundo
             player.drown = 60
@@ -1786,6 +1793,7 @@ def _read_player(node: Node, root: str) -> Player:
         "hundimiento", "swim_sink", "max_hundirse",
         "velocidad_agua", "swim_speed", "nado_velocidad",
         "salto_agua", "swim_out", "salir_agua",
+        "subida_agua", "swim_rise", "subir_agua",
         "aire", "breath", "aliento", "oxigeno", "oxígeno",
         "ahogo", "drown", "ahogarse",
         "crouch", "agachado", "agacharse", "agachar",

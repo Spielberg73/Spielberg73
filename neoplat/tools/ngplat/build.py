@@ -978,6 +978,7 @@ def player_values(project: Project) -> Dict[str, object]:
         "swim_sink": to_fixed(p.swim_sink),
         "swim_speed": to_fixed(p.swim_speed),
         "swim_out": to_fixed(p.swim_out),
+        "swim_rise": to_fixed(p.swim_rise),
         "breath": p.breath, "drown": p.drown,
         "coyote": p.coyote, "jump_buffer": p.jump_buffer, "wear": p.wear,
         # el agarre: con `grab_time` a 0 el motor ni lo mira

@@ -191,6 +191,10 @@ function datos(filas, opciones) {
       swim_sink: fx(opciones.hundimiento === undefined ? 2.0 : opciones.hundimiento),
       swim_speed: fx(opciones.velocidadAgua === undefined ? 1.0 : opciones.velocidadAgua),
       swim_out: fx(opciones.saltoAgua === undefined ? 4.0 : opciones.saltoAgua),
+      swim_rise: fx(opciones.subidaAgua === undefined
+                    ? (opciones.velocidadAgua === undefined ? 1.0
+                       : opciones.velocidadAgua)
+                    : opciones.subidaAgua),
       aire: 0,
       breath: opciones.aire === undefined ? 0 : opciones.aire,
       drown: opciones.ahogo === undefined ? 60 : opciones.ahogo,
@@ -1684,6 +1688,46 @@ prueba("sacando la cabeza se recupera el aire de golpe", function () {
   for (i = 0; i < 120; i++) w.step(i % 6 === 0 ? NP.IN.JUMP : 0);
   assert.strictEqual(p.aire, 120,
                      "al sacar la cabeza no se ha llenado el aire: " + p.aire);
+});
+
+prueba("aguantando arriba se sube, y soltandolo se vuelve a hundir", function () {
+  /* Lo primero que prueba cualquiera que se cae a una charca es darle a
+     arriba. Antes no hacia nada -solo brazeando se subia- y el agua parecia
+     una trampa: se entraba y no se salia. */
+  var w = mundoCharca({ health: 5, aire: 600 });
+  var p = plantar(w, 12, 13);
+  var fondo = NP.F2I(p.y);
+  correr(w, 40, NP.IN.UP);
+  var arriba = NP.F2I(p.y);
+  assert.ok(arriba < fondo - 30,
+            "aguantando arriba no se sube: de " + fondo + " a " + arriba);
+  /* Y al soltarlo se vuelve a hundir. No de golpe: se sigue subiendo unos
+     pixeles por lo que se llevaba y despues tira el agua, que es lo que hace
+     que subir se sienta como nadar y no como pulsar un interruptor. */
+  correr(w, 60, 0);
+  assert.ok(NP.F2I(p.y) > arriba,
+            "al soltar arriba no se vuelve a hundir: se ha quedado en " +
+            NP.F2I(p.y));
+});
+
+prueba("la brazada de salir no se corta al frame siguiente", function () {
+  /* Este era el fallo: con la cabeza fuera la brazada vale `salto_agua`, pero
+     la flotacion de la superficie cortaba **toda** subida, asi que el impulso
+     duraba un frame y al siguiente se quedaba en cero. Del agua no se salia
+     por mucho que se pulsara. */
+  var w = mundoCharca({ health: 5, aire: 600, saltoAgua: 4.5 });
+  var p = plantar(w, 12, 13);
+  var i;
+  for (i = 0; i < 150 && p.agua !== 1; i++) w.step(NP.IN.UP);
+  assert.strictEqual(p.agua, 1, "no se ha llegado a la superficie");
+  w.step(NP.IN.JUMP);
+  var impulso = p.vy;
+  assert.ok(impulso < -NP.I2F(3),
+            "la brazada de salir no empuja: vy=" + impulso);
+  w.step(NP.IN.JUMP);       /* aguantando, como en cualquier salto */
+  assert.ok(p.vy < impulso / 2,
+            "el impulso de salir se ha cortado al frame siguiente: de " +
+            impulso + " a " + p.vy);
 });
 
 prueba("desde la superficie se sale del agua de un brazeo", function () {

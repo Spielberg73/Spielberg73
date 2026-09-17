@@ -1126,9 +1126,18 @@ hace es esto:
 - se cae mucho más despacio (`gravedad_agua`) y con un tope de hundimiento
   (`hundimiento`), así que no te vas al fondo de golpe;
 - de lado se avanza menos (`velocidad_agua`): el agua agarra;
+- **arriba sube** (`subida_agua`), mientras lo aguantes y a la velocidad a la
+  que se nada: dentro del agua uno se mueve igual en las cuatro direcciones;
 - el botón de saltar deja de ser un salto y pasa a ser **una brazada**
-  (`brazada`), que empuja hacia arriba y se puede repetir todas las veces que
-  quieras: es lo único que te mantiene arriba.
+  (`brazada`), que empuja hacia arriba de golpe y se puede repetir todas las
+  veces que quieras.
+
+Las dos formas de subir hacen falta y no son la misma. **Arriba** es ir hacia
+arriba como se va hacia los lados: sin prisa, sin puntería y sin soltarlo, y es
+lo primero que prueba cualquiera que se cae a una charca. **La brazada** es un
+impulso que se gasta, y con la cabeza fuera vale `salto_agua`: es la que te
+sube a la orilla de un tirón. Igual que un salto, se corta al soltar el botón,
+así que para salir del agua hay que **aguantarlo**.
 
 **Hay dos estados y los decide la cabeza**, no los pies. El motor mira dos
 puntos: el centro de la caja te dice si estás en el agua, y el píxel de arriba
@@ -1139,9 +1148,14 @@ del todo si te has sumergido. De ahí salen las dos posturas:
 | el centro en el agua y la cabeza fuera | `nadar` | respiras, y la brazada te **saca del agua** (`salto_agua`) |
 | todo el cuerpo dentro | `bucear` | se gasta el aire |
 
-Nadando en la superficie el motor te **sujeta a flote**: mientras no toques el
-botón no subes más. Sin eso, la franja de seis píxeles en la que la cabeza
-asoma se cruza en dos frames y la postura de nadar no se llegaría a ver nunca.
+Nadando en la superficie el motor te **sujeta a flote**: sin tocar nada no
+subes más. Sin eso, la franja de seis píxeles en la que la cabeza asoma se
+cruza en dos frames y la postura de nadar no se llegaría a ver nunca.
+
+Flotar es lo que pasa **cuando no mandas**: si aguantas arriba, subes; y la
+brazada de salir no la corta la flotación, dura hasta que se gasta el impulso.
+Hasta la 1.52 sí la cortaba, y por eso del agua no se salía: el impulso valía un
+frame y al siguiente se quedaba en cero.
 
 **El aire** sólo baja buceando, y se rellena entero en cuanto sacas la cabeza:
 no hay que administrar nada, hay que subir. Cuando llega a cero se pierde un
@@ -1158,6 +1172,7 @@ en un juego es escribir **una línea**:
 | `gravedad_agua` | la cuarta parte de `gravedad` |
 | `hundimiento` | un tercio de `max_caida` |
 | `velocidad_agua` | dos tercios de `velocidad` |
+| `subida_agua` | lo mismo que `velocidad_agua` |
 | `salto_agua` | lo mismo que `salto` |
 | `ahogo` | 60 frames (un punto de vida por segundo) |
 
@@ -1187,17 +1202,17 @@ No salió gratis, y lo que costó está medido:
 | Neo Geo, el código del agua | 1934 ciclos por frame de los 200000 |
 | Neo Geo, el mapa de la charca | 1930 ciclos más |
 | Donde no hay agua | **nada**: ver «lo que cuesta mirar si estás mojado» |
-| Amiga, el ejecutable | 3112 bytes: de 190628 a 193740 |
+| Amiga, el ejecutable | 3196 bytes: de 190628 a 193824 |
 
 Los 3864 ciclos de la Neo Geo no cabían: el nivel gastaba ya 198838 de los
 200000. La charca se los ha pagado quitando dos cosas de su sitio: **una seta**
 —la del borde del agua, casi 4000 ciclos— y **una moneda** —la que quedaba
-encima, 2000—. Con eso el frame más caro gasta **196646** y el juego va a 60
-imágenes por segundo, comprobado en el banco; y encima sobran 3354 para lo que
+encima, 2000—. Con eso el frame más caro gasta **196626** y el juego va a 60
+imágenes por segundo, comprobado en el banco; y encima sobran 3374 para lo que
 quieras poner tú.
 
-En el Amiga entra por **820 bytes**: un A500 de 512 KB deja libres unos 190 KB
-(194560) y el ejecutable ocupa 193740. Está arrancado en un A500 emulado de
+En el Amiga entra por **736 bytes**: un A500 de 512 KB deja libres unos 190 KB
+(194560) y el ejecutable ocupa 193824. Está arrancado en un A500 emulado de
 512 KB, no calculado.
 
 #### Lo que cuesta mirar si estás mojado

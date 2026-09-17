@@ -2,8 +2,45 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.52.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.53.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.53
+
+**Del agua ya se sale.**
+
+Dos cosas que contó quien lo jugó, y las dos eran verdad:
+
+**Arriba no subía.** Dentro del agua sólo se subía brazeando, y lo primero que
+prueba cualquiera que se cae a una charca es darle a arriba. Ahora **arriba
+sube** mientras lo aguantes, a la velocidad a la que se nada (`subida_agua`, que
+si no lo pones vale lo mismo que `velocidad_agua`). Al soltarlo se sigue
+subiendo unos píxeles por lo que se llevaba y después tira el agua: subir se
+siente como nadar y no como pulsar un interruptor.
+
+**Y la brazada de salir se cancelaba al frame siguiente.** Éste era el fallo de
+verdad. Con la cabeza fuera la brazada vale `salto_agua` —el impulso con el que
+uno se sube a la orilla—, pero la flotación de la superficie cortaba **toda**
+subida que no fuera la brazada de ese mismo frame. Así que el impulso duraba un
+frame, al siguiente se quedaba en cero y de la charca no se salía por mucho que
+se pulsara. Ahora el motor se acuerda de que estás saliendo y no te corta hasta
+que el impulso se gasta.
+
+Medido en el gemelo, desde el borde de la charca del juego de partida: se nada
+hacia arriba, se da la brazada aguantando el botón y el héroe **sube a la
+orilla** y se queda de pie en ella. Antes se quedaba bobinando en el agua.
+
+Como cualquier salto del juego, la brazada de salir **se corta al soltar el
+botón**: eso no ha cambiado y es lo que hace que el salto sea variable. Para
+salir del agua hay que aguantarlo.
+
+**El agua no se comparaba entre los dos motores.** La charca está en el mapa
+desde la 1.52, pero el mando aleatorio de la prueba de paridad no llega hasta
+ella, así que nadar era lo único del motor que nunca se había comprobado en C
+contra JavaScript frame a frame. Ahora hay una variante que **empieza dentro
+del agua**, y la prueba exige además que la traza pase de sesenta frames mojada:
+una variante que no llegara al agua compararía dos motores que no nadan y daría
+OK igual.
 
 ## 1.52
 
@@ -20,10 +57,10 @@ porque no cabía. Ahora cabe, y está medido en las dos máquinas que apretaban:
   198838. No cabían, y la charca se los ha pagado quitando dos cosas de su
   sitio: **una seta**, la del borde del agua (salías escurriendo y te la
   comías), que son casi 4000 ciclos; y **una moneda**, la que quedaba encima,
-  que son 2000. El frame más caro gasta ahora **196646**: el juego va a 60
-  imágenes por segundo y encima sobran 3354.
-- **Amiga.** El ejecutable pasa de 190628 a 193740 bytes, y en un A500 de
-  512 KB caben unos 190 KB (194560): entra **por 820 bytes**. Arrancado en un
+  que son 2000. El frame más caro gasta ahora **196626**: el juego va a 60
+  imágenes por segundo y encima sobran 3374.
+- **Amiga.** El ejecutable pasa de 190628 a 193824 bytes, y en un A500 de
+  512 KB caben unos 190 KB (194560): entra **por 736 bytes**. Arrancado en un
   A500 emulado de 512 KB, no calculado.
 - **Atari ST.** Ésta costó un rato entenderla. Con la charca puesta el ST
   perdía el vblank en la pantalla del principio del nivel —la más cargada— y

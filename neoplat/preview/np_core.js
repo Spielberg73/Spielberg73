@@ -154,7 +154,7 @@
         fuerte: 0, carrera: 0, toque: 0, toqueDir: 0,
         stairs: 0, trepa: 0, stairDir: 1,
         /* el agua: 0 fuera, 1 nadando, 2 buceando; y el aire que queda */
-        agua: 0, aire: 0, ahogo: 0,
+        agua: 0, aire: 0, ahogo: 0, saliendo: 0,
         /* el coche: la marcha metida, el trompo y hacia donde gira */
         marcha: 0, trompo: 0, ladeo: 0
       });
@@ -615,7 +615,7 @@
     this.whipOff(quien);
     p.stairs = 0; p.trepa = 0; p.stairDir = 1;
     /* se sale del agua y con el aire lleno. Igual que en C. */
-    p.agua = 0; p.aire = d.breath || 0; p.ahogo = 0;
+    p.agua = 0; p.aire = d.breath || 0; p.ahogo = 0; p.saliendo = 0;
     /* el coche sale de parado, con la corta metida y sin dar vueltas */
     p.marcha = 0; p.trompo = 0; p.ladeo = 0;
     p.jumpsLeft = d.double_jump ? 1 : 0;
@@ -2434,7 +2434,12 @@
       /* En el agua no se salta: se brazea, y se puede repetir en mitad del
          agua. Con la cabeza fuera empuja mas: asi se sale a la orilla. */
       if (pressedJump) {
-        p.vy = -(p.agua === 1 ? d.swim_out : d.swim_stroke);
+        /* Con la cabeza fuera la brazada es la de salir, y esa no la corta la
+           flotacion: se apunta y dura hasta que el impulso se gasta. Igual que
+           en C; sin esto valia un solo frame y del agua no se salia. */
+        var fuera = p.agua === 1;
+        p.vy = -(fuera ? d.swim_out : d.swim_stroke);
+        p.saliendo = fuera ? 1 : 0;
         p.buffer = 0;
         p.onGround = 0;
         this.sfx |= SFX.JUMP;
@@ -2455,9 +2460,14 @@
       /* Dentro del agua no se cae: se hunde uno. Igual que en C. */
       p.vy += d.swim_gravity;
       if (p.vy > d.swim_sink) p.vy = d.swim_sink;
+      /* Arriba sube, mientras se aguante y a lo que se nada. Igual que en C. */
+      if (input & IN.UP) p.vy = -d.swim_rise;
       /* En la superficie se flota: subiendo se para al sacar la cabeza, salvo
-         que la brazada de este frame sea la de salir. Igual que en C. */
-      if (p.agua === 1 && p.vy < 0 && !pressedJump) p.vy = 0;
+         que se este saliendo o se mande subir. Igual que en C. */
+      if (p.agua === 1 && p.vy < 0 && !pressedJump && !p.saliendo
+          && !(input & IN.UP)) p.vy = 0;
+      /* y la brazada de salir se acaba cuando se acaba el impulso */
+      if (p.vy >= 0) p.saliendo = 0;
     } else {
       p.vy += d.gravity;
       if (p.vy > d.max_fall) p.vy = d.max_fall;

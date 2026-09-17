@@ -417,10 +417,10 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
                                             pv["max_fall"], pv["bounce"]))
     src.append("    %d, %d," % (pv["knockback"], pv["stair_speed"]))
     src.append("    %d,   /* lo que se sube por una liana */" % pv["climb_speed"])
-    src.append("    %d, %d, %d, %d, %d,   /* el agua: brazada, gravedad, "
-               "hundimiento, nado y salida */"
+    src.append("    %d, %d, %d, %d, %d, %d,   /* el agua: brazada, gravedad, "
+               "hundimiento, nado, salida y subida */"
                % (pv["swim_stroke"], pv["swim_gravity"], pv["swim_sink"],
-                  pv["swim_speed"], pv["swim_out"]))
+                  pv["swim_speed"], pv["swim_out"], pv["swim_rise"]))
     src.append("    %d, %d,   /* el aire que aguanta y cada cuanto se ahoga */"
                % (pv["breath"], pv["drown"]))
     src.append("    %d, %d," % (pv["invuln"], pv["stun"]))
