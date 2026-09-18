@@ -913,6 +913,7 @@ def coche_values(co) -> Dict[str, object]:
         "frena": to_fixed(co.frena),
         "roce": to_fixed(co.roce),
         "volante": to_fixed(co.volante),
+        "respuesta": to_fixed(co.respuesta),
         "lento": to_fixed(co.lento),
         "arrastre": to_fixed(co.arrastre),
         "trompo": co.trompo,

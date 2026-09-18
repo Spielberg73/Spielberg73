@@ -19,9 +19,13 @@
   var CAMARA_ATRAS = 24, CERCA = 16, TRAMOS_VISTA = 160, MAX_TRAMOS = 256;
   var MAX_ANCHO = 64;       /* lo mas ancha que puede ser una calzada, en casillas */
   var CARRETERA_FRANJAS = 4;
+  /* cada cuantos pixeles rota la paleta un paso. Igual que NP_CARRETERA_PASO */
+  var CARRETERA_PASO = 4;
   var CARRETERA_MARGEN = 14;   /* lo que se deja bajo el coche */
   var MELENA_MAX = 5;
   var CARRETERA_LADEO = 6;
+  /* lo mas girado que puede estar el volante. Igual que NP_VOLANTE_TOPE */
+  var VOLANTE_TOPE = 64;
   var SUBSTEP = 8 * FIX_ONE;
   var ENTITY_FALL = 8 * FIX_ONE;
   var DYING_TIME = 60, LEVEL_END_TIME = 90, GAME_OVER_TIME = 240;
@@ -1658,6 +1662,10 @@
       this.viaCentro[fila] = centro;
     }
     for (; fila < MAX_TRAMOS; fila++) this.viaCentro[fila] = centro;
+    /* Dos pasadas y no una, igual que en C: con una sola, en una curva
+       constante el eje avanzaba 3, 3, 3, 7 pixeles por fila en vez de 4 y el
+       borde de la carretera hacia dientes de sierra al acercarse. */
+    this.viaSuavizar(this.viaCentro);
     this.viaSuavizar(this.viaCentro);
     /* El ancho de la calzada: el que mide en mas filas, no el mas ancho. Con
        el mas ancho, una sola linea de control -que cruza de lado a lado-
@@ -1893,14 +1901,16 @@
   World.prototype.carreteraCoche = function (quien) {
     var a = this.data.player.actor, p = this.players[quien];
     var ancho = a.cols * TILE, alto = a.rows * TILE;
-    var centro = idiv(SCREEN_W, 2) + p.ladeo * CARRETERA_LADEO;
+    var centro = idiv(SCREEN_W, 2) + idiv(CARRETERA_LADEO * p.ladeo, VOLANTE_TOPE);
     if (this.data.players > 1) centro += quien ? ancho : -ancho;
     return [centro - idiv(ancho, 2), SCREEN_H - CARRETERA_MARGEN - alto];
   };
 
   World.prototype.carreteraFase = function () {
-    var fila = F2I(this.players[0].y) >> TILE_SHIFT;
-    return ((-fila) % CARRETERA_FRANJAS + CARRETERA_FRANJAS) % CARRETERA_FRANJAS;
+    /* En pixeles y no en casillas, igual que en C: en casillas la cuenta solo
+       cambiaba una vez cada cinco frames y la carretera daba tirones. */
+    var px = idiv(F2I(this.players[0].y), CARRETERA_PASO);
+    return ((-px) % CARRETERA_FRANJAS + CARRETERA_FRANJAS) % CARRETERA_FRANJAS;
   };
 
   World.prototype.carreteraDonde = function (x, y) {
@@ -1979,16 +1989,28 @@
     if (velocidad < 0) velocidad = 0;
     p.vy = -velocidad;
 
-    /* El volante manda tanto mas cuanto mas corres: parado no gira. */
-    if (dir && c.punta > 0) {
+    /* **El volante tarda en girar**, igual que en C: sin esto pasaba de recto
+       a tope en un frame y el coche parecia de madera. Lo que se guarda en
+       `ladeo` es cuanto esta girado -de -64 a +64- y no los pixeles que se
+       mueve, porque contado en pixeles el desplazamiento por fila dependia de
+       la velocidad mientras durara el giro, y la regla del genero dice que no. */
+    var objetivo = dir * VOLANTE_TOPE;
+    var paso = c.volante ? idiv(VOLANTE_TOPE * c.respuesta, c.volante)
+                         : VOLANTE_TOPE;
+    if (paso < 1) paso = 1;
+    p.ladeo = approach(p.ladeo, objetivo, paso);
+    if (dir) p.facing = dir > 0 ? 1 : 0;
+
+    /* Y lo que se mueve de lado: el tope de esta velocidad por lo girado que
+       este el volante. El tope manda tanto mas cuanto mas corres: parado no
+       gira, y a punta gira lo que diga `volante:`. */
+    if (c.punta > 0) {
       manda = velocidad > c.punta ? c.punta : velocidad;
-      p.vx = idiv(c.volante * manda, c.punta);
-      if (dir < 0) p.vx = -p.vx;
-      p.facing = dir > 0 ? 1 : 0;
+      var tope = idiv(c.volante * manda, c.punta);
+      p.vx = idiv(tope * p.ladeo, VOLANTE_TOPE);
     } else {
       p.vx = 0;
     }
-    p.ladeo = dir;
 
     p.x = this.moveX(p.x, p.y, a.box_w, a.box_h, p.vx, moveOut);
     var chocaX = moveOut.hit;

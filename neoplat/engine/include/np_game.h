@@ -626,6 +626,12 @@ typedef struct {
     np_fix frena;          /* lo que pierde por frame pisando el freno */
     np_fix roce;           /* y lo que pierde solo, sin tocar nada */
     np_fix volante;        /* lo que se mueve de lado, a punta */
+    /* Lo que tarda el volante en llegar a ese tope, y en volver: cuanto cambia
+     * por frame. Es la diferencia entre un coche y un interruptor -hasta la
+     * 1.53 el volante pasaba de cero al tope en un frame, y de ahi venia buena
+     * parte de lo tosco que se sentia- y lo rellena el compilador con la
+     * cuarta parte de `volante` si no se dice otra cosa. */
+    np_fix respuesta;
     np_fix lento;          /* lo que corre como mucho fuera del asfalto */
     np_fix arrastre;       /* y lo que le roba por frame el suelo malo */
     uint16_t trompo;       /* frames de trompo al estrellarse */

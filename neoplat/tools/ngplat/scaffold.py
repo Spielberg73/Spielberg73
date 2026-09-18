@@ -3649,6 +3649,7 @@ coche:
   frena: 0.140
   roce: 0.020          # lo que pierde solo, sin tocar nada
   volante: 2.2         # lo que se mueve de lado, a punta
+  respuesta: 0.55      # lo que gira el volante por frame: el tacto
   lento: 1.6           # lo que corre como mucho fuera del asfalto
   arrastre: 0.180      # y lo que le roba por frame la hierba
   trompo: 90           # frames dando vueltas despues de un choque

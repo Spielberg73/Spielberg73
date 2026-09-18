@@ -125,8 +125,12 @@ typedef struct {
      *
      * `trompo` son los frames que le quedan dando vueltas despues de
      * estrellarse: mientras duran no se gobierna, y eso -no el dano- es lo que
-     * cuesta un choque. `ladeo` es hacia donde esta girando el volante ahora
-     * mismo (-1, 0 o +1), que es lo unico que necesita el dibujo. */
+     * cuesta un choque. `ladeo` es **cuanto esta girado el volante**, de
+     * -NP_VOLANTE_TOPE a +NP_VOLANTE_TOPE: de ahi salen las dos cosas que se
+     * ven -lo que el coche se mueve de lado y lo que se inclina el dibujo en
+     * pantalla-, asi que las dos acompanan al volante en vez de saltar. Hasta
+     * la 1.53 valia -1, 0 o +1, pasaba de cero al tope en un frame, y de ahi
+     * venia buena parte de lo tosco que se sentia el coche. */
     uint8_t marcha;
     uint8_t trompo;
     int8_t ladeo;
@@ -420,6 +424,15 @@ uint16_t np_carretera(const NpWorld *w, int16_t *centro);
  * Es como se hacia en la epoca, y es la unica forma de que unas rayas que
  * corren no cuesten un frame entero. */
 #define NP_CARRETERA_FRANJAS 4
+/* Cada cuantos pixeles recorridos rota la paleta un paso.
+ *
+ * Es lo que marca si la carretera corre o da tirones, y estaba mal: antes la
+ * cuenta iba en casillas, o sea un paso cada 16 pixeles, que con la marcha
+ * corta a fondo son **cinco frames** entre paso y paso y por la hierba diez.
+ * Con cuatro, a 3,2 px por frame sale casi un paso por frame. Mas fino que
+ * esto no hace falta -y pasado de dos pasos por frame la rotacion se veria ir
+ * al reves, que es lo mismo que le pasa a una rueda de carro en el cine-. */
+#define NP_CARRETERA_PASO 4
 uint8_t np_carretera_fase(const NpWorld *w);
 
 /* La tabla por linea, para las maquinas que pintan las bandas **con el haz**.

@@ -273,6 +273,8 @@ def generate_gamedata(build: Build) -> Dict[str, str]:
     src.append("    %d, %d,      /* el freno y el roce */"
                % (cv["frena"], cv["roce"]))
     src.append("    %d,          /* el volante, a punta */" % cv["volante"])
+    src.append("    %d,          /* y lo que tarda en llegar al tope */"
+               % cv["respuesta"])
     src.append("    %d, %d,      /* fuera del asfalto: tope y tiron */"
                % (cv["lento"], cv["arrastre"]))
     src.append("    %d, %d       /* trompo, y lo que regala un control */"

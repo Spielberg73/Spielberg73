@@ -535,6 +535,12 @@ class Coche:
     frena: float = 0.140          # lo que pierde por frame con el freno
     roce: float = 0.020           # y lo que pierde solo, sin tocar nada
     volante: float = 2.2          # lo que se mueve de lado, a punta
+    # Lo que tarda el volante en llegar a ese tope, y en volver: cuanto cambia
+    # por frame. Es la diferencia entre un coche y un interruptor -hasta la
+    # 1.53 el volante pasaba de cero al tope en un frame- y es lo que hace que
+    # el coche tenga peso. A cero se rellena solo con la cuarta parte de
+    # `volante`, o sea cuatro frames de tope a tope.
+    respuesta: float = 0.0
     lento: float = 1.6            # lo que corre como mucho fuera del asfalto
     arrastre: float = 0.180       # lo que le roba por frame el suelo malo
     trompo: int = 90              # frames dando vueltas despues de un choque
@@ -1173,8 +1179,10 @@ def _leer_coche(node: Node) -> Coche:
     por frame se salta dos tiles enteros entre frame y frame y atravesaria las
     vallas."""
     if node is None:
-        return Coche()
-    return Coche(
+        coche = Coche()
+        coche.respuesta = coche.volante / 4.0
+        return coche
+    coche = Coche(
         punta=node.num(["punta", "top", "maxima", "máxima", "velocidad"],
                        6.0, 0.5, 12.0),
         punta_corta=node.num(["punta_corta", "corta", "primera"], 3.2, 0.3, 12.0),
@@ -1187,6 +1195,8 @@ def _leer_coche(node: Node) -> Coche:
                       0.020, 0.0, 2.0),
         volante=node.num(["volante", "giro", "direccion", "dirección"],
                          2.2, 0.1, 8.0),
+        respuesta=node.num(["respuesta", "peso_volante", "tacto"],
+                           0.0, 0.0, 8.0),
         lento=node.num(["lento", "hierba", "arcen", "arcén", "fuera"],
                        1.6, 0.1, 8.0),
         arrastre=node.num(["arrastre", "tiron", "tirón", "frenazo"],
@@ -1196,6 +1206,12 @@ def _leer_coche(node: Node) -> Coche:
                            "tiempo_extra", "prorroga", "prórroga"],
                           20, 0, 999),
     )
+    if not coche.respuesta:
+        # La cuarta parte del tope: cuatro frames de recto a tope y otros
+        # cuatro de vuelta. Es poco tiempo -no llega a un decimo de segundo-
+        # pero es lo que separa un coche de un interruptor.
+        coche.respuesta = coche.volante / 4.0
+    return coche
 
 
 def _leer_carretera(node: Node) -> Carretera:

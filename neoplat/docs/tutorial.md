@@ -1079,7 +1079,16 @@ lados.
 coche:
   volante: 2.2     # lo que se mueve de lado, a punta
   punta: 6.0       # lo que corre con la marcha larga
+  respuesta: 0.55  # lo que gira el volante por frame
 ```
+
+**`respuesta:` es el tacto**: lo que el volante gira por frame. De serie es la
+cuarta parte de `volante:`, o sea cuatro frames de recto a tope y otros cuatro
+de vuelta, y por eso corregir una curva es algo que se hace *antes* y no en el
+momento. Súbela y el coche es nervioso; bájala y pesa. Lo que no cambia es la
+cuenta de arriba: el volante guarda **cuánto está girado**, no píxeles, así que
+lo que se desplaza por fila sigue sin depender de a cuánto vayas ni siquiera a
+mitad del giro.
 
 Lo que sí se gana frenando es otra cosa: **el trompo sólo salta si ibas más
 rápido que `lento:`**, así que arrimarse despacio al quitamiedos no te hace dar

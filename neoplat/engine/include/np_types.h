@@ -144,6 +144,18 @@ typedef int32_t np_fix;   /* posiciones y velocidades en 24.8 */
  * que estas girando, porque el coche se ve de culo y no se puede espejar sin
  * cambiar de asiento a los dos que van dentro. */
 #define NP_CARRETERA_LADEO 6
+/* Hasta donde llega el volante, en sus propias unidades: `ladeo` va de -64 a
+ * +64 y de ahi salen las dos cosas que se ven -lo que el coche se mueve de
+ * lado por el mapa y lo que se corre en pantalla-.
+ *
+ * El volante se guarda **girado** y no en pixeles por frame a proposito. La
+ * regla del genero es que lo que se desplaza de lado **por cada fila de
+ * carretera** no depende de a cuanto vayas -frenar no traza mas fino-, y eso
+ * solo se cumple si lo que tarda el volante en girar se cuenta en volante y no
+ * en pixeles: contado en pixeles, durante los cuatro frames que tarda en
+ * llegar al tope el coche trazaba distinto segun la velocidad. Medido con
+ * tests/test_carretera.py, que es de quien salio el aviso. */
+#define NP_VOLANTE_TOPE 64
 
 /* --- la vista isometrica (los juegos de tipo filmation) ------------------
  *

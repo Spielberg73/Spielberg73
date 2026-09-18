@@ -2974,7 +2974,7 @@ static void np_player_update_carretera(NpWorld *w, uint8_t quien, uint16_t input
     const NpPlayerDef *d = &np_player_def;
     const NpActorDef *a = &d->actor;
     NpPlayer *p = &w->players[quien];
-    np_fix velocidad, punta;
+    np_fix velocidad, punta, objetivo = 0;
     int dir = 0, hit_x = 0, hit_down = 0, hit_up = 0;
     int fuera;
 
@@ -3030,15 +3030,39 @@ static void np_player_update_carretera(NpWorld *w, uint8_t quien, uint16_t input
        marcha larga, que es la velocidad de referencia del coche.
        Se hace con una division y no con un desplazamiento porque `punta` sale
        del game.yaml y no tiene por que ser potencia de dos. */
-    if (dir && np_coche.punta > 0) {
+    /* **El volante tarda en girar**, que es lo que diferencia un coche de un
+       interruptor. Hasta la 1.53 pasaba de recto a tope en un frame y de tope
+       a recto en otro, y de ahi venia buena parte de lo tosco que se sentia.
+       Ahora gira `respuesta:` por frame -por defecto la cuarta parte del tope,
+       o sea cuatro frames de recto a tope- y corregir una curva pasa a ser
+       algo que se hace antes y no en el momento.
+
+       Lo que se guarda es **cuanto esta girado** (de -64 a +64) y no los
+       pixeles que se mueve, y eso no es un detalle: la regla del genero es que
+       lo que el coche se desplaza de lado por cada fila de carretera no
+       dependa de a cuanto vayas, y contando los frames de giro en pixeles esa
+       regla se rompia mientras durara el giro. */
+    objetivo = (np_fix)(dir * NP_VOLANTE_TOPE);
+    {
+        int32_t paso = np_coche.volante
+            ? ((int32_t)NP_VOLANTE_TOPE * np_coche.respuesta) / np_coche.volante
+            : NP_VOLANTE_TOPE;
+        if (paso < 1) paso = 1;      /* con `respuesta` muy baja, un paso */
+        p->ladeo = (int8_t)np_approach((np_fix)p->ladeo, objetivo, (np_fix)paso);
+    }
+    if (dir) p->facing = (uint8_t)(dir > 0);
+
+    /* Y lo que se mueve de lado: el tope de esta velocidad por lo girado que
+       este el volante. El tope manda tanto mas cuanto mas corres -parado no
+       gira, y a punta gira lo que diga `volante:`-, que es la regla que hace
+       que salir de un trompo cueste. */
+    if (np_coche.punta > 0) {
         np_fix manda = velocidad > np_coche.punta ? np_coche.punta : velocidad;
-        p->vx = (np_fix)(((int32_t)np_coche.volante * manda) / np_coche.punta);
-        if (dir < 0) p->vx = -p->vx;
-        p->facing = (uint8_t)(dir > 0);
+        int32_t tope = ((int32_t)np_coche.volante * manda) / np_coche.punta;
+        p->vx = (np_fix)((tope * p->ladeo) / NP_VOLANTE_TOPE);
     } else {
         p->vx = 0;
     }
-    p->ladeo = (int8_t)dir;
 
     /* Y ya esta: el coche se mueve por el mapa como cualquier otro actor de
        una vista cenital. Chocar con algo solido -una valla, un arbol, el
@@ -4819,6 +4843,17 @@ static void np_via_montar(NpWorld *w)
     /* Lo que quede detras del principio del mapa sigue recto: asi el horizonte
        no se queda en blanco al llegar a la meta. */
     for (; fila < NP_MAX_TRAMOS; fila++) w->via_centro[fila] = centro;
+    /* Dos pasadas y no una. El eje sale del mapa en escalones de media
+       casilla, y una sola pasada del promedio de cinco deja un rizo con el
+       periodo del escalon: al entrar en una curva del circuito de ejemplo el
+       eje daba 7 pixeles de golpe y despues dos filas quietas (7, 0, 0, -3,
+       -4), y eso en pantalla es el borde de la carretera haciendo un quiebro
+       segun se acerca. Con la segunda pasada -que convierte la ventana
+       cuadrada en una triangular- el mismo tramo sale 4, 2, 2, 0, -3, -4, y lo
+       desigual que son los pasos en ocho filas baja de 14 pixeles a 10. Una
+       tercera pasada casi no cambia nada, y esto no cuesta un frame: se hace
+       al cargar el nivel. */
+    np_via_suavizar(w->via_centro);
     np_via_suavizar(w->via_centro);
     /* Y el ancho de la calzada: el que mide en **mas filas**, no el mas ancho.
        Con el mas ancho, una sola linea de control -que cruza el mapa de lado a
@@ -5061,10 +5096,17 @@ uint16_t np_carretera(const NpWorld *w, int16_t *centro)
 
 uint8_t np_carretera_fase(const NpWorld *w)
 {
-    /* Por donde va el coche, en tramos. Al avanzar, la cuenta sube y la paleta
-       rota: las franjas corren hacia ti. Al parar, se quedan quietas. */
-    int32_t fila = NP_F2I(w->players[0].y) >> NP_TILE_SHIFT;
-    return (uint8_t)(((uint32_t)(-fila)) % NP_CARRETERA_FRANJAS);
+    /* Por donde va el coche, **en pixeles**. Al avanzar, la cuenta sube y la
+       paleta rota: las franjas corren hacia ti. Al parar, se quedan quietas.
+     *
+     * En pixeles y no en casillas, que es como estaba y es lo que hacia que la
+     * carretera pareciera ir a trompicones: la cuenta solo cambiaba al cruzar
+     * una casilla entera, o sea **una vez cada cinco frames** con la marcha
+     * corta a fondo y una cada diez por la hierba. Medido en el gemelo. Ahora
+     * cambia cada NP_CARRETERA_PASO pixeles: a 3,2 px por frame eso es casi un
+     * paso por frame, y la carretera corre en vez de dar tirones. */
+    int32_t px = NP_F2I(w->players[0].y) / NP_CARRETERA_PASO;
+    return (uint8_t)(((uint32_t)(-px)) % NP_CARRETERA_FRANJAS);
 }
 
 void np_carretera_coche(const NpWorld *w, uint8_t quien,
@@ -5074,9 +5116,11 @@ void np_carretera_coche(const NpWorld *w, uint8_t quien,
     const NpPlayer *p = &w->players[quien];
     int32_t ancho = a->cols * NP_TILE;
     int32_t alto = a->rows * NP_TILE;
-    /* Centrado, apoyado sobre el borde de abajo con un margen, y ladeado tres
-       pixeles hacia donde gira el volante. A dos jugadores, uno a cada lado. */
-    int32_t centro = NP_SCREEN_W / 2 + p->ladeo * NP_CARRETERA_LADEO;
+    /* Centrado, apoyado sobre el borde de abajo con un margen, y corrido hacia
+       donde gira el volante: hasta NP_CARRETERA_LADEO pixeles a volante del
+       todo, y lo que toque mientras gira. A dos jugadores, uno a cada lado. */
+    int32_t centro = NP_SCREEN_W / 2
+                   + (NP_CARRETERA_LADEO * p->ladeo) / NP_VOLANTE_TOPE;
     if (np_player_count > 1) centro += quien ? ancho : -ancho;
     *sx = centro - ancho / 2;
     *sy = NP_SCREEN_H - NP_CARRETERA_MARGEN - alto;

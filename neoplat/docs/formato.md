@@ -1935,6 +1935,13 @@ carretera:
 avanzas. Eso es lo que hace que se note la velocidad —no hay dibujo que mover,
 hay dos colores que se turnan— y es como se hacía en los recreativos.
 
+**Corren cada cuatro píxeles recorridos**, no cada casilla. Hasta la 1.53 la
+cuenta iba en casillas de 16 y a las velocidades de andar por casa la paleta
+sólo giraba un paso **cada cinco o diez frames**: la carretera daba tirones en
+vez de correr. Contada en píxeles gira casi todos los frames y el movimiento se
+ve continuo, sin que cueste un ciclo más: es la misma división, con otro
+número.
+
 Son **siete colores y no un dibujo** a propósito. Así la calzada se pinta con
 lo que da cada máquina —el scroll por línea de la Mega Drive y del X68000, el
 copper del Amiga, sprites encogidos en la Neo Geo— sin gastar ni un tile, y la
@@ -1966,6 +1973,7 @@ coche:
   frena: 0.140          # lo que pierde por frame con el freno
   roce: 0.020           # y lo que pierde solo, sin tocar nada
   volante: 2.2          # lo que se mueve de lado, a punta
+  respuesta: 0.55       # lo que gira el volante por frame (por defecto, volante/4)
   lento: 1.6            # lo que corre como mucho fuera del asfalto
   arrastre: 0.180       # lo que le roba por frame el suelo malo
   trompo: 90            # frames dando vueltas después de un choque
@@ -1981,6 +1989,7 @@ coche:
 | `frena` | 0.140 | 0.005 | 4.0 |
 | `roce` | 0.020 | 0.0 | 2.0 |
 | `volante` | 2.2 | 0.1 | 8.0 |
+| `respuesta` | `volante / 4` | 0.0 | 8.0 |
 | `lento` | 1.6 | 0.1 | 8.0 |
 | `arrastre` | 0.180 | 0.005 | 4.0 |
 | `trompo` | 90 | 0 | 255 |
@@ -1998,6 +2007,22 @@ enterarse.
 lado a punta, y de ella sale qué curvas se pasan a tope y cuáles no. Súbela y
 el trazado se vuelve fácil; bájala y hay curvas que obligan a levantar el pie,
 que es donde está la gracia.
+
+**`respuesta` es el tacto del volante**: lo que el volante gira por frame, o
+sea lo que tarda en llegar al tope y en volver a recto. De serie es la cuarta
+parte de `volante`, que son cuatro frames de recto a tope y otros cuatro de
+vuelta —menos de un décimo de segundo, pero es lo que separa un coche de un
+interruptor: hasta la 1.53 el volante pasaba de recto a tope **en un frame** y
+el coche se sentía de madera—. Súbela y el coche es nervioso, casi un
+interruptor; bájala y pesa, y hay que empezar a girar antes de la curva.
+
+**Lo que `respuesta` no cambia es la línea que se traza.** Lo que el volante
+guarda es *cuánto está girado*, no los píxeles que se mueve; los píxeles salen
+de multiplicar lo girado por la velocidad, así que la cuenta de arriba
+—`volante / punta` por fila, la misma a 6.0 que a 1.0— sigue saliendo igual
+**en cada frame del giro**, no sólo al final. Lo defiende
+`tests/test_carretera.py`, que es de donde salió el aviso la primera vez que
+esto se contó en píxeles.
 
 **`lento` y `arrastre` son la penalización de salirse**: `arrastre` es lo que
 te roba por frame el suelo malo y `lento` el techo al que te deja. Salirse no

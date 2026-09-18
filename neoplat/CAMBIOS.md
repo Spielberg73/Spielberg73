@@ -2,8 +2,80 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.53.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.54.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.54
+
+**El coche y la carretera, menos toscos.** Lo contó quien lo jugó: el control
+del coche y el movimiento de la carretera eran bastos. Al mirarlo había **tres
+cosas distintas**, y ninguna era la cifra del volante.
+
+**La carretera avanzaba a tirones.** Las franjas de la calzada corren rotando
+la paleta, y la cuenta de qué franja toca iba **en casillas de 16 píxeles**: a
+3,2 píxeles por frame eso es un paso cada cinco frames, o sea que veinticuatro
+frames de carretera sólo cambiaban de color **cinco veces**. Ahora la cuenta va
+en píxeles y gira un paso cada cuatro: los mismos veinticuatro frames cambian
+**dieciocho veces**. Es la misma división con otro número —no cuesta un ciclo
+más— y es lo que más se nota de todo esto.
+
+**El volante era un interruptor.** Pulsar ← o → ponía el volante del recto al
+tope **en un frame**, y soltarlo lo devolvía a recto en otro. Ahora el volante
+**tarda en girar**: de serie cuatro frames de ida y cuatro de vuelta, que es lo
+que separa un coche de un botón. Se ajusta con `respuesta:` en `coche:` —el
+tacto—, y de fábrica vale la cuarta parte de `volante:`, así que quien no la
+escriba nota el cambio sin tocar nada.
+
+Medido en el gemelo, a 3,2 píxeles por frame, doce frames pulsando derecha:
+
+```
+antes   ladeo 0 0 0 0 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0
+ahora   ladeo 0 0 0 0 16 32 48 64 64 64 64 64 64 64 64 64 48 32 16 0
+```
+
+**Y la línea que se traza es la misma.** Esto no es un detalle: la regla del
+género —y lo que dicen las docs— es que lo que el coche se desplaza de lado
+**por cada fila de carretera** no depende de a cuánto vayas, o sea que frenar no
+traza más fino. El primer intento contaba el giro **en píxeles** y rompía esa
+regla mientras durara el giro; lo cazó `tests/test_carretera.py` antes de que
+saliera de aquí. Lo que se guarda ahora es **cuánto está girado el volante**
+—de -64 a +64— y los píxeles salen de multiplicarlo por la velocidad, así que
+la cuenta sale igual en **cada frame** del giro. La prueba lo comprueba frame a
+frame a cinco velocidades distintas, y no sólo al final.
+
+**Y el borde de la carretera daba quiebros.** El eje de la calzada se suaviza
+al cargar el nivel para que las filas no salten de una a otra, pero el mapa lo
+da en escalones de media casilla y con una sola pasada quedaba un rizo con el
+periodo del escalón. Con dos pasadas el mismo desplazamiento se reparte:
+
+```
+antes   eje  7  0  0 -3 -4 -6 -6 -7     (un quiebro de 7 px y dos filas quietas)
+ahora   eje  4  2  2  0 -3 -4 -5 -6
+```
+
+Es al entrar en una curva del circuito de ejemplo, y lo desiguales que son los
+pasos en ocho filas baja de **14 píxeles a 10**. No cuesta un frame: el eje se
+monta al cargar el nivel, no por frame.
+
+**Lo que cuesta.** En el Amiga, nada: el ejecutable del juego de partida de
+carreras sigue midiendo **189 KB de los 190** que deja libres un A500 de serie,
+los mismos que antes. En la Neo Geo, que es la única máquina con un presupuesto
+de ciclos que se pueda contar, un frame de carretera pasa de **172.500 a
+180.500 ciclos** de los 200.000 que da la consola: son 8.000 más, y salen de
+que la calzada más suave tiene más valores distintos que dibujar. Sigue
+cabiendo.
+
+> **Y lo que ya no cabía.** Midiendo esto salió una cosa que no tiene que ver
+> con este cambio: en la Neo Geo el juego de carreras **ya se pasaba de
+> presupuesto** en los frames en los que entra una fila nueva de fondo, y se
+> pasaba igual en la 1.53. Medido con el banco del kit, trescientos frames
+> conduciendo: el suelo va por 180.000 ciclos, pero esos frames suben a
+> **250.000 y pico** —255.000 en la 1.53, 261.000 ahora— y ahí la consola
+> pierde el frame. La prueba de ciclos del kit sólo mira el juego de
+> plataformas, que sí cabe (196.626 de 200.000), y por eso nunca había salido.
+> Es un fallo del género en esa máquina, apuntado para arreglarlo aparte: no se
+> toca aquí porque arreglarlo es rehacer cómo se mete el fondo, y eso no es
+> pulir el volante.
 
 ## 1.53
 

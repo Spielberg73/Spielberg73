@@ -99,20 +99,36 @@ class TestLoQueDicenLasDocs(unittest.TestCase):
             fh.write("""
 var NP = require(process.argv[2]);
 var data = JSON.parse(require("fs").readFileSync(process.argv[3], "utf8"));
-/* A cada velocidad, un frame girando a la derecha, y lo que sale de lado por
-   cada fila de 16 px de carretera. Se pone la velocidad a mano en vez de
-   acelerar: asi se miden velocidades que el circuito de ejemplo no deja
-   mantener -en cuanto tuerce, la hierba te frena- y la cuenta queda limpia. */
-var salida = [];
+/* A cada velocidad, girando a la derecha, lo que sale de lado por cada fila
+   de 16 px de carretera. Se pone la velocidad a mano en vez de acelerar: asi
+   se miden velocidades que el circuito de ejemplo no deja mantener -en cuanto
+   tuerce, la hierba te frena- y la cuenta queda limpia. Por lo mismo se le
+   devuelve al coche su sitio cada frame: lo que se mide es el volante, no el
+   trazado.
+
+   Se miden ocho frames y no uno porque desde la 1.54 el volante tarda en
+   girar (`respuesta:`), asi que se mira frame a frame: la cuenta tiene que
+   salir la misma a todas las velocidades **en cada uno** de los frames del
+   giro, no solo al final, que es justo lo que se rompia cuando el giro se
+   contaba en pixeles. */
+var salida = [], porFrame = [];
 [1.0, 2.0, 3.0, 4.5, 6.0].forEach(function (v) {
   var w = NP.create(data);
   w.step(NP.IN.START);
   var p = w.players[0];
-  p.vy = -Math.round(v * 256);
-  w.step(NP.IN.RIGHT);
-  var vy = -p.vy / 256, vx = p.vx / 256;
-  salida.push({ v: v, vy: vy, vx: vx, porFila: vy > 0 ? vx * 16 / vy : 0 });
+  var x0 = p.x, y0 = p.y, fila = [];
+  var vy = 0, vx = 0;
+  for (var f = 0; f < 8; f++) {
+    p.x = x0; p.y = y0; p.vy = -Math.round(v * 256);
+    w.step(NP.IN.RIGHT);
+    vy = -p.vy / 256; vx = p.vx / 256;
+    fila.push(vy > 0 ? vx * 16 / vy : 0);
+  }
+  porFrame.push(fila);
+  salida.push({ v: v, vy: vy, vx: vx, ladeo: p.ladeo,
+                porFila: vy > 0 ? vx * 16 / vy : 0 });
 });
+salida.push({ porFrame: porFrame });
 console.log(JSON.stringify(salida));
 """)
         salida = subprocess.run(
@@ -120,6 +136,7 @@ console.log(JSON.stringify(salida));
             capture_output=True, text=True)
         self.assertEqual(salida.returncode, 0, salida.stderr)
         medidas = json.loads(salida.stdout)
+        por_frame = medidas.pop()["porFrame"]
         velocidades = [m["vy"] for m in medidas]
         self.assertGreater(max(velocidades), min(velocidades) * 3,
                            "no se han medido velocidades de verdad distintas: "
@@ -129,6 +146,18 @@ console.log(JSON.stringify(salida));
             max(porfila) - min(porfila), 0.15,
             "el desplazamiento de lado por fila cambia con la velocidad, y las "
             "docs dicen que no -que frenar no traza mas fino-: %s" % medidas)
+        # y tambien durante el giro, frame a frame: mientras el volante sube,
+        # todas las velocidades tienen que ir por el mismo sitio
+        for f in range(len(por_frame[0])):
+            paso = [fila[f] for fila in por_frame]
+            self.assertLess(
+                max(paso) - min(paso), 0.15,
+                "en el frame %d del giro el desplazamiento por fila ya depende "
+                "de la velocidad: %s" % (f, por_frame))
+        # y el volante llega al tope: son ocho frames y tarda cuatro
+        for m in medidas:
+            self.assertEqual(64, m["ladeo"],
+                             "el volante no ha llegado al tope: %s" % m)
         # y es el numero que dicen las docs
         for m in medidas:
             self.assertAlmostEqual(
