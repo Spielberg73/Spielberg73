@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zxcpc"
+version = "0.1.0"
+description = "Kit de port asistido ZX Spectrum <-> Amstrad CPC"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+
+[project.scripts]
+zxcpc = "zxcpc.cli:main"
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.setuptools.packages.find]
+include = ["zxcpc*"]
+
+[tool.setuptools.package-data]
+"zxcpc.port" = ["hal/*.asm"]
