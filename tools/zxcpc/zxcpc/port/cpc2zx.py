@@ -148,7 +148,7 @@ def _in_c_handler(reg):
         "A": "        ld hl,5\n        add hl,sp\n        ld (hl),e\n",
         "F": "",
     }[reg]
-    return ("        push af\n        push de\n        push hl\n        call cpc_in\n"
+    return ("        push af\n        push de\n        push hl\n        call local_in\n"
             "        ld e,a\n        or a\n        push af\n        pop hl\n        ld a,l\n"
             "        ld hl,4\n        add hl,sp\n        ld d,a\n        ld a,(hl)\n"
             "        and 1\n        or d\n        ld (hl),a\n" + set_reg +
@@ -196,13 +196,17 @@ class CPC2ZX:
             if not (lo == 0 and hi == 0x10000):
                 for a in range(lo, min(hi, 0x10000)):
                     used[a] = 1
+        self.block_only = bytearray(65536)     # escrito solo por LDIR/LDDR...
         if tr is not None:
             for a in range(65536):
                 if tr.written[a]:
                     used[a] = 1
-            lo = max(0, tr.sp_min - 64)
-            for a in range(lo, min(0x10000, tr.sp_max + 2)):
-                used[a] = 1
+                elif tr.written_block[a]:
+                    used[a] = 1
+                    self.block_only[a] = 1
+            for pg in tr.sp_pages:
+                for a in range(max(0, pg * 256 - 64), min(0x10000, pg * 256 + 256)):
+                    used[a] = 1
         for a, ins in self.an.instrs.items():
             for k in range(ins.length):
                 used[(a + k) & 0xFFFF] = 1
@@ -301,42 +305,43 @@ class CPC2ZX:
                                      "solo lo verá el refresco de fondo")
 
     def _plan_io(self, ins, kinds):
+        """E/S del CPC -> manejador local (RST $00 + id): el PPI y el PSG se emulan
+        en la puerta; el gate array y el CRTC cruzan al HAL desde local_out."""
         direction, form, val = ins.io_kind()
         if kinds <= {"fdc_io"}:
             self.warnings.append(f"{ins.addr:04X} {ins.text()}: acceso a la disquetera ignorado")
-            label = self._hal(("ret",), "        ret\n")
-            return Patch(ins.addr, ins.raw, bytes([0xF7, self.hal_ids[label]]), "io", ins.text(),
-                         label)
-        if form == "block":
+            code = PROLOGUE + ("        ld a,$FF\n        ret\n" if direction == "in" and
+                               form == "n" else "        ret\n")
+            label = self._local(("fdc", direction, form), code)
+        elif form == "block":
             target = {"OUTI": "local_outi", "OTIR": "local_otir", "OUTD": "local_outd",
                       "OTDR": "local_otdr"}.get(ins.op)
             if target is None:
                 self.warnings.append(f"{ins.addr:04X} {ins.text()}: E/S en bloque no soportada")
                 return None
             label = self._local(("blk", ins.op), PROLOGUE + f"        jp {target}\n")
-            return Patch(ins.addr, ins.raw, bytes([0xC7, self.local_ids[label]]), "io",
-                         ins.text(), label)
-        if form == "n":
+        elif form == "n":
             n = val
             if direction == "out":
-                code = (f"        push bc\n        ld b,a\n        ld c,{n}\n        call cpc_out\n"
+                code = (f"        push bc\n        ld b,a\n        ld c,{n}\n        call local_out\n"
                         "        pop bc\n        ret\n")
             else:
                 code = (f"        push bc\n        push af\n        ld b,a\n        ld c,{n}\n"
-                        "        call cpc_in\n        ld b,a\n        pop af\n        ld a,b\n"
+                        "        call local_in\n        ld b,a\n        pop af\n        ld a,b\n"
                         "        pop bc\n        ret\n")
-            label = self._hal((direction + "_n", n), code)
+            label = self._local((direction + "_n", n), PROLOGUE + code)
         elif direction == "out":
             src = ins.operands[1]
             reg = "0" if src.kind == D.IMM8 else src.value
             load = "        xor a\n" if reg == "0" else ("" if reg == "A" else
                                                         f"        ld a,{reg.lower()}\n")
-            label = self._hal(("out_c", reg), "        push af\n" + load +
-                              "        call cpc_out\n        pop af\n        ret\n")
+            label = self._local(("out_c", reg), PROLOGUE + "        push af\n" + load +
+                                "        call local_out\n        pop af\n        ret\n")
         else:
             reg = ins.operands[0].value
-            label = self._hal(("in_c", reg), _in_c_handler(reg))
-        return Patch(ins.addr, ins.raw, bytes([0xF7, self.hal_ids[label]]), "io", ins.text(), label)
+            label = self._local(("in_c", reg), PROLOGUE + _in_c_handler(reg))
+        return Patch(ins.addr, ins.raw, bytes([0xC7, self.local_ids[label]]), "io", ins.text(),
+                     label)
 
     def _plan_screen(self, ins):
         wk = ins.mem_write_kind()
@@ -391,18 +396,52 @@ class CPC2ZX:
         gapset = set(gaps)
         mb = None
         if base == 0xC000:
-            for g in gaps:
-                if all((g + k) in gapset and not used[g + k] for k in range(48)):
-                    mb = g
+            # huecos no usados; si no hay, huecos que solo pisan copias en bloque
+            # (el HAL protege el buzón durante LDIR/LDDR)
+            for relaxed in (False, True):
+                for g in gaps:
+                    if all((g + k) in gapset and (not used[g + k] or
+                                                  (relaxed and self.block_only[g + k]))
+                           for k in range(48)):
+                        mb = g
+                        break
+                if mb is not None:
+                    if relaxed:
+                        self.warnings.append("el buzón comparte un hueco de pantalla que el "
+                                             "juego borra con LDIR: se protege en cada copia")
                     break
         if mb is None:
             mb = self._find_free(used, 0xC000, 0x10000, 48, need_zero=True)
         if mb is None:
             raise ValueError("no encuentro 48 bytes libres en $C000-$FFFF para el buzón")
+        # segundo buzón (PPI/PSG/teclado): otro hueco, sin cruzar página
+        mb2 = None
+        cands = [g for g in gaps if (g & 0xFF) + 48 <= 256] if base == 0xC000 else []
+        for relaxed in (False, True):
+            for g in cands:
+                if abs(g - mb) >= 48 and all(
+                        (g + k) in gapset and (not used[g + k] or
+                                               (relaxed and self.block_only[g + k]))
+                        for k in range(48)):
+                    mb2 = g
+                    break
+            if mb2 is not None:
+                break
+        if mb2 is None:
+            a = 0xC000
+            while mb2 is None and a < 0x10000:
+                c = self._find_free(used, a, 0x10000, 48, need_zero=True)
+                if c is None:
+                    break
+                if (c & 0xFF) + 48 <= 256 and abs(c - mb) >= 48:
+                    mb2 = c
+                a = c + 1
+        if mb2 is None:
+            raise ValueError("no encuentro otros 48 bytes libres en $C000-$FFFF para el buzón")
         font = 0x3C00
         syms = {"CROP_X": crop_x, "CROP_Y": crop_y,
                 "REFRESH_LINES": max(1, min(16, self.opt.refresh_lines)), "INIT_MODE": mode,
-                "INIT_R1": r1, "MB": mb, "FONT": font, "GATE": 0x0100,
+                "INIT_R1": r1, "MB": mb, "MB2": mb2, "FONT": font, "GATE": 0x0100,
                 "NLOCAL": max(1, len(self.local_ids))}
         with open(HAL_SRC, encoding="utf-8") as f:
             base_src = f.read()
@@ -476,7 +515,9 @@ class CPC2ZX:
             rowtab.append(f)
         g = sy["gate_nib"]
         gt = {}
-        gt.update({g + i: nib[i] for i in range(256)})
+        for m in range(3):
+            nm = self._mode_tables(m)[0]
+            gt.update({g + 256 * m + i: nm[i] for i in range(256)})
         gt.update({sy["gate_rowtab"] + i: rowtab[i] for i in range(128)})
         for f, v in enumerate(rowstart):
             gt[sy["gate_rowstart"] + 2 * f] = v & 0xFF
@@ -556,8 +597,16 @@ class CPC2ZX:
         mem[mbase + 21] = scrhi
         mem[mbase + 22] = start & 0xFF
         mem[mbase + 23] = start >> 8
-        mem[mbase + 24] = 1
+        mem[mbase + 24] = 1 if mode < 3 else 0
         mem[mbase + 25] = 0xC9                  # sin rutina de interrupción propia
+        mem[mbase + 46] = (sy["gate_nib"] >> 8) + (mode if mode < 3 else 0)
+        m2 = syms["MB2"]
+        mem[m2:m2 + 48] = bytes(48)
+        mem[m2:m2 + 10] = b"\xFF" * 10
+        mem[m2 + 10] = st.ppi[0] & 0xFF
+        mem[m2 + 11] = st.ppi[2] & 0xFF
+        mem[m2 + 12] = st.psg_sel & 15
+        mem[m2 + 13:m2 + 29] = bytes(v & 0xFF for v in (list(st.psg) + [0] * 16)[:16])
         # pantalla del Spectrum inicial
         zx_scr = self._convert_screen(mem, st, mode, pen_zx, crop_x, crop_y)
         b7 = bytearray(16384)
@@ -580,7 +629,7 @@ class CPC2ZX:
         free = 0xBF00 - sy["hal_gen_end"]
         palette = [(i, HW_TO_FW[pal[i]], f"pluma {i} -> color ZX {pen_zx[i]}") for i in range(4)]
         self.warnings.insert(0, f"puerta en {gate:#06x}-{gate + gate_size - 1:#06x}, buzón en "
-                             f"{mbase:#06x}")
+                             f"{mbase:#06x} y {m2:#06x}")
         return CPCPortResult(zx, self.patches, self.warnings, header + src, sy, free, palette)
 
     def _mode_tables(self, mode):

@@ -25,6 +25,7 @@ class Trace:
     io: dict = field(default_factory=lambda: defaultdict(Counter))       # pc -> (dir,port)->n
     screen_writes: dict = field(default_factory=lambda: defaultdict(Counter))  # pc -> region->n
     written: bytearray = field(default_factory=lambda: bytearray(65536))  # 1 = escrito
+    written_block: bytearray = field(default_factory=lambda: bytearray(65536))  # por LDIR/LDDR...
     read_rom: dict = field(default_factory=lambda: defaultdict(Counter))  # pc -> página->n
     rom_calls: dict = field(default_factory=lambda: defaultdict(Counter))  # pc origen -> destino->n
     smc: dict = field(default_factory=lambda: defaultdict(set))          # pc escritor -> dirs de código
@@ -35,6 +36,7 @@ class Trace:
     halts: Counter = field(default_factory=Counter)
     sp_min: int = 0xFFFF
     sp_max: int = 0
+    sp_pages: set = field(default_factory=set)     # páginas de 256 bytes usadas por la pila
     stack_in_screen: Counter = field(default_factory=Counter)
     beeper_toggles: int = 0
     screenshots: list = field(default_factory=list)
@@ -172,6 +174,7 @@ class Tracer:
         if ins.op == "HALT":
             t.halts[pc] += 1
         sp = c.sp
+        t.sp_pages.add(sp >> 8)
         if sp < t.sp_min:
             t.sp_min = sp
         if sp > t.sp_max:
@@ -182,7 +185,11 @@ class Tracer:
         t = self.t
         if self.in_rom(pc):
             return          # escrituras del firmware/ROM: no son del juego
-        t.written[a] = 1
+        ent = self.cache.get(pc)
+        if ent is not None and ent[0].op in ("LDIR", "LDDR", "LDI", "LDD"):
+            t.written_block[a] = 1
+        else:
+            t.written[a] = 1
         if a < 0x40:
             t.low_writes[pc].add(a)
         if self.scr_lo <= a < self.attr_hi:

@@ -472,6 +472,7 @@ class SpectrumPlus3(Spectrum48K):
         self.p7ffd = 0
         self.p1ffd = 0
         self.quads = [None, 5, 2, 0]         # None = ROM
+        self._rom_traps = {}
         self.cpu.wb = self._wb3
         self._load_view()
 
@@ -482,6 +483,13 @@ class SpectrumPlus3(Spectrum48K):
                 self.banks[b][:] = v[q * 16384:(q + 1) * 16384]
 
     def _load_view(self):
+        # las trampas HLE solo valen con la ROM en $0000-$3FFF
+        if self.quads[0] is None:
+            if not self.traps:
+                self.traps = self._rom_traps
+        elif self.traps:
+            self._rom_traps = self.traps
+            self.traps = {}
         v = self.mem
         for q, b in enumerate(self.quads):
             if b is None:

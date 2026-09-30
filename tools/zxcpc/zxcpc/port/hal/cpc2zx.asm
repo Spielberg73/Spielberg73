@@ -46,7 +46,16 @@ MB_EVFAST   equ MB+30           ; rutina "fast ticker" (2)
 MB_VSYNC    equ MB+32
 MB_INEV     equ MB+33
 MB_BUF      equ MB+34           ; 12 bytes de intercambio
-MB_END      equ MB+46
+MB_NIBHI    equ MB+46           ; página de gate_nib del modo actual
+MB_END      equ MB+47
+
+; --- segundo buzón (banco 3): estado del PPI/PSG y matriz del teclado ---
+MB2_MATRIX  equ MB2+0           ; 10 líneas (bits a 0 = pulsado)
+MB2_PPIA    equ MB2+10
+MB2_PPIC    equ MB2+11
+MB2_PSGSEL  equ MB2+12
+MB2_PSG     equ MB2+13          ; 16 registros del PSG (sombra)
+MB2_DIRTY   equ MB2+29          ; 24 bits: filas de atributos por recalcular
 
 ; ids de manejadores internos (el portador usa 0..249)
 ID_ISR      equ 250
@@ -340,52 +349,24 @@ fast_pair:
         ret nc
         and $3E
         ld d,a                  ; par (relativo al recorte)
-        push de
-        ; dirección CPC del primer byte del par
         ld a,e
-        add a,CROP_Y
-        ld c,a
-        rrca
-        rrca
-        rrca
-        and 31
-        add a,a
-        ld e,a
-        ld d,0
-        ld hl,gate_rowstart
-        add hl,de
-        ld e,(hl)
+        call mark_dirty
+        ; primer byte del par = dirección original con el bit 0 a cero (el inicio
+        ; de la pantalla, las filas y el recorte son pares). El llamador guardó HL.
+        ld hl,2
+        add hl,sp
+        ld a,(hl)
         inc hl
-        ld d,(hl)
-        ld hl,(MB_START)
-        add hl,de
-        pop de
-        push de
-        ld a,d
-        add a,CROP_X
-        add a,l
+        ld h,(hl)
+        and $FE
         ld l,a
-        jr nc,.nc
-        inc h
-.nc:    ld a,h
-        and 7
-        ld h,a
-        ld a,c
-        and 7
-        add a,a
-        add a,a
-        add a,a
-        or h
-        ld h,a
-        ld a,(MB_SCRHI)
-        and $C0
-        or h
-        ld h,a                  ; HL = primer byte del par
+        push de
         ld a,(hl)
         inc hl
         push hl
         ld l,a
-        ld h,gate_nib/256
+        ld a,(MB_NIBHI)
+        ld h,a
         ld a,(hl)
         rlca
         rlca
@@ -395,7 +376,8 @@ fast_pair:
         pop hl
         ld a,(hl)
         ld l,a
-        ld h,gate_nib/256
+        ld a,(MB_NIBHI)
+        ld h,a
         ld a,(hl)
         or c
         ld c,a                  ; C = byte ZX
@@ -438,6 +420,38 @@ fast_pair:
         ei
         ret
 
+; marca como sucia la fila de atributos de la línea ZX A (0-191): el HAL
+; recalcula primero esas filas. Destruye AF y HL. Vale en las dos configuraciones.
+mark_dirty:
+        push bc
+        rrca
+        rrca
+        rrca
+        and 31                  ; fila (0-23)
+        ld c,a
+        and 7
+        ld hl,gate_bits
+        add a,l
+        ld l,a
+        jr nc,.n
+        inc h
+.n:     ld b,(hl)
+        ld a,c
+        rrca
+        rrca
+        rrca
+        and 3
+        add a,MB2_DIRTY&255
+        ld l,a
+        ld h,MB2_DIRTY/256
+        ld a,(hl)
+        or b
+        ld (hl),a
+        pop bc
+        ret
+gate_bits:
+        db 1,2,4,8,16,32,64,128
+
 ; --- rutinas locales (se ejecutan con la memoria del juego) ---
 
 ; HALT del CPC (300 Hz) -> espera ~1/300 s
@@ -452,18 +466,32 @@ local_halt:
         pop af
         ret
 
-; LDIR/LDDR/LDI/LDD hacia la pantalla: se ejecutan aquí y luego se refleja
+; LDIR/LDDR/LDI/LDD hacia la pantalla: se ejecutan aquí y luego se refleja.
+; LDIR/LDDR guardan el buzón si el bloque lo pisa (p.ej. un borrado de 16K).
 local_ldir:
-        ld (MB_X1),de
+        call mb_overlap
+        jr nc,.plain
+        call mb_backup
+        push de
         ldir
-        jr span_after
+        call mb_restore
+        ex (sp),hl              ; HL = DE inicial, [HL final]
+        ld (MB_X1),hl
+        pop hl                  ; HL final (como tras un LDIR normal)
+        ld (MB_X2),de
+        jp span_go
+.plain: ld (MB_X1),de
+        ldir
+        jp span_after
 local_ldi:
         ld (MB_X1),de
         ldi
-        jr span_after
+        jp span_after
 local_lddr:
         push de
+        call mb_backup
         lddr
+        call mb_restore
         jr span_down
 local_ldd:
         push de
@@ -479,6 +507,82 @@ span_down:                      ; rango (DE, inicio] -> [DE+1, inicio+1)
         ex de,hl
         pop hl
         jr span_go
+; ¿[DE, DE+BC) se solapa con alguno de los dos buzones? -> CF. Conserva todo salvo F.
+mb_overlap:
+        push hl
+        ld hl,MB
+        call mb_ov1
+        jr c,.x
+        ld hl,MB2
+        call mb_ov1
+.x:     pop hl
+        ret
+; HL = inicio de un buzón de 48 bytes. Conserva todo salvo F y HL.
+mb_ov1: push af
+        push hl                 ; [base][AF]
+        ld a,l
+        add a,47
+        ld l,a
+        jr nc,.n
+        inc h
+.n:     or a
+        sbc hl,de               ; base+47 - DE
+        jr c,.no                ; empieza por encima del buzón
+        ld h,d
+        ld l,e
+        add hl,bc
+        dec hl                  ; última dirección escrita
+        ex (sp),hl              ; HL = base, [última]
+        ex de,hl                ; DE = base, HL = DE original
+        ex (sp),hl              ; HL = última, [DE original]
+        or a
+        sbc hl,de               ; última - base
+        pop de
+        jr c,.no2               ; termina por debajo del buzón
+        pop af
+        scf
+        ret
+.no:    pop hl
+.no2:   pop af
+        or a
+        ret
+
+; copia de seguridad de los buzones en la puerta (banco 0). Conserva todo.
+mb_backup:
+        push af
+        push bc
+        push de
+        push hl
+        ld hl,MB
+        ld de,mb_save
+        ld bc,48
+        ldir
+        ld hl,MB2
+        ld bc,48
+        ldir
+        pop hl
+        pop de
+        pop bc
+        pop af
+        ret
+mb_restore:
+        push af
+        push bc
+        push de
+        push hl
+        ld hl,mb_save
+        ld de,MB
+        ld bc,48
+        ldir
+        ld de,MB2
+        ld bc,48
+        ldir
+        pop hl
+        pop de
+        pop bc
+        pop af
+        ret
+
 span_after:
         ld (MB_X2),de
 span_go:
@@ -599,6 +703,244 @@ local_read_char:
         ld (MB_ID),a
         jp gate_body
 
+; --- E/S del CPC emulada en la propia puerta (sin cambiar de banco) ---
+
+; OUT: BC = puerto, A = valor. Conserva todo. El PPI y el PSG se resuelven
+; aquí; el gate array y el CRTC cruzan al HAL.
+local_out:
+        push af
+        push de
+        push hl
+        ld e,a
+        ld a,b
+        bit 3,a
+        jr nz,.nppi
+        and 3
+        jr z,.pa
+        cp 2
+        jr z,.pc
+        cp 3
+        jr nz,.done
+        bit 7,e                 ; control del PPI
+        jr nz,.done
+        ld a,e
+        rrca
+        and 7
+        ld d,a
+        ld a,1
+        inc d
+.rot:   dec d
+        jr z,.bit
+        rlca
+        jr .rot
+.bit:   ld d,a                  ; D = bit
+        ld a,(MB2_PPIC)
+        bit 0,e
+        jr z,.res
+        or d
+        jr .pc2
+.res:   ld e,a
+        ld a,d
+        cpl
+        and e
+        jr .pc2
+.pa:    ld a,e
+        ld (MB2_PPIA),a
+        jr .done
+.pc:    ld a,e
+.pc2:   ld (MB2_PPIC),a
+        and $C0
+        cp $C0
+        jr z,.sel
+        cp $80
+        jr nz,.done
+        ld a,(MB2_PPIA)         ; escritura en el PSG
+        ld e,a
+        ld a,(MB2_PSGSEL)
+        call local_psg_write
+        jr .done
+.sel:   ld a,(MB2_PPIA)
+        and 15
+        ld (MB2_PSGSEL),a
+        jr .done
+.nppi:  and $C0
+        cp $40
+        jr z,.cross             ; gate array
+        bit 6,b
+        jr nz,.done             ; ni gate array ni CRTC: se ignora
+.cross: ld a,e
+        ld (MB_X1),a
+        call cross_out
+.done:  pop hl
+        pop de
+        pop af
+        ret
+cross_out:
+        push af
+        ld a,i
+        di
+        push af
+        ld a,ID_OUTBYTE
+        ld (MB_ID),a
+        jp gate_body
+
+; IN: BC = puerto -> A = valor. Conserva BC, DE, HL (y no toca la pila del HAL).
+local_in:
+        ld a,b
+        bit 3,a
+        jr nz,.ff
+        and 3
+        jr z,.pa
+        cp 1
+        jr z,.pb
+        ld a,(MB2_PPIC)
+        ret
+.pb:    ld a,(MB_VSYNC)
+        or a
+        jr z,.nv
+        dec a
+        ld (MB_VSYNC),a
+        ld a,$5F
+        ret
+.nv:    ld a,$5E
+        ret
+.pa:    ld a,(MB2_PPIC)
+        and $C0
+        cp $40
+        jr nz,.ff
+        ld a,(MB2_PSGSEL)
+        cp 14
+        jr nz,.reg
+        ld a,(MB2_PPIC)
+        and 15
+        cp 10
+        jr nc,.ff
+        push hl
+        ld hl,MB2_MATRIX
+        add a,l
+        ld l,a
+        jr nc,.m
+        inc h
+.m:     ld a,(hl)
+        pop hl
+        ret
+.ff:    ld a,$FF
+        ret
+.reg:   push hl
+        ld hl,MB2_PSG
+        add a,l
+        ld l,a
+        jr nc,.r
+        inc h
+.r:     ld a,(hl)
+        pop hl
+        ret
+
+; PSG del CPC (1 MHz) -> AY del Spectrum (1,7734 MHz). A = registro, E = valor.
+; Destruye AF, HL.
+local_psg_write:
+        cp 14
+        ret nc
+        push bc
+        push de
+        ld c,a
+        ld hl,MB2_PSG
+        add a,l
+        ld l,a
+        jr nc,.s
+        inc h
+.s:     ld (hl),e
+        ld a,c
+        cp 6
+        jr c,.tone
+        jr z,.noise
+        cp 11
+        jr z,.env
+        cp 12
+        jr z,.env
+        cp 7
+        jr nz,.direct
+        ld a,e
+        or $C0                  ; puertos del AY en entrada
+        ld e,a
+        ld a,7
+.direct:
+        call ay_out
+        pop de
+        pop bc
+        ret
+.noise: ld l,e
+        ld h,0
+        call up_scale
+        ld a,l
+        cp 32
+        jr c,.n1
+        ld a,31
+.n1:    ld e,a
+        ld a,6
+        jr .direct
+.env:   ld hl,(MB2_PSG+11)
+        call up_scale
+        push hl
+        ld e,l
+        ld a,11
+        call ay_out
+        pop hl
+        ld e,h
+        ld a,12
+        jr .direct
+.tone:  and 6
+        ld c,a
+        ld hl,MB2_PSG
+        add a,l
+        ld l,a
+        jr nc,.t0
+        inc h
+.t0:    ld a,(hl)
+        inc hl
+        ld h,(hl)
+        ld l,a
+        ld a,h
+        and 15
+        ld h,a
+        call up_scale
+        ld a,h
+        cp 16
+        jr c,.t1
+        ld hl,$0FFF
+.t1:    push hl
+        ld e,l
+        ld a,c
+        call ay_out
+        pop hl
+        ld e,h
+        ld a,c
+        inc a
+        jr .direct
+
+; HL = HL * 1,75
+up_scale:
+        push de
+        ld d,h
+        ld e,l
+        srl d
+        rr e
+        add hl,de
+        srl d
+        rr e
+        add hl,de
+        pop de
+        ret
+
+; E -> registro A del AY del Spectrum
+ay_out: push bc
+        ld bc,$FFFD
+        out (c),a
+        ld b,$BF
+        out (c),e
+        pop bc
+        ret
+
 ; --- interrupción (50 Hz) ---
 isr_entry:
         call .work              ; trabajo del HAL (teclado, pantalla, sonido)
@@ -674,11 +1016,12 @@ run_events:
 .jp:    jp (hl)
 
         align 256
-gate_nib:       ds 256, 0       ; byte CPC -> nibble de píxeles (modo inicial)
+gate_nib:       ds 768, 0       ; byte CPC -> nibble de píxeles (modos 0, 1 y 2)
 gate_rowtab:    ds 128, 0       ; (desplazamiento/16) -> fila
 gate_rowstart:  ds 64, 0        ; fila -> desplazamiento
 gate_hash:      ds 96, 0        ; sitios de 1 byte (bajos, altos, id)
 gate_ltab:      ds NLOCAL*2, 0  ; id local -> manejador
+mb_save:        ds 96, 0        ; copia de los buzones durante LDIR/LDDR
 gate_gen:                       ; manejadores locales generados (los añade el portador)
 
 ; ---------------------------------------------------------------------------
@@ -757,6 +1100,20 @@ h_span: push af
         push hl
         ld hl,(MB_X1)
         ld de,(MB_X2)
+        ; rangos grandes (> 512 bytes): refresco completo en la próxima interrupción
+        push hl
+        push de
+        ex de,hl
+        or a
+        sbc hl,de               ; tamaño
+        ld a,h
+        pop de
+        pop hl
+        cp 2
+        jr c,.l
+        ld a,1
+        ld (full_pending),a
+        jr .done
 .l:     ld a,l
         cp e
         jr nz,.do
@@ -790,7 +1147,7 @@ h_mirror:
 ; Teclado: Spectrum -> matriz del CPC
 ; ---------------------------------------------------------------------------
 kb_scan:
-        ld hl,cpc_matrix
+        ld hl,MB2_MATRIX
         ld b,10
 .clr:   ld (hl),$FF
         inc hl
@@ -833,9 +1190,9 @@ kb_scan:
 .j4:    rra
         jr nc,.j5
         res 5,e
-.j5:    ld a,(cpc_matrix+9)
+.j5:    ld a,(MB2_MATRIX+9)
         and e
-        ld (cpc_matrix+9),a
+        ld (MB2_MATRIX+9),a
         ret
 
 ; A = tecla CPC (línea*8+bit) o $FF. Conserva BC, DE, IX.
@@ -854,7 +1211,7 @@ press_cpc:
         rrca
         rrca
         and 15
-        ld hl,cpc_matrix
+        ld hl,MB2_MATRIX
         add a,l
         ld l,a
         ld a,b
@@ -867,7 +1224,7 @@ press_cpc:
 ; ---------------------------------------------------------------------------
 ; E/S del CPC emulada
 ; ---------------------------------------------------------------------------
-; OUT: BC = puerto, A = valor. Conserva todo.
+; OUT del gate array / CRTC: BC = puerto, A = valor. Conserva todo.
 cpc_out:
         push af
         push bc
@@ -882,63 +1239,11 @@ cpc_out:
         ld a,b
         bit 6,a
         call z,crtc_write
-        ld a,b
-        bit 3,a
-        call z,ppi_write
         pop ix
         pop hl
         pop de
         pop bc
         pop af
-        ret
-
-; IN: BC = puerto -> A = valor. Conserva BC, DE, HL.
-cpc_in:
-        ld a,b
-        bit 3,a
-        jr nz,.ff
-        and 3
-        jr z,.pa
-        cp 1
-        jr z,.pb
-        ld a,(ppi_c)
-        ret
-.pb:    ld a,(MB_VSYNC)
-        or a
-        jr z,.nv
-        dec a
-        ld (MB_VSYNC),a
-        ld a,$5F
-        ret
-.nv:    ld a,$5E
-        ret
-.pa:    ld a,(ppi_c)
-        and $C0
-        cp $40
-        jr nz,.ff
-        ld a,(psg_sel)
-        cp 14
-        jr nz,.reg
-        push hl
-        ld a,(ppi_c)
-        and 15
-        cp 10
-        jr nc,.ffp
-        ld hl,cpc_matrix
-        add a,l
-        ld l,a
-        ld a,(hl)
-        pop hl
-        ret
-.ffp:   pop hl
-.ff:    ld a,$FF
-        ret
-.reg:   push hl
-        ld hl,psg_shadow
-        add a,l
-        ld l,a
-        ld a,(hl)
-        pop hl
         ret
 
 ga_write:
@@ -1001,152 +1306,6 @@ crtc_write:
         ld (hl),a
         jp geometry
 
-ppi_write:
-        ld a,b
-        and 3
-        jr z,.a
-        cp 2
-        jr z,.c
-        cp 3
-        ret nz
-        bit 7,e
-        ret nz
-        ld a,e
-        rrca
-        and 7
-        ld hl,bitmask
-        add a,l
-        ld l,a
-        ld b,(hl)
-        ld a,(ppi_c)
-        bit 0,e
-        jr z,.res
-        or b
-        jr .c2
-.res:   ld c,a
-        ld a,b
-        cpl
-        and c
-        jr .c2
-.a:     ld a,e
-        ld (ppi_a),a
-        ret
-.c:     ld a,e
-.c2:    ld (ppi_c),a
-        and $C0
-        cp $C0
-        jr z,.sel
-        cp $80
-        ret nz
-        ld a,(ppi_a)
-        ld e,a
-        ld a,(psg_sel)
-        jp psg_write
-.sel:   ld a,(ppi_a)
-        and 15
-        ld (psg_sel),a
-        ret
-
-; ---------------------------------------------------------------------------
-; Sonido: PSG del CPC (1 MHz) -> AY del Spectrum (1,7734 MHz)
-; ---------------------------------------------------------------------------
-psg_write:
-        cp 14
-        ret nc
-        push bc
-        push de
-        ld hl,psg_shadow
-        ld c,a
-        add a,l
-        ld l,a
-        ld (hl),e
-        ld a,c
-        cp 6
-        jr c,.tone
-        jr z,.noise
-        cp 11
-        jr z,.env
-        cp 12
-        jr z,.env
-        cp 7
-        jr nz,.direct
-        ld a,e
-        or $C0
-        ld e,a
-        ld a,7
-.direct:
-        call ay_out
-        pop de
-        pop bc
-        ret
-.noise: ld l,e
-        ld h,0
-        call up_scale
-        ld a,l
-        cp 32
-        jr c,.n1
-        ld a,31
-.n1:    ld e,a
-        ld a,6
-        jr .direct
-.env:   ld hl,(psg_shadow+11)
-        call up_scale
-        push hl
-        ld e,l
-        ld a,11
-        call ay_out
-        pop hl
-        ld e,h
-        ld a,12
-        jr .direct
-.tone:  and 6
-        ld c,a
-        ld hl,psg_shadow
-        add a,l
-        ld l,a
-        ld a,(hl)
-        inc hl
-        ld h,(hl)
-        ld l,a
-        ld a,h
-        and 15
-        ld h,a
-        call up_scale
-        ld a,h
-        cp 16
-        jr c,.t1
-        ld hl,$0FFF
-.t1:    push hl
-        ld e,l
-        ld a,c
-        call ay_out
-        pop hl
-        ld e,h
-        ld a,c
-        inc a
-        jr .direct
-
-up_scale:
-        push de
-        ld d,h
-        ld e,l
-        srl d
-        rr e
-        add hl,de
-        srl d
-        rr e
-        add hl,de
-        pop de
-        ret
-
-ay_out: push bc
-        ld bc,$FFFD
-        out (c),a
-        ld b,$BF
-        out (c),e
-        pop bc
-        ret
-
 snd_tick:
         ld hl,snd_time
         ld a,(hl)
@@ -1172,20 +1331,20 @@ h_sound:
         ld ix,MB_BUF
         ld e,(ix+3)
         ld a,0
-        call psg_write
+        call local_psg_write
         ld e,(ix+4)
         ld a,1
-        call psg_write
+        call local_psg_write
         ld e,$3E
         ld a,7
-        call psg_write
+        call local_psg_write
         ld a,(ix+6)
         and 15
         jr nz,.v
         ld a,12
 .v:     ld e,a
         ld a,8
-        call psg_write
+        call local_psg_write
         ld a,(ix+7)
         srl a
         jr nz,.d
@@ -1282,14 +1441,16 @@ geometry:
         ret
 
 ; la vía rápida usa tablas de la puerta calculadas al portar: solo vale si la
-; geometría y el modo no han cambiado
+; geometría no ha cambiado (hay tablas para los modos 0, 1 y 2)
 fast_check:
         ld a,(crtc_r1)
         cp INIT_R1
         jr nz,.no
         ld a,(cpc_mode)
-        cp INIT_MODE
-        jr nz,.no
+        cp 3
+        jr z,.no
+        add a,gate_nib/256
+        ld (MB_NIBHI),a
         ld a,1
         ld (MB_FASTOK),a
         ret
@@ -1445,10 +1606,13 @@ pen_m0: push bc
 .d:     pop bc
         ret
 
-; A = pluma, E = color ZX
+; A = pluma (0-15), E = color ZX. Actualiza COMB de forma incremental: solo
+; cambian las entradas que contienen la pluma, y cada una se obtiene de la
+; misma entrada sin ella (que ya es correcta). Destruye AF, BC, DE, HL.
 set_pen_colour:
         cp 16
         ret nc
+        ld c,a
         ld hl,pen_zx
         add a,l
         ld l,a
@@ -1456,51 +1620,40 @@ set_pen_colour:
         cp e
         ret z
         ld (hl),e
-        push bc
-        push de
-        push ix
-        ld ix,pen_zx
+        ld a,c
         ld h,COMB_LO/256
-        call .comb
-        ld ix,pen_zx+8
-        ld h,COMB_HI/256
-        call .comb
-        pop ix
-        pop de
-        pop bc
-        ret
-.comb:  ld l,0
-        ld (hl),0
-        inc l
-.c:     ld a,l
-        ld b,0
-.lb:    rrca
-        jr c,.fb
-        inc b
-        jr .lb
-.fb:    push hl
-        push ix
-        pop hl
-        ld e,b
-        ld d,0
-        add hl,de
-        ld a,(hl)
+        cp 8
+        jr c,.lo
+        sub 8
+        inc h
+.lo:    push hl
         ld hl,bitmask
         add a,l
         ld l,a
-        ld e,(hl)
+        ld b,(hl)               ; B = bit de la pluma
+        ld a,e
+        ld hl,bitmask
+        add a,l
+        ld l,a
+        ld d,(hl)               ; D = 1 << color
         pop hl
+        ld a,b
+        cpl
+        ld c,a                  ; C = máscara sin la pluma
+        ld l,0
+.l:     ld a,l
+        and b
+        jr z,.n
         ld a,l
-        dec a
-        and l
-        ld c,l
+        and c
+        ld e,l
         ld l,a
         ld a,(hl)
-        ld l,c
-        or e
+        or d
+        ld l,e
         ld (hl),a
-        inc l
-        jr nz,.c
+.n:     inc l
+        jr nz,.l
         ret
 
 ; línea CPC A (0-199) -> HL (banco 3). Destruye DE.
@@ -1712,6 +1865,12 @@ refresh:
         jr z,.part
         xor a
         ld (full_pending),a
+        ld hl,MB2_DIRTY
+        ld (hl),a
+        inc hl
+        ld (hl),a
+        inc hl
+        ld (hl),a
         ld b,192
 .f:     push bc
         ld a,192
@@ -1743,6 +1902,22 @@ refresh:
         ld a,(MB_FRAME)
         rra
         ret c
+        ; primero las filas marcadas como sucias
+        ld hl,MB2_DIRTY
+        ld c,0
+        ld b,3
+.d:     ld a,(hl)
+        or a
+        jr nz,.found
+        inc hl
+        ld a,c
+        add a,8
+        ld c,a
+        djnz .d
+        ; ninguna: barrido lento de seguridad (una fila cada 8 frames)
+        ld a,(MB_FRAME)
+        and 7
+        ret nz
         ld a,(attr_cell)
         push af
         call attr_row
@@ -1753,6 +1928,18 @@ refresh:
         xor a
 .a:     ld (attr_cell),a
         ret
+.found: ld d,1
+.fb:    rrca
+        jr c,.got
+        inc c
+        sla d
+        jr .fb
+.got:   ld a,d
+        cpl
+        and (hl)
+        ld (hl),a
+        ld a,c
+        jp attr_row
 
 ; refleja (HL) si está en la pantalla CPC. Conserva todo.
 mirror_hl:
@@ -1840,6 +2027,8 @@ mirror_byte:
         ld b,a
 conv_pair:
         ld a,c
+        call mark_dirty
+        ld a,c
         add a,CROP_Y
         call cpc_line_addr
         ld a,b
@@ -1888,7 +2077,7 @@ fw_ret: ret
 fw_km_test_key:
         push de
         ld e,a
-        ld a,(cpc_matrix+2)
+        ld a,(MB2_MATRIX+2)
         cpl
         and $A0
         ld c,a
@@ -1903,7 +2092,7 @@ fw_km_test_key:
         rrca
         rrca
         and 15
-        ld hl,cpc_matrix
+        ld hl,MB2_MATRIX
         add a,l
         ld l,a
         ld a,(hl)
@@ -1933,7 +2122,7 @@ h_read_char:
 
 read_ascii:
         push de
-        ld hl,cpc_matrix
+        ld hl,MB2_MATRIX
         ld de,key_ascii
         ld c,10
 .l:     ld a,(hl)
@@ -1953,11 +2142,11 @@ read_ascii:
         ret
 
 fw_km_get_joystick:
-        ld a,(cpc_matrix+9)
+        ld a,(MB2_MATRIX+9)
         cpl
         and $3F
         ld h,a
-        ld a,(cpc_matrix+6)
+        ld a,(MB2_MATRIX+6)
         cpl
         and $3F
         ld l,a
@@ -2294,8 +2483,6 @@ m0_left:
 ; ---------------------------------------------------------------------------
         align 256
 bitmask:    db 1,2,4,8,16,32,64,128
-cpc_matrix: ds 10, $FF
-psg_shadow: ds 16, 0
 m1_masks:   db $00,$F0,$0F,$FF
 hw2zx:      ds 32, 7
 fw2zx:      ds 27, 7
@@ -2303,9 +2490,6 @@ pen_zx:     ds 16, 0
 ink_prio:   db 6,5,4,7,2,3,1,0,$FF
 ga_pen:     db 0
 crtc_sel:   db 0
-ppi_a:      db 0
-ppi_c:      db 0
-psg_sel:    db 0
 snd_time:   db 0
 cpc_mode:   db INIT_MODE
 crtc_r1:    db INIT_R1

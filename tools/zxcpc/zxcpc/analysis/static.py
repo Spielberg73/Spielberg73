@@ -235,20 +235,26 @@ def analyze(program, trace=None, extra_entries=()):
     mem = program.mem
     plat = program.platform
     entries = [program.entry] + list(extra_entries)
+    final = None
     if trace is not None:
-        entries += list(trace.isr_entries)
+        final = _final_memory(program, trace)
+        # las rutinas instaladas en tiempo de ejecución no están en la imagen inicial
+        entries += [a for a in trace.isr_entries if not trace.written[a]]
     if program.im == 2:
         v = (program.regs["I"] << 8) | 0xFF
         if v >= 0x4000 or plat == "cpc":
             entries.append(mem[v] | mem[(v + 1) & 0xFFFF] << 8)
-    known = sorted(trace.executed) if trace is not None else []
+    known = [a for a in sorted(trace.executed) if not trace.written[a]] if trace is not None else []
     instrs, targets = trace_code(mem, entries, plat, extra_known=known)
     if trace is not None:
         for pc in trace.executed:
             if plat == "zx" and pc < 0x4000:
                 continue
-            if pc not in instrs:
-                instrs[pc] = decode(mem, pc)
+            ins0 = decode(mem, pc)
+            if any(trace.written[(pc + k) & 0xFFFF] for k in range(ins0.length)) and final:
+                instrs[pc] = decode(final, pc)      # código escrito en ejecución
+            elif pc not in instrs:
+                instrs[pc] = ins0
         # los destinos de saltos observados también son inicios de bloque
         for src, dsts in trace.rom_calls.items():
             targets.update(dsts)
@@ -335,6 +341,17 @@ def analyze(program, trace=None, extra_entries=()):
     stats = _stats(program, trace, instrs, hs)
     notes += _advice(program, trace, hs, stats)
     return Analysis(program, trace, instrs, targets, hs, stats, notes)
+
+
+def _final_memory(program, trace):
+    st = trace.final_state
+    if st is None:
+        return None
+    if program.platform == "zx":
+        mem = bytearray(65536)
+        mem[0x4000:] = st.ram[:49152]
+        return mem
+    return bytearray(st.mem[:65536])
 
 
 def _write_form(ins):
