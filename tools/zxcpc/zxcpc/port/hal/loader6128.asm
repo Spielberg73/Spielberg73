@@ -45,7 +45,7 @@ start:  ; RUN" de un binario restaura los vectores del firmware: reactivar AMSDO
         out (c),c
         ld hl,stub1
         ld de,$FE00
-        ld bc,stub1_end-stub1
+        ld bc,stub1_all_end-stub1
         ldir
         jp $FE00
 
@@ -90,6 +90,51 @@ name_d: db "ZXCPC   .D  "
 stub1:
         ; modo 1, ROMs desactivadas
         ld bc,$7F8D
+        out (c),c
+        ; CRTC (tabla copiada a $FF00 junto con el stub)
+        ld hl,$FE00+stub1_crtc-stub1
+        ld bc,$BC00
+.c:     out (c),c
+        ld a,(hl)
+        inc b
+        out (c),a
+        dec b
+        inc hl
+        inc c
+        ld a,c
+        cp 14
+        jr nz,.c
+        ; paleta (16 tintas + borde)
+        ld hl,$FE00+stub1_pal-stub1
+        ld bc,$7F00
+.p:     out (c),c
+        ld a,(hl)
+        out (c),a
+        inc hl
+        inc c
+        ld a,c
+        cp 17
+        jr nz,.p
+        ; PPI y PSG: registro 7 = $3F (tonos apagados), registro 8 seleccionado
+        ld bc,$F782
+        out (c),c
+        ld bc,$F407
+        out (c),c
+        ld bc,$F6C0
+        out (c),c
+        ld bc,$F600
+        out (c),c
+        ld bc,$F43F
+        out (c),c
+        ld bc,$F680
+        out (c),c
+        ld bc,$F600
+        out (c),c
+        ld bc,$F408
+        out (c),c
+        ld bc,$F6C0
+        out (c),c
+        ld bc,$F600
         out (c),c
         ; banco 5 -> $8000
         ld bc,$7FC5

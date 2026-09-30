@@ -103,7 +103,7 @@ def detect_platform(path, data):
 
 
 def load_program(path, platform=None, load_addr=None, exec_addr=None, file_in_image=None,
-                 sp=None) -> Program:
+                 sp=None, zx_rom=None) -> Program:
     with open(path, "rb") as f:
         data = f.read()
     plat, kind = detect_platform(path, data)
@@ -123,6 +123,16 @@ def load_program(path, platform=None, load_addr=None, exec_addr=None, file_in_im
 
     if kind in ("tap", "tzx") and platform == "zx":
         blocks = fzx.read_tap(data) if kind == "tap" else fzx.tzx_data_blocks(fzx.read_tzx(data))
+        if zx_rom and exec_addr is None:
+            from .machines.spectrum import Spectrum48K
+            m = Spectrum48K(zx_rom)
+            ok, msg = m.load_tape_and_run(blocks)
+            if ok:
+                st = m.save_state()
+                p = Program("zx", st.memory64k(), dict(st.regs), st.iff1, st.iff2, st.im, name,
+                            kind, zx_state=st, load_ranges=[(0x4000, 0x10000)])
+                p.notes.append(msg + " (con la ROM real)")
+                return p
         ram, entry, log = fzx.load_tape_code(blocks)
         mem = bytearray(65536)
         mem[0x4000:] = ram

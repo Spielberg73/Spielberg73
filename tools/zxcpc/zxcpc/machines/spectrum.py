@@ -217,14 +217,18 @@ class Spectrum48K:
         return ZXState(bytearray(self.mem[0x4000:]), regs, c.iff1, c.iff2, c.im, self.border)
 
     # --- ejecución -------------------------------------------------------------
-    def run_frame(self):
-        """Ejecuta un frame completo (interrupción al principio)."""
+    def run_frame(self, stop=None):
+        """Ejecuta un frame completo (interrupción al principio).
+
+        ``stop(pc)``: si devuelve True antes de una instrucción, se para ahí
+        (el resto del frame queda pendiente) y la función devuelve True.
+        """
         c = self.cpu
         step = c.step
         traps = self.traps
         t = self.t_in_frame
         # la línea INT está activa ~32 T-states
-        int_done = False
+        int_done = t >= 32
         while t < FRAME_T:
             if not int_done and t < 32:
                 took = c.interrupt(0xFF)
@@ -233,6 +237,9 @@ class Spectrum48K:
                     t += took
                     continue
             pc = c.pc
+            if stop is not None and stop(pc):
+                self.t_in_frame = t
+                return True
             if pc in traps and not c.halted:
                 if self.tracer is not None:
                     self.tracer(pc)
@@ -247,6 +254,7 @@ class Spectrum48K:
                 t = max(t, FRAME_T)
         self.t_in_frame = t - FRAME_T
         self.frame += 1
+        return False
 
     def run_frames(self, n, keys_script=None):
         for i in range(n):
@@ -380,6 +388,38 @@ class Spectrum48K:
         R[6] = (R[6] & ~1) | (1 if ok else 0)
         self._ret()
         return 1000
+
+    # --- carga de cinta con la ROM real ------------------------------------------------
+    def load_tape_and_run(self, blocks, max_frames=3000):
+        """Arranca la ROM, teclea LOAD "" y carga los bloques estándar al instante.
+
+        Se detiene cuando la cinta se ha consumido y la CPU ejecuta código en
+        RAM (el juego ya ha arrancado). Devuelve (ok, mensaje).
+        """
+        if not self.real_rom:
+            return False, "se necesita la ROM real"
+        self.tape_blocks = list(blocks)
+        self.tape_pos = 0
+        self.traps = {0x0556: self._trap_ld_bytes}
+        c = self.cpu
+        c.pc = 0
+        c.iff1 = c.iff2 = 0
+        typed = [("J",), ("SYM", "P"), ("SYM", "P"), ("ENTER",)]
+        for f in range(max_frames):
+            if 120 <= f < 120 + len(typed) * 8:
+                k, ph = divmod(f - 120, 8)
+                self.release_all()
+                if ph < 4:
+                    self.press(*typed[k])
+            elif f == 120 + len(typed) * 8:
+                self.release_all()
+            done = self.tape_pos >= len(self.tape_blocks)
+            if self.run_frame(stop=(lambda pc: pc >= 0x5CCB) if done and f > 130 else None):
+                self.traps = {}
+                return True, f"cinta cargada en {f} frames; el juego arranca en {c.pc:#06x}"
+        self.traps = {}
+        return False, (f"la cinta no terminó de cargar ({self.tape_pos}/{len(self.tape_blocks)} "
+                       "bloques): probablemente usa un cargador turbo; usa un snapshot")
 
     # --- vídeo ----------------------------------------------------------------------
     def screen_rgb(self, border=32, flash_phase=0):

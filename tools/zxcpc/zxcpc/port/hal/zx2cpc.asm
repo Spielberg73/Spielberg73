@@ -136,8 +136,11 @@ isr_frame:
         ld a,(game_im2)
         or a
         jr nz,.im2
-        ; IM 1: emulación de la ROM (contador FRAMES)
+        ; IM 1: emulación de la ROM (FRAMES y LAST_K)
         push hl
+        push bc
+        call rom_lastk
+        pop bc
         ld hl,($5C78)
         inc hl
         ld ($5C78),hl
@@ -150,6 +153,7 @@ isr_frame:
         pop af
         ei
         ret
+
 .im2:   push hl
         ld a,(game_i)
         cp $40
@@ -408,6 +412,8 @@ cpc_matrix: ds 10, $FF
             db $FF              ; línea ficticia (nunca pulsada)
 zx_rows:    ds 8, $1F
 kempston:   db 0
+last_key:   db 0
+key_ascii:  db 0,"zxcv","asdfg","qwert","12345","09876","poiuy",13,"lkjh",32,0,"mnb"
 
 kb_scan:
         ld bc,$F40E
@@ -521,6 +527,41 @@ psg_write:
         out (c),a
         xor a
         out (c),a
+        ret
+; LAST_K/FLAGS como el KEYBOARD de la ROM (simplificado: sin repetición)
+rom_lastk:
+        ld hl,zx_rows
+        ld c,0                  ; índice de tecla (fila*5+bit)
+        ld b,8
+.r:     ld a,(hl)
+        cpl
+        and $1F
+        jr nz,.hit
+        inc hl
+        ld a,c
+        add a,5
+        ld c,a
+        djnz .r
+        xor a
+        jr .set
+.hit:   rra
+        jr c,.got
+        inc c
+        jr .hit
+.got:   ld hl,key_ascii
+        ld a,c
+        add a,l
+        ld l,a
+        ld a,(hl)
+.set:   ld hl,last_key
+        cp (hl)
+        ret z
+        ld (hl),a
+        or a
+        ret z
+        ld ($5C08),a            ; LAST_K
+        ld hl,$5C3B             ; FLAGS: bit 5 = tecla nueva
+        set 5,(hl)
         ret
 c4_end:
         assert c4_end <= $2200, "bloque 4 lleno"
@@ -1148,6 +1189,7 @@ c6_end:
 print_x:    db 0
 print_y:    db 0
 print_st:   db 0                ; 0 normal, 1-2 esperando AT, 3 esperando color
+print_code: db 0                ; código de color pendiente (16-21)
 
 ; RST $10 / PRINT-A: impresión mínima (AT, ENTER, caracteres 32-127 y GDU)
 ; con la fuente de CHARS si está en RAM ($4000 en adelante).
@@ -1244,7 +1286,8 @@ h_print:
 .at:    ld a,1
         ld (print_st),a
         jp .fin
-.col:   ld a,3
+.col:   ld (print_code),a
+        ld a,3
         ld (print_st),a
         jp .fin
 .state: cp 1
@@ -1262,7 +1305,46 @@ h_print:
         ld a,c
         and 31
         ld (print_x),a
-.st3:   xor a
+        jp .st0
+.st3:   ld hl,$5C8F             ; ATTR-T
+        ld a,(print_code)
+        cp 16
+        jp nz,.pap
+        ld a,(hl)               ; INK
+        and $F8
+        ld b,a
+        ld a,c
+        and 7
+        or b
+        ld (hl),a
+        jp .st0
+.pap:   cp 17
+        jp nz,.fla
+        ld a,c                  ; PAPER
+        and 7
+        add a,a
+        add a,a
+        add a,a
+        ld b,a
+        ld a,(hl)
+        and $C7
+        or b
+        ld (hl),a
+        jp .st0
+.fla:   cp 18
+        jp nz,.bri
+        res 7,(hl)              ; FLASH
+        bit 0,c
+        jp z,.st0
+        set 7,(hl)
+        jp .st0
+.bri:   cp 19
+        jp nz,.st0
+        res 6,(hl)              ; BRIGHT
+        bit 0,c
+        jp z,.st0
+        set 6,(hl)
+.st0:   xor a
         ld (print_st),a
 .fin:   pop hl
         pop de
@@ -1277,6 +1359,16 @@ h_print:
         jp c,.ny
         xor a
 .ny:    ld (print_y),a
+        ret
+
+; CHAN-OPEN ($1601) / TEMPS: colores temporales = permanentes
+rom_chan_open:
+        push af
+        ld a,($5C8D)
+        ld ($5C8F),a
+        ld a,($5C8E)
+        ld ($5C90),a
+        pop af
         ret
 
 ; PR-STRING ($203C): imprime BC bytes desde DE

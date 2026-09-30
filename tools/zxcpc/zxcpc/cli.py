@@ -35,7 +35,8 @@ def _load(args):
                         load_addr=_num(args.load) if getattr(args, "load", None) else None,
                         exec_addr=_num(args.exec) if getattr(args, "exec", None) else None,
                         file_in_image=getattr(args, "name", None),
-                        sp=_num(args.sp) if getattr(args, "sp", None) else None)
+                        sp=_num(args.sp) if getattr(args, "sp", None) else None,
+                        zx_rom=_read_rom(getattr(args, "rom", None)))
 
 
 def _read_rom(path):
@@ -230,6 +231,7 @@ def _port_zx2cpc(args, p, an, cfg, outdir, name, shots_dir, html_report):
     from .formats.cpc import write_cpc_sna
     from .machines.cpc import CPC
     opt = PortOptions.from_json(cfg)
+    opt.zx_rom = _read_rom(args.rom)
     if args.mono:
         opt.mono = True
     if args.refresh is not None:

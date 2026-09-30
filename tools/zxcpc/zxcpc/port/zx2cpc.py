@@ -35,50 +35,6 @@ STUB2_SRC = """stub2:
         ldir
         ld bc,$7FC0
         out (c),c
-        ld bc,$7F8D
-        out (c),c
-        ld hl,stub2_crtc
-        ld bc,$BC00
-.c:     out (c),c
-        ld a,(hl)
-        inc b
-        out (c),a
-        dec b
-        inc hl
-        inc c
-        ld a,c
-        cp 14
-        jr nz,.c
-        ld hl,stub2_pal
-        ld bc,$7F00
-.p:     out (c),c
-        ld a,(hl)
-        out (c),a
-        inc hl
-        inc c
-        ld a,c
-        cp 17
-        jr nz,.p
-        ld bc,$F782
-        out (c),c
-        ld bc,$F407
-        out (c),c
-        ld bc,$F6C0
-        out (c),c
-        ld bc,$F600
-        out (c),c
-        ld bc,$F43F
-        out (c),c
-        ld bc,$F680
-        out (c),c
-        ld bc,$F600
-        out (c),c
-        ld bc,$F408
-        out (c),c
-        ld bc,$F6C0
-        out (c),c
-        ld bc,$F600
-        out (c),c
         ld a,{I}
         ld i,a
         im 1
@@ -97,8 +53,6 @@ STUB2_SRC = """stub2:
         pop af
         ld sp,{SP}
 {EI}        jp {PC}
-stub2_crtc: db {CRTC}
-stub2_pal:  db {PAL}
 stub2_regs: dw {REGS}
 """
 
@@ -107,10 +61,10 @@ ROM_STUBS = {
     0x0D6B: "rom_cls", 0x0DAF: "rom_cls", 0x0D6E: "rom_cls_lower", 0x03B5: "rom_beeper",
     0x0556: "rom_ld_bytes", 0x0562: "rom_ld_bytes", 0x028E: "rom_key_scan",
     0x2294: "rom_border", 0x0038: "rom_frames", 0x203C: "rom_pr_string", 0x0010: "h_print",
-    0x1601: "rom_ret", 0x0000: "hal_reset",
+    0x1601: "rom_chan_open", 0x0D4D: "rom_chan_open", 0x0000: "hal_reset",
 }
 ROM_STUB_SUPPORTED = {0x0D6B, 0x0DAF, 0x0D6E, 0x03B5, 0x028E, 0x2294, 0x0038, 0x203C, 0x0010,
-                      0x1601}
+                      0x1601, 0x0D4D}
 
 # Mapa de teclas por defecto: tecla ZX -> (principal CPC, secundaria CPC)
 DEFAULT_KEYS = {
@@ -136,11 +90,14 @@ class PortOptions:
     rom_im2_vector: int = 0xFFFF
     patch_static: bool = True             # parchear E/S vistas solo estáticamente
     model: int = 2                        # modelo en el snapshot (0=464, 2=6128)
+    zx_rom: bytes | None = None           # ROM de 48K del Spectrum aportada por el usuario
 
     @classmethod
     def from_json(cls, d):
         o = cls()
         for k, v in d.items():
+            if k == "zx_rom":
+                continue
             if k == "exclude":
                 v = {int(x, 16) if isinstance(x, str) else x for x in v}
             if hasattr(o, k):
@@ -169,6 +126,7 @@ class PortResult:
     hal_symbols: dict
     free_bytes: int
     options: PortOptions
+    hw_tables: tuple = ((), ())
 
 
 # ---------------------------------------------------------------------------
@@ -548,12 +506,88 @@ class ZX2CPC:
             if low and self.p.platform == "zx":
                 pass
 
+    # -- datos de la ROM (con la ROM del usuario) ---------------------------------------
+    def _rom_data(self, mem):
+        rom = self.opt.zx_rom
+        p = self.p
+        if not rom or len(rom) < 16384:
+            if any(h.kind == "rom_read" for h in self.an.hotspots):
+                self.warnings.append("el juego lee datos de la ROM: pasa --rom 48.rom para que el "
+                                     "portador pueda recolocarlos (fuente, vectores IM 2)")
+            return
+        # vector IM 2 dentro de la ROM
+        i_vals = set(self.an.trace.i_values) if self.an.trace is not None else set()
+        if p.im == 2:
+            i_vals.add(p.regs["I"])
+        for i in i_vals:
+            if i < 0x40:
+                v = (i << 8) | 0xFF
+                self.opt.rom_im2_vector = rom[v] | (rom[(v + 1) & 0x3FFF] << 8)
+        # fuente de caracteres de la ROM ($3D00-$3FFF)
+        uses_font = False
+        refs = []
+        executed = self.an.trace.executed if self.an.trace is not None else set()
+        for a, ins in self.an.instrs.items():
+            if ins.op == "LD" and len(ins.operands) == 2 and ins.operands[1].kind == D.IMM16 \
+                    and ins.operands[0].kind == D.REG16 and 0x3C00 <= ins.operands[1].value < 0x4000:
+                if a in executed or not executed:
+                    refs.append(ins)
+        for h in self.an.hotspots:
+            if h.kind == "rom_read" and any(0x3D00 <= pg < 0x4000 for pg in h.detail.get("pages", [])):
+                uses_font = True
+        chars = mem[0x5C36] | mem[0x5C37] << 8
+        if any(h.kind == "rom_call" and h.detail.get("target") in (0x10, 0x203C)
+               for h in self.an.hotspots) or \
+                any(i.flow == "rst" and i.target == 0x10 for i in self.an.instrs.values()):
+            uses_font = uses_font or chars == 0x3C00
+        if not (uses_font or refs):
+            return
+        where = self._find_free(mem, 768)
+        if where is None:
+            self.warnings.append("el juego usa la fuente de la ROM pero no encuentro 768 bytes "
+                                 "libres en su memoria para copiarla")
+            return
+        mem[where:where + 768] = rom[0x3D00:0x4000]
+        self.warnings.append(f"fuente de la ROM copiada a {where:#06x}")
+        if chars == 0x3C00:
+            base = where - 256
+            mem[0x5C36], mem[0x5C37] = base & 0xFF, base >> 8
+        patched = {pt.addr for pt in self.patches}
+        for ins in refs:
+            if ins.addr in patched:
+                continue
+            v = ins.operands[1].value
+            nv = (where + (v - 0x3D00)) & 0xFFFF
+            new = bytes(ins.raw[:-2]) + bytes([nv & 0xFF, nv >> 8])
+            self.patches.append(Patch(ins.addr, ins.raw, new, "rom_font", ins.text(), None,
+                                      note=f"{v:#06x} -> {nv:#06x}"))
+
+    def _find_free(self, mem, size):
+        """Zona de ``size`` bytes a cero, nunca escrita, sin código y lejos de la pila."""
+        tr = self.an.trace
+        code = bytearray(65536)
+        for a, ins in self.an.instrs.items():
+            for k in range(ins.length):
+                code[(a + k) & 0xFFFF] = 1
+        lo_sp = (tr.sp_min - 128) if tr is not None else 0
+        hi_sp = (tr.sp_max + 2) if tr is not None else 0
+        run = 0
+        for a in range(0xFFFF, 0x5CFF, -1):
+            ok = mem[a] == 0 and not code[a] and not (lo_sp <= a <= hi_sp) and \
+                (tr is None or not tr.written[a])
+            run = run + 1 if ok else 0
+            if run == size:
+                return a
+        return None
+
     # -- construcción ------------------------------------------------------------------
     def build(self) -> PortResult:
         self.plan()
         opt = self.opt
         p = self.p
-        ram = p.mem[0x4000:]
+        game_mem = bytearray(p.mem)
+        self._rom_data(game_mem)
+        ram = game_mem[0x4000:]
         screens = [ram]
         if self.an.trace is not None and self.an.trace.final_state is not None:
             screens.append(self.an.trace.final_state.ram)
@@ -641,7 +675,7 @@ class ZX2CPC:
         header = "; Símbolos fijados por el portador\n" + "".join(
             f"{k:<16}equ {v}\n" for k, v in syms.items()) + "\n"
         return PortResult(st, self.patches, self.warnings, palette, header + full_src, symbols,
-                          free_bytes, opt)
+                          free_bytes, opt, getattr(self, "_hw_tables", ((), ())))
 
     def _place_handlers(self, symbols, free, syms):
         """Coloca los manejadores generados en los huecos libres del HAL."""
@@ -679,10 +713,9 @@ class ZX2CPC:
         crtc = [63, 32, 42, 0x8E, 38, 0, 24, 30, 0, 7, 0, 0, 0x01, 0x00]
         regs = [r["HL'"], r["DE'"], r["BC'"], r["AF'"], r["HL"], r["DE"], r["BC"], r["IX"],
                 r["IY"], r["AF"]]
+        self._hw_tables = (crtc, [v | 0x40 for v in st_pal])
         return STUB2_SRC.format(I=r["I"] & 0xFF, SP=sp, PC=pc,
                                 EI="        ei\n" if p.iff1 else "",
-                                CRTC=",".join(str(v) for v in crtc),
-                                PAL=",".join(str(v | 0x40) for v in st_pal),
                                 REGS=",".join(str(v) for v in regs))
 
     def _kmap(self):
@@ -743,8 +776,12 @@ def build_dsk(result: PortResult) -> bytes:
     stub2 = result.hal_symbols.get("stub2")
     if stub2 is None:
         raise ValueError("el HAL no contiene STUB2")
+    crtc, pal = result.hw_tables
     with open(LOADER_SRC, encoding="utf-8") as f:
-        loader = Assembler({"STUB2": stub2}).assemble(f.read(), "loader6128.asm").image()
+        src = f.read()
+    src += "\nstub1_crtc: db " + ",".join(str(v) for v in crtc) + \
+           "\nstub1_pal:  db " + ",".join(str(v) for v in pal) + "\nstub1_all_end:\n"
+    loader = Assembler({"STUB2": stub2}).assemble(src, "loader6128.asm").image()
     mem = result.state.mem
     files = [("DISC", "BIN", make_amsdos_header("DISC", "BIN", len(loader), 0x8000, 0x8000) + loader)]
     for i, part in enumerate("ABCD"):

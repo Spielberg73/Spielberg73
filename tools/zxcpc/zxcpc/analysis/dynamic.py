@@ -219,10 +219,12 @@ def run_dynamic(program, frames=300, rom=None, seed=1, screenshot_prefix=None,
     script = explore_script(program.platform, seed, start_keys)
     cpu = m.cpu
     orig_interrupt = cpu.interrupt
+    tracer = m.tracer.__self__
 
     def interrupt(data=0xFF):
         t = orig_interrupt(data)
         if t:
+            tracer.last_pc = None       # la entrada a la ROM no es una llamada del juego
             trace.int_modes[cpu.im] += 1
             if cpu.im == 2:
                 trace.i_values[cpu.i] += 1

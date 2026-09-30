@@ -106,6 +106,26 @@ def write_tap_code(name, data, start) -> bytes:
     return tap_header(3, name, len(data), start, 32768) + tap_block(0xFF, data)
 
 
+def _zx_int(n):
+    """Número en BASIC: dígitos + marcador $0E + entero de 5 bytes."""
+    return str(n).encode() + bytes([0x0E, 0, 0, n & 0xFF, (n >> 8) & 0xFF, 0])
+
+
+def basic_loader(clear, usr, line=10) -> bytes:
+    """10 CLEAR n: LOAD "" CODE: RANDOMIZE USR m (tokenizado)."""
+    body = bytes([0xFD]) + _zx_int(clear) + b":" + bytes([0xEF]) + b'""' + bytes([0xAF]) + \
+        b":" + bytes([0xF9, 0xC0]) + _zx_int(usr) + b"\r"
+    return bytes([line >> 8, line & 0xFF]) + struct.pack("<H", len(body)) + body
+
+
+def write_tap_game(name, data, start, entry=None, clear=None) -> bytes:
+    """TAP con cargador BASIC + bloque CODE que arranca en ``entry``."""
+    prog = basic_loader(clear if clear is not None else max(0x5FFF, start - 1),
+                        entry if entry is not None else start)
+    return tap_header(0, name, len(prog), 10, len(prog)) + tap_block(0xFF, prog) + \
+        write_tap_code(name, data, start)
+
+
 # ---------------------------------------------------------------------------
 # TZX / CDT (mismo contenedor)
 # ---------------------------------------------------------------------------
