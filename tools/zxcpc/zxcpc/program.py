@@ -200,8 +200,11 @@ def load_program(path, platform=None, load_addr=None, exec_addr=None, file_in_im
         return p
 
     # binario en bruto
-    if load_addr is None or exec_addr is None:
-        raise FormatError("para un binario en bruto indica --load y --exec")
+    if load_addr is None:
+        raise FormatError("para un binario en bruto indica --load (y --exec si no arranca "
+                          "en la dirección de carga)")
+    if exec_addr is None:
+        exec_addr = load_addr
     if platform == "cpc" and cpc_roms:
         return _cpc_with_firmware(name, "bin", data, load_addr, exec_addr, cpc_roms, name)
     mem = bytearray(65536)

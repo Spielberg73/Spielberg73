@@ -395,7 +395,7 @@ def main(argv=None):
         sp.add_argument("file", help="fichero de entrada (.z80 .sna .tap .tzx .dsk .cdt .bin)")
         sp.add_argument("--platform", choices=["zx", "cpc"], help="forzar plataforma")
         sp.add_argument("--load", help="dirección de carga (binarios en bruto)")
-        sp.add_argument("--exec", help="dirección de arranque")
+        sp.add_argument("--exec", help="dirección de arranque (por defecto, la de carga)")
         sp.add_argument("--sp", help="valor inicial de la pila")
         sp.add_argument("--name", help="fichero dentro de un .dsk/.cdt")
         sp.add_argument("--frames", type=int, default=frames,
