@@ -28,6 +28,7 @@ class Trace:
     read_rom: dict = field(default_factory=lambda: defaultdict(Counter))  # pc -> página->n
     rom_calls: dict = field(default_factory=lambda: defaultdict(Counter))  # pc origen -> destino->n
     smc: dict = field(default_factory=lambda: defaultdict(set))          # pc escritor -> dirs de código
+    low_writes: dict = field(default_factory=lambda: defaultdict(set))   # pc -> dirs < $40 escritas
     int_modes: Counter = field(default_factory=Counter)
     i_values: Counter = field(default_factory=Counter)
     isr_entries: Counter = field(default_factory=Counter)
@@ -125,6 +126,12 @@ class Tracer:
         self.last_pc = None
         self.scr_lo, self.scr_hi, self.attr_hi = screen_range
         self.rom_lo, self.rom_hi = rom_range
+        # ¿se está ejecutando código de ROM? (firmware del CPC / ROM del Spectrum)
+        if platform == "cpc":
+            self.in_rom = lambda pc: (pc < 0x4000 and machine._rom_lo_on) or \
+                (pc >= 0xC000 and machine._rom_hi_on)
+        else:
+            self.in_rom = lambda pc: pc < 0x4000
         machine.tracer = self.on_step
         machine.on_write = self.on_write
         machine.on_io = self.on_io
@@ -141,6 +148,12 @@ class Tracer:
 
     def on_step(self, pc):
         t = self.t
+        if self.in_rom(pc):
+            last = self.last_pc
+            if last is not None and self.platform == "zx" and last >= 0x4000:
+                t.rom_calls[last][pc] += 1
+            self.last_pc = pc
+            return
         t.executed.add(pc)
         t.exec_count[pc] += 1
         entry = self.cache.get(pc)
@@ -149,13 +162,9 @@ class Tracer:
         ins, rf = entry
         c = self.cpu
         last = self.last_pc
-        if last is not None:
-            if self.platform == "zx":
-                if pc < 0x4000 <= last:
-                    t.rom_calls[last][pc] += 1
-            else:
-                if 0xB900 <= pc < 0xBE00 and not 0xB900 <= last < 0xBE00:
-                    t.rom_calls[last][pc] += 1
+        if last is not None and self.platform == "cpc":
+            if 0xB900 <= pc < 0xBE00 and not 0xB900 <= last < 0xBE00 and not self.in_rom(last):
+                t.rom_calls[last][pc] += 1
         if rf is not None:
             a = rf(c)
             if self.rom_lo <= a < self.rom_hi and pc >= self.rom_hi:
@@ -171,7 +180,11 @@ class Tracer:
 
     def on_write(self, pc, a, v):
         t = self.t
+        if self.in_rom(pc):
+            return          # escrituras del firmware/ROM: no son del juego
         t.written[a] = 1
+        if a < 0x40:
+            t.low_writes[pc].add(a)
         if self.scr_lo <= a < self.attr_hi:
             region = "bitmap" if a < self.scr_hi else "attr"
             t.screen_writes[pc][region] += 1
@@ -191,6 +204,8 @@ class Tracer:
                     del self.owner[(o + k) & 0xFFFF]
 
     def on_io(self, pc, direction, port, v):
+        if self.in_rom(pc):
+            return
         self.t.io[pc][(direction, port)] += 1
 
 

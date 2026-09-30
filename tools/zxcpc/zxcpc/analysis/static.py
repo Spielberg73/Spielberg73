@@ -254,6 +254,9 @@ def analyze(program, trace=None, extra_entries=()):
             targets.update(dsts)
     if plat == "zx":
         instrs = {a: i for a, i in instrs.items() if a >= 0x4000}
+    elif getattr(program, "firmware", False):
+        # código del firmware que vive en RAM (jumpblocks y kernel): no es del juego
+        instrs = {a: i for a, i in instrs.items() if not 0xB900 <= a < 0xC000}
     ordered = sorted(instrs)
     pos = {a: k for k, a in enumerate(ordered)}
     hs = []

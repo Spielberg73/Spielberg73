@@ -36,7 +36,8 @@ def _load(args):
                         exec_addr=_num(args.exec) if getattr(args, "exec", None) else None,
                         file_in_image=getattr(args, "name", None),
                         sp=_num(args.sp) if getattr(args, "sp", None) else None,
-                        zx_rom=_read_rom(getattr(args, "rom", None)))
+                        zx_rom=_read_rom(getattr(args, "rom", None)),
+                        cpc_roms=_cpc_roms(getattr(args, "cpc_roms", None)))
 
 
 def _read_rom(path):
@@ -178,11 +179,15 @@ def cmd_run(args):
                 for k in names:
                     m.press(k)
     if p.platform == "zx":
-        from .machines.spectrum import Spectrum48K
+        from .machines.spectrum import Spectrum48K, SpectrumPlus3
         from .analysis.dynamic import _set_regs
-        m = Spectrum48K(_read_rom(args.rom))
-        m.mem[0x4000:] = p.mem[0x4000:]
-        _set_regs(m.cpu, p)
+        if p.zx_state is not None and p.zx_state.model == "+3":
+            m = SpectrumPlus3(_read_rom(args.rom))
+            m.load_state(p.zx_state)
+        else:
+            m = Spectrum48K(_read_rom(args.rom))
+            m.mem[0x4000:] = p.mem[0x4000:]
+            _set_regs(m.cpu, p)
     else:
         from .machines.cpc import CPC
         m = CPC(*(_cpc_roms(args.cpc_roms) or (None, None)))
@@ -309,8 +314,11 @@ def _port_section_html(res, outputs):
 def _port_cpc2zx(args, p, an, cfg, outdir, name, shots_dir, html_report):
     from .port.cpc2zx import CPCPortOptions, port_cpc_to_zx
     from .formats.zx import write_z80
-    from .machines.spectrum import Spectrum48K
+    from .machines.spectrum import SpectrumPlus3
     opt = CPCPortOptions.from_json(cfg)
+    roms = _cpc_roms(args.cpc_roms)
+    if roms:
+        opt.font = roms[0][0x3900:0x3C00]
     if args.refresh is not None:
         opt.refresh_lines = args.refresh
     if args.keys:
@@ -329,7 +337,7 @@ def _port_cpc2zx(args, p, an, cfg, outdir, name, shots_dir, html_report):
     from .port.zx2cpc import patches_json
     with open(os.path.join(outdir, "parches.json"), "w", encoding="utf-8") as f:
         f.write(patches_json(res))
-    m = Spectrum48K()
+    m = SpectrumPlus3()
     m.load_state(res.state)
     m.run_frames(args.test_frames)
     shot = os.path.join(shots_dir, "port_zx.png")
@@ -338,8 +346,8 @@ def _port_cpc2zx(args, p, an, cfg, outdir, name, shots_dir, html_report):
         an.trace.screenshots.append(shot)
     extra = _port_section_html(res, outputs)
     html_report(an, os.path.join(outdir, "informe.html"), f"Port de {p.source} a ZX Spectrum", extra)
-    print(f"Port CPC -> ZX de {p.source}")
-    print(f"  parches aplicados: {len(res.patches)}")
+    print(f"Port CPC -> ZX de {p.source} (Spectrum +2A/+3, paginación especial)")
+    print(f"  parches aplicados: {len(res.patches)}   bytes libres en el HAL: {res.free_bytes}")
     for w in res.warnings:
         print(f"  ! {w}")
     print("  ficheros:")

@@ -110,6 +110,8 @@ def build_mini_rom() -> bytes:
 
 
 class Spectrum48K:
+    FRAME_T = FRAME_T
+
     def __init__(self, rom: bytes | None = None):
         self.cpu = Z80()
         self.mem = self.cpu.mem
@@ -229,7 +231,7 @@ class Spectrum48K:
         t = self.t_in_frame
         # la línea INT está activa ~32 T-states
         int_done = t >= 32
-        while t < FRAME_T:
+        while t < self.FRAME_T:
             if not int_done and t < 32:
                 took = c.interrupt(0xFF)
                 if took:
@@ -251,8 +253,8 @@ class Spectrum48K:
             t += step()
             if c.halted and t >= 32:
                 # saltar hasta el final del frame (el HALT solo se rompe con INT)
-                t = max(t, FRAME_T)
-        self.t_in_frame = t - FRAME_T
+                t = max(t, self.FRAME_T)
+        self.t_in_frame = t - self.FRAME_T
         self.frame += 1
         return False
 
@@ -453,3 +455,105 @@ class Spectrum48K:
     def screenshot(self, path, border=32):
         w, h, rows = self.screen_rgb(border)
         return write_png(path, w, h, rows)
+
+
+# Configuraciones de la paginación especial del +2A/+3 (bits 2-1 de $1FFD)
+SPECIAL_CONFIGS = [(0, 1, 2, 3), (4, 5, 6, 7), (4, 5, 6, 3), (4, 7, 6, 3)]
+
+
+class SpectrumPlus3(Spectrum48K):
+    """Spectrum +2A/+3: 128K, $7FFD/$1FFD, paginación especial (toda RAM) y AY."""
+
+    FRAME_T = 70908
+
+    def __init__(self, rom: bytes | None = None):
+        super().__init__(rom)
+        self.banks = [bytearray(16384) for _ in range(8)]
+        self.p7ffd = 0
+        self.p1ffd = 0
+        self.quads = [None, 5, 2, 0]         # None = ROM
+        self.cpu.wb = self._wb3
+        self._load_view()
+
+    def _sync(self):
+        v = self.mem
+        for q, b in enumerate(self.quads):
+            if b is not None:
+                self.banks[b][:] = v[q * 16384:(q + 1) * 16384]
+
+    def _load_view(self):
+        v = self.mem
+        for q, b in enumerate(self.quads):
+            if b is None:
+                v[0:16384] = self.rom[:16384]
+            else:
+                v[q * 16384:(q + 1) * 16384] = self.banks[b]
+
+    def _repage(self):
+        self._sync()
+        if self.p1ffd & 1:
+            self.quads = list(SPECIAL_CONFIGS[(self.p1ffd >> 1) & 3])
+        else:
+            self.quads = [None, 5, 2, self.p7ffd & 7]
+        self._load_view()
+
+    def _wb3(self, a, v):
+        if a < 0x4000 and self.quads[0] is None:
+            return
+        self.mem[a] = v
+        if self.on_write is not None:
+            self.on_write(self.cur_pc, a, v)
+
+    def _out(self, port, v):
+        if not port & 0x8002 and port & 0x4000:
+            if not self.p7ffd & 0x20:
+                self.p7ffd = v
+                self._repage()
+        elif (port & 0xF002) == 0x1000:
+            if not self.p7ffd & 0x20:
+                self.p1ffd = v
+                self._repage()
+        super()._out(port, v)
+
+    def bank_data(self, b):
+        self._sync()
+        return self.banks[b]
+
+    def load_state(self, st):
+        c = self.cpu
+        if getattr(st, "model", "48k") in ("+3", "128k") and st.banks:
+            for b in range(8):
+                self.banks[b][:] = st.banks.get(b, bytes(16384))
+            self.p7ffd = st.port_7ffd
+            self.p1ffd = getattr(st, "port_1ffd", 0)
+            if self.p1ffd & 1:
+                self.quads = list(SPECIAL_CONFIGS[(self.p1ffd >> 1) & 3])
+            else:
+                self.quads = [None, 5, 2, self.p7ffd & 7]
+            self._load_view()
+            for k in ("AF", "BC", "DE", "HL", "IX", "IY", "SP", "PC"):
+                c.set_pair(k, st.regs[k])
+            for k, (hi, lo) in (("AF'", (7, 6)), ("BC'", (0, 1)), ("DE'", (2, 3)),
+                                ("HL'", (4, 5))):
+                c.alt[hi] = st.regs[k] >> 8
+                c.alt[lo] = st.regs[k] & 0xFF
+            c.i, c.r = st.regs["I"], st.regs["R"]
+            c.iff1, c.iff2, c.im = st.iff1, st.iff2, st.im
+            c.halted = False
+            self.border = st.border
+            self.ay = list(st.ay_regs)
+            return
+        super().load_state(st)
+        self.banks[5][:] = self.mem[0x4000:0x8000]
+        self.banks[2][:] = self.mem[0x8000:0xC000]
+        self.banks[0][:] = self.mem[0xC000:0x10000]
+
+    def screen_rgb(self, border=32, flash_phase=0):
+        self._sync()
+        scr = self.banks[7 if self.p7ffd & 0x08 else 5]
+        saved = bytes(self.mem[0x4000:0x5B00])
+        self.mem[0x4000:0x5B00] = scr[:0x1B00]
+        try:
+            return super().screen_rgb(border, flash_phase)
+        finally:
+            self.mem[0x4000:0x5B00] = saved

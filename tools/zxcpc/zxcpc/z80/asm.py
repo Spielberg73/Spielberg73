@@ -443,7 +443,7 @@ class Assembler:
 
     # -- API ---------------------------------------------------------------
     def assemble(self, source: str, filename="<asm>") -> AsmResult:
-        lines = source.splitlines()
+        lines = _expand_rept(source.splitlines(), self.predefined)
         symbols = dict(self.predefined)
         prev = None
         for _ in range(10):
@@ -751,6 +751,35 @@ class Assembler:
 
 
 _MNEMONICS = None
+
+
+def _expand_rept(lines, symbols):
+    """Expande bloques REPT n ... ENDR (anidables). ``n`` debe ser constante."""
+    out = []
+    i = 0
+    while i < len(lines):
+        m = re.match(r"^\s*REPT\s+(.+?)\s*(;.*)?$", lines[i], re.I)
+        if not m:
+            out.append(lines[i])
+            i += 1
+            continue
+        depth, j = 1, i + 1
+        while j < len(lines):
+            if re.match(r"^\s*REPT\b", lines[j], re.I):
+                depth += 1
+            elif re.match(r"^\s*ENDR\b", lines[j], re.I):
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        try:
+            n = _Expr(m.group(1), lambda k: symbols[k], 0).parse()
+        except Exception:
+            raise AsmError(f"REPT necesita un número constante: {m.group(1)}", i + 1, lines[i])
+        body = _expand_rept(lines[i + 1:j], symbols)
+        out.extend(body * n)
+        i = j + 1
+    return out
 
 
 def _mnemonics():

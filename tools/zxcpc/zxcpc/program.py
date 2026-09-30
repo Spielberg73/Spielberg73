@@ -29,6 +29,7 @@ class Program:
     zx_state: object = None       # ZXState original (si lo hay)
     cpc_state: object = None      # CPCState original (si lo hay)
     load_ranges: list = field(default_factory=list)   # (inicio, fin) de datos cargados
+    firmware: bool = False        # CPC: estado con el firmware activo
 
     @property
     def entry(self):
@@ -103,7 +104,7 @@ def detect_platform(path, data):
 
 
 def load_program(path, platform=None, load_addr=None, exec_addr=None, file_in_image=None,
-                 sp=None, zx_rom=None) -> Program:
+                 sp=None, zx_rom=None, cpc_roms=None) -> Program:
     with open(path, "rb") as f:
         data = f.read()
     plat, kind = detect_platform(path, data)
@@ -183,8 +184,11 @@ def load_program(path, platform=None, load_addr=None, exec_addr=None, file_in_im
                               (f" que coincidan con {file_in_image}" if file_in_image else ""))
         # el mayor binario suele ser el juego
         fname, h, body = max(cands, key=lambda c: len(c[2]))
-        mem = bytearray(65536)
         load = load_addr if load_addr is not None else h["load"]
+        if cpc_roms:
+            entry = exec_addr if exec_addr is not None else h["exec"]
+            return _cpc_with_firmware(name, kind, body, load, entry, cpc_roms, fname)
+        mem = bytearray(65536)
         mem[load:load + len(body)] = body[:65536 - load]
         entry = exec_addr if exec_addr is not None else h["exec"]
         p = Program("cpc", mem, _regs(PC=entry, SP=sp if sp is not None else 0xBFF8), 0, 0, 1,
@@ -198,6 +202,8 @@ def load_program(path, platform=None, load_addr=None, exec_addr=None, file_in_im
     # binario en bruto
     if load_addr is None or exec_addr is None:
         raise FormatError("para un binario en bruto indica --load y --exec")
+    if platform == "cpc" and cpc_roms:
+        return _cpc_with_firmware(name, "bin", data, load_addr, exec_addr, cpc_roms, name)
     mem = bytearray(65536)
     mem[load_addr:load_addr + len(data)] = data[:65536 - load_addr]
     if platform == "zx":
@@ -206,4 +212,20 @@ def load_program(path, platform=None, load_addr=None, exec_addr=None, file_in_im
     p = Program(platform, mem, _regs(PC=exec_addr, SP=sp if sp is not None else default_sp,
                                      IY=0x5C3A if platform == "zx" else 0),
                 1 if platform == "zx" else 0, 1 if platform == "zx" else 0, 1, name, "bin", load_ranges=[(load_addr, load_addr + len(data))])
+    return p
+
+
+def _cpc_with_firmware(name, kind, body, load, entry, cpc_roms, fname):
+    """Arranca el firmware del CPC, carga el binario y devuelve el estado listo."""
+    from .machines.cpc import CPC
+    lower, upper = cpc_roms
+    m = CPC(lower, upper)
+    m.boot_firmware()
+    m.inject_and_call(body, load, entry)
+    st = m.save_state()
+    p = Program("cpc", bytearray(st.mem[:65536]), dict(st.regs), st.iff1, st.iff2, st.im, name,
+                kind, cpc_state=st, load_ranges=[(load, load + len(body))])
+    p.notes.append(f"{fname}: {len(body)} bytes en {load:#06x}, arranque en {entry:#06x} "
+                   "con el firmware real inicializado")
+    p.firmware = True
     return p

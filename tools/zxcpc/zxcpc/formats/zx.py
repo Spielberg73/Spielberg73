@@ -26,6 +26,7 @@ class ZXState:
     model: str = "48k"                     # "48k" o "128k"
     banks: dict = field(default_factory=dict)   # 128K: nº banco -> 16K
     port_7ffd: int = 0
+    port_1ffd: int = 0
     ay_regs: list = field(default_factory=lambda: [0] * 16)
     ay_select: int = 0
 
@@ -360,6 +361,10 @@ def read_z80(buf: bytes) -> ZXState:
         # +3, Pentagon, Scorpion... se tratan como 128K
         is128 = hw not in (8, 10, 11, 14) or is128
     st.port_7ffd = ext[3]
+    if ext_len >= 55:
+        st.port_1ffd = ext[54]
+    if hw in (7, 8, 12, 13):
+        st.model = "+3"
     st.ay_select = ext[6]
     st.ay_regs = list(ext[7:23])
     i = 32 + ext_len
@@ -374,8 +379,8 @@ def read_z80(buf: bytes) -> ZXState:
             raw = _z80_decompress(buf[i:i + ln])
             i += ln
         pages[page] = bytes(raw[:16384]).ljust(16384, b"\0")
-    if is128:
-        st.model = "128k"
+    if is128 or st.model == "+3":
+        st.model = st.model if st.model == "+3" else "128k"
         st.banks = {p - 3: bytearray(v) for p, v in pages.items() if 3 <= p <= 10}
         for b in range(8):
             st.banks.setdefault(b, bytearray(16384))
@@ -388,7 +393,7 @@ def read_z80(buf: bytes) -> ZXState:
 
 
 def write_z80(st: ZXState) -> bytes:
-    """Escribe un snapshot .Z80 v3 (48K)."""
+    """Escribe un snapshot .Z80 v3 (48K, o +2A/+3 si ``st.model == '+3'``)."""
     r = st.regs
     h = bytearray(30)
     h[0], h[1] = r["AF"] >> 8, r["AF"] & 0xFF
@@ -401,20 +406,29 @@ def write_z80(st: ZXState) -> bytes:
     struct.pack_into("<HH", h, 23, r["IY"], r["IX"])
     h[27], h[28] = st.iff1, st.iff2
     h[29] = st.im & 3
-    ext = bytearray(54)
+    plus3 = st.model == "+3"
+    ext = bytearray(55 if plus3 else 54)
     struct.pack_into("<H", ext, 0, r["PC"])
-    ext[2] = 0      # 48K
+    ext[2] = 7 if plus3 else 0      # 7 = +3 (en .z80 v3)
+    if plus3:
+        ext[3] = st.port_7ffd
+        ext[54] = st.port_1ffd
     ext[6] = st.ay_select
     ext[7:23] = bytes(st.ay_regs[:16])
     out = bytearray(h) + struct.pack("<H", len(ext)) + ext
-    for page, addr in ((8, 0x4000), (4, 0x8000), (5, 0xC000)):
-        raw = bytes(st.ram[addr - 0x4000:addr - 0x4000 + 16384])
+    if plus3:
+        pages = [(b + 3, bytes(st.banks[b])) for b in range(8)]
+    else:
+        pages = [(page, bytes(st.ram[addr - 0x4000:addr - 0x4000 + 16384]))
+                 for page, addr in ((8, 0x4000), (4, 0x8000), (5, 0xC000))]
+    for page, raw in pages:
         comp = _z80_compress(raw)
         if len(comp) >= 16384:
             out += struct.pack("<HB", 0xFFFF, page) + raw
         else:
             out += struct.pack("<HB", len(comp), page) + comp
     return bytes(out)
+
 
 
 # ---------------------------------------------------------------------------

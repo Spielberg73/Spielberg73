@@ -311,6 +311,32 @@ class CPC:
                 keys_script(self, self.frame)
             self.run_frame()
 
+    # --- firmware -------------------------------------------------------------------------
+    def boot_firmware(self, frames=100):
+        """Arranca el firmware (necesita las ROMs) hasta el "Ready" de BASIC."""
+        if self.lower_rom is None:
+            raise ValueError("se necesitan las ROMs del CPC para arrancar el firmware")
+        self.rmr = 0x01
+        self._refresh_view(full=True)
+        self.cpu.pc = 0
+        self.cpu.iff1 = self.cpu.iff2 = 0
+        self.run_frames(frames)
+
+    def inject_and_call(self, data, load, entry, sp=0xBFF0):
+        """Carga ``data`` en ``load`` y salta a ``entry`` como un CALL desde BASIC."""
+        self._sync_view_to_pages()
+        for i, b in enumerate(data):
+            a = (load + i) & 0xFFFF
+            self.pages[self.mapped[a >> 14]][a & 0x3FFF] = b
+        self._refresh_view(full=True)
+        c = self.cpu
+        c.halted = False
+        c.sp = sp
+        c.push(0)                       # si el programa vuelve, reinicia
+        c.pc = entry
+        c.iff1 = c.iff2 = 1
+        c.im = 1
+
     # --- vídeo ------------------------------------------------------------------------
     def screen_pens(self):
         """Matriz de tintas (índices de pluma) de la zona visible.
