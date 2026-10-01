@@ -103,6 +103,31 @@ def detect_platform(path, data):
     return None, "bin"
 
 
+def _zx_leave_rom(p, rom, max_frames=600):
+    """Snapshot detenido dentro de la ROM (p.ej. en el BASIC del cargador): se ejecuta
+    con la ROM real hasta que el PC entra en la RAM y se toma ese estado como inicio.
+    Si la ROM espera una tecla (PAUSE 0, INKEY$), se pulsa ENTER un momento."""
+    from .machines.spectrum import Spectrum48K
+    m = Spectrum48K(rom)
+    m.load_state(p.zx_state)
+    pc0 = p.regs["PC"]
+    for f in range(max_frames):
+        m.release_all()
+        if f % 50 == 25:
+            m.press("ENTER")
+        if m.run_frame(stop=lambda pc: pc >= 0x4000):
+            st = m.save_state()
+            q = Program("zx", st.memory64k(), dict(st.regs), st.iff1, st.iff2, st.im, p.source,
+                        p.kind, zx_state=st, load_ranges=list(p.load_ranges))
+            q.notes = list(p.notes) + [
+                f"el snapshot estaba en la ROM ({pc0:#06x}); se ha ejecutado con la ROM hasta "
+                f"entrar en la RAM en {st.regs['PC']:#06x} ({f + 1} frames)"]
+            return q
+    p.notes.append(f"el snapshot está en la ROM ({pc0:#06x}) y no sale de ella en "
+                   f"{max_frames} frames")
+    return None
+
+
 def load_program(path, platform=None, load_addr=None, exec_addr=None, file_in_image=None,
                  sp=None, zx_rom=None, cpc_roms=None) -> Program:
     with open(path, "rb") as f:
@@ -120,6 +145,8 @@ def load_program(path, platform=None, load_addr=None, exec_addr=None, file_in_im
         if st.model == "128k":
             p.notes.append("snapshot de 128K: se usa la configuración de memoria actual "
                            f"(banco {st.port_7ffd & 7} en $C000); la paginación no se porta")
+        elif st.regs["PC"] < 0x4000 and zx_rom:
+            p = _zx_leave_rom(p, zx_rom) or p
         return p
 
     if kind in ("tap", "tzx") and platform == "zx":

@@ -16,7 +16,8 @@
 ;    RST $10  PRINT-A de la ROM (emulación básica)
 ;    RST $18  LD (DE),A con reflejo en la pantalla CPC
 ;    RST $20  LD (HL),A con reflejo en la pantalla CPC
-;    RST $28  HALT (espera al siguiente frame de 50 Hz)
+;    RST $28  OUT ($FE),A (vía rápida para el borde y el beeper; el byte $FE
+;             que sigue se salta). Los HALT van por la tabla hash.
 ;    RST $30  despacho de parches de 2+ bytes (RST $30 + id)
 ;    RST $38  interrupción del CPC (300 Hz)
 ;
@@ -54,7 +55,10 @@ HASH        equ $3800       ; tabla hash de sitios de 1 byte (32 entradas)
         jp mirror_hl
 
         org $0028
-        jp h_halt
+        ex (sp),hl              ; saltar el byte $FE del puerto
+        inc hl
+        ex (sp),hl
+        jp ula_out
 
         org $0030
         jp h_dispatch
@@ -426,11 +430,18 @@ kb_scan:
         out (c),c               ; puerto A del PPI en entrada
         ld hl,cpc_matrix
         ld a,$40
+        ld e,0                  ; E <> 0 si alguna línea cambia
 .l:     ld b,$F6
         out (c),a               ; lectura PSG + línea de teclado
         ld b,$F4
         in d,(c)
+        ld c,a                  ; (el PPI solo mira el byte alto del puerto)
+        ld a,d
+        xor (hl)
+        or e
+        ld e,a
         ld (hl),d
+        ld a,c
         inc hl
         inc a
         cp $4A
@@ -438,6 +449,9 @@ kb_scan:
         ld bc,$F782
         out (c),c               ; puerto A de nuevo en salida
         call psg_latch8
+        ld a,e
+        or a
+        ret z                   ; sin cambios: las semifilas siguen valiendo
         ; --- matriz CPC -> semifilas del Spectrum ---
         ld hl,kmap
         ld d,cpc_matrix/256
@@ -577,7 +591,25 @@ ay_sel:     db 0
 ay_shadow:  ds 16, 0
 
 ; A = byte alto del puerto -> A = $A0 | semifilas seleccionadas. Usa BC, HL.
+; Con las interrupciones desactivadas (muchos juegos corren así) la matriz no
+; se actualiza en la interrupción: se vuelve a leer aquí (la conversión solo se
+; rehace si alguna línea ha cambiado).
 ula_read:
+        push af
+        ld a,i                  ; P/V = IFF2
+        jp pe,.go
+        push de
+        exx
+        push bc
+        push de
+        push hl
+        call kb_scan
+        pop hl
+        pop de
+        pop bc
+        exx
+        pop de
+.go:    pop af
         ld c,a
         ld hl,zx_rows
         ld a,$1F
@@ -673,6 +705,46 @@ h_out_ula:
         call ula_write
         pop hl
         pop bc
+        pop af
+        ret
+
+; OUT ($FE),A: como ula_write pero conservando todos los registros y flags.
+ula_out:
+        push af
+        push hl
+        ld h,a
+        ld a,(last_ula)
+        xor h
+        jr z,.x                 ; nada cambia
+        ld l,a                  ; bits que cambian
+        ld a,h
+        ld (last_ula),a
+        push bc
+        bit 4,l
+        jr z,.nob
+        and $10
+        jr z,.z
+        ld a,BEEP_VOL
+.z:     ld b,$F4
+        out (c),a               ; dato del PSG (registro 8 ya seleccionado)
+        ld bc,$F680
+        out (c),c
+        ld c,0
+        out (c),c
+.nob:   ld a,l
+        and 7
+        jr z,.nb
+        ld a,h
+        and 7
+        ld hl,border_tab
+        add a,l
+        ld l,a
+        ld a,(hl)
+        ld bc,$7F10
+        out (c),c
+        out (c),a
+.nb:    pop bc
+.x:     pop hl
         pop af
         ret
 

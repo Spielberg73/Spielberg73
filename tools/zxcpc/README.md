@@ -125,19 +125,29 @@ Opciones útiles de `port`:
 * **Parches.** Las instrucciones de 1 byte se cambian por un `RST`. `LD (HL),A` y
   `LD (DE),A` tienen un `RST` propio, y las demás se localizan por la dirección de
   retorno. Las de 2 bytes usan `RST $30` más un identificador y las de 3 o 4 bytes,
-  un `CALL`. `HALT` pasa a un `RST` que espera el frame.
+  un `CALL`. `OUT ($FE),A` tiene su propio `RST $28` (los bucles del beeper hacen
+  miles por segundo) y `HALT` va por la tabla de 1 byte y espera el frame.
+* **Copias en bloque.** Muchos juegos dibujan en un búfer y lo vuelcan entero a la
+  pantalla en cada frame con `LDIR`. El HAL copia comparando, en bloques de 8 bytes
+  cuando puede, y solo convierte los bytes que cambian.
 * **Interrupciones.** El CPC interrumpe 300 veces por segundo. El HAL llama a la
   rutina del juego una vez por frame (IM 1 o IM 2, con el vector buscado en la
   ROM) y reparte el trabajo de refresco entre las otras interrupciones.
 * **Teclado, joystick y sonido.** La matriz del CPC se traduce a las semifilas del
-  Spectrum, y el Kempston sale del joystick del CPC. El beeper se imita con el
+  Spectrum, y el Kempston sale del joystick del CPC. Si el juego lee el teclado con
+  las interrupciones desactivadas, la matriz se vuelve a leer en cada lectura. El beeper se imita con el
   volumen del canal A del AY, y el AY de los 128K pasa al PSG con las frecuencias
   reescaladas.
 * **ROM.** Las rutinas de la ROM más usadas (CLS, BEEPER, KEY-SCAN, PR-STRING,
   CHAN-OPEN, PRINT por `RST $10` con AT/INK/PAPER…) están emuladas. Si se da la ROM
-  real, su fuente se copia al port.
-* **Disco.** El DSK lleva un cargador para el CPC 6128 que reserva la memoria, lee el
-  juego, coloca el trozo final desde el banco extra y arranca.
+  real, su fuente se copia al port. Si el juego lee datos de la ROM por su cuenta y
+  no hay sitio para copiarlos, la ROM se guarda en el banco extra 5 del 6128 y esas
+  lecturas la consultan allí.
+* **Snapshots detenidos en la ROM.** Si el snapshot se tomó en el BASIC del cargador
+  (p. ej. en un `PAUSE`), con `--rom` se ejecuta hasta que entra en el código del
+  juego y se porta desde ahí.
+* **Disco.** El DSK lleva un cargador para el CPC 6128 que lee el juego por bloques
+  de 16K (y la copia de la ROM, si hace falta), los coloca sin firmware y arranca.
 
 ### CPC → Spectrum +2A/+3
 
@@ -191,7 +201,10 @@ del teclado.
   multicanal) necesitan intervención manual. El informe los señala cuando los
   detecta.
 * Los ports son más lentos que el original cuando el juego escribe mucho en
-  pantalla, porque cada byte se convierte al momento.
+  pantalla o usa mucho el beeper, porque cada byte y cada `OUT` pasan por el HAL.
+  Por ejemplo, Manic Miner se porta y se juega en el CPC (probado en Caprice32,
+  desde el disco), pero su bucle principal tarda unas 2,7 veces más que en el
+  Spectrum.
 
 ## Validación
 

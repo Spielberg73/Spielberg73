@@ -207,3 +207,63 @@ def test_cpc2zx_z80_valido(cpc_port):
     z = SpectrumPlus3()
     z.load_state(st)
     z.run_frame()
+
+
+# --- piezas del HAL ZX -> CPC -------------------------------------------------------------
+
+def test_ldir_scr_igual_que_ldir():
+    """La copia comparando (solo convierte lo que cambia) deja lo mismo que LDIR."""
+    import random
+    from zxcpc.z80.asm import assemble
+    from zxcpc.z80.cpu import Z80
+    from zxcpc.port.zx2cpc import LDIR_SCR_SRC
+    rnd = random.Random(5)
+    r = assemble("        org $9000\nmirror_hl: ret\n" + LDIR_SCR_SRC +
+                 "\nentry:  call ldir_scr\n        halt\nref:    ldir\n        halt\n")
+    img, sy = r.image(), r.symbols
+    for _ in range(120):
+        base = bytearray(rnd.randrange(256) for _ in range(65536))
+        src = rnd.choice([0x7000, 0x7008, 0x7003, 0x60F8, 0x61FC])
+        dst = rnd.choice([0x4000, 0x4008, 0x40F8, 0x4005, 0x5000])
+        n = rnd.choice([1, 3, 8, 9, 16, 17, 255, 256, 300, 1030])
+        for i in range(n):
+            if rnd.random() < 0.9:
+                base[dst + i] = base[src + i]
+        af = rnd.randrange(65536)
+        out = []
+        for entry in ("entry", "ref"):
+            m = bytearray(base)
+            m[0x9000:0x9000 + len(img)] = img
+            c = Z80(m)
+            c.pc = sy[entry]
+            for k, v in (("SP", 0xF000), ("HL", src), ("DE", dst), ("BC", n), ("AF", af)):
+                c.set_pair(k, v)
+            while not c.halted:
+                c.step()
+            out.append((bytes(c.mem[0x4000:0x8000]), c.get_pair("HL"), c.get_pair("DE"),
+                        c.get_pair("BC"), c.get_pair("AF") & 0xFFD7))
+        assert out[0] == out[1], (hex(src), hex(dst), n)
+
+
+@pytest.mark.skipif(not os.path.exists(ZX_ROM), reason="sin ROM del Spectrum")
+def test_snapshot_detenido_en_la_rom(built, tmp_path):
+    """Un snapshot tomado en el BASIC del cargador (PAUSE 0) arranca en el USR del juego."""
+    from zxcpc.formats.zx import write_tap_game, write_z80
+    rom = open(ZX_ROM, "rb").read()
+    path, sy, start = built["zxgame"]
+    tap = tmp_path / "g.tap"
+    tap.write_bytes(write_tap_game("g", open(path, "rb").read(), start))
+    m = Spectrum48K(rom)
+    ok, _ = m.load_tape_and_run(__import__("zxcpc.formats.zx", fromlist=["read_tap"]).read_tap(
+        tap.read_bytes()))
+    assert ok
+    st = m.save_state()
+    st.regs["SP"] -= 2                      # simular que estaba dentro de una rutina de la ROM
+    st.ram[st.regs["SP"] - 0x4000] = st.regs["PC"] & 0xFF
+    st.ram[st.regs["SP"] - 0x3FFF] = st.regs["PC"] >> 8
+    st.regs["PC"] = 0x0038                  # en la ROM: la interrupción (vuelve al juego)
+    snap = tmp_path / "g.z80"
+    snap.write_bytes(write_z80(st))
+    p = load_program(str(snap), zx_rom=rom)
+    assert p.regs["PC"] >= 0x4000
+    assert any("estaba en la ROM" in n for n in p.notes)

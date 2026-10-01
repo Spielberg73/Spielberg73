@@ -63,11 +63,12 @@ def explore_script(platform, seed=1, start_keys=None):
     state = {"held": []}
 
     def script(m, frame):
-        # fase 1: menús (una tecla cada 40 frames, pulsada 6 frames)
+        # fase 1: menús (una tecla cada 40 frames, pulsada 24: algunos juegos solo
+        # miran el teclado entre nota y nota de la música del título)
         if frame < len(menu) * 40:
             k, ph = divmod(frame, 40)
             m.release_all()
-            if 20 <= ph < 26:
+            if 12 <= ph < 36:
                 m.press(menu[k])
             return
         # fase 2: movimientos aleatorios, cambiando cada 8-20 frames

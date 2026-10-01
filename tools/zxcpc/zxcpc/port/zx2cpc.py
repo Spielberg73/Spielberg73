@@ -356,7 +356,11 @@ class ZX2CPC:
             kinds = {h.kind for h in hs}
             try:
                 if "halt" in kinds:
-                    patch = Patch(addr, ins.raw, b"\xEF", "halt", ins.text(), "h_halt")
+                    # HALT va por la tabla hash (RST $08); RST $28 es OUT ($FE),A
+                    label = self._handler(("halt8",), "        jp h_halt\n", "rst8")
+                    self._id(label)
+                    self.hash_sites[(addr + 1) & 0xFFFF] = label
+                    patch = Patch(addr, ins.raw, b"\xCF", "halt", ins.text(), label)
                 elif kinds & {"ula_out", "ula_in", "kempston_in", "ay_io", "floating_bus",
                               "paging", "io_unknown"}:
                     if confident:
@@ -406,6 +410,9 @@ class ZX2CPC:
             else:
                 if val & 1:
                     label = self._handler(("out_ignore",), "        ret\n", "rst30")
+                elif val == 0xFE and ins.raw == b"\xD3\xFE":
+                    # vía rápida: RST $28 + $FE (el byte del puerto se queda y se salta)
+                    return Patch(ins.addr, ins.raw, b"\xEF\xFE", "io", ins.text(), "ula_out")
                 else:
                     label = self._handler(("out_n", "ula"), "        jp h_out_ula\n", "rst30")
         else:
@@ -466,6 +473,11 @@ class ZX2CPC:
             return None
         pre, post = mc
         body = pre + _asm_ins(ins) + post
+        if wk == ("block", "LDIR"):
+            # copia comparando: solo se convierten los bytes que cambian (los juegos que
+            # vuelcan un búfer entero en cada frame cambian muy pocos)
+            self._handler(("ldir_scr",), LDIR_SCR_SRC, "call")
+            body = "        jp ldir_scr\n"
         n = ins.length
         raw = ins.raw
         if n == 1:
@@ -542,8 +554,14 @@ class ZX2CPC:
             uses_font = uses_font or chars == 0x3C00
         if not (uses_font or refs):
             return
+        if not refs and chars != 0x3C00:
+            # el juego calcula la dirección en la ROM por su cuenta: leerla del banco extra
+            if self._rom_reads_via_bank():
+                return
         where = self._find_free(mem, 768)
         if where is None:
+            if self._rom_reads_via_bank():
+                return
             self.warnings.append("el juego usa la fuente de la ROM pero no encuentro 768 bytes "
                                  "libres en su memoria para copiarla")
             return
@@ -561,6 +579,42 @@ class ZX2CPC:
             new = bytes(ins.raw[:-2]) + bytes([nv & 0xFF, nv >> 8])
             self.patches.append(Patch(ins.addr, ins.raw, new, "rom_font", ins.text(), None,
                                       note=f"{v:#06x} -> {nv:#06x}"))
+
+    def _rom_reads_via_bank(self):
+        """Las instrucciones que leen la ROM pasan a leer una copia en el banco extra 5
+        del CPC 6128 (configuración $C5, que lo pone en $4000-$7FFF)."""
+        patched = {b for pt in self.patches for b in range(pt.addr, pt.addr + len(pt.orig))}
+        done = 0
+        for h in self.an.hotspots:
+            if h.kind != "rom_read" or h.addr in patched:
+                continue
+            ins = self.an.instrs.get(h.addr)
+            body = _rom_read_body(ins) if ins is not None else None
+            if body is None:
+                self.warnings.append(f"{h.addr:04X} {h.text}: lectura de la ROM en una forma "
+                                     "no soportada; revisar a mano")
+                continue
+            if ins.length == 1:
+                label = self._handler(("romrd", ins.raw), body, "rst8")
+                self._id(label)
+                self.hash_sites[(ins.addr + 1) & 0xFFFF] = label
+                new = b"\xCF"
+            elif ins.length >= 3:
+                label = self._handler(("romrd", ins.raw), body, "call")
+                new = b"\xCD@@" + b"\x00" * (ins.length - 3)
+            else:
+                label = self._handler(("romrd", ins.raw), body, "rst30")
+                new = bytes([0xF7, self._id(label)])
+            self.patches.append(Patch(ins.addr, ins.raw, new, "rom_read", ins.text(), label,
+                                      note="lee la copia de la ROM del banco extra 5"))
+            done += 1
+        if not done:
+            return False
+        self._handler(("rom_peek",), ROM_PEEK_SRC, "call")
+        self.rom_bank = bytes(self.opt.zx_rom[:16384])
+        self.warnings.append(f"{done} lectura(s) de la ROM leen una copia en el banco extra 5: "
+                             "el port necesita un CPC 6128 (o 464/664 con 64K de ampliación)")
+        return True
 
     def _find_free(self, mem, size):
         """Zona de ``size`` bytes a cero, nunca escrita, sin código y lejos de la pila."""
@@ -669,6 +723,11 @@ class ZX2CPC:
             pt.new = bytes(new)
             mem[pt.addr:pt.addr + len(new)] = new
 
+        rom_bank = getattr(self, "rom_bank", None)
+        if rom_bank:
+            # 128K: copia de la ROM del Spectrum en el banco extra 5
+            mem = mem + bytearray(0x10000)
+            mem[0x14000:0x18000] = rom_bank
         st = self._cpc_state(mem, pal_fw, border)
         palette = [(i, f, FW_NAMES[f]) for i, f in enumerate(pal_fw)]
         free_bytes = sum(end - start for start, end in placed)
@@ -680,9 +739,12 @@ class ZX2CPC:
     def _place_handlers(self, symbols, free, syms):
         """Coloca los manejadores generados en los huecos libres del HAL."""
         items = []
+        # los manejadores pueden llamarse entre sí: para medirlos basta un valor cualquiera
+        dummy = {lab: 0xC000 for lab, _, _ in self.handlers.values()}
+        dummy["rom_peek"] = dummy["ldir_scr"] = 0xC000
         for key, (label, code, htype) in self.handlers.items():
             src = f"{label}:\n{code}"
-            probe = Assembler(dict(symbols, **syms)).assemble(f" org $C000\n{src}")
+            probe = Assembler({**dummy, **symbols, **syms}).assemble(f" org $C000\n{src}")
             size = sum(len(s.data) for s in probe.segments)
             items.append((size, label, src))
         if getattr(self, "_stub2", None):
@@ -766,6 +828,153 @@ class ZX2CPC:
                         model=self.opt.model)
 
 
+LDIR_SCR_SRC = """\
+ldir_scr:
+; LDIR que solo escribe (y refleja) los bytes de destino que cambian. Mismo
+; resultado que LDIR: HL, DE y BC finales y flags (H, N y P/V a cero).
+        push af
+        ld a,b
+        or c
+        jr nz,.top
+        dec bc                  ; BC = 0: (casi) 64K, como LDIR
+.top:   ; vía rápida: origen y destino alineados a 8 y quedan 8 bytes o más
+        ld a,l
+        or e
+        and 7
+        jr nz,.one
+        ld a,b
+        or a
+        jr nz,.blk
+        ld a,c
+        cp 8
+        jr c,.one
+.blk:
+        rept 8
+        ld a,(de)
+        cp (hl)
+        jr nz,.diff
+        inc e
+        inc l
+        endr
+        ld a,e                  ; el último INC puede cruzar de página
+        or a
+        jr nz,.nd
+        inc d
+.nd:    ld a,l
+        or a
+        jr nz,.nh
+        inc h
+.nh:    ld a,c
+        sub 8
+        ld c,a
+        jr nc,.nb
+        dec b
+.nb:    or b
+        jr nz,.top
+        jr .end
+.diff:  ld a,e                  ; k = bytes iguales ya pasados en el bloque
+        and 7
+        jr z,.one
+        cpl
+        inc a
+        add a,c                 ; BC -= k
+        ld c,a
+        jr c,.one
+        dec b
+.one:   ld a,(de)
+        cpi                     ; A - (HL); HL+1; BC-1; P/V = (BC != 0)
+        jr nz,.chg
+        inc de
+        jp pe,.top
+        jr .end
+.chg:   dec hl
+        ld a,(hl)
+        inc hl
+        ld (de),a
+        ex de,hl
+        call mirror_hl          ; conserva todo
+        ex de,hl
+        inc de
+        jp pe,.top
+.end:   pop af
+        push hl
+        push af
+        pop hl
+        res 4,l                 ; H = N = P/V = 0
+        res 2,l
+        res 1,l
+        push hl
+        pop af
+        pop hl
+        ret
+"""
+
+
+ROM_PEEK_SRC = """\
+rom_peek:
+; A = byte en (HL); por debajo de $4000 se lee la copia de la ROM del banco extra 5.
+; Conserva F y el resto de registros. Sin pila mientras el banco está puesto.
+        push hl
+        push bc
+        push af
+        ld a,h
+        cp $40
+        jr nc,.ram
+        set 6,h
+        ld a,i                  ; P/V = IFF2
+        di
+        ld bc,$7FC5
+        out (c),c
+        ld a,(hl)
+        ld c,$C0
+        out (c),c
+        ld b,a
+        jp po,.di
+        ei
+.di:    pop af
+        ld a,b
+        pop bc
+        pop hl
+        ret
+.ram:   pop af
+        ld a,(hl)
+        pop bc
+        pop hl
+        ret
+"""
+
+
+def _rom_read_body(ins):
+    """Código que emula ``LD r,(xx)`` leyendo la ROM con rom_peek; None si no es esa forma."""
+    if ins.op != "LD" or len(ins.operands) != 2:
+        return None
+    dst, src = ins.operands
+    if dst.kind != D.REG or dst.value in ("I", "R", "IXH", "IXL", "IYH", "IYL"):
+        return None
+    r = dst.value
+    if src.kind == D.IND_REG and src.value in ("HL", "DE", "BC"):
+        via = src.value
+        calc = "" if via == "HL" else f"        ld h,{via[0].lower()}\n        ld l,{via[1].lower()}\n"
+    elif src.kind == D.IDX:
+        reg, d = src.value
+        via = reg
+        calc = (f"        push af\n        push de\n        push {reg.lower()}\n        pop hl\n"
+                f"        ld de,{d}\n        add hl,de\n        pop de\n        pop af\n")
+    else:
+        return None
+    code = ""
+    if r != "A":
+        code += "        push af\n"
+    if via != "HL":
+        code += "        push hl\n" + calc
+    code += "        call rom_peek\n"
+    if via != "HL":
+        code += "        pop hl\n"
+    if r != "A":
+        code += f"        ld {r.lower()},a\n        pop af\n"
+    return code + "        ret\n"
+
+
 def port_zx_to_cpc(analysis, options=None) -> PortResult:
     return ZX2CPC(analysis, options).build()
 
@@ -781,11 +990,16 @@ def build_dsk(result: PortResult) -> bytes:
         src = f.read()
     src += "\nstub1_crtc: db " + ",".join(str(v) for v in crtc) + \
            "\nstub1_pal:  db " + ",".join(str(v) for v in pal) + "\nstub1_all_end:\n"
-    loader = Assembler({"STUB2": stub2}).assemble(src, "loader6128.asm").image()
     mem = result.state.mem
+    romcopy = len(mem) > 0x14000 and any(mem[0x14000:0x18000])
+    loader = Assembler({"STUB2": stub2, "ROMCOPY": int(romcopy)}).assemble(
+        src, "loader6128.asm").image()
     files = [("DISC", "BIN", make_amsdos_header("DISC", "BIN", len(loader), 0x8000, 0x8000) + loader)]
-    for i, part in enumerate("ABCD"):
-        data = bytes(mem[i * 0x4000:(i + 1) * 0x4000])
+    parts = [("A", 0), ("B", 0x4000), ("C", 0x8000), ("D", 0xC000)]
+    if romcopy:
+        parts.append(("R", 0x14000))        # copia de la ROM del Spectrum -> banco 5
+    for part, off in parts:
+        data = bytes(mem[off:off + 0x4000])
         files.append(("ZXCPC", part, make_amsdos_header("ZXCPC", part, len(data), 0x4000, 0) + data))
     return make_dsk(files)
 
