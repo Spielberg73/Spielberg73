@@ -92,6 +92,7 @@ class PortOptions:
     model: int = 2                        # modelo en el snapshot (0=464, 2=6128)
     zx_rom: bytes | None = None           # ROM de 48K del Spectrum aportada por el usuario
     beeper_loops: bool = True             # copiar al HAL los bucles de beeper (tono fiel)
+    frameskip: int = 0                    # volcados LDIR a pantalla saltados entre dos reales
 
     @classmethod
     def from_json(cls, d):
@@ -476,6 +477,45 @@ class ZX2CPC:
         out.append(f"        jp {end}\n")
         return "".join(out)
 
+    def _frameskip_ok(self):
+        if not self.opt.frameskip:
+            return False
+        if getattr(self, "_fs_checked", None) is None:
+            tr = self.an.trace
+            # las lecturas de los propios LDIR de pantalla a pantalla (borrados con
+            # LD (HL),0 + LDIR) no cuentan: esos sitios nunca se saltan
+            blocks = {a for a, i in self.an.instrs.items()
+                      if i.op in ("LDIR", "LDDR", "LDI", "LDD")}
+            reads = sum(n for pc, n in tr.screen_reads.items() if pc not in blocks) \
+                if tr is not None else None
+            self._fs_checked = bool(reads == 0)
+            if reads is None:
+                self.warnings.append("--frameskip necesita el análisis dinámico: no se aplica")
+            elif reads:
+                pcs = ", ".join(f"{pc:04X}" for pc in tr.screen_reads if pc not in blocks)
+                self.warnings.append(f"--frameskip no se aplica: el juego lee la pantalla "
+                                     f"({pcs})")
+            else:
+                self.warnings.append(f"salto de frames: la pantalla se actualiza en 1 de cada "
+                                     f"{self.opt.frameskip + 1} volcados")
+        return self._fs_checked
+
+    def _hal_features(self):
+        """Partes opcionales del HAL que este juego necesita (lo demás no se ensambla y
+        deja sitio para los manejadores)."""
+        used = {pt.handler for pt in self.patches}
+        for _label, code, _t in self.handlers.values():
+            used |= set(code.replace(",", " ").split())
+        rst10 = any(i.flow == "rst" and i.target == 0x10 and a >= 0x4000
+                    for a, i in self.an.instrs.items())
+        ay = any(h.kind == "ay_io" for h in self.an.hotspots)
+        return {"USE_PRINT": int(rst10 or bool(used & {"h_print", "rom_pr_string",
+                                                       "rom_chan_open"})),
+                "USE_CLS": int(bool(used & {"rom_cls", "rom_cls_lower"})),
+                "USE_BEEPER": int("rom_beeper" in used),
+                "USE_KEYSCAN": int("rom_key_scan" in used),
+                "USE_AY": int(ay)}
+
     def _same_rate(self, pc):
         """Fracción de las escrituras en pantalla de ``pc`` que no cambiaron el byte."""
         tr = self.an.trace
@@ -653,7 +693,21 @@ class ZX2CPC:
             # copia comparando: solo se convierten los bytes que cambian (los juegos que
             # vuelcan un búfer entero en cada frame cambian muy pocos)
             self._handler(("ldir_scr",), LDIR_SCR_SRC, "call")
+            self._handler(("ldir_scr2",), LDIR_SCR2_SRC, "call")
             body = "        jp ldir_scr\n"
+            tr = self.an.trace
+            if self._frameskip_ok() and not tr.screen_reads.get(ins.addr) and \
+                    tr.block_starts.get(ins.addr, 0) >= 20:
+                # salto de frames: solo una de cada N+1 copias llega a la pantalla
+                n = self.opt.frameskip
+                body = ("        push af\n        ld a,(.cnt)\n        inc a\n"
+                        f"        cp {n + 1}\n        jr c,.k\n        xor a\n"
+                        ".k:     ld (.cnt),a\n        jr z,.go\n        pop af\n"
+                        "        jp ldir_skip\n.go:    pop af\n        jp ldir_scr\n"
+                        f".cnt:   db {n}\n")              # el primer volcado es real
+                key_extra = ("fs", ins.addr)
+            else:
+                key_extra = None
         n = ins.length
         raw = ins.raw
         if n == 1:
@@ -667,8 +721,10 @@ class ZX2CPC:
             self._id(label)
             self.hash_sites[(ins.addr + 1) & 0xFFFF] = label
             return Patch(ins.addr, raw, b"\xCF", "screen", ins.text(), label)
+        if wk != ("block", "LDIR"):
+            key_extra = None
         if n == 2:
-            label = self._handler(("scr30", raw, skip), body, "rst30")
+            label = self._handler(("scr30", raw, skip, key_extra), body, "rst30")
             return Patch(ins.addr, raw, bytes([0xF7, self._id(label)]), "screen", ins.text(), label)
         label = self._handler(("scrcall", raw, skip), body, "call")
         return Patch(ins.addr, raw, b"\xCD@@" + b"\x00" * (n - 3), "screen", ins.text(), label)
@@ -772,6 +828,10 @@ class ZX2CPC:
                 self.warnings.append(f"{h.addr:04X} {h.text}: lectura de la ROM en una forma "
                                      "no soportada; revisar a mano")
                 continue
+            fused = self._fuse_rom_read(ins, body) if ins.length == 1 else None
+            if fused is not None:
+                done += 1
+                continue
             if ins.length == 1:
                 label = self._handler(("romrd", ins.raw), body, "rst8")
                 self._id(label)
@@ -793,6 +853,32 @@ class ZX2CPC:
         self.warnings.append(f"{done} lectura(s) de la ROM leen una copia en el banco extra 5: "
                              "el port necesita un CPC 6128 (o 464/664 con 64K de ampliación)")
         return True
+
+    def _fuse_rom_read(self, ins, body):
+        """LD r,(rr) de la ROM seguido de LD (HL),A / LD (DE),A a pantalla (el bucle típico
+        que imprime con la fuente de la ROM): un solo manejador de 2 bytes en vez de la
+        búsqueda en la tabla hash más el RST de la escritura."""
+        nxt = (ins.addr + 1) & 0xFFFF
+        pt = next((q for q in self.patches if q.addr == nxt), None)
+        if pt is None or pt.kind != "screen" or pt.orig not in (b"\x77", b"\x12"):
+            return None
+        if any(i.target == nxt for i in self.an.instrs.values() if i.target is not None):
+            return None
+        rd = self._handler(("romrd", ins.raw), body, "call")
+        if self._same_rate(nxt) >= 0.5:      # la escritura suele repetir el valor
+            vec = "st_hl_a" if pt.orig == b"\x77" else "st_de_a"
+        else:
+            vec = "$0020" if pt.orig == b"\x77" else "$0018"
+        label = self._handler(("romrd_fused", ins.raw, pt.orig),
+                              f"        call {rd}\n        jp {vec}\n", "rst30")
+        self.patches.remove(pt)
+        for lst in self.fast_sites.values():
+            if nxt in lst:
+                lst.remove(nxt)
+        self.patches.append(Patch(ins.addr, ins.raw + pt.orig, bytes([0xF7, self._id(label)]),
+                                  "rom_read", f"{ins.text()} / {pt.text}", label,
+                                  note="lee la copia de la ROM del banco extra 5 y escribe"))
+        return label
 
     def _find_free(self, mem, size):
         """Zona de ``size`` bytes a cero, nunca escrita, sin código y lejos de la pila."""
@@ -841,6 +927,7 @@ class ZX2CPC:
                 "ROM_IM2_VECTOR": opt.rom_im2_vector, "GAME_IM2": game_im2,
                 "GAME_I": p.regs["I"] & 0xFF, "INIT_ULA": border, "kmap": 0,
                 "SKIP_SAME_HL": self._skip_same("HL"), "SKIP_SAME_DE": self._skip_same("DE")}
+        syms.update(self._hal_features())
         with open(HAL_SRC, encoding="utf-8") as f:
             base_src = f.read()
         # 1ª pasada: medir el HAL fijo
@@ -934,10 +1021,15 @@ class ZX2CPC:
         items = []
         # los manejadores pueden llamarse entre sí: para medirlos basta un valor cualquiera
         dummy = {lab: 0xC000 for lab, _, _ in self.handlers.values()}
-        dummy["rom_peek"] = dummy["ldir_scr"] = 0xC000
+        for k in ("rom_peek", "ldir_scr", "ldir_end", "ldir_adj", "ldir_l0", "ldir_sbc",
+                  "ldir_skip"):
+            dummy[k] = 0xC000
         for key, (label, code, htype) in self.handlers.items():
             src = f"{label}:\n{code}"
-            probe = Assembler({**dummy, **symbols, **syms}).assemble(f" org $C000\n{src}")
+            own = {ln.split(":")[0].strip() for ln in src.splitlines()
+                   if ln and not ln[0].isspace() and ":" in ln}
+            probe = Assembler({**{k: v for k, v in dummy.items() if k not in own}, **symbols,
+                               **syms}).assemble(f" org $C000\n{src}")
             size = sum(len(s.data) for s in probe.segments)
             items.append((size, label, src))
         if getattr(self, "_stub2", None):
@@ -1025,22 +1117,48 @@ LDIR_SCR_SRC = """\
 ldir_scr:
 ; LDIR que solo escribe (y refleja) los bytes de destino que cambian. Mismo
 ; resultado que LDIR: HL, DE y BC finales y flags (H, N y P/V a cero).
+; Con origen y destino alineados a 8 compara por tramos de bloques de 8 bytes
+; que no cruzan de página, contando con DJNZ y ajustando BC una vez por tramo.
         push af
         ld a,b
         or c
         jr nz,.top
         dec bc                  ; BC = 0: (casi) 64K, como LDIR
-.top:   ; vía rápida: origen y destino alineados a 8 y quedan 8 bytes o más
-        ld a,l
+.top:   ld a,l
         or e
         and 7
         jr nz,.one
+        ; kc = bloques que permite BC (máx. 32)
         ld a,b
         or a
-        jr nz,.blk
+        ld a,32
+        jr nz,.kc
         ld a,c
-        cp 8
-        jr c,.one
+        rrca
+        rrca
+        rrca
+        and $1F
+        jr z,.one               ; menos de 8 bytes
+.kc:    ld (.kcv+1),a
+        ; kp = bloques hasta el final de la página de origen o destino
+        ld a,l
+        cp e
+        jr nc,.m
+        ld a,e
+.m:     neg
+        rrca
+        rrca
+        rrca
+        and $1F
+        jr nz,.kcv
+        ld a,32
+.kcv:   cp 0
+        jr c,.k
+        ld a,(.kcv+1)
+.k:     ld (ldir_sbc+1),bc          ; guardar BC y el byte bajo inicial
+        ld b,a
+        ld a,l
+        ld (ldir_l0+1),a
 .blk:
         rept 8
         ld a,(de)
@@ -1049,37 +1167,28 @@ ldir_scr:
         inc e
         inc l
         endr
-        ld a,e                  ; el último INC puede cruzar de página
-        or a
-        jr nz,.nd
-        inc d
-.nd:    ld a,l
+        djnz .blk
+        ; tramo entero igual: página siguiente si se ha llegado al final
+        ld a,l
         or a
         jr nz,.nh
         inc h
-.nh:    ld a,c
-        sub 8
-        ld c,a
-        jr nc,.nb
-        dec b
-.nb:    or b
+.nh:    ld a,e
+        or a
+        jr nz,.nd
+        inc d
+.nd:    call ldir_adj
+        ld a,b
+        or c
         jr nz,.top
-        jr .end
-.diff:  ld a,e                  ; k = bytes iguales ya pasados en el bloque
-        and 7
-        jr z,.one
-        cpl
-        inc a
-        add a,c                 ; BC -= k
-        ld c,a
-        jr c,.one
-        dec b
+        jp ldir_end
+.diff:  call ldir_adj               ; descontar los bytes iguales ya pasados
 .one:   ld a,(de)
         cpi                     ; A - (HL); HL+1; BC-1; P/V = (BC != 0)
         jr nz,.chg
         inc de
         jp pe,.top
-        jr .end
+        jp ldir_end
 .chg:   dec hl
         ld a,(hl)
         inc hl
@@ -1089,7 +1198,13 @@ ldir_scr:
         ex de,hl
         inc de
         jp pe,.top
-.end:   pop af
+        jp ldir_end
+"""
+
+
+LDIR_SCR2_SRC = """\
+ldir_end:
+        pop af
         push hl
         push af
         pop hl
@@ -1098,6 +1213,41 @@ ldir_scr:
         res 1,l
         push hl
         pop af
+        pop hl
+        ret
+ldir_skip:  ; copia saltada: HL y DE avanzan BC, BC = 0, flags como LDIR
+        push af
+        add hl,bc
+        ex de,hl
+        add hl,bc
+        ex de,hl
+        ld bc,0
+        jp ldir_end
+ldir_adj:   ; BC = BC guardado - bytes pasados (L - L0; 0 al acabar una página = 256)
+        ld a,l
+ldir_l0:
+        sub 0
+        push hl
+        push de
+        ld e,a
+        ld d,0
+        or a
+        jr nz,.a1
+        ld a,(ldir_l0+1)            ; L0 = L: o nada (diferencia en el 1er byte) o 256
+        cp l
+        jr nz,.a1
+        ld a,b                  ; B = 0 tras el DJNZ completo: 256 bytes
+        or a
+        jr nz,.a1
+        inc d
+.a1:
+ldir_sbc:
+        ld hl,0
+        or a
+        sbc hl,de
+        ld b,h
+        ld c,l
+        pop de
         pop hl
         ret
 """

@@ -216,9 +216,9 @@ def test_ldir_scr_igual_que_ldir():
     import random
     from zxcpc.z80.asm import assemble
     from zxcpc.z80.cpu import Z80
-    from zxcpc.port.zx2cpc import LDIR_SCR_SRC
+    from zxcpc.port.zx2cpc import LDIR_SCR_SRC, LDIR_SCR2_SRC
     rnd = random.Random(5)
-    r = assemble("        org $9000\nmirror_hl: ret\n" + LDIR_SCR_SRC +
+    r = assemble("        org $9000\nmirror_hl: ret\n" + LDIR_SCR_SRC + LDIR_SCR2_SRC +
                  "\nentry:  call ldir_scr\n        halt\nref:    ldir\n        halt\n")
     img, sy = r.image(), r.symbols
     for _ in range(120):
@@ -325,3 +325,45 @@ tick:   ld a,$10
         z.run_frame()
     # mismo orden de magnitud de cambios del altavoz que el original
     assert 0.5 < len(vols) / max(1, z.beeper_toggles) < 1.5
+
+
+def test_frameskip_en_volcados_de_bufer(tmp_path):
+    """Con --frameskip, el volcado frecuente de un búfer a pantalla se salta 1 de cada 2
+    veces, el primer volcado es real y la pantalla acaba igual que en el Spectrum."""
+    from zxcpc.z80.asm import assemble
+    from zxcpc.port.zx2cpc import port_zx_to_cpc, PortOptions
+    src = """
+        org $8000
+start:  di
+        ld sp,$FF00
+        ld hl,$4000             ; borrado con el truco LD (HL),0 + LDIR (lee la pantalla)
+        ld de,$4001
+        ld bc,$17FF
+        ld (hl),0
+        ldir
+        ld a,1
+main:   ld hl,$C000             ; dibujar una barra en el búfer y volcarlo entero
+        ld b,0
+.f:     ld (hl),a
+        inc hl
+        djnz .f
+        rlca
+        ld hl,$C000
+        ld de,$4000
+        ld bc,$0800
+        ldir
+        jr main
+"""
+    path = tmp_path / "f.bin"
+    path.write_bytes(assemble(src).image())
+    p = load_program(str(path), platform="zx", load_addr=0x8000)
+    an = analyze(p, run_dynamic(p, frames=30))
+    res = port_zx_to_cpc(an, PortOptions(frameskip=1))
+    assert any("salto de frames" in w for w in res.warnings)
+    assert res.hal_source.count("jp ldir_skip") == 1      # solo el volcado del búfer
+    c = CPC()
+    c.load_state(res.state)
+    for _ in range(40):
+        c.run_frame()
+    # la pantalla del CPC refleja algún volcado real (la barra no está vacía)
+    assert any(c.cpu.mem[0x4000:0x4100])

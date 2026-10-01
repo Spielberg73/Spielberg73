@@ -23,7 +23,8 @@
 ;
 ;  Símbolos que define el portador (EQU externos):
 ;    REFRESH_LINES, BEEP_VOL, ROM_IM2_VECTOR, GAME_IM2, GAME_I, INIT_ULA,
-;    SKIP_SAME_HL, SKIP_SAME_DE
+;    SKIP_SAME_HL, SKIP_SAME_DE, USE_PRINT, USE_CLS, USE_BEEPER, USE_KEYSCAN, USE_AY
+;    (las rutinas de la ROM y el AY solo se ensamblan si el juego las usa)
 ; =============================================================================
 
 TABHI_PAGE  equ $08         ; tabla nibble alto -> byte CPC expandido
@@ -45,7 +46,11 @@ HASH        equ $3800       ; tabla hash de sitios de 1 byte (32 entradas)
         jp h_rst8
 
         org $0010
+        if USE_PRINT
         jp h_print
+        else
+        ret
+        endif
 
         org $0018
         if SKIP_SAME_DE
@@ -620,6 +625,7 @@ border_tab: ds 8, $54           ; color hardware | $40 para cada color ZX
 last_ula:   db INIT_ULA
 ay_sel:     db 0
 ay_shadow:  ds 16, 0
+kb_poll:    db 1
 
 ; A = byte alto del puerto -> A = $A0 | semifilas seleccionadas. Usa BC, HL.
 ; Con las interrupciones desactivadas (muchos juegos corren así) la matriz no
@@ -629,6 +635,10 @@ ula_read:
         push af
         ld a,i                  ; P/V = IFF2
         jp pe,.go
+        ld hl,kb_poll           ; con DI: releer cada 4 lecturas (una ráfaga de
+        dec (hl)                ; lecturas de semifilas suele ir seguida)
+        jr nz,.go
+        ld (hl),4
         push de
         exx
         push bc
@@ -788,12 +798,14 @@ out_c_value:
         jr z,.sel
         cp $BF
         ret nz                  ; $7FFD (paginación) y otros: se ignoran
+        if USE_AY
         ld a,h
         push bc
         push de
         call ay_write
         pop de
         pop bc
+        endif
         ret
 .sel:   ld a,h
         and 15
@@ -802,6 +814,7 @@ out_c_value:
 
 ; Escritura en el AY del 128K. Ajusta periodos al reloj del CPC
 ; (1 MHz frente a 1,7734 MHz: factor 0,5625). A = valor. Destruye todo salvo IX/IY.
+        if USE_AY
 ay_write:
         ld e,a
         ld a,(ay_sel)
@@ -891,6 +904,7 @@ scale:  push de
         add hl,de
         pop de
         ret
+        endif
 c5_end:
         assert c5_end <= $2A00, "bloque 5 lleno"
         assert (zx_rows & $FF) <= $F0, "zx_rows cruza página"
@@ -991,6 +1005,7 @@ conv_line:
 ; --- Sustitutos de rutinas de la ROM del Spectrum ---------------------------
 
 ; CLS ($0D6B) / CL-ALL ($0DAF): borrar pantalla con ATTR-P
+        if USE_CLS
 rom_cls:
         push af
         push bc
@@ -1099,7 +1114,8 @@ clear_line:
         djnz .l
         ret
 
-; BEEPER ($03B5): DE = ciclos, HL = periodo. Mismo bucle, beeper -> AY
+        endif
+        if USE_BEEPER
 rom_beeper:
 ; BEEPER de la ROM (DE = ciclos, HL = (437500/f) - 30) con el generador de tono
 ; del PSG: periodo = (HL+30)/7 a 1 MHz y duración DE*(HL+30)/437500 s.
@@ -1193,6 +1209,7 @@ rom_beeper:
         ret
 
 ; Rutina de la ROM no soportada: vuelve sin hacer nada
+        endif
 rom_ret:
         ret
 
@@ -1202,6 +1219,7 @@ rom_ld_bytes:
         ret
 
 ; KEY-SCAN ($028E): E = tecla pulsada (o $FF), D = $FF, Z = 1
+        if USE_KEYSCAN
 rom_key_scan:
         push af
         push bc
@@ -1238,6 +1256,7 @@ rom_key_scan:
         ret
 
 ; BORDER ($2294): A = color
+        endif
 rom_border:
         push af
         push bc
@@ -1275,6 +1294,7 @@ c6_end:
 ; Bloque 7: $3800-$39FF  tabla hash (la genera el portador) + impresión
 ; ---------------------------------------------------------------------------
         org HASH+96
+        if USE_PRINT
 print_x:    db 0
 print_y:    db 0
 print_st:   db 0                ; 0 normal, 1-2 esperando AT, 3 esperando color
@@ -1470,5 +1490,6 @@ rom_pr_string:
         inc de
         dec bc
         jr .l
+        endif
 c7_end:
         assert c7_end <= $3A00, "bloque 7 lleno"

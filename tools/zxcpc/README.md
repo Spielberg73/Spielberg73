@@ -98,6 +98,10 @@ Opciones útiles de `port`:
 * `--refresh N`: líneas de pantalla que el HAL repasa por frame como red de seguridad.
 * `--palette a,b,c,d` (ZX→CPC): los 4 colores del firmware para las plumas 0-3.
 * `--mono` (ZX→CPC): monocromo, más fiel a la forma a cambio del color.
+* `--frameskip N` (ZX→CPC): en los juegos que vuelcan un búfer entero a la pantalla
+  con `LDIR` en cada frame, solo uno de cada N+1 volcados llega a la pantalla del CPC.
+  El juego va más rápido y la imagen se mueve a saltos. Solo se aplica si el análisis
+  ve que el juego no lee su propia pantalla.
 
 ### Flujo de trabajo recomendado
 
@@ -211,9 +215,12 @@ del teclado.
 * Los ports son más lentos que el original cuando el juego escribe mucho en
   pantalla, porque cada byte pasa por el HAL. Por ejemplo, Manic Miner se porta y
   se juega en el CPC (probado en Caprice32, desde el disco), pero su bucle principal
-  tarda unas 2 veces más que en el Spectrum; Cookie, en cambio, va al 90 %.
+  tarda 1,8 veces más que en el Spectrum (1,45 con `--frameskip 1`); Cookie, en
+  cambio, va al 90 %.
 * El sonido del beeper sale algo más grave (en torno a un 10 %) en los motores que
   hacen la espera con `DJNZ`, porque el CPC tarda 4 µs por vuelta y el Spectrum 3,7.
+* Las rutinas de la ROM emuladas (PRINT, CLS, BEEPER, KEY-SCAN) y el AY de los 128K
+  solo se ensamblan si el juego las usa, para dejar sitio a los manejadores.
 * Si el HAL se queda sin sitio para los manejadores, el portador usa una zona de la
   memoria del juego que no se tocó durante el análisis, y lo avisa en el informe.
 

@@ -25,6 +25,8 @@ class Trace:
     io: dict = field(default_factory=lambda: defaultdict(Counter))       # pc -> (dir,port)->n
     screen_writes: dict = field(default_factory=lambda: defaultdict(Counter))  # pc -> region->n
     screen_same: Counter = field(default_factory=Counter)  # pc -> escrituras que no cambian el byte
+    screen_reads: Counter = field(default_factory=Counter)  # pc -> lecturas de la pantalla
+    block_starts: Counter = field(default_factory=Counter)  # pc -> veces que empieza un LDIR/LDDR
     written: bytearray = field(default_factory=lambda: bytearray(65536))  # 1 = escrito
     written_block: bytearray = field(default_factory=lambda: bytearray(65536))  # por LDIR/LDDR...
     read_rom: dict = field(default_factory=lambda: defaultdict(Counter))  # pc -> página->n
@@ -166,6 +168,8 @@ class Tracer:
         ins, rf = entry
         c = self.cpu
         last = self.last_pc
+        if last != pc and ins.op in ("LDIR", "LDDR"):
+            t.block_starts[pc] += 1         # una copia nueva (no una repetición)
         if last is not None and self.platform == "cpc":
             if 0xB900 <= pc < 0xBE00 and not 0xB900 <= last < 0xBE00 and not self.in_rom(last):
                 t.rom_calls[last][pc] += 1
@@ -173,6 +177,8 @@ class Tracer:
             a = rf(c)
             if self.rom_lo <= a < self.rom_hi and pc >= self.rom_hi:
                 t.read_rom[pc][a & 0xFF00] += 1
+            elif self.scr_lo <= a < self.attr_hi and not self.in_rom(pc):
+                t.screen_reads[pc] += 1
         if ins.op == "HALT":
             t.halts[pc] += 1
         sp = c.sp

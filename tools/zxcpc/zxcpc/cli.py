@@ -241,6 +241,8 @@ def _port_zx2cpc(args, p, an, cfg, outdir, name, shots_dir, html_report):
         opt.mono = True
     if args.refresh is not None:
         opt.refresh_lines = args.refresh
+    if args.frameskip is not None:
+        opt.frameskip = args.frameskip
     if args.keys:
         for item in args.keys.split(","):
             zk, ck = item.split("=")
@@ -268,7 +270,8 @@ def _port_zx2cpc(args, p, an, cfg, outdir, name, shots_dir, html_report):
     used = {"refresh_lines": opt.refresh_lines, "beep_vol": opt.beep_vol, "mono": opt.mono,
             "palette": [f for _, f, _ in res.palette], "keys": opt.keys,
             "exclude": [f"{a:04X}" for a in sorted(opt.exclude)],
-            "rom_im2_vector": opt.rom_im2_vector, "patch_static": opt.patch_static}
+            "rom_im2_vector": opt.rom_im2_vector, "patch_static": opt.patch_static,
+            "frameskip": opt.frameskip, "beeper_loops": opt.beeper_loops}
     with open(os.path.join(outdir, "port.json"), "w", encoding="utf-8") as f:
         json.dump(used, f, indent=1, ensure_ascii=False)
     # prueba en el CPC emulado
@@ -429,6 +432,9 @@ def main(argv=None):
     sp.add_argument("--config", help="port.json con opciones (se genera en cada port)")
     sp.add_argument("--mono", action="store_true", help="monocromo (más fiel a la forma, sin color)")
     sp.add_argument("--refresh", type=int, help="líneas de refresco de fondo por frame (0-5)")
+    sp.add_argument("--frameskip", type=int,
+                    help="ZX->CPC: volcados de pantalla con LDIR que se saltan entre dos reales "
+                         "(solo si el juego no lee su pantalla; más velocidad, menos fluidez)")
     sp.add_argument("--keys", help="teclas extra, p.ej. Q=JOYUP,A=JOYDOWN,SPACE=FIRE1")
     sp.add_argument("--exclude", help="direcciones que no se deben parchear (coma)")
     sp.add_argument("--palette", help="4 colores del firmware CPC para las plumas 0-3")
