@@ -132,6 +132,7 @@ class Spectrum48K:
         # ganchos de análisis
         self.cur_pc = 0
         self.on_write = None            # f(pc, addr, val)
+        self.on_rom_write = None        # f(pc, addr): escritura en la ROM (no tiene efecto)
         self.on_io = None               # f(pc, 'in'|'out', port, val)
         self.on_rom_call = None         # f(pc_from, rom_addr)
         self.traps = {}                 # pc -> función (solo con mini-ROM)
@@ -145,6 +146,8 @@ class Spectrum48K:
     # --- memoria y E/S ------------------------------------------------------
     def _wb(self, a, v):
         if a < 0x4000:
+            if self.on_rom_write is not None:
+                self.on_rom_write(self.cur_pc, a)
             return
         if self.on_write is not None:
             self.on_write(self.cur_pc, a, v)        # antes de escribir: aún se ve el valor viejo
@@ -507,6 +510,8 @@ class SpectrumPlus3(Spectrum48K):
 
     def _wb3(self, a, v):
         if a < 0x4000 and self.quads[0] is None:
+            if self.on_rom_write is not None:
+                self.on_rom_write(self.cur_pc, a)
             return
         if self.on_write is not None:
             self.on_write(self.cur_pc, a, v)

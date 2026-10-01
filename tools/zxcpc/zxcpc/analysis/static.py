@@ -251,10 +251,17 @@ def analyze(program, trace=None, extra_entries=()):
             if plat == "zx" and pc < 0x4000:
                 continue
             ins0 = decode(mem, pc)
-            if any(trace.written[(pc + k) & 0xFFFF] for k in range(ins0.length)) and final:
+            fb = trace.first_bytes.get(pc) if hasattr(trace, "first_bytes") else None
+            if fb is not None and bytes(mem[pc:pc + ins0.length]) != fb[:ins0.length]:
+                # el código no es el de la imagen inicial: se escribió antes de ejecutarse
+                buf = bytearray(65536)
+                buf[pc:pc + len(fb)] = fb
+                instrs[pc] = decode(buf, pc)
+            elif fb is None and final and \
+                    any(trace.written[(pc + k) & 0xFFFF] for k in range(ins0.length)):
                 instrs[pc] = decode(final, pc)      # código escrito en ejecución
-            elif pc not in instrs:
-                instrs[pc] = ins0
+            elif pc not in instrs or fb is not None:
+                instrs[pc] = ins0                   # tal como está en la imagen inicial
         # los destinos de saltos observados también son inicios de bloque
         for src, dsts in trace.rom_calls.items():
             targets.update(dsts)

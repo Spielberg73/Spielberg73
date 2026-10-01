@@ -27,6 +27,8 @@ class Trace:
     screen_same: Counter = field(default_factory=Counter)  # pc -> escrituras que no cambian el byte
     screen_reads: Counter = field(default_factory=Counter)  # pc -> lecturas de la pantalla
     block_starts: Counter = field(default_factory=Counter)  # pc -> veces que empieza un LDIR/LDDR
+    first_bytes: dict = field(default_factory=dict)   # pc -> bytes de la 1ª ejecución
+    rom_writes: Counter = field(default_factory=Counter)  # pc -> escrituras en la ROM
     written: bytearray = field(default_factory=lambda: bytearray(65536))  # 1 = escrito
     written_block: bytearray = field(default_factory=lambda: bytearray(65536))  # por LDIR/LDDR...
     read_rom: dict = field(default_factory=lambda: defaultdict(Counter))  # pc -> página->n
@@ -131,6 +133,7 @@ class Tracer:
         self.owner = {}           # byte -> pc de la instrucción cacheada
         self.last_pc = None
         self.scr_lo, self.scr_hi, self.attr_hi = screen_range
+        self.paged_screen = True if hasattr(machine, "p7ffd") else None
         self.rom_lo, self.rom_hi = rom_range
         # ¿se está ejecutando código de ROM? (firmware del CPC / ROM del Spectrum)
         if platform == "cpc":
@@ -140,6 +143,8 @@ class Tracer:
             self.in_rom = lambda pc: pc < 0x4000
         machine.tracer = self.on_step
         machine.on_write = self.on_write
+        if hasattr(machine, "on_rom_write"):
+            machine.on_rom_write = self.on_rom_write
         machine.on_io = self.on_io
 
     def _decode(self, pc):
@@ -160,6 +165,8 @@ class Tracer:
                 t.rom_calls[last][pc] += 1
             self.last_pc = pc
             return
+        if pc not in t.executed:
+            t.first_bytes[pc] = bytes(self.cpu.mem[pc:pc + 4])     # tal como se ejecutó
         t.executed.add(pc)
         t.exec_count[pc] += 1
         entry = self.cache.get(pc)
@@ -189,6 +196,10 @@ class Tracer:
             t.sp_max = sp
         self.last_pc = pc
 
+    def on_rom_write(self, pc, a):
+        if not self.in_rom(pc):
+            self.t.rom_writes[pc] += 1      # el juego cuenta con que la ROM no se escribe
+
     def on_write(self, pc, a, v):
         t = self.t
         if self.in_rom(pc):
@@ -200,8 +211,13 @@ class Tracer:
             t.written[a] = 1
         if a < 0x40:
             t.low_writes[pc].add(a)
-        if self.scr_lo <= a < self.attr_hi:
-            region = "bitmap" if a < self.scr_hi else "attr"
+        sa = a
+        if a >= 0xC000 and self.paged_screen is not None:
+            # 128K: las pantallas 0 (banco 5) y 1 (banco 7) también se escriben por $C000
+            if (self.m.p7ffd & 7) in (5, 7) and a < 0xDB00:
+                sa = a - 0x8000
+        if self.scr_lo <= sa < self.attr_hi:
+            region = "bitmap" if sa < self.scr_hi else "attr"
             t.screen_writes[pc][region] += 1
             if self.cpu.mem[a] == v:
                 t.screen_same[pc] += 1
@@ -227,7 +243,8 @@ class Tracer:
 
 
 def run_dynamic(program, frames=300, rom=None, seed=1, screenshot_prefix=None,
-                screenshot_every=0, start_keys=None, cpc_roms=None, progress=None) -> Trace:
+                screenshot_every=0, start_keys=None, cpc_roms=None, progress=None,
+                script=None) -> Trace:
     """Ejecuta ``program`` durante ``frames`` frames registrando su comportamiento."""
     trace = Trace(program.platform)
     if program.platform == "zx":
@@ -253,7 +270,23 @@ def run_dynamic(program, frames=300, rom=None, seed=1, screenshot_prefix=None,
         m.load_state(st)
         base = ((m.crtc[12] >> 4) & 3) * 0x4000
         Tracer(m, "cpc", trace, (base, base + 0x4000, base + 0x4000), (0x0000, 0x0000))
-    script = explore_script(program.platform, seed, start_keys)
+    explore = explore_script(program.platform, seed, start_keys)
+    if script:
+        # guion del usuario [(desde, hasta, [teclas])] y después exploración al azar
+        user = script
+        end = max(b for _a, b, _k in user)
+
+        def script(m, f, _e=explore):
+            if f < end:
+                m.release_all()
+                for a, b, ks in user:
+                    if a <= f < b:
+                        for k in ks:
+                            m.press(k)
+            else:
+                _e(m, f - end + 10 ** 6)
+    else:
+        script = explore
     cpu = m.cpu
     orig_interrupt = cpu.interrupt
     tracer = m.tracer.__self__

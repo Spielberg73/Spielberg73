@@ -146,3 +146,30 @@ def test_spectrum128_paginacion_y_roms():
     m.run_frame()
     assert m.mem[0x8000] == 0x55 and m.mem[0x8001] == 0xAA
     assert m.bank_data(3)[0] == 0x77 and m.bank_data(4)[0] == 0
+
+
+def test_cpc_ampliacion_512k():
+    """Con 576K, los bits 3-5 de $7Fxx eligen el banco de 64K de la ampliación y la
+    configuración 1 pone su cuarto bloque en $C000."""
+    m = CPC(ram_kb=576)
+    sy, _ = _load(m, """
+        di
+        ld b,$7F
+        ld a,$C1+3*8            ; banco 3 de la ampliación, bloque 3 en $C000
+        out (c),a
+        ld a,$33
+        ld ($C000),a
+        ld a,$C1+6*8
+        out (c),a
+        ld a,$66
+        ld ($C000),a
+        ld a,$C1+3*8
+        out (c),a
+        ld a,($C000)
+        ld ($8000),a
+        halt
+""", 0x4000)
+    m.run_frame()
+    assert m.cpu.mem[0x8000] == 0x33
+    assert m.pages[4 + 3 * 4 + 3][0] == 0x33 and m.pages[4 + 6 * 4 + 3][0] == 0x66
+    assert m.pages[3][0] == 0               # el bloque base 3 no se ha tocado

@@ -92,7 +92,12 @@ class CPC:
         if not full:
             self._sync_view_to_pages()
         cfg = RAM_CONFIGS[self.ram_cfg & 7] if len(self.pages) > 4 else RAM_CONFIGS[0]
-        self.mapped = list(cfg)
+        # bloques 4-7: los del banco de 64K de expansión elegido con los bits 3-5
+        # (como en Caprice32: si no existe, el primero)
+        bank = (self.ram_cfg >> 3) & 7
+        if 4 + bank * 4 + 3 >= len(self.pages):
+            bank = 0
+        self.mapped = [b if b < 4 else 4 + bank * 4 + (b - 4) for b in cfg]
         self._rom_lo_on = not (self.rmr & 0x04) and self.lower_rom is not None
         up = self.upper_roms.get(self.upper_sel, self.upper_roms.get(0))
         self._rom_hi_on = not (self.rmr & 0x08) and up is not None
@@ -178,7 +183,7 @@ class CPC:
                     self._refresh_view()
             else:
                 if len(self.pages) > 4:
-                    self.ram_cfg = v & 7
+                    self.ram_cfg = v & 0x3F
                     self._refresh_view()
         if not port & 0x4000:           # CRTC
             sub = (port >> 8) & 3
@@ -229,6 +234,8 @@ class CPC:
     # --- estado ---------------------------------------------------------------------
     def load_state(self, st: CPCState):
         mem = st.mem
+        while len(self.pages) < len(mem) // 16384:      # snapshot con ampliación de RAM
+            self.pages.append(bytearray(16384))
         for p in range(min(len(self.pages), len(mem) // 16384)):
             self.pages[p][:] = mem[p * 16384:(p + 1) * 16384]
         c = self.cpu
@@ -242,7 +249,7 @@ class CPC:
         self.palette = list(st.palette)
         self.pen = st.ga_pen
         self.rmr = st.ga_rmr & 0x1F
-        self.ram_cfg = st.ram_config & 7
+        self.ram_cfg = st.ram_config & 0x3F
         self.crtc = list(st.crtc)
         self.crtc_sel = st.crtc_sel
         self.upper_sel = st.upper_rom
@@ -257,7 +264,7 @@ class CPC:
         s = c.state()
         regs = {k: s[k] for k in ("AF", "BC", "DE", "HL", "AF'", "BC'", "DE'", "HL'", "IX", "IY",
                                   "SP", "PC", "I", "R")}
-        mem = bytearray().join(self.pages[:8]) if len(self.pages) > 4 else bytearray().join(self.pages)
+        mem = bytearray().join(self.pages)
         return CPCState(mem=mem, regs=regs, iff1=c.iff1, iff2=c.iff2, im=c.im, ga_pen=self.pen,
                         palette=list(self.palette), ga_rmr=self.rmr, ram_config=self.ram_cfg,
                         crtc_sel=self.crtc_sel, crtc=list(self.crtc), upper_rom=self.upper_sel,

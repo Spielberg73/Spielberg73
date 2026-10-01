@@ -23,7 +23,9 @@
 ;
 ;  Símbolos que define el portador (EQU externos):
 ;    REFRESH_LINES, BEEP_VOL, ROM_IM2_VECTOR, GAME_IM2, GAME_I, INIT_ULA,
-;    SKIP_SAME_HL, SKIP_SAME_DE, USE_PRINT, USE_CLS, USE_BEEPER, USE_KEYSCAN, USE_AY
+;    SKIP_SAME_HL, SKIP_SAME_DE, USE_PRINT, USE_CLS, USE_BEEPER, USE_KEYSCAN, USE_AY,
+;    Z128, INIT_7FFD (modo 128K con ampliación de RAM), ROMPROT (ignorar las
+;    escrituras del juego en $0000-$3FFF, que en el Spectrum es ROM)
 ;    (las rutinas de la ROM y el AY solo se ensamblan si el juego las usa)
 ; =============================================================================
 
@@ -53,7 +55,7 @@ HASH        equ $3800       ; tabla hash de sitios de 1 byte (32 entradas)
         endif
 
         org $0018
-        if SKIP_SAME_DE
+        if SKIP_SAME_DE | ROMPROT
         jp st_de_a
         else
         ld (de),a
@@ -61,7 +63,7 @@ HASH        equ $3800       ; tabla hash de sitios de 1 byte (32 entradas)
         endif
 
         org $0020
-        if SKIP_SAME_HL
+        if SKIP_SAME_HL | ROMPROT
         jp st_hl_a
         else
         ld (hl),a
@@ -157,7 +159,9 @@ isr_frame:
         ; IM 1: emulación de la ROM (FRAMES y LAST_K)
         push hl
         push bc
+        if USE_LASTK
         call rom_lastk
+        endif
         pop bc
         ld hl,($5C78)
         inc hl
@@ -285,22 +289,43 @@ h_halt: push af
 
 ; LD (HL),A / LD (DE),A que no convierten si el byte no cambia (el portador las
 ; activa cuando el análisis ve que muchas escrituras repiten el valor)
+; Con ROMPROT, las escrituras por debajo de $4000 se ignoran como en el Spectrum
+; (allí es ROM; aquí está el HAL): hay juegos que recortan los sprites así.
 st_hl_a:
         push af
+        if ROMPROT
+        ld a,h
+        cp $40
+        jr c,st_same
+        pop af
+        push af
+        endif
+        if SKIP_SAME_HL
         cp (hl)
         jr z,st_same
+        endif
         pop af
         ld (hl),a
         jp mirror_hl
 st_same:
         pop af
         ret
+rom_scratch:    db 0            ; destino de las copias que caen en la "ROM"
 st_de_a:
         push af
+        if ROMPROT
+        ld a,d
+        cp $40
+        jr c,st_same
+        pop af
+        push af
+        endif
+        if SKIP_SAME_DE
         ex de,hl
         cp (hl)
         ex de,hl
         jr z,st_same
+        endif
         pop af
         ld (de),a
         jp mirror_de
@@ -308,6 +333,7 @@ st_de_a:
 hal_reset:
         di
         halt
+
 
 ; variables
 frame_ctr:  db 0
@@ -403,10 +429,19 @@ mirror_hl:
         ld a,h
         sub $40
         cp $1B
+        if Z128
+        jp nc,z128_c000
+        else
         jr nc,.out
+        endif
         push bc
         push de
         push hl
+        if Z128
+        call z128_sync5         ; la copia del banco 5 en la expansión, al día
+        ld a,h
+        sub $40
+        endif
         cp $18
         jr nc,.attr
         call conv_byte
@@ -578,6 +613,7 @@ psg_write:
         xor a
         out (c),a
         ret
+        if USE_LASTK
 ; LAST_K/FLAGS como el KEYBOARD de la ROM (simplificado: sin repetición)
 rom_lastk:
         ld hl,zx_rows
@@ -613,6 +649,7 @@ rom_lastk:
         ld hl,$5C3B             ; FLAGS: bit 5 = tecla nueva
         set 5,(hl)
         ret
+        endif
 c4_end:
         assert c4_end <= $2200, "bloque 4 lleno"
         assert (cpc_matrix & $FF) == 0, "cpc_matrix debe empezar en página"
@@ -797,7 +834,16 @@ out_c_value:
         cp $FF
         jr z,.sel
         cp $BF
+        if Z128
+        jr z,.ay
+        bit 7,b
+        ret nz
+        ld a,h
+        jp zx_page              ; $7FFD: paginación del 128K
+.ay:
+        else
         ret nz                  ; $7FFD (paginación) y otros: se ignoran
+        endif
         if USE_AY
         ld a,h
         push bc
@@ -1490,6 +1536,196 @@ rom_pr_string:
         inc de
         dec bc
         jr .l
+        endif
+        if Z128
+; ---------------------------------------------------------------------------
+; Modo 128K con ampliación de RAM: el banco n del Spectrum es el bloque 3 del
+; banco n de 64K de la ampliación, y se pone en $C000 con $7Fxx = $C1 + n*8.
+; Pantalla 0 (banco 5): bloque base 1 en $4000 (y copia en la ampliación para
+; cuando el juego la pone en $C000). Pantalla 1 (banco 7): pantalla B del CPC en
+; el bloque base 3.
+; ---------------------------------------------------------------------------
+; A = valor de $7FFD. Conserva todo.
+zx_page:
+        push af
+        push bc
+        ld c,a
+        ld a,(zx_7ffd)
+        xor c
+        and 8
+        ld b,a                  ; B <> 0: cambia la pantalla visible
+        ld a,c
+        ld (zx_7ffd),a
+        and 7
+        ld (zx_bank),a
+        add a,a
+        add a,a
+        add a,a
+        or $C1
+        ld (cur_cfg),a
+        ld c,a
+        ld a,b
+        ld b,$7F
+        out (c),c
+        or a
+        jr z,.x
+        ld a,(zx_7ffd)
+        and 8
+        ld a,$01
+        jr z,.s
+        ld a,$31
+.s:     ld bc,$BC0C
+        out (c),c
+        inc b
+        out (c),a
+.x:     pop bc
+        pop af
+        ret
+
+; HL = byte de la pantalla 0 recién escrito por $4000: copiarlo a la copia del
+; banco 5 de la ampliación. Conserva todo salvo AF.
+z128_sync5:
+        push bc
+        ld a,i
+        push af                 ; P/V = IFF2
+        di
+        ld a,(hl)
+        ld bc,$7F00+$C1+5*8
+        out (c),c
+        set 7,h
+        ld (hl),a
+        res 7,h
+        ld a,(cur_cfg)
+        out (c),a
+        pop af
+        pop bc
+        ret po
+        ei
+        ret
+
+; Escritura en $C000-$DAFF: pantalla 0 (banco 5 puesto) o pantalla 1 (banco 7).
+; Entrada con AF apilado y A = H - $40.
+z128_c000:
+        sub $80
+        cp $1B
+        jr nc,.out
+        ld a,(zx_bank)
+        cp 5
+        jr z,.b5
+        cp 7
+        jr nz,.out
+        push bc
+        push de
+        push hl
+        ld a,h
+        sub $C0
+        cp $18
+        jr nc,.att7
+        call conv_byte_b
+        jr .done
+.att7:  call conv_cell_b
+        jr .done
+.b5:    push bc                 ; pantalla 0 por $C000: pasar el byte a $4000
+        push de
+        push hl
+        ld a,(hl)
+        res 7,h
+        ld (hl),a
+        ld a,h
+        sub $40
+        cp $18
+        jr nc,.att5
+        call conv_byte
+        jr .done
+.att5:  call conv_cell
+.done:  pop hl
+        pop de
+        pop bc
+.out:   pop af
+        ret
+
+; Como conv_byte, para la pantalla 1: lee el Spectrum en $C000 (banco 7) y
+; escribe en la pantalla B del CPC (bloque base 3). Destruye AF, BC, DE, HL.
+conv_byte_b:
+        ld a,(hl)
+        push af
+        ld a,h
+        rrca
+        rrca
+        rrca
+        and 3
+        or $D8
+        ld d,a
+        ld e,l
+        ld a,(de)               ; atributo
+        ld e,a
+        ld d,XM_PAGE
+        ld a,(de)
+        ld c,a
+        inc d
+        ld a,(de)
+        ld b,a
+        ld a,h
+        and $1F
+        ld e,a
+        ld d,HITAB/256
+        ld a,(de)
+        sla l
+        adc a,$C0
+        ld d,a
+        ld e,l                  ; DE = dirección en la pantalla B
+        pop af
+        ld l,a
+        ld h,TABHI_PAGE
+        ld a,(hl)
+        and c
+        xor b
+        ld (cb_t),a
+        inc h
+        ld a,(hl)
+        and c
+        xor b
+        ld l,a                  ; L = 2º byte
+        ld a,i
+        push af
+        di
+        ld bc,$7FC0             ; bloque base 3 en $C000
+        out (c),c
+        ld a,(cb_t)
+        ld (de),a
+        inc e
+        ld a,l
+        ld (de),a
+        ld a,(cur_cfg)
+        out (c),a
+        pop af
+        ret po
+        ei
+        ret
+
+; Las 8 líneas de la celda de la pantalla 1 cuyo atributo está en HL ($D800-)
+conv_cell_b:
+        ld a,h
+        and 3
+        add a,a
+        add a,a
+        add a,a
+        or $C0
+        ld h,a
+        ld b,8
+.l:     push bc
+        push hl
+        call conv_byte_b
+        pop hl
+        pop bc
+        inc h
+        djnz .l
+        ret
+
+zx_7ffd:    db INIT_7FFD
+zx_bank:    db INIT_7FFD & 7
+cur_cfg:    db $C1 + (INIT_7FFD & 7) * 8
+cb_t:       db 0
         endif
 c7_end:
         assert c7_end <= $3A00, "bloque 7 lleno"

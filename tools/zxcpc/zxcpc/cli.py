@@ -68,6 +68,8 @@ def _analyze(args, program, shots=None):
                             seed=getattr(args, "seed", 1), screenshot_prefix=shots,
                             screenshot_every=max(1, args.frames // 3) if shots else 0,
                             cpc_roms=_cpc_roms(getattr(args, "cpc_roms", None)),
+                            script=_parse_timed_keys(args.guion) if getattr(args, "guion", None)
+                            else None,
                             progress=_progress("análisis dinámico:") if not args.quiet else None)
         if not args.quiet:
             sys.stderr.write(f"\ranálisis dinámico: {args.frames} frames en {time.time() - t0:.1f}s\n")
@@ -243,6 +245,8 @@ def _port_zx2cpc(args, p, an, cfg, outdir, name, shots_dir, html_report):
         opt.refresh_lines = args.refresh
     if args.frameskip is not None:
         opt.frameskip = args.frameskip
+    if args.ram512:
+        opt.ram512 = True
     if args.keys:
         for item in args.keys.split(","):
             zk, ck = item.split("=")
@@ -271,7 +275,8 @@ def _port_zx2cpc(args, p, an, cfg, outdir, name, shots_dir, html_report):
             "palette": [f for _, f, _ in res.palette], "keys": opt.keys,
             "exclude": [f"{a:04X}" for a in sorted(opt.exclude)],
             "rom_im2_vector": opt.rom_im2_vector, "patch_static": opt.patch_static,
-            "frameskip": opt.frameskip, "beeper_loops": opt.beeper_loops}
+            "frameskip": opt.frameskip, "beeper_loops": opt.beeper_loops,
+            "ram512": opt.ram512}
     with open(os.path.join(outdir, "port.json"), "w", encoding="utf-8") as f:
         json.dump(used, f, indent=1, ensure_ascii=False)
     # prueba en el CPC emulado
@@ -404,6 +409,8 @@ def main(argv=None):
         sp.add_argument("--frames", type=int, default=frames,
                         help=f"frames de análisis dinámico (0 = solo estático; por defecto {frames})")
         sp.add_argument("--seed", type=int, default=1, help="semilla del guion de exploración")
+        sp.add_argument("--guion", help="teclas para el análisis antes de explorar al azar, p.ej. "
+                                        "50-58:1,100-108:0 (menús, redefinir teclas...)")
         sp.add_argument("--rom", help="ROM de 48K del Spectrum (opcional, mejora el análisis)")
         sp.add_argument("--cpc-roms", help="directorio con cpc6128.rom para ejecutar el firmware")
         sp.add_argument("-q", "--quiet", action="store_true")
@@ -432,6 +439,9 @@ def main(argv=None):
     sp.add_argument("--config", help="port.json con opciones (se genera en cada port)")
     sp.add_argument("--mono", action="store_true", help="monocromo (más fiel a la forma, sin color)")
     sp.add_argument("--refresh", type=int, help="líneas de refresco de fondo por frame (0-5)")
+    sp.add_argument("--512k", dest="ram512", action="store_true",
+                    help="ZX->CPC: juegos de 128K que paginan, para un CPC 6128 con ampliación "
+                         "de 512K (576K en total)")
     sp.add_argument("--frameskip", type=int,
                     help="ZX->CPC: volcados de pantalla con LDIR que se saltan entre dos reales "
                          "(solo si el juego no lee su pantalla; más velocidad, menos fluidez)")

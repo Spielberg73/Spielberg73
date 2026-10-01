@@ -93,6 +93,7 @@ class PortOptions:
     zx_rom: bytes | None = None           # ROM de 48K del Spectrum aportada por el usuario
     beeper_loops: bool = True             # copiar al HAL los bucles de beeper (tono fiel)
     frameskip: int = 0                    # volcados LDIR a pantalla saltados entre dos reales
+    ram512: bool = False                  # 128K que paginan: CPC 6128 con ampliación de 512K
 
     @classmethod
     def from_json(cls, d):
@@ -316,6 +317,7 @@ class ZX2CPC:
     def __init__(self, analysis, options: PortOptions | None = None):
         self.an = analysis
         self.fast_sites = {"HL": [], "DE": []}
+        self.z128 = False
         self.p = analysis.program
         self.opt = options or PortOptions()
         self.warnings = []
@@ -477,6 +479,28 @@ class ZX2CPC:
         out.append(f"        jp {end}\n")
         return "".join(out)
 
+    def _z128_memory(self, mem, xm, pm):
+        """576K: base (pantalla A + HAL, banco 5, banco 2, pantalla B) y el banco n del
+        Spectrum en el bloque 3 del banco n de 64K de la ampliación."""
+        banks = self.p.zx_state.banks
+        out = bytearray(mem) + bytearray(8 * 0x10000)
+        b7 = bytes(banks[7])
+        out[0xC000:0x10000] = convert_screen_to_cpc(b7 + bytes(0xC000 - len(b7)), xm, pm)
+        for n in range(8):
+            if n == 5:
+                data = mem[0x4000:0x8000]          # ya parcheados
+            elif n == 2:
+                data = mem[0x8000:0xC000]
+            else:
+                data = banks[n]
+            off = 0x10000 + n * 0x10000 + 0xC000
+            out[off:off + 0x4000] = data
+        tr = self.an.trace
+        if tr is not None and tr.sp_max >= 0xC000:
+            self.warnings.append("la pila del juego llega a $C000-$FFFF: al cambiar de banco "
+                                 "en el CPC se perdería; revisar")
+        return out
+
     def _frameskip_ok(self):
         if not self.opt.frameskip:
             return False
@@ -506,7 +530,8 @@ class ZX2CPC:
         used = {pt.handler for pt in self.patches}
         for _label, code, _t in self.handlers.values():
             used |= set(code.replace(",", " ").split())
-        rst10 = any(i.flow == "rst" and i.target == 0x10 and a >= 0x4000
+        top = 0xC000 if self.z128 else 0x10000      # 128K: lo paginado puede ser datos
+        rst10 = any(i.flow == "rst" and i.target == 0x10 and 0x4000 <= a < top
                     for a, i in self.an.instrs.items())
         ay = any(h.kind == "ay_io" for h in self.an.hotspots)
         return {"USE_PRINT": int(rst10 or bool(used & {"h_print", "rom_pr_string",
@@ -514,7 +539,17 @@ class ZX2CPC:
                 "USE_CLS": int(bool(used & {"rom_cls", "rom_cls_lower"})),
                 "USE_BEEPER": int("rom_beeper" in used),
                 "USE_KEYSCAN": int("rom_key_scan" in used),
-                "USE_AY": int(ay)}
+                "USE_AY": int(ay),
+                # LAST_K de la ROM: solo si el juego puede estar en IM 1
+                "USE_LASTK": int(self.p.im != 2 or any(
+                    i.op == "IM" and i.operands and i.operands[0].value != 2
+                    for a, i in self.an.instrs.items() if a < top))}
+
+    def _romprot(self):
+        """¿Proteger $0000-$3FFF? Si el análisis vio al juego escribir en la ROM, y siempre
+        en el modo 128K (los juegos grandes recortan sprites así y puede no verse)."""
+        tr = self.an.trace
+        return bool(self.z128 or (tr is not None and getattr(tr, "rom_writes", None)))
 
     def _same_rate(self, pc):
         """Fracción de las escrituras en pantalla de ``pc`` que no cambiaron el byte."""
@@ -559,6 +594,8 @@ class ZX2CPC:
         for addr in sorted(kinds_at):
             if addr in self.opt.exclude or any(t0 <= addr < end for t0, end in loops):
                 continue
+            if self.z128 and addr >= 0xC000:
+                continue        # código paginado: cambia con el banco, no se parchea
             ins = an.instrs[addr]
             hs = kinds_at[addr]
             confident = addr in executed or self.opt.patch_static
@@ -578,7 +615,13 @@ class ZX2CPC:
                 elif kinds & {"im2", "ld_i"}:
                     patch = self._plan_int(ins)
                 elif "rom_call" in kinds:
-                    patch = self._plan_rom(ins, hs)
+                    if executed and addr not in executed:
+                        # solo visto en el análisis estático: puede ser un dato que parece
+                        # código; parchearlo podría estropear el juego
+                        self.warnings.append(f"{addr:04X} {ins.text()}: posible llamada a la "
+                                             "ROM no ejecutada en el análisis: no se parchea")
+                    else:
+                        patch = self._plan_rom(ins, hs)
                 elif kinds & {"screen_write"}:
                     patch = self._plan_screen(ins, hs)
             except ValueError as e:
@@ -591,11 +634,21 @@ class ZX2CPC:
                 self.warnings.append(f"{addr:04X}: parche solapado con {taken[rng[0]]:04X}, omitido")
                 continue
             if bytes(mem[addr:addr + len(patch.orig)]) != patch.orig:
-                self.warnings.append(f"{addr:04X}: los bytes no coinciden, omitido")
-                continue
+                src = self._runtime_code_source(addr, len(patch.orig))
+                if src is None:
+                    self.warnings.append(f"{addr:04X}: los bytes no coinciden, omitido")
+                    continue
+                # código copiado en ejecución: se parchea su origen (la copia llega parcheada)
+                patch.note = (patch.note + "; " if patch.note else "") + \
+                    f"código generado en {addr:04X}: parcheado en su origen {src:04X}"
+                patch.addr = src
+                rng = range(src, src + len(patch.orig))
+                if any(b in taken for b in rng):
+                    continue
             for b in rng:
                 taken[b] = addr
             self.patches.append(patch)
+        self._plan_smc_writers(taken)
         self._report_unhandled()
 
     def _plan_io(self, ins, hs):
@@ -618,7 +671,13 @@ class ZX2CPC:
                                              "flotante: devolverá siempre $FF")
                 label = self._handler(("in_n", target), f"        jp {target}\n", "rst30")
             else:
-                if val & 1:
+                if val & 1 and self.z128 and val == 0xFD:
+                    # 128K: el puerto completo es A*256+$FD (AY o paginación)
+                    label = self._handler(("out_fd",), (
+                        "        push af\n        push bc\n        push hl\n        ld b,a\n"
+                        "        ld c,$FD\n        call out_c_value\n        pop hl\n"
+                        "        pop bc\n        pop af\n        ret\n"), "rst30")
+                elif val & 1:
                     label = self._handler(("out_ignore",), "        ret\n", "rst30")
                 elif val == 0xFE and ins.raw == b"\xD3\xFE":
                     # vía rápida: RST $28 + $FE (el byte del puerto se queda y se salta)
@@ -634,7 +693,7 @@ class ZX2CPC:
                 src = ins.operands[1]
                 reg = "0" if src.kind == D.IMM8 else src.value
                 label = self._handler(("out_c", reg), _out_c_handler(reg), "rst30")
-            if "paging" in kinds:
+            if "paging" in kinds and not self.z128:
                 self.warnings.append(f"{ins.addr:04X} {ins.text()}: paginación de 128K ignorada")
         return Patch(ins.addr, ins.raw, bytes([0xF7, self._id(label)]), "io", ins.text(), label)
 
@@ -689,6 +748,21 @@ class ZX2CPC:
         if skip:
             # la mayoría de escrituras repiten el valor: comprobar antes y no convertir
             body = chk + _asm_ins(ins) + post + ".same:  pop af\n        ret\n"
+        if self._romprot() and wk[0] == "block" and wk[1] in ("LDI", "LDD"):
+            # destino por debajo de $4000 (ROM en el Spectrum): LDI/LDD contra un byte de
+            # descarte, para que HL, DE, BC y los flags queden igual sin escribir nada
+            step = "inc de" if wk[1] == "LDI" else "dec de"
+            body = ("        push af\n        ld a,d\n        cp $40\n        jr c,.rom\n"
+                    "        pop af\n" + body +
+                    f".rom:   pop af\n        push de\n        ld de,rom_scratch\n"
+                    f"        {wk[1].lower()}\n        pop de\n        {step}\n        ret\n")
+            skip = (skip, "rom")
+        if self._romprot() and wk[0] == "ind" and wk[1] in ("HL", "DE", "BC"):
+            # el juego escribe a veces en $0000-$3FFF (ROM en el Spectrum): ignorarlo
+            hi = {"HL": "h", "DE": "d", "BC": "b"}[wk[1]]
+            body = (f"        push af\n        ld a,{hi}\n        cp $40\n        jr c,.rom\n"
+                    "        pop af\n" + body + ".rom:   pop af\n        ret\n")
+            skip = (skip, "rom")
         if wk == ("block", "LDIR"):
             # copia comparando: solo se convierten los bytes que cambian (los juegos que
             # vuelcan un búfer entero en cada frame cambian muy pocos)
@@ -729,6 +803,95 @@ class ZX2CPC:
         label = self._handler(("scrcall", raw, skip), body, "call")
         return Patch(ins.addr, raw, b"\xCD@@" + b"\x00" * (n - 3), "screen", ins.text(), label)
 
+    def _runtime_code_source(self, addr, n):
+        """Código que no está en la imagen inicial (lo copia el juego al ejecutarse):
+        busca sus bytes, tal como se ejecutaron, en la imagen inicial. Devuelve la
+        dirección de origen equivalente a ``addr`` si aparece una sola vez."""
+        tr = self.an.trace
+        if tr is None or not getattr(tr, "first_bytes", None):
+            return None
+        known = {}
+        for pc in range(addr - 16, addr + 20):
+            fb = tr.first_bytes.get(pc & 0xFFFF)
+            if fb is not None:
+                buf = bytearray(65536)
+                buf[0:4] = fb
+                ln = D.decode(buf, 0).length    # solo los bytes de la instrucción ejecutada
+                for k, b in enumerate(fb[:ln]):
+                    known.setdefault((pc + k) & 0xFFFF, b)
+        if any((addr + k) & 0xFFFF not in known for k in range(n)):
+            return None
+        lo = addr
+        while (lo - 1) & 0xFFFF in known and addr - lo < 16:
+            lo -= 1
+        hi = addr + n
+        while hi & 0xFFFF in known and hi - addr < 20:
+            hi += 1
+        if hi - lo < 8:
+            return None                     # demasiado poco para identificarlo
+        pat = bytes(known[a & 0xFFFF] for a in range(lo, hi))
+        mem = self.p.mem
+        top = 0xC000 if self.z128 else 0x10000
+        hits = []
+        i = bytes(mem[0x4000:top]).find(pat)
+        while i >= 0 and len(hits) < 2:
+            hits.append(0x4000 + i)
+            i = bytes(mem[0x4000:top]).find(pat, i + 1)
+        if len(hits) != 1 or hits[0] == lo:
+            return None
+        return hits[0] + (addr - lo)
+
+    def _plan_smc_writers(self, taken):
+        """Código automodificable que escribe opcodes de escritura en pantalla (p.ej. una
+        rutina de sprites de ancho variable que pone LD (HL),A o NOP en cada columna):
+        el escritor pasa a escribir el opcode parcheado (RST $20 / RST $18), que hace lo
+        mismo y además refleja en la pantalla del CPC."""
+        tr = self.an.trace
+        if tr is None:
+            return
+        trans = {0x77: 0xE7, 0x12: 0xDF}
+        for pc, targets in tr.smc.items():
+            ins = self.an.instrs.get(pc)
+            if ins is None or pc in taken:
+                continue
+            if not any(t in tr.screen_writes or t in taken for t in targets):
+                continue                    # no toca código que escriba en pantalla
+            if ins.op != "LD" or len(ins.operands) != 2 or ins.operands[1].kind != D.REG \
+                    or ins.operands[1].value != "A":
+                self.warnings.append(f"{pc:04X} {ins.text()}: modifica código de escritura "
+                                     "en pantalla de una forma no soportada; revisar a mano")
+                continue
+            dst = ins.operands[0]
+            useful = sorted(t for t in targets if t in tr.screen_writes or t in taken)
+            tab = "".join(f"        dw {t}\n" for t in useful)
+            if dst.kind == D.IND_REG and dst.value in ("DE", "HL", "BC"):
+                addr = {"DE": "        ld h,d\n        ld l,e\n", "HL": "",
+                        "BC": "        ld h,b\n        ld l,c\n"}[dst.value]
+            elif dst.kind == D.IND_IMM:
+                addr = f"        ld hl,{dst.value}\n"
+            else:
+                continue
+            self._handler(("smc_tr",), SMC_TR_SRC, "call")
+            code = ("        push af\n        push hl\n        push de\n        push bc\n"
+                    + addr + "        ld de,.tab\n        jp smc_tr\n.tab:\n" + tab +
+                    "        dw 0\n")
+            n = ins.length
+            if n == 1:
+                label = self._handler(("smcw", pc), code, "rst8")
+                self._id(label)
+                self.hash_sites[(pc + 1) & 0xFFFF] = label
+                new = b"\xCF"
+            elif n == 3:
+                label = self._handler(("smcw", pc), code, "call")
+                new = b"\xCD@@"
+            else:
+                continue
+            for b in range(pc, pc + n):
+                taken[b] = pc
+            self.patches.append(Patch(pc, ins.raw, new, "smc", ins.text(), label,
+                                      note="traduce LD (HL),A/LD (DE),A a su versión parcheada"))
+            self._smc_fixed = getattr(self, "_smc_fixed", set()) | {pc}
+
     def _report_unhandled(self):
         an = self.an
         for h in an.hotspots:
@@ -738,7 +901,7 @@ class ZX2CPC:
             elif h.kind == "rom_read":
                 pages = ", ".join(f"{p:#06x}" for p in h.detail.get("pages", [])[:4])
                 self.warnings.append(f"{h.addr:04X} {h.text}: lee datos de la ROM ({pages})")
-            elif h.kind == "smc":
+            elif h.kind == "smc" and h.addr not in getattr(self, "_smc_fixed", set()):
                 patched = {p.addr for p in self.patches}
                 hit = [a for a in h.detail.get("modifies", []) if a in patched]
                 if hit:
@@ -890,7 +1053,8 @@ class ZX2CPC:
         lo_sp = (tr.sp_min - 128) if tr is not None else 0
         hi_sp = (tr.sp_max + 2) if tr is not None else 0
         run = 0
-        for a in range(0xFFFF, 0x5CFF, -1):
+        top = 0xBFFF if self.z128 else 0xFFFF
+        for a in range(top, 0x5CFF, -1):
             ok = mem[a] == 0 and not code[a] and not (lo_sp <= a <= hi_sp) and \
                 (tr is None or not (tr.written[a] or tr.written_block[a]))
             run = run + 1 if ok else 0
@@ -916,14 +1080,20 @@ class ZX2CPC:
                                                                    0x69, 0x79)
                         for k in range(3, 6)):
                     pag.append(a)
-            if pag:
+            if pag and self.opt.ram512:
+                self.z128 = True
+                self.warnings.append("modo 128K: paginación con la ampliación de 512K del CPC "
+                                     "(el port necesita un CPC 6128 con 512K extra, 576K en "
+                                     "total)")
+            elif pag:
                 sites = ", ".join(f"{a:04X}" for a in sorted(set(pag))[:6])
                 raise ValueError(
                     "juego de 128K que pagina memoria ($7FFD en " + sites + "): no se puede "
                     "portar automáticamente al CPC. El Spectrum cambia el banco de $C000 y el "
                     "CPC 6128 solo puede poner sus bancos extra en $4000 (o uno en $C000), y "
                     "los 128K del juego más la pantalla del CPC no caben en 128K. Hace falta "
-                    "un port a mano (usa analyze y disasm como punto de partida)")
+                    "un port a mano (usa analyze y disasm como punto de partida), o --512k para un "
+                    "CPC con ampliación de RAM, que sí puede paginar en $C000")
         self.plan()
         opt = self.opt
         p = self.p
@@ -952,6 +1122,15 @@ class ZX2CPC:
                 "GAME_I": p.regs["I"] & 0xFF, "INIT_ULA": border, "kmap": 0,
                 "SKIP_SAME_HL": self._skip_same("HL"), "SKIP_SAME_DE": self._skip_same("DE")}
         syms.update(self._hal_features())
+        zst = p.zx_state
+        syms["ROMPROT"] = int(self._romprot())
+        if syms["ROMPROT"]:
+            self.warnings.append("escrituras del juego en $0000-$3FFF (ROM en el Spectrum, "
+                                 "p.ej. para recortar sprites): el HAL las ignora")
+        syms["Z128"] = int(self.z128)
+        syms["INIT_7FFD"] = (zst.port_7ffd & 0x3F) if self.z128 else 0
+        if self.z128:
+            syms["USE_AY"] = 1
         with open(HAL_SRC, encoding="utf-8") as f:
             base_src = f.read()
         # 1ª pasada: medir el HAL fijo
@@ -1027,8 +1206,10 @@ class ZX2CPC:
             pt.new = bytes(new)
             mem[pt.addr:pt.addr + len(new)] = new
 
+        if self.z128:
+            mem = self._z128_memory(mem, xm, pm)
         rom_bank = getattr(self, "rom_bank", None)
-        if rom_bank:
+        if rom_bank and not self.z128:
             # 128K: copia de la ROM del Spectrum en el banco extra 5
             mem = mem + bytearray(0x10000)
             mem[0x14000:0x18000] = rom_bank
@@ -1046,7 +1227,7 @@ class ZX2CPC:
         # los manejadores pueden llamarse entre sí: para medirlos basta un valor cualquiera
         dummy = {lab: 0xC000 for lab, _, _ in self.handlers.values()}
         for k in ("rom_peek", "ldir_scr", "ldir_end", "ldir_adj", "ldir_l0", "ldir_sbc",
-                  "ldir_skip"):
+                  "ldir_skip", "smc_tr", "rom_scratch"):
             dummy[k] = 0xC000
         for key, (label, code, htype) in self.handlers.items():
             src = f"{label}:\n{code}"
@@ -1131,10 +1312,55 @@ class ZX2CPC:
         crtc = [63, 32, 42, 0x8E, 38, 0, 24, 30, 0, 7, 0, 0, 0x01, 0x00, 0, 0, 0, 0]
         psg = [0] * 16
         psg[7] = 0x3F
+        ram_config = 0
+        if self.z128:
+            v = p.zx_state.port_7ffd
+            ram_config = 0x01 | ((v & 7) << 3)
+            if v & 8:
+                crtc[12] = 0x31             # pantalla sombra: pantalla B del CPC
         return CPCState(mem=mem, regs=regs, iff1=p.iff1, iff2=p.iff2, im=1, ga_pen=16,
-                        palette=palette, ga_rmr=0x01 | 0x04 | 0x08, ram_config=0, crtc_sel=0,
+                        palette=palette, ga_rmr=0x01 | 0x04 | 0x08, ram_config=ram_config,
+                        crtc_sel=0,
                         crtc=crtc, upper_rom=0, ppi=(8, 0, 0, 0x82), psg_sel=8, psg=psg,
                         model=self.opt.model)
+
+
+SMC_TR_SRC = """\
+smc_tr:
+; Escritura automodificable traducida. Pila: [BC][DE][HL][AF][ret]; A = valor,
+; HL = dirección escrita, DE = tabla de direcciones (acabada en 0) donde un
+; LD (HL),A / LD (DE),A ($77 / $12) debe escribirse parcheado ($E7 / $DF).
+        ld b,a
+.l:     ld a,(de)
+        ld c,a
+        inc de
+        ld a,(de)
+        inc de
+        or c
+        jr z,.w                 ; no está en la tabla
+        dec de
+        ld a,(de)               ; byte alto
+        inc de
+        cp h
+        jr nz,.l
+        ld a,c
+        cp l
+        jr nz,.l
+        ld a,b
+        cp $77
+        jr nz,.d
+        ld b,$E7
+        jr .w
+.d:     cp $12
+        jr nz,.w
+        ld b,$DF
+.w:     ld (hl),b
+        pop bc
+        pop de
+        pop hl
+        pop af
+        ret
+"""
 
 
 LDIR_SCR_SRC = """\
@@ -1148,7 +1374,13 @@ ldir_scr:
         or c
         jr nz,.top
         dec bc                  ; BC = 0: (casi) 64K, como LDIR
-.top:   ld a,l
+.top:
+        if ROMPROT
+        ld a,d
+        cp $40
+        jp c,.rom               ; destino en la "ROM": copiar contra el byte de descarte
+        endif
+        ld a,l
         or e
         and 7
         jr nz,.one
@@ -1213,6 +1445,15 @@ ldir_scr:
         inc de
         jp pe,.top
         jp ldir_end
+        if ROMPROT
+.rom:   push de
+        ld de,rom_scratch
+        ldi
+        pop de
+        inc de
+        jp pe,.top
+        jp ldir_end
+        endif
 .chg:   dec hl
         ld a,(hl)
         inc hl

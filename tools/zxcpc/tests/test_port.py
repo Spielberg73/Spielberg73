@@ -218,13 +218,14 @@ def test_ldir_scr_igual_que_ldir():
     from zxcpc.z80.cpu import Z80
     from zxcpc.port.zx2cpc import LDIR_SCR_SRC, LDIR_SCR2_SRC
     rnd = random.Random(5)
-    r = assemble("        org $9000\nmirror_hl: ret\n" + LDIR_SCR_SRC + LDIR_SCR2_SRC +
+    r = assemble("ROMPROT equ 1\n        org $9000\nmirror_hl: ret\nrom_scratch: db 0\n"
+                 + LDIR_SCR_SRC + LDIR_SCR2_SRC +
                  "\nentry:  call ldir_scr\n        halt\nref:    ldir\n        halt\n")
     img, sy = r.image(), r.symbols
     for _ in range(120):
         base = bytearray(rnd.randrange(256) for _ in range(65536))
         src = rnd.choice([0x7000, 0x7008, 0x7003, 0x60F8, 0x61FC])
-        dst = rnd.choice([0x4000, 0x4008, 0x40F8, 0x4005, 0x5000])
+        dst = rnd.choice([0x4000, 0x4008, 0x40F8, 0x4005, 0x5000, 0x3F00, 0x3FF8, 0x0100])
         n = rnd.choice([1, 3, 8, 9, 16, 17, 255, 256, 300, 1030])
         for i in range(n):
             if rnd.random() < 0.9:
@@ -241,8 +242,10 @@ def test_ldir_scr_igual_que_ldir():
             while not c.halted:
                 c.step()
             out.append((bytes(c.mem[0x4000:0x8000]), c.get_pair("HL"), c.get_pair("DE"),
-                        c.get_pair("BC"), c.get_pair("AF") & 0xFFD7))
-        assert out[0] == out[1], (hex(src), hex(dst), n)
+                        c.get_pair("BC"), c.get_pair("AF") & 0xFFD7, bytes(c.mem[0:0x4000])))
+        assert out[0][:5] == out[1][:5], (hex(src), hex(dst), n)
+        # con ROMPROT, lo que cae por debajo de $4000 no se escribe (como en la ROM)
+        assert out[0][5] == bytes(base[0:0x4000]), (hex(src), hex(dst), n)
 
 
 @pytest.mark.skipif(not os.path.exists(ZX_ROM), reason="sin ROM del Spectrum")
