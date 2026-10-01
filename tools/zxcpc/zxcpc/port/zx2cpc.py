@@ -465,6 +465,72 @@ ovl_end:
 """
 
 
+def _beeper_dataflow(body, end):
+    """En un bucle de beeper copiado al HAL, ¿dónde se escribe el altavoz?
+
+    Una escritura de A se adelanta al momento en que cambia A (el OUT queda como
+    espera de la misma duración) solo si ningún camino vuelve a cambiar A antes de
+    llegar a un OUT ($FE),A (salir del bucle no cuenta): si no, se sacarían al
+    altavoz y al borde valores que el juego usa para otra cosa. Devuelve (direcciones de las
+    instrucciones que escriben el altavoz al cambiar A, con -1 para el valor de A a
+    la entrada; direcciones de los OUT que lo escriben ellos mismos)."""
+    idx = {ins.addr: k for k, ins in enumerate(body)}
+    is_out = [ins.raw == b"\xD3\xFE" for ins in body]
+    writes = [_writes_a(ins) and not is_out[k] for k, ins in enumerate(body)]
+
+    def succ(k):
+        ins = body[k]
+        nxt = []
+        uncond = ins.flow in ("jp", "jr") and ins.cond is None or \
+            ins.flow == "ret" and ins.cond is None
+        if not uncond:
+            nxt.append(k + 1 if k + 1 < len(body) else None)
+        if ins.flow in ("jr", "djnz", "jp") and ins.target is not None:
+            nxt.append(idx.get(ins.target))
+        return nxt                      # None: sale del bucle
+
+    def reaches_out(starts):
+        """¿Algún camino desde ``starts`` llega a un OUT y ninguno vuelve a escribir A
+        antes?"""
+        seen, todo, hit = set(), list(starts), False
+        while todo:
+            k = todo.pop()
+            if k is None or k in seen:
+                continue
+            seen.add(k)
+            if is_out[k]:
+                hit = True
+                continue
+            if writes[k]:
+                return False
+            todo.extend(succ(k))
+        return hit
+
+    early = set()
+    origins = [(-1, [0])] + [(k, succ(k)) for k in range(len(body)) if writes[k]]
+    for k, starts in origins:
+        if reaches_out(starts):
+            early.add(-1 if k < 0 else body[k].addr)
+    # un OUT al que llega algún valor no adelantado escribe él mismo
+    out_calls = set()
+    for k, starts in origins:
+        if (-1 if k < 0 else body[k].addr) in early:
+            continue
+        seen, todo = set(), list(starts)
+        while todo:
+            j = todo.pop()
+            if j is None or j in seen:
+                continue
+            seen.add(j)
+            if is_out[j]:
+                out_calls.add(body[j].addr)
+                continue
+            if writes[j]:
+                continue
+            todo.extend(succ(j))
+    return early, out_calls
+
+
 def _asm_ins(ins: D.Instr) -> str:
     return "        " + ins.text() + "\n"
 
@@ -664,16 +730,18 @@ class ZX2CPC:
                     borders.add((port >> 8) & 7)
         border = borders.pop() if len(borders) == 1 else None
         labels = {t: f".L{t:04X}" for t in targets}
-        # si el primer OUT llega antes de que se cambie A, emitir el estado al entrar
-        first = next((i for i in body if i.raw == b"\xD3\xFE" or _writes_a(i)), None)
+        early, out_calls = _beeper_dataflow(body, end)
         out = ["        call ula_out            ; estado del altavoz al entrar\n"] \
-            if first is not None and first.raw == b"\xD3\xFE" else []
+            if -1 in early else []
         n = 0
         for ins in body:
             if ins.addr in labels:
                 out.append(f"{labels[ins.addr]}:\n")
             if ins.raw == b"\xD3\xFE":
-                out.append("        jr $+2                  ; OUT ($FE),A: misma duración\n")
+                if ins.addr in out_calls:
+                    out.append("        call ula_out            ; OUT ($FE),A\n")
+                else:
+                    out.append("        jr $+2                  ; OUT ($FE),A: misma duración\n")
                 continue
             if ins.flow in ("jr", "djnz", "jp") and ins.target is not None:
                 inside = ins.target in labels
@@ -692,7 +760,7 @@ class ZX2CPC:
                     out.append(f"        jp {cond}{ins.target}\n")
                 continue
             out.append("        " + _asm_ins(ins).strip() + "\n")
-            if _writes_a(ins):
+            if ins.addr in early:
                 k = _const_a(ins)
                 if k is not None and border is not None and (k & 7) == border:
                     # valor conocido y borde sin cambios: solo el volumen del PSG, en línea

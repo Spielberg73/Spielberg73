@@ -330,6 +330,51 @@ tick:   ld a,$10
     assert 0.5 < len(vols) / max(1, z.beeper_toggles) < 1.5
 
 
+def test_beeper_reubicado_no_saca_calculos_de_a(tmp_path):
+    """Una subrutina de beeper que usa A para otras cuentas antes del OUT (como la de
+    Where Time Stood Still) no debe sacar esos valores al altavoz ni al borde."""
+    from zxcpc.z80.asm import assemble
+    from zxcpc.port.zx2cpc import port_zx_to_cpc, PortOptions
+    src = """
+        org $8000
+start:  di
+        ld sp,$FF00
+        ld c,0
+main:   inc c
+        call snd
+        jr main
+snd:    ld b,0
+        ld a,c
+        and $07
+        ld c,a
+        ld a,$3B
+        ld (var),a
+        ld a,$10
+        out ($FE),a
+        ret
+var:    db 0
+"""
+    path = tmp_path / "w.bin"
+    path.write_bytes(assemble(src).image())
+    p = load_program(str(path), platform="zx", load_addr=0x8000)
+    an = analyze(p, run_dynamic(p, frames=10))
+    res = port_zx_to_cpc(an, PortOptions())
+    assert any(pt.kind == "beeper_loop" for pt in res.patches)
+    c = CPC()
+    c.load_state(res.state)
+    pens = []
+    out = c.cpu.outp
+
+    def spy(port, v):
+        if (port >> 8) & 0xC0 == 0x40 and v & 0xC0 == 0x40 and c.pen == 16:
+            pens.append(v & 0x1F)
+        return out(port, v)
+    c.cpu.outp = spy
+    for _ in range(10):
+        c.run_frame()
+    assert len(set(pens)) <= 1          # borde negro fijo, como en el Spectrum
+
+
 def test_frameskip_en_volcados_de_bufer(tmp_path):
     """Con --frameskip, el volcado frecuente de un búfer a pantalla se salta 1 de cada 2
     veces, el primer volcado es real y la pantalla acaba igual que en el Spectrum."""
