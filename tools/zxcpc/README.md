@@ -204,8 +204,10 @@ del teclado.
   FAR CALL…), y los juegos que cambian el CRTC a mitad de frame (rasters, scroll por
   hardware) no se verán bien.
 * **ZX → CPC:** el DSK necesita un CPC 6128 (el SNA se ha probado como 6128). Los
-  juegos de 128K se portan con la configuración de memoria del snapshot (la
-  paginación no se porta). Las escrituras en pantalla con `PUSH` o las que no se
+  juegos de 128K solo se portan si no paginan memoria: los que cambian el banco de
+  `$C000` (como Where Time Stood Still) se rechazan con una explicación, porque el CPC
+  6128 no puede poner sus bancos extra en `$C000` y los 128K del juego más la
+  pantalla del CPC no caben. El análisis sí funciona con ellos (máquina 128K). Las escrituras en pantalla con `PUSH` o las que no se
   ven en el análisis solo las recoge el refresco de fondo.
 * **Los dos sentidos:** el código cifrado, los cargadores turbo con protección, las
   escrituras en pantalla con direcciones calculadas que el análisis no llega a

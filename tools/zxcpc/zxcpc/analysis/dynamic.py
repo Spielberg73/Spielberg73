@@ -231,10 +231,15 @@ def run_dynamic(program, frames=300, rom=None, seed=1, screenshot_prefix=None,
     """Ejecuta ``program`` durante ``frames`` frames registrando su comportamiento."""
     trace = Trace(program.platform)
     if program.platform == "zx":
-        from ..machines.spectrum import Spectrum48K
-        m = Spectrum48K(rom)
-        m.mem[0x4000:] = program.mem[0x4000:]
-        _set_regs(m.cpu, program)
+        from ..machines.spectrum import Spectrum48K, Spectrum128
+        st = program.zx_state
+        if st is not None and st.model == "128k" and st.banks:
+            m = Spectrum128(None, rom)          # sin la ROM del editor: se usa la de 48K
+            m.load_state(st)
+        else:
+            m = Spectrum48K(rom)
+            m.mem[0x4000:] = program.mem[0x4000:]
+            _set_regs(m.cpu, program)
         Tracer(m, "zx", trace, (0x4000, 0x5800, 0x5B00), (0x0000, 0x4000))
         if program.im == 2:
             trace.int_modes[2] += 1

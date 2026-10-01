@@ -95,3 +95,13 @@ def test_png(tmp_path):
     w, h, back = read_png_rgb(p)
     assert (w, h) == (5, 4)
     assert [bytes(r) for r in back] == rows
+
+
+def test_z80_128k_ida_y_vuelta():
+    st = fzx.ZXState(bytearray(49152), dict(REGS), 0, 0, 1, 0)
+    st.model = "128k"
+    st.banks = {b: bytes([b + 1]) * 16384 for b in range(8)}
+    st.port_7ffd = 0x13
+    back = fzx.read_z80(fzx.write_z80(st))
+    assert back.model == "128k" and back.port_7ffd == 0x13
+    assert all(back.banks[b] == st.banks[b] for b in range(8))

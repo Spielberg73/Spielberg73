@@ -565,3 +565,30 @@ class SpectrumPlus3(Spectrum48K):
             return super().screen_rgb(border, flash_phase)
         finally:
             self.mem[0x4000:0x5B00] = saved
+
+
+class Spectrum128(SpectrumPlus3):
+    """Spectrum 128K / +2: 8 bancos, $7FFD (banco en $C000, pantalla sombra, ROM 0/1) y AY.
+    ``rom0`` es la del editor de 128K y ``rom1`` la de 48K (BASIC)."""
+
+    def __init__(self, rom0: bytes | None = None, rom1: bytes | None = None):
+        super().__init__(rom1)
+        self.roms = (rom0 or self.rom, rom1 or self.rom)
+
+    def _load_view(self):
+        if hasattr(self, "roms"):
+            self.rom = self.roms[(self.p7ffd >> 4) & 1]
+        super()._load_view()
+
+    def _repage(self):
+        self._sync()
+        self.quads = [None, 5, 2, self.p7ffd & 7]
+        self._load_view()
+
+    def _out(self, port, v):
+        if not port & 0x8002:               # $7FFD (el 128K solo mira A15 y A1)
+            if not self.p7ffd & 0x20:
+                self.p7ffd = v
+                self._repage()
+        Spectrum48K._out(self, port, v)
+

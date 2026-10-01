@@ -367,3 +367,30 @@ main:   ld hl,$C000             ; dibujar una barra en el búfer y volcarlo ente
         c.run_frame()
     # la pantalla del CPC refleja algún volcado real (la barra no está vacía)
     assert any(c.cpu.mem[0x4000:0x4100])
+
+
+def test_128k_con_paginacion_se_rechaza(tmp_path):
+    from zxcpc.z80.asm import assemble
+    from zxcpc.formats.zx import ZXState, write_z80
+    from zxcpc.port.zx2cpc import port_zx_to_cpc
+    code = assemble("""
+        org $8000
+        di
+.l:     ld a,3
+        ld bc,$7FFD
+        out (c),a
+        jr .l
+""").image()
+    banks = {b: bytearray(16384) for b in range(8)}
+    banks[2][0:len(code)] = code
+    regs = {k: 0 for k in ("AF", "BC", "DE", "HL", "AF'", "BC'", "DE'", "HL'", "IX", "IY",
+                           "I", "R")}
+    regs.update(SP=0xBF00, PC=0x8000)
+    st = ZXState(bytearray(49152), regs, 0, 0, 1, 0)
+    st.model, st.banks = "128k", banks
+    snap = tmp_path / "p.z80"
+    snap.write_bytes(write_z80(st))
+    p = load_program(str(snap))
+    an = analyze(p, run_dynamic(p, frames=5))
+    with pytest.raises(ValueError, match="pagina memoria"):
+        port_zx_to_cpc(an)

@@ -122,3 +122,27 @@ def test_cpc_modo_y_paleta():
     m.run_frame()
     assert m.rmr & 3 == 0
     assert m.palette[1] == 0x0A
+
+
+def test_spectrum128_paginacion_y_roms():
+    from zxcpc.machines.spectrum import Spectrum128
+    rom0, rom1 = bytes([0xAA]) * 16384, bytes([0x55]) * 16384
+    m = Spectrum128(rom0, rom1)
+    sy, img = _load(m, """
+        di
+        ld bc,$7FFD
+        ld a,$13                ; banco 3 en $C000 y ROM 1
+        out (c),a
+        ld a,($0000)
+        ld ($8000),a
+        ld a,$77
+        ld ($C000),a
+        ld a,$04                ; banco 4 y ROM 0
+        out (c),a
+        ld a,($0000)
+        ld ($8001),a
+        halt
+""", 0x6000)
+    m.run_frame()
+    assert m.mem[0x8000] == 0x55 and m.mem[0x8001] == 0xAA
+    assert m.bank_data(3)[0] == 0x77 and m.bank_data(4)[0] == 0

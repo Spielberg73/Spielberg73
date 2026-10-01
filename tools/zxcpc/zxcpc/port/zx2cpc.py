@@ -900,6 +900,30 @@ class ZX2CPC:
 
     # -- construcción ------------------------------------------------------------------
     def build(self) -> PortResult:
+        st = self.p.zx_state
+        if st is not None and st.model == "128k":
+            pag = [h.addr for h in self.an.hotspots if h.kind == "paging"]
+            # también LD BC,$7FFD (puerto de paginación) aunque el análisis no lo ejecutara
+            pag += [a for a, i in self.an.instrs.items()
+                    if i.op == "LD" and len(i.operands) == 2 and i.operands[0].kind == D.REG16
+                    and i.operands[0].value == "BC" and i.operands[1].kind == D.IMM16
+                    and (i.operands[1].value & 0x8002) == 0 and i.operands[1].value & 0xFF == 0xFD]
+            # y en los bytes: LD BC,$7FFD seguido de cerca por OUT (C),r
+            mem = self.p.mem
+            for a in range(0x4000, 0xFFF8):
+                if mem[a] == 0x01 and mem[a + 1] == 0xFD and mem[a + 2] == 0x7F and any(
+                        mem[a + k] == 0xED and mem[a + k + 1] in (0x41, 0x49, 0x51, 0x59, 0x61,
+                                                                   0x69, 0x79)
+                        for k in range(3, 6)):
+                    pag.append(a)
+            if pag:
+                sites = ", ".join(f"{a:04X}" for a in sorted(set(pag))[:6])
+                raise ValueError(
+                    "juego de 128K que pagina memoria ($7FFD en " + sites + "): no se puede "
+                    "portar automáticamente al CPC. El Spectrum cambia el banco de $C000 y el "
+                    "CPC 6128 solo puede poner sus bancos extra en $4000 (o uno en $C000), y "
+                    "los 128K del juego más la pantalla del CPC no caben en 128K. Hace falta "
+                    "un port a mano (usa analyze y disasm como punto de partida)")
         self.plan()
         opt = self.opt
         p = self.p

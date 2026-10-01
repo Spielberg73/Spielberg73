@@ -393,7 +393,7 @@ def read_z80(buf: bytes) -> ZXState:
 
 
 def write_z80(st: ZXState) -> bytes:
-    """Escribe un snapshot .Z80 v3 (48K, o +2A/+3 si ``st.model == '+3'``)."""
+    """Escribe un snapshot .Z80 v3 (48K, 128K si ``st.model == '128k'`` o +2A/+3)."""
     r = st.regs
     h = bytearray(30)
     h[0], h[1] = r["AF"] >> 8, r["AF"] & 0xFF
@@ -407,16 +407,18 @@ def write_z80(st: ZXState) -> bytes:
     h[27], h[28] = st.iff1, st.iff2
     h[29] = st.im & 3
     plus3 = st.model == "+3"
+    m128 = st.model == "128k"
     ext = bytearray(55 if plus3 else 54)
     struct.pack_into("<H", ext, 0, r["PC"])
-    ext[2] = 7 if plus3 else 0      # 7 = +3 (en .z80 v3)
-    if plus3:
+    ext[2] = 7 if plus3 else (4 if m128 else 0)     # 4 = 128K, 7 = +3 (en .z80 v3)
+    if plus3 or m128:
         ext[3] = st.port_7ffd
+    if plus3:
         ext[54] = st.port_1ffd
     ext[6] = st.ay_select
     ext[7:23] = bytes(st.ay_regs[:16])
     out = bytearray(h) + struct.pack("<H", len(ext)) + ext
-    if plus3:
+    if plus3 or m128:
         pages = [(b + 3, bytes(st.banks[b])) for b in range(8)]
     else:
         pages = [(page, bytes(st.ram[addr - 0x4000:addr - 0x4000 + 16384]))
