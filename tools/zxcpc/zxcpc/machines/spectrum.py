@@ -146,9 +146,9 @@ class Spectrum48K:
     def _wb(self, a, v):
         if a < 0x4000:
             return
-        self.mem[a] = v
         if self.on_write is not None:
-            self.on_write(self.cur_pc, a, v)
+            self.on_write(self.cur_pc, a, v)        # antes de escribir: aún se ve el valor viejo
+        self.mem[a] = v
 
     def _in(self, port):
         v = 0xFF
@@ -508,9 +508,9 @@ class SpectrumPlus3(Spectrum48K):
     def _wb3(self, a, v):
         if a < 0x4000 and self.quads[0] is None:
             return
-        self.mem[a] = v
         if self.on_write is not None:
             self.on_write(self.cur_pc, a, v)
+        self.mem[a] = v
 
     def _out(self, port, v):
         if not port & 0x8002 and port & 0x4000:

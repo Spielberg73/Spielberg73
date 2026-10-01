@@ -111,14 +111,14 @@ class CPC:
         return self.pages[0] + self.pages[1] + self.pages[2] + self.pages[3]
 
     def _wb(self, a, v):
+        if self.on_write is not None:
+            self.on_write(self.cur_pc, a, v)        # antes de escribir: aún se ve el valor viejo
         if a < 0x4000 and self._rom_lo_on:
             self.pages[self.mapped[0]][a] = v
         elif a >= 0xC000 and self._rom_hi_on:
             self.pages[self.mapped[3]][a - 0xC000] = v
         else:
             self.view[a] = v
-        if self.on_write is not None:
-            self.on_write(self.cur_pc, a, v)
 
     # --- E/S ------------------------------------------------------------------
     def _in(self, port):

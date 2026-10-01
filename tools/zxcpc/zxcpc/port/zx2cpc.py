@@ -91,6 +91,7 @@ class PortOptions:
     patch_static: bool = True             # parchear E/S vistas solo estáticamente
     model: int = 2                        # modelo en el snapshot (0=464, 2=6128)
     zx_rom: bytes | None = None           # ROM de 48K del Spectrum aportada por el usuario
+    beeper_loops: bool = True             # copiar al HAL los bucles de beeper (tono fiel)
 
     @classmethod
     def from_json(cls, d):
@@ -313,6 +314,7 @@ def _out_c_handler(reg):
 class ZX2CPC:
     def __init__(self, analysis, options: PortOptions | None = None):
         self.an = analysis
+        self.fast_sites = {"HL": [], "DE": []}
         self.p = analysis.program
         self.opt = options or PortOptions()
         self.warnings = []
@@ -330,6 +332,170 @@ class ZX2CPC:
             self.handlers[key] = (label, code, htype)
         return self.handlers[key][0]
 
+    # -- bucles de beeper ----------------------------------------------------------------
+    def _plan_beeper_loops(self):
+        """Bucles pequeños con OUT ($FE),A (motores de sonido del beeper): se copian al HAL
+        con el OUT cambiado por una espera de la misma duración (JR $+2) y una escritura
+        en el PSG solo cuando cambia A. Así la nota conserva su tono y su duración."""
+        an = self.an
+        executed = an.trace.executed if an.trace is not None else set()
+        smc_targets = set()
+        for h in an.hotspots:
+            if h.kind == "smc":
+                smc_targets |= set(h.detail.get("modifies", []))
+        kinds_at = {}
+        for h in an.hotspots:
+            kinds_at.setdefault(h.addr, set()).add(h.kind)
+        branches = [i for i in an.instrs.values()
+                    if i.flow in ("jr", "djnz", "jp") and i.target is not None]
+        done = []
+        for x in sorted(a for a, k in kinds_at.items() if "ula_out" in k):
+            ins = an.instrs.get(x)
+            if ins is None or ins.raw != b"\xD3\xFE" or x not in executed or \
+                    any(s <= x < e for s, e in done):
+                continue
+            back = [b for b in branches if x < b.addr <= x + 96 and b.target <= x
+                    and x - b.target <= 96]
+            # del bucle más externo al más interno, el primero que se pueda copiar
+            found = None
+            for last in sorted(back, key=lambda b: (b.addr - b.target), reverse=True):
+                t0, end = last.target, last.addr + last.length
+                body = self._loop_body(t0, end, kinds_at, smc_targets)
+                if body is None or end - t0 < 3:
+                    continue
+                if all(not (t0 < b.target < end) or t0 <= b.addr < end for b in branches):
+                    found = (t0, end, body)
+                    break
+            if found is None:
+                found = self._beeper_routine(x, kinds_at, smc_targets, branches)
+            if found is None:
+                continue
+            t0, end, body = found
+            self._handler(("beeploop", t0), self._loop_src(body, t0, end), "call")
+            label = self.handlers[("beeploop", t0)][0]
+            mem = self.p.mem
+            self.patches.append(Patch(t0, bytes(mem[t0:t0 + 3]), b"\xC3@@", "beeper_loop",
+                                      f"bucle de beeper {t0:04X}-{end - 1:04X}", label,
+                                      note="copiado al HAL con el OUT sustituido"))
+            done.append((t0, end))
+        return done
+
+    def _beeper_routine(self, x, kinds_at, smc_targets, branches):
+        """Subrutina corta sin llamadas (destino de CALL) que contiene el OUT y acaba en RET."""
+        an = self.an
+        entries = sorted({i.target for i in an.instrs.values() if i.flow == "call"
+                          and i.target is not None and x - 64 <= i.target <= x}, reverse=True)
+        for t0 in entries:
+            a, end = t0, None
+            while a < t0 + 96:
+                ins = an.instrs.get(a)
+                if ins is None:
+                    break
+                if ins.flow == "ret" and ins.cond is None:
+                    end = a + ins.length
+                    break
+                a += ins.length
+            if end is None or end <= x:
+                continue
+            body = self._loop_body(t0, end, kinds_at, smc_targets, allow_ret=True)
+            if body is None:
+                continue
+            if all(not (t0 < b.target < end) or t0 <= b.addr < end for b in branches):
+                return t0, end, body
+        return None
+
+    def _loop_body(self, t0, end, kinds_at, smc_targets, allow_ret=False):
+        an = self.an
+        body = []
+        a = t0
+        while a < end:
+            ins = an.instrs.get(a)
+            if ins is None or a in smc_targets:
+                return None
+            bad = ("call", "rst", "reti", "retn", "jpind", "halt") + (() if allow_ret else ("ret",))
+            if ins.flow in bad:
+                return None
+            k = kinds_at.get(a, set())
+            if k and not (k <= {"ula_out"} and ins.raw == b"\xD3\xFE"):
+                return None
+            if any((a + j) in smc_targets for j in range(ins.length)):
+                return None
+            body.append(ins)
+            a += ins.length
+        return body if a == end else None
+
+    def _loop_src(self, body, t0, end):
+        targets = {b.target for b in body if b.target is not None and t0 <= b.target < end}
+        # borde que el juego deja en los OUT del bucle (si siempre es el mismo)
+        tr = self.an.trace
+        borders = set()
+        for ins in body:
+            if ins.raw == b"\xD3\xFE" and tr is not None:
+                for (d, port), _n in tr.io.get(ins.addr, {}).items():
+                    borders.add((port >> 8) & 7)
+        border = borders.pop() if len(borders) == 1 else None
+        labels = {t: f".L{t:04X}" for t in targets}
+        # si el primer OUT llega antes de que se cambie A, emitir el estado al entrar
+        first = next((i for i in body if i.raw == b"\xD3\xFE" or _writes_a(i)), None)
+        out = ["        call ula_out            ; estado del altavoz al entrar\n"] \
+            if first is not None and first.raw == b"\xD3\xFE" else []
+        n = 0
+        for ins in body:
+            if ins.addr in labels:
+                out.append(f"{labels[ins.addr]}:\n")
+            if ins.raw == b"\xD3\xFE":
+                out.append("        jr $+2                  ; OUT ($FE),A: misma duración\n")
+                continue
+            if ins.flow in ("jr", "djnz", "jp") and ins.target is not None:
+                inside = ins.target in labels
+                if ins.flow == "djnz":
+                    if inside:
+                        out.append(f"        djnz {labels[ins.target]}\n")
+                    else:
+                        out.append(f"        djnz .x{n}\n        jr .y{n}\n.x{n}:   jp {ins.target}\n.y{n}:\n")
+                        n += 1
+                    continue
+                cond = f"{ins.cond.lower()}," if ins.cond else ""
+                if inside:
+                    op = "jr" if ins.flow == "jr" else "jp"
+                    out.append(f"        {op} {cond}{labels[ins.target]}\n")
+                else:
+                    out.append(f"        jp {cond}{ins.target}\n")
+                continue
+            out.append("        " + _asm_ins(ins).strip() + "\n")
+            if _writes_a(ins):
+                k = _const_a(ins)
+                if k is not None and border is not None and (k & 7) == border:
+                    # valor conocido y borde sin cambios: solo el volumen del PSG, en línea
+                    vol = self.opt.beep_vol if k & 0x10 else 0
+                    out.append(f"        ld (last_ula),a\n        push bc\n        ld bc,${0xF400 | vol:04X}\n"
+                               "        out (c),c\n        ld bc,$F680\n        out (c),c\n"
+                               "        ld c,0\n        out (c),c\n        pop bc\n")
+                else:
+                    out.append("        call ula_out\n")
+        out.append(f"        jp {end}\n")
+        return "".join(out)
+
+    def _same_rate(self, pc):
+        """Fracción de las escrituras en pantalla de ``pc`` que no cambiaron el byte."""
+        tr = self.an.trace
+        if tr is None:
+            return 0.0
+        n = sum(tr.screen_writes.get(pc, {}).values())
+        return tr.screen_same.get(pc, 0) / n if n else 0.0
+
+    def _skip_same(self, reg):
+        """¿Compensa comprobar el valor en RST $20/$18? Sí si, sumando todos sus sitios,
+        al menos un 30 % de las escrituras repiten el byte."""
+        tr = self.an.trace
+        if tr is None:
+            return 0
+        tot = same = 0
+        for pc in self.fast_sites[reg]:
+            tot += sum(tr.screen_writes.get(pc, {}).values())
+            same += tr.screen_same.get(pc, 0)
+        return 1 if tot and same / tot >= 0.3 else 0
+
     def _id(self, label):
         if label not in self.ids:
             if len(self.ids) >= 128:
@@ -346,8 +512,12 @@ class ZX2CPC:
         for h in an.hotspots:
             kinds_at.setdefault(h.addr, []).append(h)
         taken = {}                  # byte -> addr del parche
+        loops = self._plan_beeper_loops() if self.opt.beeper_loops else []
+        for t0, end in loops:
+            for b in range(t0, end):
+                taken[b] = t0
         for addr in sorted(kinds_at):
-            if addr in self.opt.exclude:
+            if addr in self.opt.exclude or any(t0 <= addr < end for t0, end in loops):
                 continue
             ins = an.instrs[addr]
             hs = kinds_at[addr]
@@ -473,6 +643,12 @@ class ZX2CPC:
             return None
         pre, post = mc
         body = pre + _asm_ins(ins) + post
+        same = self._same_rate(ins.addr)
+        chk = _same_check(ins) if same >= 0.5 else None
+        skip = chk is not None and wk[0] == "ind"
+        if skip:
+            # la mayoría de escrituras repiten el valor: comprobar antes y no convertir
+            body = chk + _asm_ins(ins) + post + ".same:  pop af\n        ret\n"
         if wk == ("block", "LDIR"):
             # copia comparando: solo se convierten los bytes que cambian (los juegos que
             # vuelcan un búfer entero en cada frame cambian muy pocos)
@@ -482,17 +658,19 @@ class ZX2CPC:
         raw = ins.raw
         if n == 1:
             if raw == b"\x77":
+                self.fast_sites["HL"].append(ins.addr)
                 return Patch(ins.addr, raw, b"\xE7", "screen", ins.text(), "mirror_hl")
             if raw == b"\x12":
+                self.fast_sites["DE"].append(ins.addr)
                 return Patch(ins.addr, raw, b"\xDF", "screen", ins.text(), "mirror_de")
-            label = self._handler(("scr8", raw), body, "rst8")
+            label = self._handler(("scr8", raw, skip), body, "rst8")
             self._id(label)
             self.hash_sites[(ins.addr + 1) & 0xFFFF] = label
             return Patch(ins.addr, raw, b"\xCF", "screen", ins.text(), label)
         if n == 2:
-            label = self._handler(("scr30", raw), body, "rst30")
+            label = self._handler(("scr30", raw, skip), body, "rst30")
             return Patch(ins.addr, raw, bytes([0xF7, self._id(label)]), "screen", ins.text(), label)
-        label = self._handler(("scrcall", raw), body, "call")
+        label = self._handler(("scrcall", raw, skip), body, "call")
         return Patch(ins.addr, raw, b"\xCD@@" + b"\x00" * (n - 3), "screen", ins.text(), label)
 
     def _report_unhandled(self):
@@ -628,7 +806,7 @@ class ZX2CPC:
         run = 0
         for a in range(0xFFFF, 0x5CFF, -1):
             ok = mem[a] == 0 and not code[a] and not (lo_sp <= a <= hi_sp) and \
-                (tr is None or not tr.written[a])
+                (tr is None or not (tr.written[a] or tr.written_block[a]))
             run = run + 1 if ok else 0
             if run == size:
                 return a
@@ -661,7 +839,8 @@ class ZX2CPC:
         game_im2 = 1 if p.im == 2 else 0
         syms = {"REFRESH_LINES": max(1, opt.refresh_lines), "BEEP_VOL": opt.beep_vol,
                 "ROM_IM2_VECTOR": opt.rom_im2_vector, "GAME_IM2": game_im2,
-                "GAME_I": p.regs["I"] & 0xFF, "INIT_ULA": border, "kmap": 0}
+                "GAME_I": p.regs["I"] & 0xFF, "INIT_ULA": border, "kmap": 0,
+                "SKIP_SAME_HL": self._skip_same("HL"), "SKIP_SAME_DE": self._skip_same("DE")}
         with open(HAL_SRC, encoding="utf-8") as f:
             base_src = f.read()
         # 1ª pasada: medir el HAL fijo
@@ -672,7 +851,21 @@ class ZX2CPC:
                 for k, end in FREE_REGIONS_END.items()]
         # 2ª: colocar manejadores generados (y el STUB2 del cargador de disco)
         self._stub2 = self._stub2_src(p, pal_fw, border)
+        # último recurso: una zona libre de la memoria del juego (como la fuente de la ROM)
+        game_region = None
+        for size in (512, 256, 128):
+            g = self._find_free(game_mem, size + 32)
+            if g is not None:
+                game_region = (g + 16, g + 16 + size)       # con margen a los lados
+                free.append(game_region)
+                break
         gen_src, placed = self._place_handlers(fixed.symbols, free, syms)
+        if game_region is not None and (game_region[0], game_region[1]) not in \
+                [tuple(r) for r in placed]:
+            used = next(r for r in placed if r[1] == game_region[1])
+            self.warnings.append(f"el HAL no tiene sitio para todo: {used[0] - game_region[0]} "
+                                 f"bytes de manejadores en {game_region[0]:#06x}, una zona que "
+                                 "el juego no tocó durante el análisis")
         full_src = base_src + "\n; ---- código generado por el portador ----\n" + gen_src
         res = Assembler(syms).assemble(full_src, "zx2cpc.asm")
         symbols = res.symbols
@@ -942,6 +1135,65 @@ rom_peek:
         pop hl
         ret
 """
+
+
+_A_WRITERS = {"XOR", "AND", "OR", "SUB", "CPL", "NEG", "RLA", "RRA", "RLCA", "RRCA", "DAA",
+              "RLD", "RRD"}
+
+
+def _writes_a(ins):
+    """¿Puede ``ins`` cambiar el registro A? (en caso de duda, sí)"""
+    op, ops = ins.op, ins.operands
+    if op in _A_WRITERS:
+        return True
+    if op in ("LD", "ADD", "ADC", "SBC", "IN", "INC", "DEC", "RL", "RR", "RLC", "RRC", "SLA",
+              "SRA", "SRL", "SLL", "SET", "RES") and ops:
+        d = ops[0] if op not in ("SET", "RES") else ops[-1]
+        return d.kind == D.REG and d.value == "A"
+    if op == "EX":
+        return any(o.kind == D.REG16 and o.value in ("AF", "AF'") for o in ops)
+    if op == "POP":
+        return ops and ops[0].value == "AF"
+    if op in ("EXX", "NOP", "CP", "BIT", "PUSH", "OUT", "DJNZ", "JR", "JP", "DI", "EI", "SCF",
+              "CCF", "LDI", "LDD", "LDIR", "LDDR", "CPI", "CPD", "CPIR", "CPDR"):
+        return False
+    return True
+
+
+def _const_a(ins):
+    """Valor que deja en A ``LD A,n`` o ``XOR A`` (None si no es constante)."""
+    if ins.op == "LD" and len(ins.operands) == 2 and ins.operands[0].kind == D.REG and \
+            ins.operands[0].value == "A" and ins.operands[1].kind == D.IMM8:
+        return ins.operands[1].value
+    if ins.op in ("XOR", "SUB") and ins.operands and ins.operands[-1].kind == D.REG and \
+            ins.operands[-1].value == "A":
+        return 0
+    return None
+
+
+def _same_check(ins):
+    """Código previo que vuelve sin hacer nada si ``ins`` (LD (rr),x) no cambiaría el
+    byte. Termina con la pila como estaba; el manejador añade la etiqueta .same."""
+    if ins.op != "LD" or len(ins.operands) != 2:
+        return None
+    dst, src = ins.operands
+    if dst.kind != D.IND_REG:
+        return None
+    if src.kind == D.IMM8:
+        load = f"        ld a,{src.value}\n"
+    elif src.kind == D.REG and src.value in ("A", "B", "C", "D", "E", "H", "L"):
+        load = "" if src.value == "A" else f"        ld a,{src.value.lower()}\n"
+    else:
+        return None
+    if dst.value == "HL":
+        cmp = "        cp (hl)\n"
+    elif dst.value == "DE":
+        cmp = "        ex de,hl\n        cp (hl)\n        ex de,hl\n"
+    elif dst.value == "BC":
+        cmp = "        push hl\n        ld h,b\n        ld l,c\n        cp (hl)\n        pop hl\n"
+    else:
+        return None
+    return ("        push af\n" + load + cmp + "        jr z,.same\n        pop af\n")
 
 
 def _rom_read_body(ins):

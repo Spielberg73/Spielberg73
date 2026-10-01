@@ -24,6 +24,7 @@ class Trace:
     exec_count: Counter = field(default_factory=Counter)
     io: dict = field(default_factory=lambda: defaultdict(Counter))       # pc -> (dir,port)->n
     screen_writes: dict = field(default_factory=lambda: defaultdict(Counter))  # pc -> region->n
+    screen_same: Counter = field(default_factory=Counter)  # pc -> escrituras que no cambian el byte
     written: bytearray = field(default_factory=lambda: bytearray(65536))  # 1 = escrito
     written_block: bytearray = field(default_factory=lambda: bytearray(65536))  # por LDIR/LDDR...
     read_rom: dict = field(default_factory=lambda: defaultdict(Counter))  # pc -> página->n
@@ -196,6 +197,8 @@ class Tracer:
         if self.scr_lo <= a < self.attr_hi:
             region = "bitmap" if a < self.scr_hi else "attr"
             t.screen_writes[pc][region] += 1
+            if self.cpu.mem[a] == v:
+                t.screen_same[pc] += 1
             if t.first_screen_write_frame is None:
                 t.first_screen_write_frame = t.frames
             if self.cpu.sp - 2 <= a <= self.cpu.sp + 1:

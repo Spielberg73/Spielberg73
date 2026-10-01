@@ -129,13 +129,21 @@ Opciones útiles de `port`:
   miles por segundo) y `HALT` va por la tabla de 1 byte y espera el frame.
 * **Copias en bloque.** Muchos juegos dibujan en un búfer y lo vuelcan entero a la
   pantalla en cada frame con `LDIR`. El HAL copia comparando, en bloques de 8 bytes
-  cuando puede, y solo convierte los bytes que cambian.
+  cuando puede, y solo convierte los bytes que cambian. Del mismo modo, en los sitios
+  donde el análisis ve que la mayoría de escrituras repiten el valor (textos,
+  atributos), el manejador lo comprueba antes y no convierte nada.
 * **Interrupciones.** El CPC interrumpe 300 veces por segundo. El HAL llama a la
   rutina del juego una vez por frame (IM 1 o IM 2, con el vector buscado en la
   ROM) y reparte el trabajo de refresco entre las otras interrupciones.
 * **Teclado, joystick y sonido.** La matriz del CPC se traduce a las semifilas del
   Spectrum, y el Kempston sale del joystick del CPC. Si el juego lee el teclado con
-  las interrupciones desactivadas, la matriz se vuelve a leer en cada lectura. El beeper se imita con el
+  las interrupciones desactivadas, la matriz se vuelve a leer en cada lectura.
+* **Sonido del beeper.** Cada `OUT ($FE)` mueve el volumen del canal A del PSG. Los
+  bucles y subrutinas cortas de sonido (un `OUT ($FE),A` con retardos) se copian al
+  HAL con el `OUT` cambiado por una espera de la misma duración, y el PSG solo se
+  toca cuando cambia el altavoz: así las notas conservan su tono y su duración. La
+  rutina BEEPER de la ROM usa el generador de tono del PSG (frecuencia y duración
+  exactas). El beeper se imita con el
   volumen del canal A del AY, y el AY de los 128K pasa al PSG con las frecuencias
   reescaladas.
 * **ROM.** Las rutinas de la ROM más usadas (CLS, BEEPER, KEY-SCAN, PR-STRING,
@@ -201,10 +209,13 @@ del teclado.
   multicanal) necesitan intervención manual. El informe los señala cuando los
   detecta.
 * Los ports son más lentos que el original cuando el juego escribe mucho en
-  pantalla o usa mucho el beeper, porque cada byte y cada `OUT` pasan por el HAL.
-  Por ejemplo, Manic Miner se porta y se juega en el CPC (probado en Caprice32,
-  desde el disco), pero su bucle principal tarda unas 2,7 veces más que en el
-  Spectrum.
+  pantalla, porque cada byte pasa por el HAL. Por ejemplo, Manic Miner se porta y
+  se juega en el CPC (probado en Caprice32, desde el disco), pero su bucle principal
+  tarda unas 2 veces más que en el Spectrum; Cookie, en cambio, va al 90 %.
+* El sonido del beeper sale algo más grave (en torno a un 10 %) en los motores que
+  hacen la espera con `DJNZ`, porque el CPC tarda 4 µs por vuelta y el Spectrum 3,7.
+* Si el HAL se queda sin sitio para los manejadores, el portador usa una zona de la
+  memoria del juego que no se tocó durante el análisis, y lo avisa en el informe.
 
 ## Validación
 

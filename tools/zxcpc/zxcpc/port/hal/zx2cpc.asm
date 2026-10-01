@@ -22,7 +22,8 @@
 ;    RST $38  interrupción del CPC (300 Hz)
 ;
 ;  Símbolos que define el portador (EQU externos):
-;    REFRESH_LINES, BEEP_VOL, ROM_IM2_VECTOR, GAME_IM2, GAME_I, INIT_ULA
+;    REFRESH_LINES, BEEP_VOL, ROM_IM2_VECTOR, GAME_IM2, GAME_I, INIT_ULA,
+;    SKIP_SAME_HL, SKIP_SAME_DE
 ; =============================================================================
 
 TABHI_PAGE  equ $08         ; tabla nibble alto -> byte CPC expandido
@@ -47,12 +48,20 @@ HASH        equ $3800       ; tabla hash de sitios de 1 byte (32 entradas)
         jp h_print
 
         org $0018
+        if SKIP_SAME_DE
+        jp st_de_a
+        else
         ld (de),a
         jp mirror_de
+        endif
 
         org $0020
+        if SKIP_SAME_HL
+        jp st_hl_a
+        else
         ld (hl),a
         jp mirror_hl
+        endif
 
         org $0028
         ex (sp),hl              ; saltar el byte $FE del puerto
@@ -268,6 +277,28 @@ h_halt: push af
         pop hl
         pop af
         ret
+
+; LD (HL),A / LD (DE),A que no convierten si el byte no cambia (el portador las
+; activa cuando el análisis ve que muchas escrituras repiten el valor)
+st_hl_a:
+        push af
+        cp (hl)
+        jr z,st_same
+        pop af
+        ld (hl),a
+        jp mirror_hl
+st_same:
+        pop af
+        ret
+st_de_a:
+        push af
+        ex de,hl
+        cp (hl)
+        ex de,hl
+        jr z,st_same
+        pop af
+        ld (de),a
+        jp mirror_de
 
 hal_reset:
         di
@@ -699,16 +730,9 @@ in_flags:
 
 ; OUT (n),A con n par: borde y beeper
 h_out_ula:
-        push af
-        push bc
-        push hl
-        call ula_write
-        pop hl
-        pop bc
-        pop af
-        ret
+        jp ula_out
 
-; OUT ($FE),A: como ula_write pero conservando todos los registros y flags.
+; OUT ($FE),A: borde y beeper. Conserva todos los registros y flags.
 ula_out:
         push af
         push hl
@@ -748,51 +772,14 @@ ula_out:
         pop af
         ret
 
-; A = valor escrito en la ULA. Destruye AF, BC, HL.
-ula_write:
-        ld c,a
-        ld a,(last_ula)
-        xor c
-        ld h,a                  ; bits que cambian
-        ld a,c
-        ld (last_ula),a
-        bit 4,h
-        jr z,.nob
-        and $10
-        jr z,.z
-        ld a,BEEP_VOL
-.z:     ld b,$F4
-        out (c),a               ; dato del PSG (registro 8 ya seleccionado)
-        ld b,$F6
-        ld a,$80
-        out (c),a
-        xor a
-        out (c),a
-.nob:   ld a,h
-        and 7
-        ret z
-        ld a,(last_ula)
-        and 7
-        ld hl,border_tab
-        add a,l
-        ld l,a
-        ld a,(hl)
-        ld bc,$7F10
-        out (c),c
-        out (c),a
-        ret
-
 ; OUT (C),r: A = valor, BC = puerto. Destruye AF, HL.
 out_c_value:
         ld h,a
         ld a,c
         rra
         jr c,.odd
-        push bc
         ld a,h
-        call ula_write
-        pop bc
-        ret
+        jp ula_out
 .odd:   ld a,c
         cp $FD
         ret nz
@@ -1114,65 +1101,95 @@ clear_line:
 
 ; BEEPER ($03B5): DE = ciclos, HL = periodo. Mismo bucle, beeper -> AY
 rom_beeper:
+; BEEPER de la ROM (DE = ciclos, HL = (437500/f) - 30) con el generador de tono
+; del PSG: periodo = (HL+30)/7 a 1 MHz y duración DE*(HL+30)/437500 s.
         push af
         push bc
         push de
         push hl
-        push ix
         ld a,d
         or e
         jr z,.fin
-        ; iteraciones de espera ~ HL/6.5
+        ld bc,30
+        add hl,bc               ; HL = x = HL+30
         push hl
-        srl h
-        rr l
-        srl h
-        rr l
-        srl h
-        rr l                    ; HL/8
+        ; periodo del PSG ~ x/7 = x/8 + x/64 + x/512
         ld b,h
         ld c,l
+        call .shr3              ; x/8
+        push hl
+        call .shr3              ; x/64
+        push hl
+        call .shr3              ; x/512
+        pop bc
+        add hl,bc
+        pop bc
+        add hl,bc
+        push de
+        ld e,l
+        ld a,0
+        push hl
+        call psg_write          ; registro 0: tono A (byte bajo)
         pop hl
-        srl h
-        rr l
-        srl h
-        rr l
-        srl h
-        rr l
-        srl h
-        rr l
-        srl h
-        rr l                    ; HL/32
+        ld e,h
+        ld a,1
+        call psg_write          ; registro 1: tono A (byte alto)
+        ld e,$3E
+        ld a,7
+        call psg_write          ; mezclador: solo tono A
+        ld e,BEEP_VOL
+        ld a,8
+        call psg_write
+        pop de
+        pop hl                  ; HL = x
+        ; espera por ciclo ~ x * 2,2857 us; el bucle interno dura 7 us -> x*0,328
+        ld b,h
+        ld c,l
+        call .shr2              ; x/4
+        push hl
+        call .shr2              ; x/16
+        push hl
+        call .shr2              ; x/64
+        pop bc
+        add hl,bc
+        pop bc
         add hl,bc
         inc hl
-        push hl
-        pop ix                  ; IX = espera por semiperiodo
-        ld a,(last_ula)
-.cyc:   xor $10
-        push af
-        push de
-        call ula_write
-        pop de
-        pop af
-        push ix
-        pop hl
-.w:     dec hl
-        ld b,a
-        ld a,h
-        or l
+.cyc:   ld b,h
+        ld c,l
+.w:     dec bc
         ld a,b
+        or c
         jr nz,.w
         dec de
-        ld b,a
         ld a,d
         or e
-        ld a,b
         jr nz,.cyc
-.fin:   pop ix
-        pop hl
+        ; silencio y vuelta al modo beeper (volumen del canal A, tono apagado)
+        ld e,$3F
+        ld a,7
+        call psg_write
+        ld a,(last_ula)
+        and $10
+        jr z,.z
+        ld a,BEEP_VOL
+.z:     ld e,a
+        ld a,8
+        call psg_write
+        call psg_latch8
+.fin:   pop hl
         pop de
         pop bc
         pop af
+        ret
+.shr3:  srl b                   ; HL = BC >> 3 (y BC queda desplazado)
+        rr c
+.shr2:  srl b                   ; HL = BC >> 2 (y BC queda desplazado)
+        rr c
+        srl b
+        rr c
+        ld h,b
+        ld l,c
         ret
 
 ; Rutina de la ROM no soportada: vuelve sin hacer nada
@@ -1230,7 +1247,7 @@ rom_border:
         ld a,(last_ula)
         and $F8
         or c
-        call ula_write
+        call ula_out
         pop hl
         pop bc
         pop af

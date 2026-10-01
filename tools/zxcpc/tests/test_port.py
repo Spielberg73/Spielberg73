@@ -267,3 +267,61 @@ def test_snapshot_detenido_en_la_rom(built, tmp_path):
     p = load_program(str(snap), zx_rom=rom)
     assert p.regs["PC"] >= 0x4000
     assert any("estaba en la ROM" in n for n in p.notes)
+
+
+def test_bucles_de_beeper_reubicados(tmp_path):
+    """Un bucle tipo Manic Miner y una subrutina tipo Cookie se copian al HAL y suenan
+    en el PSG (volumen del canal A alternando) con el mismo número de cambios."""
+    from zxcpc.z80.asm import assemble
+    from zxcpc.port.zx2cpc import port_zx_to_cpc, PortOptions
+    src = """
+        org $8000
+start:  di
+        ld sp,$FF00
+main:   ld a,$10                ; bucle: OUT en la cabeza, XOR $18 cada E vueltas
+        ld e,20
+        ld bc,$0002
+.l:     out ($FE),a
+        dec e
+        jr nz,.n
+        ld e,20
+        xor $18
+.n:     djnz .l
+        dec c
+        jr nz,.l
+        ld c,30                 ; subrutina con retardos, como la de Cookie
+        ld d,40
+.s:     call tick
+        dec c
+        jr nz,.s
+        jr main
+tick:   ld a,$10
+        out ($FE),a
+        ld b,d
+.d1:    djnz .d1
+        xor a
+        out ($FE),a
+        ld b,d
+.d2:    djnz .d2
+        ret
+"""
+    path = tmp_path / "b.bin"
+    path.write_bytes(assemble(src).image())
+    p = load_program(str(path), platform="zx", load_addr=0x8000)
+    an = analyze(p, run_dynamic(p, frames=20))
+    res = port_zx_to_cpc(an, PortOptions())
+    loops = [pt for pt in res.patches if pt.kind == "beeper_loop"]
+    assert len(loops) == 2, [pt.text for pt in res.patches]
+    c = CPC()
+    c.load_state(res.state)
+    for _ in range(20):
+        c.run_frame()
+    vols = [v for _f, r, v in c.psg_writes if r == 8]
+    assert len(vols) > 100 and set(vols) == {0, 15}
+    z = Spectrum48K()
+    z.mem[0x4000:] = p.mem[0x4000:]
+    _set_regs(z.cpu, p)
+    for _ in range(20):
+        z.run_frame()
+    # mismo orden de magnitud de cambios del altavoz que el original
+    assert 0.5 < len(vols) / max(1, z.beeper_toggles) < 1.5
