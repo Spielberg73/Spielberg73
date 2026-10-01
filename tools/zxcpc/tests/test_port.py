@@ -557,3 +557,30 @@ src:    db {", ".join(str((i * 37) & 255) for i in range(384))}
     from zxcpc.port.zx2cpc import build_dsk
     dsk = build_dsk(res)
     assert b"ZXCPC   X7 " in dsk and b"ZXCPC   X5 " not in dsk
+
+
+def test_pantalla_de_creditos(zx_port):
+    """Con créditos, el SNA arranca en la pantalla de créditos y, tras una tecla, el
+    juego sigue con su pantalla intacta; el disco los muestra mientras carga."""
+    from zxcpc.port.zx2cpc import port_zx_to_cpc, PortOptions, build_dsk, credit_lines
+    p, an, res0, sy = zx_port
+    res = port_zx_to_cpc(an, PortOptions(refresh_lines=2, credits=["JUEGO", "",
+                                                                    "CONVERSIÓN: NOSOTROS"]))
+    assert credit_lines(["CONVERSIÓN"]) == ["CONVERSION", "", "PULSA UNA TECLA"]
+    assert res.state.regs["PC"] == res.hal_symbols["stub2_spl"]
+    c = CPC()
+    c.load_state(res.state)
+    for _ in range(5):
+        c.run_frame()
+    assert 0x4000 <= c.cpu.pc < 0x8000 and c.ram_cfg & 0x3F == 6   # en los créditos
+    for _ in range(5):
+        c.press("SPACE")
+        c.run_frame()
+    c.release_all()
+    for _ in range(5):
+        c.run_frame()
+    assert c.ram_cfg & 0x3F == 0                 # de vuelta en el juego
+    dsk = build_dsk(res)
+    assert b"NOSOTROS" in dsk and b"PULSA UNA TECLA" in dsk
+    with pytest.raises(ValueError, match="32 caracteres"):
+        credit_lines(["X" * 33])

@@ -247,6 +247,8 @@ def _port_zx2cpc(args, p, an, cfg, outdir, name, shots_dir, html_report):
         opt.frameskip = args.frameskip
     if args.ram512:
         opt.ram512 = True
+    if args.creditos:
+        opt.credits = args.creditos.split("|")
     if args.keys:
         for item in args.keys.split(","):
             zk, ck = item.split("=")
@@ -276,7 +278,7 @@ def _port_zx2cpc(args, p, an, cfg, outdir, name, shots_dir, html_report):
             "exclude": [f"{a:04X}" for a in sorted(opt.exclude)],
             "rom_im2_vector": opt.rom_im2_vector, "patch_static": opt.patch_static,
             "frameskip": opt.frameskip, "beeper_loops": opt.beeper_loops,
-            "ram512": opt.ram512}
+            "ram512": opt.ram512, "credits": opt.credits}
     with open(os.path.join(outdir, "port.json"), "w", encoding="utf-8") as f:
         json.dump(used, f, indent=1, ensure_ascii=False)
     # prueba en el CPC emulado
@@ -439,6 +441,8 @@ def main(argv=None):
     sp.add_argument("--config", help="port.json con opciones (se genera en cada port)")
     sp.add_argument("--mono", action="store_true", help="monocromo (más fiel a la forma, sin color)")
     sp.add_argument("--refresh", type=int, help="líneas de refresco de fondo por frame (0-5)")
+    sp.add_argument("--creditos", help="(ZX→CPC) pantalla de créditos al arrancar: líneas "
+                    "separadas por | (32 caracteres como mucho)")
     sp.add_argument("--512k", dest="ram512", action="store_true",
                     help="ZX->CPC: juegos de 128K que paginan, para un CPC 6128 con ampliación "
                          "de 512K (576K en total)")

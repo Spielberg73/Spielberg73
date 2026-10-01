@@ -27,6 +27,10 @@ CAS_IN_CLOSE    equ $BC7A
 TXT_OUTPUT      equ $BB5A
 
 KL_INIT_BACK    equ $BCCE
+SCR_SET_MODE    equ $BC0E
+TXT_SET_PEN     equ $BB90
+TXT_SET_CURSOR  equ $BB75
+KM_WAIT_CHAR    equ $BB06
 
         org $8000
 start:  ; RUN" de un binario restaura los vectores del firmware: reactivar AMSDOS
@@ -34,6 +38,12 @@ start:  ; RUN" de un binario restaura los vectores del firmware: reactivar AMSDO
         ld de,$0040
         ld hl,$ABFF
         call KL_INIT_BACK
+        if CREDITS
+        ld a,1                  ; créditos mientras carga
+        call SCR_SET_MODE
+        ld hl,credits_txt
+        call show
+        endif
         ld hl,msg
         call print
         ld a,$C4
@@ -71,6 +81,11 @@ start:  ; RUN" de un binario restaura los vectores del firmware: reactivar AMSDO
         jr .bk
 .bd:
         endif
+        if CREDITS
+        ld hl,credits_key
+        call show
+        call KM_WAIT_CHAR
+        endif
         di
         ld bc,$7FC0
         out (c),c
@@ -102,6 +117,33 @@ fail:   ld bc,$7FC0
         ld hl,err
         call print
 .h:     jr .h
+
+        if CREDITS
+; HL -> entradas (fila, columna, pluma, texto, 0), acabadas en 0
+show:   ld a,(hl)
+        or a
+        ret z
+        ld e,a
+        inc hl
+        ld d,(hl)
+        inc hl
+        ld a,(hl)
+        inc hl
+        push hl
+        push de
+        call TXT_SET_PEN
+        pop de
+        ld h,d
+        ld l,e
+        call TXT_SET_CURSOR
+        pop hl
+.c:     ld a,(hl)
+        inc hl
+        or a
+        jr z,show
+        call TXT_OUTPUT
+        jr .c
+        endif
 
 print:  ld a,(hl)
         or a

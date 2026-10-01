@@ -33,7 +33,8 @@ STUB2_SRC = """stub2:
         ld de,$C000
         ld bc,$4000
         ldir
-{COPIES}        ld bc,$7F00+{CFG}
+{COPIES}{SPLASH}stub2_go:
+        ld bc,$7F00+{CFG}
         out (c),c
         ld a,{I}
         ld i,a
@@ -96,6 +97,7 @@ class PortOptions:
     beeper_loops: bool = True             # copiar al HAL los bucles de beeper (tono fiel)
     frameskip: int = 0                    # volcados LDIR a pantalla saltados entre dos reales
     ram512: bool = False                  # 128K que paginan: CPC 6128 con ampliación de 512K
+    credits: list = field(default_factory=list)   # líneas de la pantalla de créditos
 
     @classmethod
     def from_json(cls, d):
@@ -462,6 +464,229 @@ ovl_conv7:
 
 ovl_end:
         assert ovl_end <= $4200, "bloque base 3 lleno"
+"""
+
+
+CREDITS_KEY = "PULSA UNA TECLA"
+
+
+def credit_lines(lines):
+    """Líneas de créditos en ASCII (sin tildes), de 32 caracteres como mucho, con la
+    línea final para pulsar una tecla."""
+    import unicodedata
+    out = []
+    for ln in lines:
+        t = unicodedata.normalize("NFKD", ln).encode("ascii", "ignore").decode()
+        if len(t) > 32:
+            raise ValueError(f"línea de créditos de más de 32 caracteres: {t!r}")
+        out.append(t)
+    while out and not out[-1]:
+        out.pop()
+    if len(out) > 20:
+        raise ValueError("demasiadas líneas de créditos (máx. 20)")
+    return out + ["", CREDITS_KEY]
+
+
+def _credit_pens(lines):
+    """Pluma de cada línea: la primera (título) 1, la de la tecla 2 y las demás 3."""
+    first = next(i for i, t in enumerate(lines) if t)
+    return [1 if i == first else 2 if i == len(lines) - 1 else 3 for i in range(len(lines))]
+
+
+def _splash_src(lines, r12):
+    """Pantalla de créditos del SNA. Se ejecuta en $4000 con el bloque 6 de RAM puesto,
+    sin interrupciones: guarda y borra la pantalla A, escribe el texto con la fuente de
+    la ROM baja del CPC, espera una tecla (o unos 10 s), la deja soltar y restaura la
+    pantalla y la que estaba visible."""
+    r0 = (24 - len(lines)) // 2
+    base, nbytes = 0x0200, 24 * 64          # toda la pantalla A
+    data = []
+    for i, (t, pen) in enumerate(zip(lines, _credit_pens(lines))):
+        if not t:
+            continue
+        addr = base + (r0 + i) * 64 + ((32 - len(t)) // 2) * 2
+        m1 = 0xF0 if pen & 1 else 0
+        m2 = 0x0F if pen & 2 else 0
+        data.append(f"        dw ${addr:04X}\n        db ${m1:02X},${m2:02X},"
+                    + ",".join(str(ord(c)) for c in t) + ",0\n")
+    return f"""\
+        org $4000
+        ld bc,$BC0C             ; mostrar la pantalla A
+        out (c),c
+        ld bc,$BD01
+        out (c),c
+        ld hl,${base:04X}       ; guardar la pantalla
+        ld de,save
+        ld b,8
+.s:     push bc
+        push hl
+        ld bc,{nbytes}
+        ldir
+        pop hl
+        ld bc,$0800
+        add hl,bc
+        pop bc
+        djnz .s
+        ld hl,${base:04X}       ; y borrarla
+        ld b,8
+.c:     push bc
+        push hl
+        ld d,h
+        ld e,l
+        inc de
+        ld (hl),0
+        ld bc,{nbytes - 1}
+        ldir
+        pop hl
+        ld bc,$0800
+        add hl,bc
+        pop bc
+        djnz .c
+        ld bc,$7F89             ; modo 1 con la ROM baja (fuente en $3800)
+        out (c),c
+        ld ix,text
+.ln:    ld e,(ix+0)
+        ld d,(ix+1)
+        ld a,d
+        or e
+        jr z,.done
+        ld a,(ix+2)
+        ld (.m1+1),a
+        ld a,(ix+3)
+        ld (.m2+1),a
+        inc ix
+        inc ix
+        inc ix
+        inc ix
+.ch:    ld a,(ix+0)
+        inc ix
+        or a
+        jr z,.ln
+        ld l,a
+        ld h,0
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        ld bc,$3800
+        add hl,bc
+        push de
+        ld b,8
+.k:     push bc
+        ld a,(hl)
+        inc hl
+        ld c,a
+        and $F0
+        call .pair
+        ld a,c
+        rlca
+        rlca
+        rlca
+        rlca
+        and $F0
+        inc de
+        call .pair
+        dec de
+        ex de,hl
+        ld bc,$0800
+        add hl,bc
+        ex de,hl
+        pop bc
+        djnz .k
+        pop de
+        inc de
+        inc de
+        jr .ch
+; A = 4 píxeles en el nibble alto -> byte de modo 1 con la pluma de la línea
+.pair:  push bc
+        ld b,a
+.m1:    and $F0
+        ld c,a
+        ld a,b
+        rrca
+        rrca
+        rrca
+        rrca
+.m2:    and $0F
+        or c
+        ld (de),a
+        pop bc
+        ret
+.done:  ld bc,$7F8D             ; sin ROMs
+        out (c),c
+        ld hl,500
+.w:     call vsync
+        call anykey
+        jr nz,.up
+        dec hl
+        ld a,h
+        or l
+        jr nz,.w
+.up:    call vsync
+        call anykey
+        jr nz,.up
+        ld hl,save              ; restaurar la pantalla
+        ld de,${base:04X}
+        ld b,8
+.r:     push bc
+        push de
+        ld bc,{nbytes}
+        ldir
+        pop de
+        ex de,hl
+        ld bc,$0800
+        add hl,bc
+        ex de,hl
+        pop bc
+        djnz .r
+        ld bc,$BC0C
+        out (c),c
+        ld bc,$BD00+${r12:02X}
+        out (c),c
+        ret
+
+vsync:  ld b,$F5
+.a:     in a,(c)
+        rra
+        jr c,.a
+.b:     in a,(c)
+        rra
+        jr nc,.b
+        ret
+
+; NZ si hay alguna tecla (o el joystick) pulsada
+anykey: ld bc,$F40E
+        out (c),c
+        ld bc,$F6C0
+        out (c),c
+        ld bc,$F600
+        out (c),c
+        ld bc,$F792
+        out (c),c
+        ld e,$40
+        ld d,$FF
+.r:     ld b,$F6
+        out (c),e
+        ld b,$F4
+        in a,(c)
+        and d
+        ld d,a
+        inc e
+        ld a,e
+        cp $4A
+        jr nz,.r
+        ld bc,$F782
+        out (c),c
+        ld bc,$F600
+        out (c),c
+        ld a,d
+        cpl
+        or a
+        ret
+
+text:
+{"".join(data)}        dw 0
+save:
+        assert save + {8 * nbytes} <= $7F00, "créditos demasiado largos"
 """
 
 
@@ -1628,7 +1853,18 @@ class ZX2CPC:
             # 128K: copia de la ROM del Spectrum en el banco extra 5
             mem = mem + bytearray(0x10000)
             mem[0x14000:0x18000] = rom_bank
+        if opt.credits:
+            # pantalla de créditos del SNA: su código va en el bloque 6 (libre en el SNA)
+            if len(mem) < 0x20000:
+                mem = mem + bytearray(0x20000 - len(mem))
+            r12 = 0x31 if self.z128 and self.p.zx_state.port_7ffd & 8 else 0x01
+            blob = Assembler({}).assemble(_splash_src(credit_lines(opt.credits), r12),
+                                          "creditos").image()
+            mem[0x18000:0x18000 + len(blob)] = blob
         st = self._cpc_state(mem, pal_fw, border)
+        if opt.credits:
+            st.regs["PC"] = symbols["stub2_spl"]
+            st.iff1 = st.iff2 = 0
         palette = [(i, f, FW_NAMES[f]) for i, f in enumerate(pal_fw)]
         free_bytes = sum(end - start for start, end in placed)
         header = "; Símbolos fijados por el portador\n" + "".join(
@@ -1692,7 +1928,13 @@ class ZX2CPC:
         regs = [r["HL'"], r["DE'"], r["BC'"], r["AF'"], r["HL"], r["DE"], r["BC"], r["IX"],
                 r["IY"], r["AF"]]
         self._hw_tables = (crtc, [v | 0x40 for v in st_pal])
+        splash = ""
+        if self.opt.credits:
+            # el SNA arranca aquí: pantalla de créditos (código en el bloque 6) y al juego
+            splash = ("        jr stub2_go\nstub2_spl:\n        ld sp,$7FFE\n"
+                      "        ld bc,$7FC6\n        out (c),c\n        call $4000\n")
         return STUB2_SRC.format(I=r["I"] & 0xFF, SP=sp, PC=pc, CFG=cfg, COPIES=copies,
+                                SPLASH=splash,
                                 EI="        ei\n" if p.iff1 else "",
                                 REGS=",".join(str(v) for v in regs))
 
@@ -2086,7 +2328,20 @@ def build_dsk(result: PortResult) -> bytes:
     mem = result.state.mem
     z128 = result.options.ram512 and len(mem) > 0x10000
     romcopy = not z128 and len(mem) > 0x14000 and any(mem[0x14000:0x18000])
-    loader = Assembler({"STUB2": stub2, "ROMCOPY": int(romcopy), "Z128": int(z128)}).assemble(
+    credits = result.options.credits
+    if credits:
+        # créditos con el firmware mientras carga (modo 1, 40 columnas)
+        lines = credit_lines(credits)
+        r0 = (25 - len(lines)) // 2
+        ent = []
+        for i, (t, pen) in enumerate(zip(lines, _credit_pens(lines))):
+            if t:
+                ent.append(f"        db {r0 + i + 1},{(40 - len(t)) // 2 + 1},{pen},"
+                           + ",".join(str(ord(c)) for c in t) + ",0\n")
+        src += ("credits_txt:\n" + "".join(ent[:-1]) + "        db 25,1,1,0,0\n"
+                "credits_key:\n" + ent[-1] + "        db 0\n")
+    loader = Assembler({"STUB2": stub2, "ROMCOPY": int(romcopy), "Z128": int(z128),
+                        "CREDITS": int(bool(credits))}).assemble(
         src, "loader6128.asm").image()
     files = [("DISC", "BIN", make_amsdos_header("DISC", "BIN", len(loader), 0x8000, 0x8000) + loader)]
     parts = [("A", 0), ("B", 0x4000), ("C", 0x8000), ("D", 0xC000)]

@@ -97,6 +97,11 @@ Opciones útiles de `port`:
 * `--exclude 8123,8456`: direcciones que no se deben parchear.
 * `--refresh N`: líneas de pantalla que el HAL repasa por frame como red de seguridad
   (por defecto 2; 0 con `--512k` si todas las escrituras en pantalla se reflejan).
+* `--creditos "LÍNEA|LÍNEA|…"` (ZX→CPC): pantalla de créditos al arrancar (32
+  caracteres por línea, sin tildes; una línea vacía deja un hueco). El disco la
+  muestra con el firmware mientras carga y espera una tecla; el SNA la dibuja con la
+  fuente de la ROM del CPC antes de entrar en el juego y luego deja la pantalla como
+  estaba. Pensada para firmar la conversión, junto a los créditos del original.
 * `--512k` (ZX→CPC): juegos de 128K que paginan memoria, para un CPC 6128 con la
   ampliación de 512K (576K en total), como la que emulan Caprice32 (`ram_size=576`),
   WinAPE o Retro Virtual Machine.
