@@ -33,7 +33,7 @@ STUB2_SRC = """stub2:
         ld de,$C000
         ld bc,$4000
         ldir
-        ld bc,$7FC0
+{COPIES}        ld bc,$7F00+{CFG}
         out (c),c
         ld a,{I}
         ld i,a
@@ -75,13 +75,15 @@ DEFAULT_KEYS = {
     "9": ("9", "JOYUP"), "0": ("0", "FIRE1"),
 }
 
+Z128_DISK_BANKS = (0, 1, 3, 4, 6, 7)
+
 FREE_REGIONS_END = {"c0_end": 0x0200, "c3_end": 0x1900, "c4_end": 0x2200, "c5_end": 0x2A00,
                     "c6_end": 0x3200, "c7_end": 0x3A00}
 
 
 @dataclass
 class PortOptions:
-    refresh_lines: int = 2
+    refresh_lines: int | None = None     # None: 2 (0 en 128K si todo se refleja)
     beep_vol: int = 15
     mono: bool = False
     palette: list | None = None          # 4 colores del firmware (0-26)
@@ -237,6 +239,230 @@ def convert_screen_to_cpc(ram, xm, pm):
 # ---------------------------------------------------------------------------
 
 PROLOGUE = "        ex (sp),hl\n        inc hl\n        ex (sp),hl\n"
+
+
+# 128K: racha de LDI hacia una pantalla del Spectrum paginada en $C000 (banco 5 o 7)
+# dentro de una línea: compara, escribe y convierte solo los bytes que cambian. Con el
+# banco 7 usa la configuración 3 (pantalla B del CPC en $4000, banco 7 en $C000); con
+# el 5, la normal (copia del banco 5 en $4000 y pantalla A en $0000). Entrada: A =
+# número de LDI, con la pila propia de la racha. Si no se cumple, bucle genérico (.lp).
+SP_RUN_Z128_SRC = """\
+        ld (.n),a
+        push af
+        ld a,d
+        sub $C0
+        cp $18
+        jp nc,.slow
+        pop af
+        push af
+        add a,e
+        jp c,.slow              ; no cruza de línea del Spectrum
+        ld (.end+1),a
+        ld a,(zx_bank)
+        cp 5
+        jr z,.go
+        cp 7
+        jp nz,.slow
+        ld a,h
+        cp $80
+        jp c,.slow              ; banco 7: el origen no puede estar en $4000-$7FFF
+.go:    pop af
+        push bc
+        push ix
+        exx
+        push bc
+        push de
+        push hl
+        ld h,TABHI_PAGE
+        ld d,XM_PAGE
+        exx
+        ld a,(zx_bank)
+        cp 5
+        ld a,(cur_cfg)
+        ld bc,$BACB             ; RES 7,D: copia del banco 5 en $4000
+        jr z,.b5
+        ld a,$40
+        ld (.hi+1),a            ; banco 7: pantalla B en $4000 (configuración 3)
+        ld a,$D8
+        ld (.at+1),a
+        ld a,$C3+7*8
+        ld bc,$0318             ; JR +3: sin copia
+        jr .b
+.b5:    push af
+        xor a
+        ld (.hi+1),a            ; banco 5: pantalla A en $0000
+        ld a,$58
+        ld (.at+1),a
+        pop af
+.b:     ld (.w5),bc
+        ld c,a
+        ld a,i
+        push af
+        di
+        ld b,$7F
+        out (c),c
+        push hl
+        ld a,d
+        and $1F
+        ld l,a
+        ld h,HITAB/256
+        ld h,(hl)
+        ld a,e
+        add a,a
+        ld l,a
+        ld a,h
+.hi:    adc a,0
+        ld h,a
+        ex (sp),hl
+        pop ix                  ; IX = destino en la pantalla del CPC
+        ld a,d
+        rrca
+        rrca
+        rrca
+        and 3
+.at:    or 0
+.a:     ld b,a                  ; B = página de atributos
+.f:     ld a,(de)
+        cp (hl)
+        jr z,.fs
+        ld a,(hl)
+        ld (de),a
+.w5:    res 7,d
+        ld (de),a
+        set 7,d
+        ld c,e
+        exx
+        ld l,a                  ; L' = imagen
+        exx
+        ld a,(bc)               ; atributo
+        exx
+        ld e,a
+        ld a,(de)
+        ld c,a
+        inc d
+        ld a,(de)
+        ld b,a
+        dec d
+        ld a,(hl)
+        and c
+        xor b
+        ld (ix+0),a
+        inc h
+        ld a,(hl)
+        and c
+        xor b
+        ld (ix+1),a
+        dec h
+        exx
+.fs:    inc hl
+        inc de
+        inc ix
+        inc ix
+        ld a,e
+.end:   cp 0
+        jr nz,.f
+        ld a,(cur_cfg)
+        ld bc,$7F00
+        out (c),a
+        pop af
+        jp po,.k
+        ei
+.k:     exx
+        pop hl
+        pop de
+        pop bc
+        exx
+        pop ix
+        pop bc
+        push hl
+        ld h,b
+        ld l,c
+        ld a,(.n)
+        ld c,a
+        ld b,0
+        or a
+        sbc hl,bc
+        ld b,h
+        ld c,l
+        pop hl
+        ret
+.n:     db 0
+.slow:  pop af
+"""
+
+# Código del bloque base 3 (huecos de la pantalla B, en $4000-$41FF con la
+# configuración 3): se ejecuta con el banco 7 del Spectrum en $C000 y la pantalla B
+# del CPC en $4000, sin interrupciones.
+Z128_OVL_SRC = """\
+        org $4000
+
+; HL = dirección del Spectrum en $C000-$DAFF: byte de imagen o atributo
+ovl_conv7:
+        ld a,h
+        sub $C0
+        cp $18
+        jr nc,.att
+.byte:  ld a,(hl)
+        push af
+        ld a,h
+        rrca
+        rrca
+        rrca
+        and 3
+        or $D8
+        ld d,a
+        ld e,l
+        ld a,(de)               ; atributo
+        ld e,a
+        ld d,XM_PAGE
+        ld a,(de)
+        ld c,a
+        inc d
+        ld a,(de)
+        ld b,a
+        ld a,h
+        and $1F
+        ld e,a
+        ld d,HITAB/256
+        ld a,(de)
+        sla l
+        adc a,$40
+        ld d,a
+        ld e,l                  ; DE = dirección en la pantalla B (en $4000)
+        pop af
+        ld l,a
+        ld h,TABHI_PAGE
+        ld a,(hl)
+        and c
+        xor b
+        ld (de),a
+        inc e
+        inc h
+        ld a,(hl)
+        and c
+        xor b
+        ld (de),a
+        ret
+.att:   ld a,h
+        and 3
+        add a,a
+        add a,a
+        add a,a
+        or $C0
+        ld h,a
+        ld b,8
+.l:     push bc
+        push hl
+        call .byte
+        pop hl
+        pop bc
+        inc h
+        djnz .l
+        ret
+
+ovl_end:
+        assert ovl_end <= $4200, "bloque base 3 lleno"
+"""
 
 
 def _asm_ins(ins: D.Instr) -> str:
@@ -486,6 +712,14 @@ class ZX2CPC:
         out = bytearray(mem) + bytearray(8 * 0x10000)
         b7 = bytes(banks[7])
         out[0xC000:0x10000] = convert_screen_to_cpc(b7 + bytes(0xC000 - len(b7)), xm, pm)
+        ovl = Assembler(dict(self._hal_syms)).assemble(Z128_OVL_SRC, "z128_ovl")
+        assert ovl.symbols["ovl_conv7"] == 0x4000
+        for sg in ovl.segments:
+            o = 0xC000 + sg.org - 0x4000          # hueco de la pantalla B (bloque base 3)
+            out[o:o + len(sg.data)] = sg.data
+        for sg in self._hal_segments:
+            if sg.org >= 0xC000:                  # código del HAL para la configuración 0
+                out[sg.org:sg.org + len(sg.data)] = sg.data
         for n in range(8):
             if n == 5:
                 data = mem[0x4000:0x8000]          # ya parcheados
@@ -500,6 +734,15 @@ class ZX2CPC:
             self.warnings.append("la pila del juego llega a $C000-$FFFF: al cambiar de banco "
                                  "en el CPC se perdería; revisar")
         return out
+
+    def _refresh_lines(self):
+        """Líneas de refresco de fondo por frame. En 128K solo cubrirían la pantalla 0 y
+        cuestan mucho: si todas las escrituras en pantalla se reflejan, ninguna."""
+        if self.opt.refresh_lines is not None:
+            return max(0, min(5, self.opt.refresh_lines))
+        if self.z128 and not any(h.kind == "stack_screen" for h in self.an.hotspots):
+            return 0
+        return 2
 
     def _frameskip_ok(self):
         if not self.opt.frameskip:
@@ -648,6 +891,7 @@ class ZX2CPC:
             for b in rng:
                 taken[b] = addr
             self.patches.append(patch)
+        self._plan_sp_runs()
         self._plan_smc_writers(taken)
         self._report_unhandled()
 
@@ -692,10 +936,39 @@ class ZX2CPC:
             else:
                 src = ins.operands[1]
                 reg = "0" if src.kind == D.IMM8 else src.value
-                label = self._handler(("out_c", reg), _out_c_handler(reg), "rst30")
+                spec = self._out_c_special(ins.addr, reg, kinds)
+                if spec is not None:
+                    label = self._handler(("out_c", reg, spec[0]), spec[1], "rst30")
+                else:
+                    label = self._handler(("out_c", reg), _out_c_handler(reg), "rst30")
             if "paging" in kinds and not self.z128:
                 self.warnings.append(f"{ins.addr:04X} {ins.text()}: paginación de 128K ignorada")
         return Patch(ins.addr, ins.raw, bytes([0xF7, self._id(label)]), "io", ins.text(), label)
+
+    def _out_c_special(self, addr, reg, kinds):
+        """OUT (C),r que en el análisis siempre fue al mismo puerto del 128K: manejador
+        directo, sin decodificar el puerto (paginación, selección o dato del AY)."""
+        tr = self.an.trace
+        ports = [pt for (d, pt) in (tr.io.get(addr, {}) if tr is not None else {})
+                 if d == "out"]
+        if not ports:
+            return None
+        load = "        xor a\n" if reg == "0" else \
+            ("" if reg == "A" else f"        ld a,{reg.lower()}\n")
+        if self.z128 and all(pt & 0x8002 == 0 for pt in ports):
+            if reg == "A":
+                return "page", "        jp zx_page\n"
+            return "page", f"        push af\n{load}        call zx_page\n        pop af\n        ret\n"
+        if "ay_io" not in kinds:
+            return None
+        if all(pt & 0xC002 == 0xC000 for pt in ports):
+            return "aysel", (f"        push af\n{load}        and 15\n        ld (ay_sel),a\n"
+                             "        pop af\n        ret\n")
+        if all(pt & 0xC002 == 0x8000 for pt in ports):
+            return "aydat", (f"        push af\n        push bc\n        push de\n        push hl\n"
+                             f"{load}        call ay_write\n        pop hl\n        pop de\n"
+                             "        pop bc\n        pop af\n        ret\n")
+        return None
 
     def _plan_int(self, ins):
         if ins.op == "IM":
@@ -802,6 +1075,77 @@ class ZX2CPC:
             return Patch(ins.addr, raw, bytes([0xF7, self._id(label)]), "screen", ins.text(), label)
         label = self._handler(("scrcall", raw, skip), body, "call")
         return Patch(ins.addr, raw, b"\xCD@@" + b"\x00" * (n - 3), "screen", ins.text(), label)
+
+    # -- LDI/LDD con la pila secuestrada --------------------------------------------------
+    def _sp_hijacked(self, addr):
+        """¿Se ejecuta ``addr`` con SP usado como puntero de datos (LD SP,nn ... POP)?
+        Busca hacia atrás, en el código lineal, un LD SP,nn/HL sin restaurar."""
+        an = self.an
+        state = False
+        pc = max(0, addr - 256)
+        while pc < addr:
+            ins = an.instrs.get(pc)
+            if ins is None:
+                pc += 1
+                continue
+            r = ins.raw
+            if r[:1] == b"\x31" or r[:1] == b"\xF9" or r[:2] in (b"\xDD\xF9", b"\xFD\xF9"):
+                state = True
+            elif r[:2] == b"\xED\x7B" or r[:1] in (b"\xC9", b"\xE9") or r[:2] == b"\xED\x4D":
+                state = False
+            pc += ins.length
+        return state
+
+    def _plan_sp_runs(self):
+        """Las rachas de LDI/LDD parcheados (RST $30) dentro de un bucle que lee datos con
+        POP machacarían esos datos con la dirección de retorno. Se sustituyen por un bucle
+        en el mismo sitio, con una pila propia en los bytes sobrantes de la racha;
+        el bucle (en el HAL) solo convierte los bytes que cambian."""
+        by_addr = {p.addr: p for p in self.patches}
+        done = set()
+        new_patches = []
+        for p in sorted(self.patches, key=lambda x: x.addr):
+            if p.addr in done:
+                continue
+            if p.kind != "screen" or p.orig not in (b"\xED\xA0", b"\xED\xA8") or \
+                    not self._sp_hijacked(p.addr):
+                new_patches.append(p)
+                continue
+            run = [p]
+            while True:
+                q = by_addr.get(run[-1].addr + 2)
+                if q is None or q.orig != p.orig or q.handler != p.handler:
+                    break
+                run.append(q)
+            s0, n = p.addr, len(run)
+            e = s0 + 2 * n
+            # en el sitio: cambio de pila (21 bytes) + SP guardado (2) + pila propia
+            sv = s0 + 21
+            top = e
+            for q in run:
+                done.add(q.addr)
+            if top - (sv + 2) < 24:
+                self.warnings.append(f"{p.addr:04X} {p.text}: con la pila usada como puntero "
+                                     "de datos: la llamada al HAL puede machacar datos")
+                new_patches.extend(run)
+                continue
+            op = p.orig[1:].hex()
+            # bucle en el HAL: solo se convierten los bytes que cambian
+            slow = (".lp:    push af\n        ld a,(de)\n        cp (hl)\n        jr z,.same\n"
+                    f"        pop af\n        call {p.handler}\n        db 0\n        jr .nx\n"
+                    f".same:  pop af\n        db $ED,${op}\n"
+                    ".nx:    dec a\n        jr nz,.lp\n        ret\n")
+            fast = SP_RUN_Z128_SRC if self.z128 and p.orig == b"\xED\xA0" and \
+                s0 >= 0x8000 and e <= 0xC000 else ""
+            label = self._handler(("sp_run", p.handler), fast + slow, "call")
+            code = bytes([0xED, 0x73, sv & 0xFF, sv >> 8, 0x31, top & 0xFF, top >> 8, 0xF5,
+                          0x3E, n, 0xCD, 0x40, 0x40, 0xF1,
+                          0xED, 0x7B, sv & 0xFF, sv >> 8, 0xC3, e & 0xFF, e >> 8])
+            code += b"\x00" * (2 * n - len(code))
+            orig = b"".join(q.orig for q in run)
+            new_patches.append(Patch(s0, orig, code, "screen", f"{n} x {p.text}", label,
+                                     note="racha con SP secuestrado: bucle con pila propia"))
+        self.patches = new_patches
 
     def _runtime_code_source(self, addr, n):
         """Código que no está en la imagen inicial (lo copia el juego al ejecutarse):
@@ -1117,7 +1461,7 @@ class ZX2CPC:
         zx_state = p.zx_state
         border = zx_state.border if zx_state is not None else 7
         game_im2 = 1 if p.im == 2 else 0
-        syms = {"REFRESH_LINES": max(1, opt.refresh_lines), "BEEP_VOL": opt.beep_vol,
+        syms = {"REFRESH_LINES": self._refresh_lines(), "BEEP_VOL": opt.beep_vol,
                 "ROM_IM2_VECTOR": opt.rom_im2_vector, "GAME_IM2": game_im2,
                 "GAME_I": p.regs["I"] & 0xFF, "INIT_ULA": border, "kmap": 0,
                 "SKIP_SAME_HL": self._skip_same("HL"), "SKIP_SAME_DE": self._skip_same("DE")}
@@ -1128,6 +1472,7 @@ class ZX2CPC:
             self.warnings.append("escrituras del juego en $0000-$3FFF (ROM en el Spectrum, "
                                  "p.ej. para recortar sprites): el HAL las ignora")
         syms["Z128"] = int(self.z128)
+        syms["OVL_CONV7"] = 0x4000
         syms["INIT_7FFD"] = (zst.port_7ffd & 0x3F) if self.z128 else 0
         if self.z128:
             syms["USE_AY"] = 1
@@ -1159,6 +1504,8 @@ class ZX2CPC:
         full_src = base_src + "\n; ---- código generado por el portador ----\n" + gen_src
         res = Assembler(syms).assemble(full_src, "zx2cpc.asm")
         symbols = res.symbols
+        self._hal_syms = symbols
+        self._hal_segments = res.segments
 
         # memoria del CPC
         mem = bytearray(65536)
@@ -1263,10 +1610,21 @@ class ZX2CPC:
         st_pal = [FW_TO_HW[f] for f in pal_fw] + [FW_TO_HW[0]] * 12
         st_pal.append(FW_TO_HW[_nearest_fw(ZX_RGB[border & 7])])
         crtc = [63, 32, 42, 0x8E, 38, 0, 24, 30, 0, 7, 0, 0, 0x01, 0x00]
+        cfg, copies = 0xC0, ""
+        if self.z128:
+            # 576K: copias iniciales de los bancos 5 y 2 en la ampliación, el banco del
+            # Spectrum en $C000 y la pantalla visible (A o B)
+            p7 = p.zx_state.port_7ffd
+            cfg = 0xC1 + (p7 & 7) * 8
+            crtc[12] = 0x31 if p7 & 8 else 0x01
+            copies = "".join(f"        ld bc,$7F{0xC1 + n * 8:02X}\n        out (c),c\n"
+                             f"        ld hl,${src:04X}\n        ld de,$C000\n"
+                             "        ld bc,$4000\n        ldir\n"
+                             for n, src in ((5, 0x4000), (2, 0x8000)))
         regs = [r["HL'"], r["DE'"], r["BC'"], r["AF'"], r["HL"], r["DE"], r["BC"], r["IX"],
                 r["IY"], r["AF"]]
         self._hw_tables = (crtc, [v | 0x40 for v in st_pal])
-        return STUB2_SRC.format(I=r["I"] & 0xFF, SP=sp, PC=pc,
+        return STUB2_SRC.format(I=r["I"] & 0xFF, SP=sp, PC=pc, CFG=cfg, COPIES=copies,
                                 EI="        ei\n" if p.iff1 else "",
                                 REGS=",".join(str(v) for v in regs))
 
@@ -1658,13 +2016,18 @@ def build_dsk(result: PortResult) -> bytes:
     src += "\nstub1_crtc: db " + ",".join(str(v) for v in crtc) + \
            "\nstub1_pal:  db " + ",".join(str(v) for v in pal) + "\nstub1_all_end:\n"
     mem = result.state.mem
-    romcopy = len(mem) > 0x14000 and any(mem[0x14000:0x18000])
-    loader = Assembler({"STUB2": stub2, "ROMCOPY": int(romcopy)}).assemble(
+    z128 = result.options.ram512 and len(mem) > 0x10000
+    romcopy = not z128 and len(mem) > 0x14000 and any(mem[0x14000:0x18000])
+    loader = Assembler({"STUB2": stub2, "ROMCOPY": int(romcopy), "Z128": int(z128)}).assemble(
         src, "loader6128.asm").image()
     files = [("DISC", "BIN", make_amsdos_header("DISC", "BIN", len(loader), 0x8000, 0x8000) + loader)]
     parts = [("A", 0), ("B", 0x4000), ("C", 0x8000), ("D", 0xC000)]
     if romcopy:
         parts.append(("R", 0x14000))        # copia de la ROM del Spectrum -> banco 5
+    if z128:
+        # bancos del Spectrum en el bloque 3 de cada banco de la ampliación (el 5 y el 2
+        # los copia STUB2 de los bloques B y C, ya parcheados)
+        parts += [(f"X{n}", 0x10000 + n * 0x10000 + 0xC000) for n in Z128_DISK_BANKS]
     for part, off in parts:
         data = bytes(mem[off:off + 0x4000])
         files.append(("ZXCPC", part, make_amsdos_header("ZXCPC", part, len(data), 0x4000, 0) + data))

@@ -95,7 +95,11 @@ Opciones útiles de `port`:
 * `--keys Q=JOYUP,A=JOYDOWN`: teclas extra. La de la izquierda es la del Spectrum y
   la de la derecha la del CPC.
 * `--exclude 8123,8456`: direcciones que no se deben parchear.
-* `--refresh N`: líneas de pantalla que el HAL repasa por frame como red de seguridad.
+* `--refresh N`: líneas de pantalla que el HAL repasa por frame como red de seguridad
+  (por defecto 2; 0 con `--512k` si todas las escrituras en pantalla se reflejan).
+* `--512k` (ZX→CPC): juegos de 128K que paginan memoria, para un CPC 6128 con la
+  ampliación de 512K (576K en total), como la que emulan Caprice32 (`ram_size=576`),
+  WinAPE o Retro Virtual Machine.
 * `--palette a,b,c,d` (ZX→CPC): los 4 colores del firmware para las plumas 0-3.
 * `--mono` (ZX→CPC): monocromo, más fiel a la forma a cambio del color.
 * `--frameskip N` (ZX→CPC): en los juegos que vuelcan un búfer entero a la pantalla
@@ -196,6 +200,27 @@ del teclado.
 * **Copias en bloque.** `LDIR`/`LDDR` hacia la pantalla se reflejan de golpe (y
   protegen los buzones si un borrado los pisa).
 
+### Spectrum 128K → CPC con 512K (`--512k`)
+
+* **Memoria.** Los 64K base del CPC llevan la pantalla A + HAL, el banco 5, el banco 2
+  y la pantalla B (la pantalla sombra del Spectrum, banco 7). Cada banco *n* del
+  Spectrum va al bloque 3 del banco *n* de 64K de la ampliación, y el `OUT` a
+  `$7FFD` lo pone en `$C000` con la configuración `$C1+n*8`. El bit 3 de `$7FFD`
+  cambia la pantalla visible (registro 12 del CRTC). Las copias del banco 5 en `$4000`
+  y en la ampliación se mantienen iguales.
+* **Pantalla 1.** Su conversión se ejecuta desde un hueco de la pantalla B con la
+  configuración 3, que deja a la vez la pantalla B en `$4000` y el banco 7 en `$C000`.
+  El escritor del AY vive en otro hueco de la pantalla B (configuración 0).
+* **Pila secuestrada.** Las rachas de `LDI` que copian a pantalla con
+  `LD SP,tabla / POP DE / LDI…` (la pila usada como puntero de datos) no pueden
+  llamar al HAL con `RST`, porque la dirección de retorno pisaría la tabla. Se
+  sustituyen por un bucle en el mismo sitio, con una pila propia en los bytes que
+  sobran, que compara y convierte solo los bytes que cambian.
+* **E/S directa.** Los `OUT (C),r` que en el análisis siempre van al mismo puerto
+  (paginación, registro o dato del AY) usan un manejador directo.
+* **Disco.** El cargador lleva además los bancos 0, 1, 3, 4, 6 y 7 en ficheros
+  aparte (`X0`…`X7`) y los coloca en la ampliación; el 5 y el 2 los copia de la base.
+
 ## Limitaciones conocidas
 
 * **CPC → ZX:** necesita un Spectrum **+2A o +3**, por la paginación especial. Los
@@ -204,10 +229,11 @@ del teclado.
   FAR CALL…), y los juegos que cambian el CRTC a mitad de frame (rasters, scroll por
   hardware) no se verán bien.
 * **ZX → CPC:** el DSK necesita un CPC 6128 (el SNA se ha probado como 6128). Los
-  juegos de 128K solo se portan si no paginan memoria: los que cambian el banco de
-  `$C000` (como Where Time Stood Still) se rechazan con una explicación, porque el CPC
-  6128 no puede poner sus bancos extra en `$C000` y los 128K del juego más la
-  pantalla del CPC no caben. El análisis sí funciona con ellos (máquina 128K). Las escrituras en pantalla con `PUSH` o las que no se
+  juegos de 128K que cambian el banco de `$C000` (como Where Time Stood Still)
+  necesitan `--512k` y un CPC con 576K: sin ampliación se rechazan con una
+  explicación, porque el 6128 no puede poner sus bancos extra en `$C000` y los 128K
+  del juego más la pantalla del CPC no caben. En ese modo la pila del juego debe
+  estar por debajo de `$C000`. Las escrituras en pantalla con `PUSH` o las que no se
   ven en el análisis solo las recoge el refresco de fondo.
 * **Los dos sentidos:** el código cifrado, los cargadores turbo con protección, las
   escrituras en pantalla con direcciones calculadas que el análisis no llega a
@@ -218,7 +244,9 @@ del teclado.
   pantalla, porque cada byte pasa por el HAL. Por ejemplo, Manic Miner se porta y
   se juega en el CPC (probado en Caprice32, desde el disco), pero su bucle principal
   tarda 1,8 veces más que en el Spectrum (1,45 con `--frameskip 1`); Cookie, en
-  cambio, va al 90 %.
+  cambio, va al 90 %. Where Time Stood Still (128K, `--512k`) se carga desde el disco
+  y se juega en Caprice32 con 576K, pero a un cuarto de la velocidad del original:
+  su zona de juego hace scroll y en cada frame hay que convertir unos 2.500 bytes.
 * El sonido del beeper sale algo más grave (en torno a un 10 %) en los motores que
   hacen la espera con `DJNZ`, porque el CPC tarda 4 µs por vuelta y el Spectrum 3,7.
 * Las rutinas de la ROM emuladas (PRINT, CLS, BEEPER, KEY-SCAN) y el AY de los 128K

@@ -12,6 +12,11 @@
 ;  Si ROMCOPY = 1, el bloque R (copia de la ROM del Spectrum) se queda en el
 ;  banco 5, de donde lo lee el HAL.
 ;
+;  Si Z128 = 1 (576K), los bancos 0, 1, 3, 4, 6 y 7 del Spectrum (ficheros X0-X7)
+;  van al bloque 3 del banco de 64K de su número en la ampliación, y el bloque D
+;  espera en el banco 5 (el bloque 3 del banco 0 de la ampliación es el banco 0
+;  del Spectrum).
+;
 ;  STUB1 se ejecuta en $FE00 (bloque D, que se copia el último) y STUB2 está
 ;  en un hueco libre del HAL, así ninguno se pisa a sí mismo.
 ; =============================================================================
@@ -45,9 +50,27 @@ start:  ; RUN" de un binario restaura los vectores del firmware: reactivar AMSDO
         ld a,$C6
         ld hl,name_c
         call load
+        if Z128
+        ld a,$C5
+        else
         ld a,$C7
+        endif
         ld hl,name_d
         call load
+        if Z128
+        ld hl,banks
+.bk:    ld a,(hl)
+        or a
+        jr z,.bd
+        inc hl
+        push hl
+        call load
+        pop hl
+        ld de,12
+        add hl,de
+        jr .bk
+.bd:
+        endif
         di
         ld bc,$7FC0
         out (c),c
@@ -94,6 +117,15 @@ name_b: db "ZXCPC   .B  "
 name_c: db "ZXCPC   .C  "
 name_d: db "ZXCPC   .D  "
 name_r: db "ZXCPC   .R  "
+        if Z128
+banks:  db $C7+0*8,"ZXCPC   .X0 "
+        db $C7+1*8,"ZXCPC   .X1 "
+        db $C7+3*8,"ZXCPC   .X3 "
+        db $C7+4*8,"ZXCPC   .X4 "
+        db $C7+6*8,"ZXCPC   .X6 "
+        db $C7+7*8,"ZXCPC   .X7 "
+        db 0
+        endif
 
 ; ---- STUB1: se copia a $FE00 y se ejecuta sin firmware ----
 stub1:
@@ -159,8 +191,12 @@ stub1:
         ld de,$0000
         ld bc,$4000
         ldir
-        ; banco 7 visible en $4000 para que STUB2 lo copie a $C000
+        ; bloque D visible en $4000 para que STUB2 lo copie a $C000
+        if Z128
+        ld bc,$7FC5
+        else
         ld bc,$7FC7
+        endif
         out (c),c
         jp STUB2
 stub1_end:

@@ -91,13 +91,16 @@ isr:    push af
         cp 6
         jr nc,isr_frame         ; VSYNC perdido: cada 6 ticks es un frame
         ld (tick),a
+        if REFRESH_LINES
         cp REFRESH_LINES+1
         jr c,isr_refresh        ; ticks 1..REFRESH_LINES: una línea de refresco
+        endif
         pop bc
         pop af
         ei
         ret
 
+        if REFRESH_LINES
 isr_refresh:
         push de
         push hl
@@ -124,6 +127,7 @@ isr_refresh:
         pop af
         ei
         ret
+        endif
 
 isr_frame:
         xor a
@@ -861,15 +865,50 @@ out_c_value:
 ; Escritura en el AY del 128K. Ajusta periodos al reloj del CPC
 ; (1 MHz frente a 1,7734 MHz: factor 0,5625). A = valor. Destruye todo salvo IX/IY.
         if USE_AY
+        if Z128
+; 128K: el cuerpo está en un hueco de la pantalla B (bloque base 3), visible en
+; $C800 con la configuración 0; la pila del juego está siempre por debajo de $C000.
 ay_write:
         ld e,a
+        ld a,i
+        push af
+        di
+        ld bc,$7FC0
+        out (c),c
+        call ay_write0
+        ld a,(cur_cfg)
+        ld b,$7F
+        out (c),a
+        pop af
+        ret po
+        ei
+        ret
+ay_resume:
+        org $C800
+ay_write0:
+        else
+ay_write:
+        ld e,a
+        endif
         ld a,(ay_sel)
         cp 14
         ret nc
         ld hl,ay_shadow
         add a,l
         ld l,a
-        ld (hl),e
+        ld a,(hl)
+        cp e
+        jr nz,.new
+        ld a,(ay_sel)           ; mismo valor: el PSG ya lo tiene, salvo en la forma
+        cp 13                   ; (reinicia la envolvente) y en los registros que
+        jr z,.new               ; también toca el beeper (0, 1, 7 y 8)
+        cp 7
+        jr z,.new
+        cp 8
+        jr z,.new
+        cp 2
+        ret nc
+.new:   ld (hl),e
         ld a,(ay_sel)
         cp 6
         jr c,.tone
@@ -950,6 +989,11 @@ scale:  push de
         add hl,de
         pop de
         ret
+        if Z128
+ay_end0:
+        assert ay_end0 <= $CA00, "hueco $C800 de la pantalla B lleno"
+        org ay_resume
+        endif
         endif
 c5_end:
         assert c5_end <= $2A00, "bloque 5 lleno"
@@ -965,6 +1009,7 @@ refresh_y:  db 0
 
 ; Convierte la línea A (0-191) completa. Usa todos los registros (incluidos
 ; los alternativos): solo se llama desde la interrupción, que los guarda.
+        if REFRESH_LINES | USE_CLS
 conv_line:
         ld c,a
         ; destino CPC: ln*$800 + (t+1)*$200 + r*64
@@ -1047,6 +1092,7 @@ conv_line:
         exx
         djnz .l
         ret
+        endif
 
 ; --- Sustitutos de rutinas de la ROM del Spectrum ---------------------------
 
@@ -1617,13 +1663,7 @@ z128_c000:
         push bc
         push de
         push hl
-        ld a,h
-        sub $C0
-        cp $18
-        jr nc,.att7
-        call conv_byte_b
-        jr .done
-.att7:  call conv_cell_b
+        call conv_b
         jr .done
 .b5:    push bc                 ; pantalla 0 por $C000: pasar el byte a $4000
         push de
@@ -1644,88 +1684,34 @@ z128_c000:
 .out:   pop af
         ret
 
-; Como conv_byte, para la pantalla 1: lee el Spectrum en $C000 (banco 7) y
-; escribe en la pantalla B del CPC (bloque base 3). Destruye AF, BC, DE, HL.
-conv_byte_b:
-        ld a,(hl)
-        push af
-        ld a,h
-        rrca
-        rrca
-        rrca
-        and 3
-        or $D8
-        ld d,a
-        ld e,l
-        ld a,(de)               ; atributo
-        ld e,a
-        ld d,XM_PAGE
-        ld a,(de)
-        ld c,a
-        inc d
-        ld a,(de)
-        ld b,a
-        ld a,h
-        and $1F
-        ld e,a
-        ld d,HITAB/256
-        ld a,(de)
-        sla l
-        adc a,$C0
-        ld d,a
-        ld e,l                  ; DE = dirección en la pantalla B
-        pop af
-        ld l,a
-        ld h,TABHI_PAGE
-        ld a,(hl)
-        and c
-        xor b
-        ld (cb_t),a
-        inc h
-        ld a,(hl)
-        and c
-        xor b
-        ld l,a                  ; L = 2º byte
+; Pantalla 1: convierte el byte (o las 8 líneas de la celda de atributo) de HL
+; ($C000-$DAFF, banco 7) con el código del bloque base 3 (OVL_*), que se ve en
+; $4000 con la configuración 3, junto al banco 7 en $C000. Con pila propia: la
+; del juego puede estar en $4000-$7FFF. Destruye AF, BC, DE, HL.
+conv_b:
         ld a,i
         push af
         di
-        ld bc,$7FC0             ; bloque base 3 en $C000
+        ld (.sp),sp
+        ld sp,.stk
+        ld bc,$7F00+$C3+7*8
         out (c),c
-        ld a,(cb_t)
-        ld (de),a
-        inc e
-        ld a,l
-        ld (de),a
+        call OVL_CONV7
         ld a,(cur_cfg)
+        ld b,$7F
         out (c),a
+        ld sp,(.sp)
         pop af
         ret po
         ei
         ret
-
-; Las 8 líneas de la celda de la pantalla 1 cuyo atributo está en HL ($D800-)
-conv_cell_b:
-        ld a,h
-        and 3
-        add a,a
-        add a,a
-        add a,a
-        or $C0
-        ld h,a
-        ld b,8
-.l:     push bc
-        push hl
-        call conv_byte_b
-        pop hl
-        pop bc
-        inc h
-        djnz .l
-        ret
+        ds 16                   ; OVL_CONV7 usa hasta 10 bytes
+.stk:
+.sp:    dw 0
 
 zx_7ffd:    db INIT_7FFD
 zx_bank:    db INIT_7FFD & 7
 cur_cfg:    db $C1 + (INIT_7FFD & 7) * 8
-cb_t:       db 0
         endif
 c7_end:
         assert c7_end <= $3A00, "bloque 7 lleno"

@@ -397,3 +397,118 @@ def test_128k_con_paginacion_se_rechaza(tmp_path):
     an = analyze(p, run_dynamic(p, frames=5))
     with pytest.raises(ValueError, match="pagina memoria"):
         port_zx_to_cpc(an)
+
+
+def _snap128(tmp_path, src, attr=0x38):
+    """Instantánea de 128K con ``src`` (org $8000) en el banco 2 y el banco 0 en $C000."""
+    from zxcpc.z80.asm import assemble
+    from zxcpc.formats.zx import ZXState, write_z80
+    code = assemble(src).image()
+    banks = {b: bytearray(16384) for b in range(8)}
+    banks[2][0:len(code)] = code
+    banks[5][0x1800:0x1B00] = bytes([attr]) * 0x300
+    banks[7][0x1800:0x1B00] = bytes([attr]) * 0x300
+    regs = {k: 0 for k in ("AF", "BC", "DE", "HL", "AF'", "BC'", "DE'", "HL'", "IX", "IY",
+                           "I", "R")}
+    regs.update(SP=0xBF00, PC=0x8000)
+    st = ZXState(bytearray(49152), regs, 0, 0, 1, 0)
+    st.model, st.banks = "128k", banks
+    snap = tmp_path / "p.z80"
+    snap.write_bytes(write_z80(st))
+    return load_program(str(snap)), st
+
+
+def test_512k_ldi_con_pila_secuestrada(tmp_path):
+    """128K en el CPC de 576K: volcado a la pantalla 1 con LD SP,tabla / POP DE / LDI x24
+    (los LDI parcheados no deben machacar la tabla con su dirección de retorno), en
+    pantalla 0 y en pantalla 1 alternando, más escrituras en el AY por OUT (C)."""
+    from zxcpc.port.zx2cpc import port_zx_to_cpc, PortOptions
+    from zxcpc.machines.spectrum import Spectrum128
+    rows = ", ".join(f"${0xC000 + (r & 7) * 0x100 + (r >> 3) * 0x20 + 4:04X}"
+                     for r in range(16))
+    p, st = _snap128(tmp_path, f"""
+        org $8000
+start:  di
+        ld a,$0F                ; banco 7 en $C000 y pantalla 1 visible
+        ld (bank),a
+main:   ld a,(bank)
+        xor $0A                 ; alternar banco 7/pantalla 1 y banco 5/pantalla 0
+        ld (bank),a
+        ld bc,$7FFD
+        out (c),a
+        ld hl,src
+        ld (save),sp
+        ld sp,table
+        ld a,16
+.r:     pop de
+        rept 24
+        ldi
+        endr
+        dec a
+        jr nz,.r
+        ld sp,(save)
+        ld a,(cnt)
+        ld e,a
+        ld hl,src               ; cambiar parte del origen
+        ld b,96
+.m:     ld a,(hl)
+        add a,e
+        ld (hl),a
+        inc hl
+        inc hl
+        djnz .m
+        ld bc,$FFFD
+        ld a,8
+        out (c),a
+        ld b,$BF
+        ld a,e
+        and 15
+        out (c),a
+        ld hl,cnt
+        dec (hl)
+        jr nz,main
+.fin:   jr .fin
+cnt:    db 24
+bank:   db 0
+save:   dw 0
+table:  dw {rows}
+src:    db {", ".join(str((i * 37) & 255) for i in range(384))}
+""")
+    an = analyze(p, run_dynamic(p, frames=40))
+    res = port_zx_to_cpc(an, PortOptions(ram512=True))
+    assert any(pt.text == "24 x LDI" for pt in res.patches)
+    z = Spectrum128(None, None)
+    z.load_state(st)
+    for _ in range(40):
+        z.run_frame()
+    z._sync()
+    c = CPC(ram_kb=576)
+    c.load_state(res.state)
+    for _ in range(200):
+        c.run_frame()
+    c.ram()
+    ram = b"".join(bytes(pg) for pg in c.pages)           # base y ampliación
+    pm = bytes(res.state.mem[0x1100:0x1200])
+    tbl = 0x8000 + p.mem[0x8000:0x8100].find(bytes([0x04, 0xC0, 0x04, 0xC1]))
+    assert c.cpu.mem[tbl:tbl + 32] == z.banks[2][tbl - 0x8000:tbl - 0x8000 + 32]
+    for bank, base in ((7, 0xC000), (5, 0x0000)):
+        zx = z.banks[bank]
+        cp = ram[0x10000 + bank * 0x10000 + 0xC000:][:0x1B00] if bank == 7 else \
+            ram[0x4000:0x5B00]
+        assert bytes(cp) == bytes(zx[:0x1B00])
+        # píxeles de la pantalla del CPC (A en $0000, B en el bloque base 3)
+        for y in range(16):
+            za = ((y & 7) << 8) | ((y >> 3) << 5)
+            for col in range(4, 28):
+                v = zx[za + col]
+                pp = decode_byte(pm[zx[0x1800 + (y >> 3) * 32 + col]], 1)
+                k = base + (y & 7) * 0x800 + 0x200 + (y >> 3) * 64 + col * 2
+                pens = decode_byte(ram[k], 1) + decode_byte(ram[k + 1], 1)
+                ink = [(v >> (7 - i)) & 1 for i in range(8)]
+                assert [1 if q != pp[i & 3] else 0 for i, q in enumerate(pens)] == ink, \
+                    (bank, y, col)
+    assert c.psg[8] == z.ay[8]
+    # disco: los bancos del Spectrum que no están en la base van en ficheros aparte
+    from zxcpc.port.zx2cpc import build_dsk
+    dsk = build_dsk(res)
+    assert b"ZXCPC   X7 " in dsk and b"ZXCPC   X5 " not in dsk
