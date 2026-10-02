@@ -44,6 +44,9 @@ canvas { display: block; width: 100%; height: auto; aspect-ratio: 320 / 240; ima
 .btn:active, .btn.down { transform: translateY(2px); border-bottom-width: 1px; background: var(--panel); }
 .btn:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 .btn.wide { min-width: 120px; }
+.speed { display: inline-flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 1.2rem; color: var(--muted); }
+.speed select { font-family: var(--mono); font-size: 1.15rem; color: var(--ink); background: var(--key); border: 0; border-bottom: 3px solid #15171b; border-radius: 5px; padding: 5px 8px; }
+.speed select:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 .status { font-family: var(--mono); font-size: 1.1rem; color: var(--muted); margin-left: auto; font-variant-numeric: tabular-nums; }
 .keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 18px; font-size: .92rem; color: var(--muted); }
 .keys b { color: var(--ink); font-weight: 600; }
@@ -64,6 +67,13 @@ kbd { font-family: var(--mono); font-size: 1.05rem; background: var(--key); colo
     <button class="start" id="start" type="button">Pulsa para encender</button>
   </div>
   <div class="bar">
+    <label class="speed" for="speed">CPU
+      <select id="speed">
+        <option value="{{TURBO}}" selected>como el original</option>
+        <option value="2">×2</option>
+        <option value="1">CPC real (4 MHz)</option>
+      </select>
+    </label>
     <button class="btn wide" id="snd" type="button" aria-pressed="true">Sonido: sí</button>
     <button class="btn" id="pause" type="button">Pausa</button>
     <button class="btn" id="reset" type="button">Reiniciar</button>
@@ -118,6 +128,7 @@ kbd { font-family: var(--mono); font-size: 1.05rem; background: var(--key); colo
   function boot() {
     m = new Z.CPC(rom, {{RAMKB}});
     m.loadSna(sna);
+    m.turbo = +document.getElementById("speed").value;
     ay = new Z.AY(actx ? actx.sampleRate : 44100);
     for (let r = 0; r < 14; r++) ay.write(r, m.psg[r]);
     held.forEach((k) => m.press(k));
@@ -165,6 +176,10 @@ kbd { font-family: var(--mono); font-size: 1.05rem; background: var(--key); colo
     requestAnimationFrame(loop);
   }
   document.getElementById("start").addEventListener("click", start);
+  document.getElementById("speed").addEventListener("change", (e) => {
+    if (m) m.turbo = +e.target.value;
+    e.target.blur();                    // que las teclas vuelvan al juego
+  });
   document.getElementById("snd").addEventListener("click", (e) => {
     sound = !sound;
     e.currentTarget.textContent = "Sonido: " + (sound ? "sí" : "no");

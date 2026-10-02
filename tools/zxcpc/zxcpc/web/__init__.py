@@ -15,8 +15,11 @@ DEFAULT_PAD = [("ESPACIO", "SPACE"), ("1", "1"), ("0", "0"), ("Y", "Y"), ("N", "
                ("O", "O"), ("P", "P"), ("Q", "Q"), ("A", "A"), ("M", "M"), ("INTRO", "RETURN")]
 
 
-def build_player(sna: bytes, title: str, note: str = "", pad=None) -> str:
-    """Página del reproductor con ``sna`` dentro (un SNA de CPC sin comprimir)."""
+def build_player(sna: bytes, title: str, note: str = "", pad=None, turbo: float = 1.0) -> str:
+    """Página del reproductor con ``sna`` dentro (un SNA de CPC sin comprimir).
+    ``turbo`` es la velocidad de CPU de la opción «como el original»: cuántas veces
+    más rápido que un CPC debe ir el Z80 para que el port vaya como en el Spectrum
+    (el vídeo y las interrupciones siguen a 50 Hz, así que la música no se acelera)."""
     if not sna.startswith(b"MV - SNA"):
         raise ValueError("el reproductor web necesita un .sna de CPC")
     size_kb = sna[0x6B] | (sna[0x6C] << 8)
@@ -32,6 +35,7 @@ def build_player(sna: bytes, title: str, note: str = "", pad=None) -> str:
         "{{RAMKB}}": str(max(128, size_kb)),
         "{{NOTE}}": html.escape(note),
         "{{PAD}}": json.dumps([list(p) for p in keys]),
+        "{{TURBO}}": f"{max(1.0, turbo):g}",
         "{{SNA}}": base64.b64encode(sna).decode(),
     }.items():
         page = page.replace(k, v)

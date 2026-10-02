@@ -132,7 +132,12 @@ un CPC 6128 (hasta 576K) escrito en JavaScript (`zxcpc/web/cpc.js`) y el snapsho
 dentro. El teclado del ordenador hace de teclado del CPC, el PSG suena con Web Audio
 y en el móvil aparecen unas teclas en pantalla. El emulador en JavaScript es una
 traducción del de Python y da exactamente el mismo resultado ciclo a ciclo (lo
-comprueba `tests/test_web.py`). No lleva las ROMs del CPC: los ports de Spectrum no
+comprueba `tests/test_web.py`). Con `--turbo N`, la opción «como el original» del
+selector de CPU hace que el Z80 vaya N veces más rápido con el vídeo y las
+interrupciones a 50 Hz: el juego gana velocidad y la música, que va por interrupción,
+mantiene su ritmo (Where Time Stood Still va como en el Spectrum con `--turbo 3.7`).
+Un CPC real o Caprice32 no pueden hacer eso: allí el port va a su velocidad. No lleva
+las ROMs del CPC: los ports de Spectrum no
 las necesitan, y la pantalla de créditos usa una fuente propia.
 
 ## Cómo funciona

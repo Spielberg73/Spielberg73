@@ -678,6 +678,9 @@ class CPC {
     this.keys = new Array(10).fill(0xFF);
     this.frame = 0; this.line = 0; this.usInLine = 0;
     this.intPending = false; this.intCounter = 0;
+    this.turbo = 1;                      // CPU más rápida con el vídeo a 50 Hz (1 = CPC real)
+    this.tAcc = 0;
+    this.trace = null;
     const self = this;
     this.cpu = new Z80({
       rd: (a) => self.rdmap[a >> 14][a & 0x3FFF],
@@ -796,8 +799,15 @@ class CPC {
         if (t) { this.intPending = false; this.intCounter &= 0x1F; this.advance((t + 3) >> 2); continue; }
       }
       if (c.halted) { this.advance(LINE_US - this.usInLine); continue; }
+      if (this.trace) this.trace(c.pc);
       const t = c.step();
-      this.advance((t + 3) >> 2);
+      if (this.turbo === 1) this.advance((t + 3) >> 2);
+      else {
+        // la CPU va ``turbo`` veces más rápida: el tiempo avanza menos por instrucción
+        this.tAcc += t;
+        const k = 4 * this.turbo, us = Math.floor(this.tAcc / k);
+        if (us) { this.tAcc -= us * k; this.advance(us); }
+      }
     }
     this.line -= LINES;
     this.frame++;
