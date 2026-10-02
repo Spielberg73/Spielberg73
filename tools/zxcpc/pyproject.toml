@@ -21,3 +21,4 @@ include = ["zxcpc*"]
 
 [tool.setuptools.package-data]
 "zxcpc.port" = ["hal/*.asm"]
+"zxcpc.web" = ["*.js", "*.html"]

@@ -1,0 +1,210 @@
+<title>{{TITLE}}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=VT323&display=swap">
+<style>
+/* Una pantalla de monitor CTM644 sobre la carcasa gris del 6128: el juego manda; los mandos, debajo, como teclas del CPC */
+:root {
+  --case: #1d1f24;        /* carcasa */
+  --bezel: #0b0c0e;       /* marco del tubo */
+  --panel: #2a2d34;       /* teclas y paneles */
+  --ink: #e9e6dd;         /* texto */
+  --muted: #9a9ca3;
+  --red: #e2332b; --green: #2fb34a; --blue: #2f7fe0;   /* las tres franjas del logo */
+  --key: #3a3e47;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --mono: "VT323", "Courier New", monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body {
+  background: var(--case); color: var(--ink); font-family: var(--display);
+  padding-inline: 16px; padding-block: 18px 28px; box-sizing: border-box;
+}
+.wrap { max-width: 900px; margin: 0 auto; display: grid; gap: 14px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+h1 { margin: 0; font-weight: 800; font-size: clamp(1.25rem, 3.6vw, 1.9rem); letter-spacing: -0.01em; text-wrap: balance; }
+.stripes { display: inline-flex; gap: 3px; margin-right: 10px; vertical-align: middle; }
+.stripes i { display: block; width: 18px; height: 6px; transform: skewX(-24deg); }
+.stripes i:nth-child(1) { background: var(--red); } .stripes i:nth-child(2) { background: var(--green); } .stripes i:nth-child(3) { background: var(--blue); }
+.spec { font-family: var(--mono); font-size: 1.15rem; color: var(--muted); letter-spacing: 0.04em; }
+.monitor { background: var(--bezel); border-radius: 18px; padding: clamp(10px, 2.4vw, 22px); box-shadow: inset 0 0 0 2px #000, 0 10px 30px rgba(0,0,0,.45); position: relative; }
+canvas { display: block; width: 100%; height: auto; aspect-ratio: 320 / 240; image-rendering: pixelated; border-radius: 6px; background: #000; max-width: 100%; }
+.start {
+  position: absolute; inset: 0; margin: auto; width: fit-content; height: fit-content;
+  font-family: var(--mono); font-size: clamp(1.4rem, 4vw, 2rem); letter-spacing: .06em;
+  color: var(--ink); background: var(--panel); border: 2px solid var(--ink); border-radius: 6px;
+  padding: 10px 22px; cursor: pointer;
+}
+.start:hover, .start:focus-visible { background: var(--green); color: #06120a; outline: none; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.btn {
+  font-family: var(--mono); font-size: 1.2rem; color: var(--ink); background: var(--key);
+  border: 0; border-bottom: 3px solid #15171b; border-radius: 5px; padding: 6px 14px; cursor: pointer; min-width: 44px;
+}
+.btn:active, .btn.down { transform: translateY(2px); border-bottom-width: 1px; background: var(--panel); }
+.btn:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.btn.wide { min-width: 120px; }
+.status { font-family: var(--mono); font-size: 1.1rem; color: var(--muted); margin-left: auto; font-variant-numeric: tabular-nums; }
+.keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 18px; font-size: .92rem; color: var(--muted); }
+.keys b { color: var(--ink); font-weight: 600; }
+kbd { font-family: var(--mono); font-size: 1.05rem; background: var(--key); color: var(--ink); border-radius: 4px; padding: 0 6px; border-bottom: 2px solid #15171b; }
+.pad { display: none; gap: 8px; flex-wrap: wrap; }
+@media (pointer: coarse) { .pad { display: flex; } }
+.credit { font-size: .85rem; color: var(--muted); max-width: 65ch; line-height: 1.45; }
+@media (prefers-reduced-motion: reduce) { .btn:active, .btn.down { transform: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1><span class="stripes" aria-hidden="true"><i></i><i></i><i></i></span>{{TITLE}}</h1>
+    <span class="spec">CPC 6128 · {{RAMKB}}K</span>
+  </header>
+  <div class="monitor">
+    <canvas id="scr" width="320" height="240" aria-label="Pantalla del Amstrad CPC"></canvas>
+    <button class="start" id="start" type="button">Pulsa para encender</button>
+  </div>
+  <div class="bar">
+    <button class="btn wide" id="snd" type="button" aria-pressed="true">Sonido: sí</button>
+    <button class="btn" id="pause" type="button">Pausa</button>
+    <button class="btn" id="reset" type="button">Reiniciar</button>
+    <span class="status" id="status">apagado</span>
+  </div>
+  <div class="pad" id="pad" aria-label="Teclas en pantalla"></div>
+  <div class="keys">
+    <div><b>Teclado</b>: el del ordenador hace de teclado del CPC.</div>
+    <div><kbd>Intro</kbd> RETURN · <kbd>Espacio</kbd> SPACE</div>
+    <div><kbd>Mayús</kbd> SHIFT · <kbd>Ctrl</kbd> CONTROL</div>
+    <div><kbd>←↑→↓</kbd> cursores · <kbd>Esc</kbd> ESC</div>
+  </div>
+  <p class="credit">{{NOTE}}</p>
+</div>
+
+<script>
+{{CPCJS}}
+</script>
+<script>
+(() => {
+  const SNA_B64 = "{{SNA}}";
+  const PAD = {{PAD}};
+  const Z = window.ZXCPC;
+  const raw = atob(SNA_B64);
+  const sna = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) sna[i] = raw.charCodeAt(i);
+
+  // ROM baja de mentira: solo la fuente en $3800 (5x7), para la pantalla de créditos
+  const GLYPHS = {"A":"0e11111f111111","B":"1e11111e11111e","C":"0e11101010110e","D":"1e11111111111e","E":"1f10101e10101f","F":"1f10101e101010","G":"0e11101711110f","H":"1111111f111111","I":"0e04040404040e","J":"0702020202120c","K":"11121418141211","L":"1010101010101f","M":"111b1515111111","N":"11111915131111","O":"0e11111111110e","P":"1e11111e101010","Q":"0e11111115120d","R":"1e11111e141211","S":"0f10100e01011e","T":"1f040404040404","U":"1111111111110e","V":"11111111110a04","W":"1111111515150a","X":"11110a040a1111","Y":"11110a04040404","Z":"1f01020408101f","0":"0e11131519110e","1":"040c040404040e","2":"0e11010204081f","3":"1f02040201110e","4":"02060a121f0202","5":"1f101e0101110e","6":"0608101e11110e","7":"1f010204080808","8":"0e11110e11110e","9":"0e11110f01020c","(":"02040808080402",")":"08040202020408",".":"00000000000c0c",",":"000000000c0408",":":"000c0c000c0c00","-":"0000001f000000","!":"04040404040004","?":"0e110102040004","/":"01010204081010","'":"04040800000000"," ":"00000000000000"};
+  const rom = new Uint8Array(16384);
+  for (let ch = 32; ch < 128; ch++) {
+    const g = GLYPHS[String.fromCharCode(ch).toUpperCase()];
+    if (!g) continue;
+    for (let row = 0; row < 7; row++) rom[0x3800 + ch * 8 + row] = (parseInt(g.substr(row * 2, 2), 16) << 2) & 0xFF;
+  }
+
+  const KEYMAP = {
+    Enter: "RETURN", NumpadEnter: "ENTER", Space: "SPACE", ShiftLeft: "SHIFT", ShiftRight: "SHIFT",
+    ControlLeft: "CTRL", ControlRight: "CTRL", ArrowUp: "CURUP", ArrowDown: "CURDOWN",
+    ArrowLeft: "CURLEFT", ArrowRight: "CURRIGHT", Escape: "ESC", Backspace: "DEL", Delete: "CLR",
+    Tab: "TAB", CapsLock: "CAPSLOCK", Comma: ",", Period: ".", Slash: "/", Semicolon: ";",
+    Minus: "-", BracketLeft: "[", BracketRight: "]", Backslash: "\\", Quote: ":", AltLeft: "COPY",
+  };
+  for (let c = 65; c <= 90; c++) KEYMAP["Key" + String.fromCharCode(c)] = String.fromCharCode(c);
+  for (let d = 0; d <= 9; d++) { KEYMAP["Digit" + d] = String(d); KEYMAP["Numpad" + d] = String(d); }
+
+  const cv = document.getElementById("scr"), ctx = cv.getContext("2d");
+  const W = 320, H = 240, img = ctx.createImageData(W, H);
+  const status = document.getElementById("status");
+  let m, ay, actx = null, nextT = 0, running = false, paused = false, sound = true, last = 0, acc = 0, held = new Set();
+
+  function boot() {
+    m = new Z.CPC(rom, {{RAMKB}});
+    m.loadSna(sna);
+    ay = new Z.AY(actx ? actx.sampleRate : 44100);
+    for (let r = 0; r < 14; r++) ay.write(r, m.psg[r]);
+    held.forEach((k) => m.press(k));
+  }
+  function draw() {
+    const bc = m.border(), d = img.data;
+    for (let i = 0; i < d.length; i += 4) { d[i] = bc >> 16; d[i + 1] = (bc >> 8) & 255; d[i + 2] = bc & 255; d[i + 3] = 255; }
+    const w = m.crtc[1] * 8, h = m.crtc[6] * ((m.crtc[9] & 31) + 1);
+    if (w <= W && h <= H) m.render(d, W, (W - w) >> 1, (H - h) >> 1);
+    ctx.putImageData(img, 0, 0);
+  }
+  function audio() {
+    if (!actx) return;
+    const n = Math.round(actx.sampleRate / 50);
+    const s = ay.render(n, m.psgLog, Z.LINES * Z.LINE_US);
+    if (!sound) return;
+    const buf = actx.createBuffer(1, n, actx.sampleRate);
+    const ch = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) ch[i] = s[i] * 0.5;
+    const src = actx.createBufferSource();
+    src.buffer = buf; src.connect(actx.destination);
+    const now = actx.currentTime;
+    if (nextT < now + 0.02 || nextT > now + 0.3) nextT = now + 0.06;
+    src.start(nextT);
+    nextT += n / actx.sampleRate;
+  }
+  function loop(t) {
+    if (!running) return;
+    if (!last) last = t;
+    acc += Math.min(t - last, 100);
+    last = t;
+    let n = 0;
+    while (!paused && acc >= 20 && n < 4) { m.runFrame(); audio(); acc -= 20; n++; }
+    if (paused) acc = 0;
+    if (n) draw();
+    requestAnimationFrame(loop);
+  }
+  function start() {
+    try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { actx = null; }
+    boot();
+    running = true;
+    document.getElementById("start").hidden = true;
+    status.textContent = "encendido";
+    cv.focus();
+    requestAnimationFrame(loop);
+  }
+  document.getElementById("start").addEventListener("click", start);
+  document.getElementById("snd").addEventListener("click", (e) => {
+    sound = !sound;
+    e.currentTarget.textContent = "Sonido: " + (sound ? "sí" : "no");
+    e.currentTarget.setAttribute("aria-pressed", String(sound));
+  });
+  document.getElementById("pause").addEventListener("click", (e) => {
+    if (!running) return;
+    paused = !paused;
+    e.currentTarget.textContent = paused ? "Seguir" : "Pausa";
+    status.textContent = paused ? "en pausa" : "encendido";
+  });
+  document.getElementById("reset").addEventListener("click", () => { if (running) { boot(); status.textContent = "reiniciado"; } });
+
+  function isTyping(e) { return e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA"); }
+  window.addEventListener("keydown", (e) => {
+    const k = KEYMAP[e.code];
+    if (!k || !running || isTyping(e)) return;
+    e.preventDefault();
+    held.add(k); m.press(k);
+  });
+  window.addEventListener("keyup", (e) => {
+    const k = KEYMAP[e.code];
+    if (!k || !running) return;
+    e.preventDefault();
+    held.delete(k); m.release(k);
+  });
+  window.addEventListener("blur", () => { if (m) held.forEach((k) => m.release(k)); held.clear(); });
+
+  // teclas en pantalla para móviles
+  const pad = document.getElementById("pad");
+  for (const [label, k] of PAD) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "btn"; b.textContent = label;
+    const down = (e) => { e.preventDefault(); if (!running) return; b.classList.add("down"); held.add(k); m.press(k); };
+    const up = (e) => { e.preventDefault(); if (!running) return; b.classList.remove("down"); held.delete(k); m.release(k); };
+    b.addEventListener("pointerdown", down);
+    b.addEventListener("pointerup", up);
+    b.addEventListener("pointerleave", up);
+    b.addEventListener("pointercancel", up);
+    pad.appendChild(b);
+  }
+})();
+</script>

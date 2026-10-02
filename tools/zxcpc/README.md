@@ -88,6 +88,7 @@ Cada `port` deja en el directorio de salida:
 | `run` | ejecuta en la máquina emulada, con teclas programadas (`--keys 20-60:P,60-90:A+SPACE`), y guarda una captura (`--png`) |
 | `asm` | ensambla un fichero `.asm` (sintaxis compatible con pasmo) |
 | `scr` | convierte una pantalla `.scr` del Spectrum a PNG y, con `--cpc`, a una pantalla del CPC |
+| `web` | página HTML para jugar a un `.sna` de CPC (por ejemplo, el de un port) en el navegador, sin instalar ningún emulador |
 
 Opciones útiles de `port`:
 
@@ -123,6 +124,16 @@ Opciones útiles de `port`:
 4. Ajusta (`port.json`, `--exclude`, `--keys`) y repite. Para cambios de más
    calado, `disasm` da un fuente reensamblable del juego y `hal.asm` el de la capa
    de hardware.
+
+### Jugar en el navegador
+
+`zxcpc web juego_cpc.sna -o juego.html --titulo "Mi juego"` crea una sola página con
+un CPC 6128 (hasta 576K) escrito en JavaScript (`zxcpc/web/cpc.js`) y el snapshot
+dentro. El teclado del ordenador hace de teclado del CPC, el PSG suena con Web Audio
+y en el móvil aparecen unas teclas en pantalla. El emulador en JavaScript es una
+traducción del de Python y da exactamente el mismo resultado ciclo a ciclo (lo
+comprueba `tests/test_web.py`). No lleva las ROMs del CPC: los ports de Spectrum no
+las necesitan, y la pantalla de créditos usa una fuente propia.
 
 ## Cómo funciona
 

@@ -366,6 +366,17 @@ def _port_cpc2zx(args, p, an, cfg, outdir, name, shots_dir, html_report):
     return 0
 
 
+def cmd_web(args):
+    from .web import build_player
+    data = open(args.file, "rb").read()
+    title = args.titulo or os.path.splitext(os.path.basename(args.file))[0]
+    out = args.output or os.path.splitext(args.file)[0] + ".html"
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(build_player(data, title, args.nota))
+    print(f"reproductor web: {out}")
+    return 0
+
+
 def cmd_scr(args):
     """Convierte pantallas: .scr de Spectrum -> PNG / pantalla CPC y viceversa."""
     from .machines.spectrum import Spectrum48K
@@ -465,6 +476,13 @@ def main(argv=None):
     sp.add_argument("file")
     sp.add_argument("-o", "--output")
     sp.set_defaults(func=cmd_asm)
+
+    sp = sub.add_parser("web", help="página HTML para jugar a un .sna de CPC en el navegador")
+    sp.add_argument("file", help="snapshot .sna de CPC (por ejemplo, el de un port)")
+    sp.add_argument("-o", "--output")
+    sp.add_argument("--titulo", help="título de la página (por defecto, el nombre del fichero)")
+    sp.add_argument("--nota", default="", help="texto al pie de la página")
+    sp.set_defaults(func=cmd_web)
 
     sp = sub.add_parser("scr", help="convierte una pantalla .scr de Spectrum a PNG / CPC")
     sp.add_argument("file")
