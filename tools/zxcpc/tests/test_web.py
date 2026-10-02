@@ -76,8 +76,10 @@ def test_cpc_js_igual_que_python(zx_port, tmp_path):
 def test_pagina_del_reproductor(zx_port):
     from zxcpc.web import build_player
     _p, _an, res, _sy = zx_port
-    page = build_player(write_cpc_sna(res.state), "Juego <prueba>", "nota")
+    page = build_player(write_cpc_sna(res.state), "Juego <prueba>", "nota", standalone=False)
     assert page.startswith("<title>Juego &lt;prueba&gt;</title>")
+    full = build_player(write_cpc_sna(res.state), "Juego", "nota")
+    assert full.startswith("<!doctype html>") and '<meta charset="utf-8">' in full
     import re
     assert not re.search(r"\{\{[A-Z]+\}\}", page) and "class CPC" in page
     with pytest.raises(ValueError):

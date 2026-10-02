@@ -15,11 +15,15 @@ DEFAULT_PAD = [("ESPACIO", "SPACE"), ("1", "1"), ("0", "0"), ("Y", "Y"), ("N", "
                ("O", "O"), ("P", "P"), ("Q", "Q"), ("A", "A"), ("M", "M"), ("INTRO", "RETURN")]
 
 
-def build_player(sna: bytes, title: str, note: str = "", pad=None, turbo: float = 1.0) -> str:
+def build_player(sna: bytes, title: str, note: str = "", pad=None, turbo: float = 1.0,
+                 standalone: bool = True) -> str:
     """Página del reproductor con ``sna`` dentro (un SNA de CPC sin comprimir).
     ``turbo`` es la velocidad de CPU de la opción «como el original»: cuántas veces
     más rápido que un CPC debe ir el Z80 para que el port vaya como en el Spectrum
-    (el vídeo y las interrupciones siguen a 50 Hz, así que la música no se acelera)."""
+    (el vídeo y las interrupciones siguen a 50 Hz, así que la música no se acelera).
+    ``standalone`` añade la cabecera HTML (doctype, codificación) para abrir el fichero
+    directamente; sin ella, la página es el cuerpo que espera un publicador que la
+    envuelve."""
     if not sna.startswith(b"MV - SNA"):
         raise ValueError("el reproductor web necesita un .sna de CPC")
     size_kb = sna[0x6B] | (sna[0x6C] << 8)
@@ -39,4 +43,9 @@ def build_player(sna: bytes, title: str, note: str = "", pad=None, turbo: float 
         "{{SNA}}": base64.b64encode(sna).decode(),
     }.items():
         page = page.replace(k, v)
-    return page.replace("{{CPCJS}}", js.replace("</script", "<\\/script"))
+    page = page.replace("{{CPCJS}}", js.replace("</script", "<\\/script"))
+    if standalone:
+        page = ('<!doctype html>\n<html lang="es">\n<head>\n<meta charset="utf-8">\n'
+                '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+                '</head>\n<body>\n' + page + "\n</body>\n</html>\n")
+    return page

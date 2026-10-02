@@ -372,7 +372,8 @@ def cmd_web(args):
     title = args.titulo or os.path.splitext(os.path.basename(args.file))[0]
     out = args.output or os.path.splitext(args.file)[0] + ".html"
     with open(out, "w", encoding="utf-8") as f:
-        f.write(build_player(data, title, args.nota, turbo=args.turbo))
+        f.write(build_player(data, title, args.nota, turbo=args.turbo,
+                             standalone=not args.headless))
     print(f"reproductor web: {out}")
     return 0
 
@@ -484,6 +485,8 @@ def main(argv=None):
     sp.add_argument("--nota", default="", help="texto al pie de la página")
     sp.add_argument("--turbo", type=float, default=1.0,
                     help="CPU de la opción «como el original»: veces la de un CPC (p.ej. 3.7)")
+    sp.add_argument("--sin-cabecera", dest="headless", action="store_true",
+                    help="solo el cuerpo de la página, para publicadores que añaden la cabecera")
     sp.set_defaults(func=cmd_web)
 
     sp = sub.add_parser("scr", help="convierte una pantalla .scr de Spectrum a PNG / CPC")
