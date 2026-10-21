@@ -15,8 +15,8 @@ lo primero que hay que mirar si algo se ve raro en el emulador.
 | Sonido | YM2149: tres ondas cuadradas y un ruido |
 | Teclado | un 6301 aparte (el IKBD) que habla por una línea serie |
 
-Es la más espartana de las cinco máquinas del kit, y por eso la más
-interesante: lleva **el mismo procesador** que las otras cuatro y no tiene nada
+Es la más espartana de las siete máquinas del kit, y por eso la más
+interesante: lleva **el mismo procesador** que las otras seis y no tiene nada
 que le eche una mano.
 
 - **no tiene sprites**;
@@ -42,7 +42,7 @@ doce abajo: en un juego de plataformas abajo está el suelo, y recortarlo se
 nota mucho más que recortar cielo. Así el borde de abajo cae exactamente donde
 en las demás máquinas.
 
-La simulación no se entera: `cam_x` y `cam_y` valen lo mismo en las cinco
+La simulación no se entera: `cam_x` y `cam_y` valen lo mismo en las siete
 máquinas, y por eso la prueba de paridad C/JS sigue valiendo.
 
 ## Cómo dibuja NeoPlat
@@ -108,8 +108,9 @@ miraba todo dentro.
 
 ## Que quepa en un frame
 
-El juego **simula a 50 pasos por segundo**, igual que en las otras cuatro
-máquinas —eso es lo que hace que sea el mismo juego— y **dibuja a 25**, que es
+El juego **simula a 50 pasos por segundo**, los mismos que el Amiga —en la
+Neo Geo, la Mega Drive, la Jaguar y el X68000 son 60, los de su retrazo— y
+**dibuja a 25**, que es
 lo que da de sí un 68000 a 8 MHz sin blitter. Un frame del ST son 313 líneas
 de barrido y una línea son 512 ciclos: 160.000 ciclos por frame, 320.000 por
 cada dibujado.
@@ -172,7 +173,7 @@ otro entero.
 y unos 17 en las que juntan scroll y muchos actores a la vez (el nivel del
 ejemplo con nueve monedas y dos enemigos en pantalla). La simulación va a 50
 pasos por segundo en las dos, que es lo que hace que sea el mismo juego que en
-las otras cuatro máquinas.
+las otras seis máquinas.
 
 Y ojo con el reloj del juego: **una espera por paso, no una por vuelta**. Con
 una sola espera, en una pantalla con poco que dibujar la vuelta entera cabía en
@@ -405,7 +406,7 @@ En `np_video.c` hay por eso dos funciones casi idénticas: `np_pintar_actor`,
 que saca el tamaño del actor, y `np_pintar_bloque`, que lo recibe. Es a
 propósito, y está medido. Lo limpio —un solo pintor con los números por
 parámetro, y `np_pintar_actor` llamándolo— hace que **un juego normal pase de
-tocar 16 notas de 16 a tocar 8**: de las ocho máquinas, ésta es la más justa de
+tocar 16 notas de 16 a tocar 8**: de los ocho destinos, éste es el más justo de
 ciclos, y lo que se pierde en el frame se oye en la melodía. Poniéndolo así, en
 un juego que no sea de conducir el segundo pintor ni se compila y el camino de
 siempre queda exactamente como estaba.

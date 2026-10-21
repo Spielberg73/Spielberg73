@@ -7,7 +7,7 @@ las trampas que costaron encontrar.
 
 | | |
 |---|---|
-| CPU | Motorola **68000 a 13,3 MHz** — la misma familia que las otras siete |
+| CPU | Motorola **68000 a 13,3 MHz** — la misma familia que las otras seis |
 | Vídeo | **Object Processor**: recorre una lista de objetos en cada línea |
 | Color | 256 a la vez de una tabla, o 16 bits directos |
 | RAM | 2 MB de DRAM en `$000000` |
@@ -103,7 +103,7 @@ trampa en las dos, y no avisa.
 
 ## El parallax: otro objeto y ya está
 
-De las ocho máquinas, la Jaguar es donde el parallax sale más barato. No hay
+De las siete máquinas, la Jaguar es donde el parallax sale más barato. No hay
 que redibujar nada por frame: la capa es **otro objeto** de la lista, con su
 propio mapa de bits y su propia posición, y el chip lo compone antes que el
 escenario. Moverlo es cambiar dos números:
@@ -334,13 +334,15 @@ esperando a nada.
 
 ## Lo que aún no hace
 
-- **Muestras digitales.** Los DAC son de 16 bits y darían para voces y
-  percusión de verdad; de momento son ondas cuadradas y ruido, como en las otras
-  tres máquinas.
+- **Aprovechar los DAC de 16 bits.** Las muestras ya suenan —lo cuenta
+  *Muestras digitales*, más arriba— pero van como van en las demás máquinas: un
+  byte por muestra, sin signo y a los 20.774 Hz del manejador. Los DAC son de
+  **16 bits y en estéreo**, así que aquí cabrían voces y percusión de verdad, y
+  sería la única de las siete donde eso se nota.
 - **Más de una capa de parallax.** Se dibuja una; cabrían más, porque cada capa
   es sólo un objeto más de la lista.
 - **Color directo.** Se usan los 256 de la tabla. La Jaguar puede hacer 16 bits
-  por píxel, y sería la única de las ocho donde los PNG no habría que
+  por píxel, y sería la única de las siete donde los PNG no habría que
   recortarlos: se verían tal cual.
 - **El GPU** está sin tocar. Para un juego de plataformas no hace falta, pero
   ahí está. El **DSP** sí se usa: es el que toca el sonido, y lo cuenta la

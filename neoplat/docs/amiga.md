@@ -15,7 +15,7 @@ lo primero que hay que mirar si algo se ve raro en el emulador.
 | Color | 4096, **32 en pantalla** con 5 bitplanes |
 | Sonido | Paula: 4 canales de sonido digital por DMA |
 
-Es la más distinta de las tres máquinas: **no tiene tiles ni sprites de
+Es la más distinta de las siete máquinas: **no tiene tiles ni sprites de
 hardware suficientes** para un juego así. Tiene un mapa de bits que se puede
 mover entero por hardware y un blitter que dibuja encima.
 
@@ -284,7 +284,7 @@ joystick de dos botones, con el **rojo** en la línea de disparo de siempre
 exactamente lo que ya leía `engine/amiga`: rojo salta y empieza la partida,
 azul ataca. Los otros cinco botones (verde, amarillo, play y los dos de pista)
 piden un protocolo de registro de desplazamiento y no hacen falta: ninguno de
-los nueve géneros usa más de dos botones.
+los once géneros usa más de dos botones.
 
 ## Que quepa en un frame
 
@@ -455,8 +455,9 @@ pegado al salto no molesta mientras se juega.
 Paula tiene cuatro canales que leen una onda de la RAM chip por DMA y la
 repiten sin parar. Para dar una nota no hace falta una muestra larga: basta una
 **onda cuadrada de dos bytes** (+64 y −64) y cambiarle el periodo, que es justo
-lo que hacen el SSG de la Neo Geo y el PSG de la Mega Drive. Así las tres
-máquinas tocan exactamente las mismas notas.
+lo que hacen el SSG de la Neo Geo y el PSG de la Mega Drive. Así esas tres
+tocan exactamente las mismas notas, y las otras cuatro las mismas con la onda
+que tengan.
 
 ```
 canal 0 -> melodía     canal 1 -> acompañamiento

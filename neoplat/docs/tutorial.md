@@ -1165,7 +1165,9 @@ Todo lo que se puede tocar está en [docs/formato.md](formato.md): la sección
 
 ## Empezar de cero
 
-Los diez géneros de arriba traen un juego hecho. Está bien para ver cómo se
+Los diez géneros traen un juego hecho —nueve tienen su capítulo aquí; el de
+`castlevania` se escribe igual que el de plataformas, con lo que cuenta el
+[README](../README.md#cómo-es-un-juego)—. Está bien para ver cómo se
 escribe algo —es para lo que sirve este tutorial— pero es lo contrario de lo
 que hace falta cuando ya lo sabes y lo que quieres es **tu** juego: de un juego
 hecho se empieza **borrando**, y borrando en un `game.yaml` de trescientas

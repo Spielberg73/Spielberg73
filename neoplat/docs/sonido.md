@@ -1,8 +1,8 @@
 # El sonido, y cómo se comprueba que suena
 
-Las tres máquinas tocan las mismas notas, escritas una sola vez en el
+Las siete máquinas tocan las mismas notas, escritas una sola vez en el
 `game.yaml`. Cada una lo hace con un chip distinto y por un camino distinto, y
-las tres están comprobadas oyéndolas: las pruebas capturan lo que sale por el
+las siete están comprobadas oyéndolas: las pruebas capturan lo que sale por el
 altavoz y miran si las notas son las del `game.yaml`.
 
 ## Del game.yaml al altavoz
@@ -293,7 +293,7 @@ prueba los compara paso a paso sobre una tanda de melodías, barridos y ruidos
 
 ## Lo que aún no hace
 
-- **Muestras digitales en el Atari ST.** Las otras cinco ya las tocan; el
+- **Muestras digitales en el Atari ST.** Las otras seis ya las tocan; el
   YM2149 del ST no puede, salvo moviendo el volumen a mano desde la CPU, así
   que ahí no las habrá. El compilador avisa de los efectos que se quedarían
   mudos por no llevar notas al lado.

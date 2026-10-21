@@ -417,7 +417,7 @@ static void np_dibujar_carretera(const NpWorld *w)
 
 /* --- y el escalador de sprites (SCB2) ----------------------------------
  *
- * Lo que ninguna de las otras siete tiene: la Neo Geo **encoge sprites por
+ * Lo que ninguna de las otras seis tiene: la Neo Geo **encoge sprites por
  * hardware**. Cada sprite lleva en SCB2 una palabra con dos numeros, el de
  * arriba de cuatro bits (el ancho: de 1 a 16 pixeles por columna de tile) y el
  * de abajo de ocho (el alto). Es lo que hacen los jefes que se te vienen
@@ -425,7 +425,7 @@ static void np_dibujar_carretera(const NpWorld *w)
  *
  * El trafico de la carretera se sirve de las dos cosas a la vez: el motor
  * elige el dibujo con np_carretera_dibujo_zoom -que es como el de las otras
- * siete pero al reves: no el mas grande que valga, sino **el mas pequeno que
+ * seis pero al reves: no el mas grande que valga, sino **el mas pequeno que
  * no se quede corto**, para que un coche lejano siga costando un sprite y no
  * cuatro- y el escalador tapa el escalon hasta el tamano exacto. Aqui los
  * coches no crecen a saltos de cinco tamanos: crecen. */

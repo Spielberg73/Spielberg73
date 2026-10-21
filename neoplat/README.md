@@ -396,6 +396,22 @@ emulador. Los detalles, en [docs/formato.md](docs/formato.md).
 La referencia completa está en [docs/formato.md](docs/formato.md) y hay un
 tutorial paso a paso en [docs/tutorial.md](docs/tutorial.md).
 
+## El manual
+
+Son once documentos, y el índice —con el orden en que leerlos y qué contesta
+cada uno— está en **[docs/README.md](docs/README.md)**:
+
+| | |
+|---|---|
+| [docs/tutorial.md](docs/tutorial.md) | tu primer juego en 10 minutos, y un capítulo por género |
+| [docs/formato.md](docs/formato.md) | la referencia de `game.yaml`: todas las claves |
+| [docs/editor.md](docs/editor.md) | el editor, que es el propio preview |
+| [docs/sonido.md](docs/sonido.md) | las notas, los timbres y cómo se comprueba que suena |
+| [docs/neogeo.md](docs/neogeo.md) · [megadrive](docs/megadrive.md) · [amiga](docs/amiga.md) · [atarist](docs/atarist.md) · [jaguar](docs/jaguar.md) · [x68000](docs/x68000.md) | una máquina por documento: el hardware, qué hace el kit con él y lo que costó averiguarlo |
+
+En inglés está en [docs/en/](docs/en/README.md), y `make manual` deja los dos
+**PDF** en `dist/` (`neoplat-manual-es.pdf` y `neoplat-manual-en.pdf`).
+
 ## Repartirlo: los ZIP y el .exe
 
 ```bash
@@ -408,9 +424,9 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.54.zip` | sólo la documentación: este README y todo `docs/`. Es lo que te llevas si quieres leerla o pasársela a otro proyecto |
-| `neoplat-kit-1.54.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.54.zip` | el `ngplat.exe` y su LEEME |
+| `neoplat-docs-1.55.zip` | sólo la documentación: este README, todo `docs/` —el castellano y su traducción al inglés— y **los dos PDF del manual encuadernado** |
+| `neoplat-kit-1.55.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.55.zip` | el `ngplat.exe` y su LEEME |
 
 El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
 plantillas; no necesita Python ni nada instalado. Con **doble clic** —sin
@@ -532,7 +548,7 @@ neoplat/
 │   ├── bosque-magico/      juego de ejemplo listo para compilar
 │   ├── cueva-de-hierro/    el mismo motor con seis colores y parallax en Amiga
 │   └── costa-y-montana/    un juego de conducir: la calzada no es un dibujo
-└── tests/                  552 pruebas + 252 de jugabilidad + las del editor +
+└── tests/                  577 pruebas + 263 de jugabilidad + las del editor +
                             bot que se pasa los niveles + emuladores y navegador
 ```
 
@@ -629,7 +645,7 @@ Verificado aquí:
   las cosas dos veces). Cómo funciona la máquina y las cuatro trampas que
   costaron encontrarla, en [docs/jaguar.md](docs/jaguar.md).
 - **El binario no lleva nada que el 68000 no entienda**: las pruebas revisan el
-  código máquina de las **seis** máquinas (la Neo Geo también, compilando sus
+  código máquina de los **ocho destinos** (la Neo Geo también, compilando sus
   fuentes sin enlazar) y fallan si aparece una instrucción de 68020 o un acceso
   a una dirección impar. Así se encontró que la ROM de Neo Geo arrastraba el
   mismo fallo que colgaba la de Mega Drive.
@@ -665,7 +681,8 @@ Verificado aquí:
   mando se muere para siempre.
 - **El juego va a 25 frames por segundo en el ST** (10 antes de optimizar), y a
   unos 17 en las pantallas que juntan scroll y muchos actores; la simulación va
-  a 50 pasos por segundo en las dos, como en las demás máquinas. Medido en
+  a 50 pasos por segundo en las dos, los mismos que el Amiga (las otras cuatro
+  van a 60, los de su retrazo). Medido en
   líneas de barrido dentro de un ST emulado, poniendo el borde de color mientras
   dibuja. Lo que más subió no fue el dibujado sino el orden del bucle, y de paso
   salió un fallo de los feos: con una sola espera al retrazo por vuelta, una
@@ -793,20 +810,25 @@ Lo que aún no hace:
   razón: la pantalla gráfica es una sola página en ese modo. Dibujarlas con el blitter y quedarse con los 32 colores
   está medido y **no cabe**: 1.311 líneas de barrido sobre las 313 que da un
   frame ([docs/amiga.md](docs/amiga.md)).
-- **Muestras digitales en seis de las siete máquinas**: un efecto ya puede ser
+- **Muestras digitales en el Atari ST**: las otras seis ya las tocan. Un efecto puede ser
   un WAV tuyo (`muestra: sonidos/x.wav`). Lo toca Paula desde la RAM chip en el
   Amiga; en la Mega Drive se lo da al DAC del YM2612 un driver de Z80 que genera
   el propio compilador; en la Jaguar lo lee el DSP del cartucho; en la Neo Geo
   van por los canales ADPCM-A del YM2610, con la ROM V1 que también monta el
   compilador (con su códec, en Python puro); y en el X68000 las saca por DMA el
-  MSM6258, con ese mismo códec, que es de la misma familia. El Atari ST no
-  puede: su YM2149 sólo hace ondas cuadradas, y ahí suenan las notas que le
-  pongas al lado.
+  MSM6258, con ese mismo códec, que es de la misma familia. El que no puede es
+  el **Atari ST**: su YM2149 sólo hace ondas cuadradas y no tiene con qué leer
+  una muestra, así que ahí suenan las notas que le pongas al lado, y el
+  compilador avisa de los efectos que se quedarían mudos por no llevarlas.
 - **Parallax en el Atari ST con `camara: scroll`**: con `pantallas` sí se
   dibuja, y sale gratis porque la vista está quieta; deslizándose habría que
   repintar la pantalla entera cada pocos píxeles y no cabe
   ([docs/atarist.md](docs/atarist.md)).
-- **Zoom de sprites** (la Neo Geo lo permite; el motor no lo usa).
+- **Zoom de sprites fuera de la carretera**: la Neo Geo encoge sprites por
+  hardware y el motor **ya lo usa** —el tráfico de la carretera crece con el
+  escalador y no a saltos de cinco tamaños, lo cuenta
+  [docs/neogeo.md](docs/neogeo.md)—, pero sólo ahí: un jefe que se te viene
+  encima en los demás géneros todavía no lo aprovecha.
 
 ## Licencia
 

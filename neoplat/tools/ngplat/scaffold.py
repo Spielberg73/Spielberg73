@@ -4633,7 +4633,7 @@ RAM_DEL_GENERO = {
 def _declarar_ram(contenido: str, ram: str) -> str:
     """Escribe `amiga_ram:` en el yaml que acaba de salir de la plantilla.
 
-    Va aqui y no en cada plantilla porque son nueve plantillas y la memoria
+    Va aqui y no en cada plantilla porque son once plantillas y la memoria
     depende del genero **y** del estilo: repetir la linea en todas seria
     repetir nueve veces un numero que hay que volver a medir cada vez que el
     motor engorde.

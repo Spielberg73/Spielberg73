@@ -2,8 +2,14 @@
 
 Todas las claves se pueden escribir en castellano o en inglés
 (`jugador`/`player`, `salto`/`jump`...). Las velocidades van en **píxeles por
-frame** (el juego corre a 60 frames por segundo) y los tiempos en **frames**,
-salvo donde se diga otra cosa.
+frame** y los tiempos en **frames**, salvo donde se diga otra cosa.
+
+Un frame es **un paso de la simulación**, y lo que dura lo pone el retrazo de
+cada máquina: 60 por segundo en la Neo Geo, la Mega Drive, la Jaguar y el
+X68000, y **50** en el Amiga, el A1200, el CD32 y el Atari ST, que son PAL. O
+sea que un salto mide los mismos píxeles en las siete, pero en las PAL se tarda
+un sexto más en darlo. Donde estas páginas traducen frames a segundos lo hacen
+a 60, que es el caso rápido.
 
 Si escribes mal una opción, `ngplat comprobar` te dice cuál es y dónde está.
 
@@ -1693,7 +1699,7 @@ enemigos:
 
 Sin este bloque un enemigo hace daño **al tocarte**, que es lo de siempre en un
 plataformas. Con él deja de ser un obstáculo y pasa a ser un rival: en la
-[vista de cinta](#la-vista-de-lado-o-desde-arriba) **rozarlo ya no te cuesta
+[vista de cinta](#la-vista-de-lado-desde-arriba-o-desde-una-esquina) **rozarlo ya no te cuesta
 vida** —lo que te la cuesta es su golpe— y el enemigo pasa a comportarse como
 un luchador:
 
@@ -1769,7 +1775,7 @@ nada.
 **Lo que se lleva encima (`efecto: llevar`).** Un objeto con `efecto: llevar`
 **no se gasta al tocarlo**: se guarda en la **bolsa**, que tiene tres huecos.
 Es la mitad de una aventura tipo Dizzy —la otra son los
-[cerrojos](#cerrojos-la-puerta-que-pide-algo)—, y con que haya uno solo en el
+[cerrojos](#cerrojo-la-puerta-que-pide-algo)—, y con que haya uno solo en el
 juego cambian dos cosas más:
 
 - el **botón de acción** deja de atacar y pasa a **soltar** lo primero de la

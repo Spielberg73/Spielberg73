@@ -1,6 +1,7 @@
 # Tareas del kit NeoPlat.
 #
 #   make test      todas las pruebas (herramientas, motor, paridad C/JS)
+#   make manual    el manual en PDF, en castellano y en ingles
 #   make ejemplo   compila el ejemplo y genera su preview
 #   make limpiar   borra lo generado
 
@@ -112,6 +113,12 @@ paquetes:
 paquetes-exe:
 	$(PYTHON) empaquetar.py --exe $(if $(PYTHON_WINDOWS),--python "$(PYTHON_WINDOWS)",)
 
+# El manual encuadernado: los Markdown de docs/ en un PDF, uno por idioma.
+# Necesita WeasyPrint, que es quien pagina y escribe el PDF:
+#   pip3 install weasyprint
+manual:
+	$(PYTHON) manual.py
+
 limpiar:
 	rm -rf dist $(EJEMPLO)/build $(EJEMPLO)/preview.html capturas
 	find . -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
@@ -121,4 +128,4 @@ limpiar:
 	test-emulador-neogeo \
 	test-emulador-jaguar \
 	test-emulador-st test-emulador-x68000 ejemplo ejemplo-todos paquetes \
-	paquetes-exe limpiar
+	paquetes-exe manual limpiar

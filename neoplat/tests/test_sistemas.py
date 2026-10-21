@@ -1429,7 +1429,7 @@ class TestCompilacionReal(unittest.TestCase):
             self.assertIn("QUE HACE FALTA", leeme)
 
     def test_ninguna_maquina_genera_accesos_impares(self):
-        """Lo mismo, pero sobre los fuentes de las cinco maquinas y sin enlazar:
+        """Lo mismo, pero sobre los fuentes de los ocho destinos y sin enlazar:
         asi tambien entra la Neo Geo, que se construye con ngdevkit y aqui no
         esta. El fallo lo comete el compilador, no el enlazador."""
         objdump = self.cc.replace("-gcc", "-objdump")

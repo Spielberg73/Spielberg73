@@ -134,7 +134,7 @@ entero. Y si no lo haces, el compilador te lo dice al compilar: mira
 
 Lo que está **sobre** la calzada —los coches de delante— sí se dibuja por
 frame, y se dibuja en perspectiva: el motor dice dónde cae y cuánto encoge
-(`np_carretera_donde`), igual para las ocho máquinas.
+(`np_carretera_donde`), igual para las siete máquinas.
 
 Y dice también **en qué orden**. `np_carretera_trafico()` proyecta cada cosa
 una vez, se queda con las doce más cercanas y las devuelve de lejos a cerca,

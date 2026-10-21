@@ -2,8 +2,81 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.54.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.55.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.55
+
+**El manual, en orden y en dos idiomas.** La documentación eran once ficheros
+Markdown sueltos: buenos por dentro, pero sin portada, sin orden y con cifras
+que se habían quedado atrás. Ahora son doce documentos con índice, en
+castellano y en inglés, y salen **encuadernados en PDF**.
+
+**Lo que estaba mal.** Esto no se arregló de memoria: se comprobó clave por
+clave contra el código, y lo que salió fueron **treinta y tantas** correcciones
+de cifras caducadas. Las tres peores eran contradicciones dentro de la propia
+documentación:
+
+- `docs/jaguar.md` tenía un capítulo entero titulado *Muestras digitales*
+  explicando cómo suenan… y veinte líneas después, en «lo que aún no hace»,
+  decía que la Jaguar no las toca. Lo segundo era de antes de que se hicieran.
+- `docs/neogeo.md` decía que las muestras de la ROM V1 «todavía no se usan»
+  mientras el README contaba por dónde van (los canales ADPCM-A del YM2610).
+- El README daba el **zoom de sprites** por no usado, y el motor lo usa desde
+  la 1.42 para que el tráfico de la carretera crezca seguido.
+
+Y las cuentas, que se habían quedado en versiones viejas del kit: `sonido.md`
+abría diciendo «las tres máquinas tocan las mismas notas» cuando son siete,
+`atarist.md` se llamaba «la más espartana de las cinco», cuatro documentos
+decían «las ocho máquinas» donde son **ocho destinos sobre siete máquinas**, y
+el `README` contaba 552 pruebas cuando son 577.
+
+**Y una cosa que no era una cifra.** Tres sitios decían que el juego va a 50
+pasos por segundo «como en las demás máquinas» y otro que corre a 60, y las dos
+cosas no pueden ser verdad: son **60 en la Neo Geo, la Mega Drive, la Jaguar y
+el X68000, y 50 en el Amiga, el A1200, el CD32 y el Atari ST**, que son PAL. Un
+salto mide los mismos píxeles en las siete; en las PAL se tarda un sexto más en
+darlo. Ahora lo dice la primera página de la referencia, que es donde hacía
+falta.
+
+**El índice.** Quien abría el ZIP de docs se encontraba diez ficheros sueltos y
+tenía que adivinar el orden. Ahora hay un **[docs/README.md](docs/README.md)**
+que dice qué es cada uno, en qué orden leerlos y a quién le sirve, con una
+tabla de «busco… está en», y el README principal enlaza los doce de una vez.
+
+**En inglés.** `docs/en/` es el manual entero traducido —7.900 líneas de castellano, 8.000
+de inglés—, con
+un glosario (`docs/en/GLOSSARY.md`) que fija una palabra inglesa por término
+del kit para que la misma cosa no se llame de tres maneras en tres capítulos.
+El castellano sigue siendo el original: donde los dos no digan lo mismo, manda
+el castellano.
+
+**Y los dos PDF.**
+
+```bash
+make manual        # dist/neoplat-manual-es.pdf y dist/neoplat-manual-en.pdf
+```
+
+167 páginas el castellano y 169 el inglés, con portada, **índice con números de
+página** y los enlaces de un capítulo a otro ya resueltos dentro del PDF —un
+`[coche](formato.md#coche)` del tutorial salta a la sección del capítulo de
+formato—. Los dos van ahora dentro de `neoplat-docs-1.55.zip`.
+
+Lo hace `tools/ngplat/manual.py`, con un renderizador de Markdown propio, por
+lo mismo que el códec de ADPCM y el generador de ISO son de la casa: el
+Markdown del manual es poco y conocido, y así `make manual` no pide pandoc. El
+renderizador **para en seco** con lo que no sabe convertir en vez de tragárselo,
+que un trozo mal puesto en un manual no se nota hasta que alguien lo lee en
+papel. De fuera sólo hace falta **WeasyPrint** (`pip3 install weasyprint`), que
+es quien pagina y escribe el PDF.
+
+**Y quince pruebas nuevas** (`tests/test_manual.py`), de las que dos importan
+más que las demás: que **ningún enlace del PDF apunta a una sección que no
+existe** —en GitHub un enlace roto da un 404 y se ve; dentro de un PDF se queda
+el texto en negro y no se entera nadie, y ahí cazó dos anclas que apuntaban a
+cabeceras renombradas hace versiones— y que la traducción tiene **las mismas
+secciones** que el original, capítulo por capítulo: una sección que se deje un
+traductor, aquí se ve.
 
 ## 1.54
 

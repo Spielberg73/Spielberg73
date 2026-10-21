@@ -64,8 +64,12 @@ def _recorrer(relativo: str):
                 yield ruta
 
 
-def hacer_zip(destino: str, entradas, prefijo: str) -> str:
-    """Mete en un ZIP esas carpetas del kit, bajo una carpeta con nombre."""
+def hacer_zip(destino: str, entradas, prefijo: str, sueltos=()) -> str:
+    """Mete en un ZIP esas carpetas del kit, bajo una carpeta con nombre.
+
+    `sueltos` son archivos de fuera del arbol —los PDF del manual, que se
+    generan en dist/— como pares (de donde, como se llama dentro del ZIP).
+    """
     os.makedirs(os.path.dirname(destino), exist_ok=True)
     cuantos = 0
     with zipfile.ZipFile(destino, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
@@ -81,10 +85,46 @@ def hacer_zip(destino: str, entradas, prefijo: str) -> str:
                 with open(os.path.join(RAIZ, ruta), "rb") as fh:
                     zf.writestr(info, fh.read())
                 cuantos += 1
+        for origen, nombre in sueltos:
+            info = zipfile.ZipInfo(prefijo + "/" + nombre, FECHA)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o644 << 16
+            with open(origen, "rb") as fh:
+                zf.writestr(info, fh.read())
+            cuantos += 1
     print("%s  (%d archivos, %d KB)"
           % (os.path.relpath(destino, RAIZ), cuantos,
              os.path.getsize(destino) // 1024))
     return destino
+
+
+# --- el manual en PDF ---------------------------------------------------
+#
+# Va dentro del ZIP de docs, que es lo que se lleva quien quiere leerlo: un
+# Markdown se lee en GitHub, pero el que se baja el ZIP para leerlo en el sofa
+# quiere un PDF. Si no esta WeasyPrint se dice y se siguen haciendo los ZIP:
+# es una dependencia de quien reparte, no de quien usa el kit.
+
+def hacer_manual(destino: str):
+    """Saca los dos PDF y devuelve los pares (de donde, nombre en el ZIP)."""
+    sys.path.insert(0, os.path.join(RAIZ, "tools"))
+    from ngplat import manual
+    if not manual.motor():
+        print("sin WeasyPrint: el ZIP de docs va sin los PDF del manual\n"
+              "    pip3 install weasyprint", file=sys.stderr)
+        return []
+    salida = []
+    for idioma in manual.IDIOMAS:
+        pdf = os.path.join(destino, "neoplat-manual-%s.pdf" % idioma)
+        try:
+            manual.generar(RAIZ, idioma, VERSION, pdf)
+        except manual.ManualError as error:
+            print("manual (%s): %s" % (idioma, error), file=sys.stderr)
+            return salida
+        print("%s  (%d KB)" % (os.path.relpath(pdf, RAIZ),
+                               os.path.getsize(pdf) // 1024))
+        salida.append((pdf, os.path.basename(pdf)))
+    return salida
 
 
 # --- el ejecutable de Windows -------------------------------------------
@@ -209,7 +249,7 @@ def main(argv):
     if os.path.isdir(destino):
         shutil.rmtree(destino)
     hacer_zip(os.path.join(destino, "neoplat-docs-%s.zip" % VERSION), DOCS,
-              "neoplat-docs-%s" % VERSION)
+              "neoplat-docs-%s" % VERSION, sueltos=hacer_manual(destino))
     hacer_zip(os.path.join(destino, "neoplat-kit-%s.zip" % VERSION), KIT,
               "neoplat-%s" % VERSION)
 

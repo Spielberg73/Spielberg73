@@ -48,7 +48,7 @@ El marcador va en el plano fix, que no se mueve con la cámara.
 
 ### Conduciendo el reparto es otro: la carretera en bandas
 
-Ésta es la única de las ocho máquinas que no tiene **nada** con lo que
+Ésta es la única de las siete máquinas que no tiene **nada** con lo que
 deslizar una imagen línea a línea: no hay un plano que correr (la Mega Drive y
 el X68000), ni un copper que lo cambie en mitad de la pantalla (el Amiga), ni
 una lista de objetos por línea (la Jaguar). Aquí todo son sprites, y un sprite
@@ -86,7 +86,7 @@ cosa, rotados un paso por frame. Doce palabras a la RAM de color.
 
 ### El escalador de sprites (SCB2)
 
-Lo que ninguna de las otras siete tiene. Cada sprite lleva en `SCB2` una
+Lo que ninguna de las otras seis tiene. Cada sprite lleva en `SCB2` una
 palabra con dos números: el de arriba, de cuatro bits, es el ancho (de 1 a 16
 píxeles por columna de tile) y el de abajo, de ocho, el alto (de 1 a 256
 líneas de cada 256). Es lo que hacen los jefes que se te vienen encima en los
@@ -95,7 +95,7 @@ juegos de la máquina.
 El tráfico de la carretera se sirve de las dos cosas a la vez:
 
 1. el motor elige el dibujo con `np_carretera_dibujo_zoom()`, que es como el
-   `np_carretera_dibujo()` de las otras siete pero **al revés**: no busca el
+   `np_carretera_dibujo()` de las otras seis pero **al revés**: no busca el
    dibujo más grande que valga, sino el más pequeño que no se quede corto. Así
    un coche lejano sigue costando un sprite y no cuatro;
 2. y el escalador tapa el escalón hasta el tamaño exacto.
@@ -262,8 +262,10 @@ Las pruebas ejecutan este driver en un emulador de Z80 (`tests/z80sim.py`) y,
 desde el banco de pruebas, el circuito entero: el 68000 escribe en `$320000`,
 eso dispara la NMI del Z80, el Z80 ejecuta la ROM M1 de verdad y de los
 registros que deja en el YM2610 se genera la onda, que se compara con las notas
-del `game.yaml`. Cómo, en [docs/sonido.md](sonido.md). Las muestras digitales
-(ROM V1) todavía no se usan.
+del `game.yaml`. Cómo, en [docs/sonido.md](sonido.md). Las **muestras
+digitales** van por otro camino: los seis canales de ADPCM-A del YM2610 leen
+solos de la ROM V1 que monta el compilador, así que ahí el Z80 no pinta nada
+más que decirle al chip cuál toca.
 
 ## La ROM que se genera
 
@@ -289,7 +291,7 @@ error*: no puede leer ni escribir palabras en direcciones impares.
 
 Le pasa a cualquier compilador de 68000, ngdevkit incluido, así que el kit
 compila con **`-fno-store-merging`**. Las pruebas revisan el código máquina de
-las tres máquinas y fallan si aparece un solo acceso de ese tipo.
+los ocho destinos y fallan si aparece un solo acceso de ese tipo.
 
 Se descubrió arrancando la ROM de Mega Drive en un emulador (se quedaba
 congelada nada más cargar el nivel); la de Neo Geo tenía exactamente el mismo
@@ -308,7 +310,7 @@ Después, `ngplat compilar --make` construye la ROM directamente.
 
 ## Probar la ROM sin la BIOS: el banco de pruebas
 
-Las otras dos máquinas se arrancan en un emulador de verdad dentro de las
+Las otras seis máquinas se arrancan en un emulador de verdad dentro de las
 pruebas. La Neo Geo no se puede: cualquier emulador necesita la BIOS de SNK,
 que es propietaria y no se distribuye.
 
