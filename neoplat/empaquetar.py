@@ -148,15 +148,23 @@ from ngplat.paths import FUENTES_COPIADAS  # noqa: E402
 DATOS += [("tools/ngplat/" + nombre, "ngplat") for nombre in FUENTES_COPIADAS]
 
 
-def opciones_pyinstaller(para_windows: bool):
+def opciones_pyinstaller(para_windows: bool, ventana: bool = False):
     """Todo en rutas **relativas** a la raiz del kit.
 
     Es a proposito: asi la misma orden vale ejecutando PyInstaller en Windows
     y ejecutandolo bajo Wine desde Linux, donde una ruta absoluta de Unix no
-    significaria nada para el Python de Windows."""
+    significaria nada para el Python de Windows.
+
+    Con `ventana` sale el otro binario, **NeoPlat.exe**: el mismo kit pero sin
+    consola y entrando por `neoplat_app.py`, que abre el editor en su ventana.
+    Son dos y no uno porque Windows decide si un programa tiene consola **al
+    enlazarlo**, no al ejecutarlo: un solo .exe no puede ser las dos cosas.
+    """
     separador = ";" if para_windows else ":"
     orden = [
-        "--onefile", "--console", "--name", "ngplat",
+        "--onefile",
+        "--windowed" if ventana else "--console",
+        "--name", "NeoPlat" if ventana else "ngplat",
         "--distpath", "dist/windows" if para_windows else "dist/linux",
         "--workpath", "dist/trabajo",
         # el .spec se queda en la raiz porque PyInstaller resuelve los
@@ -168,20 +176,21 @@ def opciones_pyinstaller(para_windows: bool):
     ]
     for origen, dentro in DATOS:
         orden += ["--add-data", origen + separador + dentro]
-    orden.append("ngplat")
+    orden.append("neoplat_app.py" if ventana else "ngplat")
     return orden
 
 
-def hacer_exe(python=None) -> str:
+def hacer_exe(python=None, ventana: bool = False) -> str:
     """Llama a PyInstaller.
 
     `python` puede ser una orden entera, con espacios, para usar otro
     interprete: `--python "wine /ruta/python.exe"` construye el .exe de
     Windows desde Linux. Sin eso sale el binario de la maquina en la que se
-    ejecute esto."""
+    ejecute esto. Con `ventana`, el que sale es NeoPlat.exe."""
     lanzador = python.split() if python else [sys.executable]
     para_windows = os.name == "nt" or bool(python)
-    orden = lanzador + ["-m", "PyInstaller"] + opciones_pyinstaller(para_windows)
+    orden = lanzador + ["-m", "PyInstaller"] + opciones_pyinstaller(
+        para_windows, ventana)
     print("$ " + " ".join(orden))
     # Los tres flujos, por tuberia, y no heredados. Es por wine: el Python de
     # Windows corriendo ahi **no sabe abrir su salida cuando es un archivo**
@@ -194,13 +203,14 @@ def hacer_exe(python=None) -> str:
                            text=True)
     if hecho.stdout:
         print(hecho.stdout, end="")
-    spec = os.path.join(RAIZ, "ngplat.spec")
+    spec = os.path.join(RAIZ, "NeoPlat.spec" if ventana else "ngplat.spec")
     if os.path.exists(spec):
         os.remove(spec)
     if hecho.returncode != 0:
         raise SystemExit("PyInstaller ha fallado")
     salida = os.path.join(DIST, "windows" if para_windows else "linux")
-    for nombre in ("ngplat.exe", "ngplat"):
+    base = "NeoPlat" if ventana else "ngplat"
+    for nombre in (base + ".exe", base):
         ruta = os.path.join(salida, nombre)
         if os.path.exists(ruta):
             print("%s  (%d KB)" % (os.path.relpath(ruta, RAIZ),
@@ -215,9 +225,19 @@ LEEME = """NeoPlat para Windows
 Este es el kit entero dentro de un solo archivo: no hace falta instalar Python
 ni nada mas.
 
-Con doble clic en ngplat.exe se abre una ventana que pregunta que quieres
-hacer: crear un juego nuevo, abrir el editor de uno que ya exista o compilarlo
-para su maquina. La ventana no se cierra hasta que pulses Enter.
+Hay dos programas, y lo que cambia es por donde se entra:
+
+  NeoPlat.exe   el editor, en su ventana. Doble clic y ya: si al lado hay un
+                juego, lo abre; si hay varios, pregunta cual; si no hay
+                ninguno, te deja crear uno. No sale ninguna consola.
+
+  ngplat.exe    el mismo kit desde la linea de ordenes, para compilar, mirar
+                limites y lo demas. Con doble clic pregunta que quieres hacer
+                y la ventana no se cierra hasta que pulses Enter.
+
+Para la ventana del editor hace falta Edge o Chrome. Edge viene con Windows 10
+y 11, asi que normalmente no hay nada que instalar; si no esta ninguno de los
+dos, el editor se abre en tu navegador de siempre y NeoPlat lo dice.
 
 Si prefieres escribir las ordenes tu, abre una ventana de simbolo del sistema
 en esta carpeta y prueba:
@@ -259,6 +279,9 @@ def main(argv):
             if arg == "--python" and i + 1 < len(argv):
                 python = argv[i + 1]
         exe = hacer_exe(python)
+        # Y el de escritorio, que es el que se abre con doble clic: el mismo
+        # kit sin consola, entrando por neoplat_app.py.
+        hacer_exe(python, ventana=True)
         carpeta = os.path.dirname(exe)
         with open(os.path.join(carpeta, "LEEME.txt"), "w", encoding="utf-8") as fh:
             fh.write(LEEME)

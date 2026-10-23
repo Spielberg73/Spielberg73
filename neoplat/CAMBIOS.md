@@ -2,8 +2,99 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.55.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.56.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.56
+
+**El editor ya es un programa, y Bruce Lee ya se mueve.** Dos cosas que pidió
+quien lo usa, y las dos eran verdad.
+
+### El editor, en su propia ventana
+
+`ngplat probar` lo abría en el navegador: con su barra de direcciones, sus
+pestañas, sus marcadores y, en Windows, una ventana negra de consola detrás.
+Funciona, pero no se parece a un programa de hacer juegos: se parece a una
+página web.
+
+```bash
+ngplat app         # el editor, en su ventana
+```
+
+Sin barra de direcciones, sin pestañas, con su icono en la barra de tareas y
+**parando el servidor al cerrarla**, que es lo que hacía falta: quien abre esto
+con doble clic no tiene ninguna consola a la que volver a pulsar Ctrl+C, y un
+servidor escuchando para siempre es un proceso colgado y un puerto ocupado la
+próxima vez.
+
+En **Windows** el ZIP trae ahora **dos programas**. `NeoPlat.exe` es el editor:
+doble clic y sale, sin consola ninguna; si al lado hay un juego lo abre, si hay
+varios pregunta cuál y si no hay ninguno te deja crear uno. `ngplat.exe` sigue
+siendo el de la línea de órdenes. Son dos binarios y no uno porque **Windows
+decide si un programa tiene consola al enlazarlo**, no al ejecutarlo: un solo
+`.exe` no puede ser las dos cosas.
+
+**Lo que no se ha hecho, y por qué.** El editor no se ha reescrito. Son quince
+mil líneas de JavaScript que dibujan sprites a mano alzada, reproducen
+animaciones a 60 imágenes por segundo y juegan el propio juego dentro. Las tres
+salidas que había:
+
+- **empaquetar un navegador entero** (Electron, Tauri): entre 150 y 200 MB y
+  una cadena de herramientas de node o de rust que el kit no tiene. El kit
+  completo —motor, compilador, editor y pruebas— ocupa menos que eso;
+- **empotrar WebView2 a mano**: es la vía nativa de verdad, pero hay que
+  escribir un anfitrión en C y llevarlo aparte para 32 y 64 bits, y lo que ve
+  el usuario es **exactamente la misma ventana**;
+- **rehacerlo en tkinter**: meses, para acabar con menos de lo que ya hay.
+
+Así que la ventana la abre Edge o Chrome en su *modo aplicación* (`--app=`),
+que es para lo que ese modo existe, con un perfil propio para que no herede las
+extensiones ni las pestañas del navegador de todos los días. Edge viene con
+Windows 10 y 11, así que no hay nada que instalar; si no está ninguno de los
+dos, se abre el navegador de siempre y el programa lo dice en vez de dejarte
+mirando una ventana vacía. Con `NEOPLAT_NAVEGADOR` se le dice cuál usar.
+
+**Ocho pruebas nuevas**, y la que importa va de punta a punta: se lanza
+`ngplat app` con una ventana de mentira que se muere sola, y se exige que el
+servidor **se pare detrás de ella**. Las demás miran la orden con la que se
+abre —que lleve `--app=`, que el perfil no sea el del usuario— porque ahí es
+donde están los fallos de esto: una opción mal escrita y lo que sale es un
+navegador con su barra de direcciones.
+
+### Bruce Lee, con brazos y con cuatro pasos
+
+El héroe del género de kung-fu —el amarillo— tenía **ocho fotogramas y los
+brazos pegados al tronco**: a 32×32 y con dos perseguidores encima, lo que se
+veía era un bulto amarillo que no decía si estabas pegando, cayendo o trepando.
+Y el andar eran **dos** fotogramas, que no es andar: es una vibración.
+
+Ahora son **trece**:
+
+| | antes | ahora |
+|---|---|---|
+| quieto | 1 | 2, respirando |
+| andar | 2 | **4**: contacto, paso, contacto, paso, con los brazos cruzados respecto a las piernas |
+| aire | 1 para subir y bajar | 2: subiendo con los brazos en V y las rodillas recogidas, cayendo en aspa |
+| puño | una barra horizontal | un brazo con **puño**, el otro recogido y el torso girado |
+| patada | una tabla | una pierna con **pie**, y la de apoyo recogida |
+| trepar | 1 | 2: las manos se alternan en la cuerda |
+
+Y el torso se ha estrechado a seis píxeles con los brazos **separados por la
+línea oscura**, que es lo que hace que la silueta cambie de verdad de un
+fotograma a otro.
+
+**Lo que cuesta**: en el Amiga el ejecutable del juego de partida pasa de 195 a
+**202 KB** de los 702 que declara (`amiga_ram: 1M`), y en la Neo Geo el frame
+más caro se queda en **192.720** ciclos de los 200.000, medido con el banco del
+kit. Más fotogramas en una hoja cuestan ROM, no ciclos: el motor dibuja uno por
+actor y por frame, haya ocho en la hoja o haya trece. En la Mega Drive son 552
+tiles de los 1.344.
+
+Y cinco pruebas más para que el dibujo y el `game.yaml` no se separen: que la
+hoja tenga trece, que ninguno salga en blanco, que ninguno sea igual que el de
+al lado —dos iguales en una animación es un fotograma de menos— y que el yaml
+**los use todos**, porque un fotograma dibujado que nadie pide son KB de RAM
+chip tirados.
 
 ## 1.55
 

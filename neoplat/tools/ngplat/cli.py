@@ -161,6 +161,21 @@ def cmd_probar(args: argparse.Namespace) -> int:
     return _servir(project.root, destino, args.puerto)
 
 
+def cmd_app(args: argparse.Namespace) -> int:
+    """El editor en su propia ventana, sin navegador alrededor.
+
+    Es `probar` con dos diferencias, y las dos son para que esto se use como un
+    programa y no como una pagina: la ventana no lleva barra de direcciones ni
+    pestanas, y **al cerrarla se para el servidor**. Con `probar` hay que
+    volver a la consola y pulsar Ctrl+C, que es justo lo que no tiene sentido
+    pedirle a quien ha abierto esto con doble clic.
+    """
+    project, build, sistema = _cargar(args.proyecto, args.sistema)
+    destino = args.salida or os.path.join(project.root, "preview.html")
+    write_preview(build, destino)
+    return _servir(project.root, destino, args.puerto, ventana=True)
+
+
 def _abrir(direccion: str) -> None:
     try:
         import webbrowser
@@ -171,29 +186,58 @@ def _abrir(direccion: str) -> None:
         _info("abrelo a mano en tu navegador")
 
 
-def _servir(raiz: str, preview: str, puerto: int) -> int:
+def _servir(raiz: str, preview: str, puerto: int, ventana: bool = False) -> int:
     """Sirve el preview desde localhost para que el editor pueda guardar y compilar.
 
     Abierto como file://, el editor solo puede exportar el game.yaml: una
     pagina no escribe en tu disco ni compila nada. Servido desde aqui, el boton
     "guardar" (o Ctrl+S) escribe en el proyecto y el de compilar genera las
     ROMs; este proceso hace el trabajo.
+
+    Con `ventana`, en vez del navegador se abre una ventana propia y el
+    servidor se para **cuando se cierra esa ventana**: ahi no hay consola a la
+    que volver a pulsar Ctrl+C.
     """
+    import threading
+
     from .servidor import crear
 
     servidor, direccion = crear(raiz, preview, puerto)
+    proceso = None
+    if ventana:
+        from . import escritorio
+
+        proceso = escritorio.abrir(direccion)
+        if proceso is None:
+            _aviso("no hay Edge ni Chrome para abrir la ventana; "
+                   "se abre el navegador de siempre")
+            _info("si lo tienes en otro sitio, dilo con NEOPLAT_NAVEGADOR")
     _ok("servidor en %s" % direccion)
-    _info("en el editor: 'guardar' (o Ctrl+S) escribe en el proyecto y deja copia")
-    _info("y la pestana 'compilar' genera las ROMs")
-    _info("Ctrl+C para parar")
-    _abrir(direccion)
+    if proceso is not None:
+        _ok("editor abierto en su ventana; cierrala para parar")
+    else:
+        _info("en el editor: 'guardar' (o Ctrl+S) escribe en el proyecto y deja copia")
+        _info("y la pestana 'compilar' genera las ROMs")
+        _info("Ctrl+C para parar")
+        _abrir(direccion)
+    if proceso is not None:
+        # El que espera a la ventana es un hilo aparte: el servidor tiene que
+        # seguir atendiendo al editor mientras tanto.
+        def esperar_a_la_ventana():
+            proceso.wait()
+            servidor.shutdown()
+
+        hilo = threading.Thread(target=esperar_a_la_ventana, daemon=True)
+        hilo.start()
     try:
         servidor.serve_forever()
     except KeyboardInterrupt:
         print()
-        _info("servidor parado")
     finally:
         servidor.server_close()
+        if proceso is not None and proceso.poll() is None:
+            proceso.terminate()
+    _info("servidor parado")
     return 0
 
 
@@ -342,10 +386,14 @@ def _elegir_proyecto(proyectos: List[str], salida, entrada) -> str:
 
 
 def _abrir_editor(ruta: str) -> int:
-    """El editor es el preview servido desde aqui, con guardar y compilar."""
-    return cmd_probar(argparse.Namespace(proyecto=ruta, salida=None,
-                                         no_abrir=False, no_servidor=False,
-                                         puerto=0, sistema=""))
+    """El editor es el preview servido desde aqui, con guardar y compilar.
+
+    Se abre en **su propia ventana**: quien ha llegado hasta aqui no ha
+    escrito ninguna orden -ha hecho doble clic- y lo que espera es un programa,
+    no una pestana mas del navegador.
+    """
+    return cmd_app(argparse.Namespace(proyecto=ruta, salida=None,
+                                      puerto=0, sistema=""))
 
 
 def _asistente_nuevo(salida, entrada) -> int:
@@ -583,6 +631,16 @@ def build_parser() -> argparse.ArgumentParser:
                           help="puerto del servidor local (0 = el que haya libre)")
     p_probar.add_argument("--sistema", default="", help=_ayuda_sistemas())
     p_probar.set_defaults(func=cmd_probar)
+
+    p_app = sub.add_parser("app", aliases=["editor", "escritorio"],
+                           help="abre el editor en su propia ventana, "
+                                "como un programa")
+    p_app.add_argument("proyecto", nargs="?", default=".")
+    p_app.add_argument("--salida", help="ruta del HTML de salida")
+    p_app.add_argument("--puerto", type=int, default=0,
+                       help="puerto del servidor local (0 = el que haya libre)")
+    p_app.add_argument("--sistema", default="", help=_ayuda_sistemas())
+    p_app.set_defaults(func=cmd_app)
 
     p_build = sub.add_parser("compilar", aliases=["build"],
                              help="genera el proyecto en C y las ROMs graficas")

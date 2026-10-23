@@ -14,6 +14,42 @@ estabas.
 ngplat probar          # abre el juego; pulsa E para editar
 ```
 
+## En su propia ventana, sin navegador alrededor
+
+`ngplat probar` lo abre en el navegador, con su barra de direcciones, sus
+pestañas y —en Windows— una ventana negra de consola detrás. Funciona, pero no
+se parece a un programa de hacer juegos: se parece a una página web.
+
+```bash
+ngplat app             # lo mismo, pero en su ventana
+```
+
+Sin barra de direcciones, sin pestañas, con su icono en la barra de tareas y
+**parando el servidor al cerrarla** —que es lo que hace falta cuando no hay
+ninguna consola a la que volver a pulsar Ctrl+C—. Por dentro es el mismo
+`ngplat probar` sirviendo en 127.0.0.1, así que guardar y compilar funcionan
+igual.
+
+En **Windows** eso es lo que hace **`NeoPlat.exe`**: doble clic y sale el
+editor. Si al lado hay un juego lo abre, si hay varios pregunta cuál y si no
+hay ninguno te deja crear uno. El `ngplat.exe` de siempre sigue estando para la
+línea de órdenes.
+
+> **Qué hace falta, y qué no.** La ventana la abre Edge o Chrome en su *modo
+> aplicación* (`--app=`), que es para lo que ese modo existe. Edge viene con
+> Windows 10 y 11, así que normalmente no hay nada que instalar; si no está
+> ninguno de los dos, el editor se abre en tu navegador de siempre y NeoPlat te
+> lo dice. Con `NEOPLAT_NAVEGADOR` le dices cuál usar si lo tienes en un sitio
+> raro.
+>
+> **El editor no se ha reescrito, y es a propósito.** Son quince mil líneas de
+> JavaScript que dibujan sprites a mano alzada, reproducen animaciones a 60
+> imágenes por segundo y juegan el propio juego dentro. Empaquetar un navegador
+> entero (Electron y compañía) son 150 MB y una cadena de herramientas que el
+> kit no tiene —el kit completo ocupa menos que eso—, y rehacerlo en una
+> biblioteca de ventanas serían meses para acabar con menos de lo que ya hay.
+> Lo que cambia es el marco; lo de dentro es el mismo editor.
+
 Todo lo que cambias sale al final en tu `game.yaml`, conservando comentarios,
 orden y formato: el editor solo toca las líneas que has modificado.
 

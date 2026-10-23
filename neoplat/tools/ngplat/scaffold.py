@@ -3772,14 +3772,17 @@ jugador:
   retroceso: 2.0
   aturdido: 12
   animaciones:
-    quieto: {{frames: [0], velocidad: 30}}
-    correr: {{frames: [1, 2], velocidad: 7}}
-    saltar: {{frames: [3]}}
-    caer:   {{frames: [3]}}
-    atacar: {{frames: [4], velocidad: 6}}
-    patada: {{frames: [5], velocidad: 6}}
-    dano:   {{frames: [6]}}
-    trepar: {{frames: [7], velocidad: 10}}
+    # Trece fotogramas: el andar son cuatro -contacto, paso, contacto, paso- y
+    # el quieto respira. Con dos fotogramas de andar lo que se veia no era
+    # andar, era una vibracion.
+    quieto: {{frames: [0, 1], velocidad: 26}}
+    correr: {{frames: [2, 3, 4, 5], velocidad: 5}}
+    saltar: {{frames: [6]}}
+    caer:   {{frames: [7]}}
+    atacar: {{frames: [8], velocidad: 6}}
+    patada: {{frames: [9], velocidad: 6}}
+    dano:   {{frames: [10]}}
+    trepar: {{frames: [11, 12], velocidad: 8}}
   # El golpe. `patada:` es lo que hace que pegar en el aire sea **otra cosa**:
   # sin esa linea en el aire sale el mismo punetazo corto y el salto no seria
   # un ataque, solo una manera de moverse.
@@ -4625,8 +4628,8 @@ RAM_DEL_GENERO = {
     ("castlevania", "hierro"): "1M",    # 213 KB
     ("filmation", "bosque"): "1M",      # 197 KB
     ("filmation", "hierro"): "1M",      # 196 KB
-    ("kungfu", "bosque"): "1M",         # 195 KB
-    ("kungfu", "hierro"): "1M",         # 195 KB
+    ("kungfu", "bosque"): "1M",         # 202 KB
+    ("kungfu", "hierro"): "1M",         # 202 KB
 }
 
 

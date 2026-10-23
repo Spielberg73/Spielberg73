@@ -424,16 +424,22 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.55.zip` | sólo la documentación: este README, todo `docs/` —el castellano y su traducción al inglés— y **los dos PDF del manual encuadernado** |
-| `neoplat-kit-1.55.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.55.zip` | el `ngplat.exe` y su LEEME |
+| `neoplat-docs-1.56.zip` | sólo la documentación: este README, todo `docs/` —el castellano y su traducción al inglés— y **los dos PDF del manual encuadernado** |
+| `neoplat-kit-1.56.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.56.zip` | el `NeoPlat.exe` (el editor, en su ventana), el `ngplat.exe` de la línea de órdenes y su LEEME |
 
-El `.exe` lleva dentro el intérprete, el motor en C, el preview y las
-plantillas; no necesita Python ni nada instalado. Con **doble clic** —sin
-escribir ninguna orden— pregunta qué quieres hacer (crear un juego, abrir el
-editor de uno que ya exista o compilarlo) y espera a que pulses Enter antes de
-cerrar la ventana. Construirlo desde Linux es
-posible con Wine y un Python de Windows:
+El ZIP de Windows trae **dos programas**, y lo que cambia es por dónde se
+entra. **`NeoPlat.exe`** es el editor: doble clic y sale, en su ventana, sin
+ninguna consola detrás —si al lado hay un juego lo abre, si hay varios
+pregunta cuál y si no hay ninguno te deja crear uno—. **`ngplat.exe`** es el
+mismo kit desde la línea de órdenes, para compilar y lo demás; con doble clic
+pregunta qué quieres hacer y espera a que pulses Enter antes de cerrar la
+ventana.
+
+Los dos llevan dentro el intérprete, el motor en C, el preview y las
+plantillas: no necesitan Python ni nada instalado. Para la ventana del editor
+hace falta Edge o Chrome, que en Windows 10 y 11 ya está. Construirlos desde
+Linux es posible con Wine y un Python de Windows:
 
 ```bash
 make paquetes-exe PYTHON_WINDOWS="wine /ruta/a/python.exe"
@@ -473,6 +479,7 @@ archivo nuevo y que el `.exe` se quede sin él; así salta antes de repartirlo.
 | `ngplat nuevo <carpeta> --estilo hierro` | Lo mismo, pero dibujado con seis colores y listo para el doble plano del Amiga |
 | `ngplat comprobar [proyecto]` | Valida el `game.yaml` y dice cuánto ocupa el juego |
 | `ngplat probar [proyecto]` | Abre el preview y el editor, y se queda sirviéndolo |
+| `ngplat app [proyecto]` | Lo mismo, pero **en su propia ventana**: sin barra de direcciones ni pestañas, y parando el servidor al cerrarla |
 | `ngplat compilar [proyecto]` | Genera `build/<máquina>/` con el C, los gráficos y el Makefile |
 | `ngplat compilar --make` | Además construye la ROM o el disquete |
 | `ngplat copia [proyecto]` | Guarda una copia del proyecto en su historial |
@@ -548,7 +555,7 @@ neoplat/
 │   ├── bosque-magico/      juego de ejemplo listo para compilar
 │   ├── cueva-de-hierro/    el mismo motor con seis colores y parallax en Amiga
 │   └── costa-y-montana/    un juego de conducir: la calzada no es un dibujo
-└── tests/                  577 pruebas + 263 de jugabilidad + las del editor +
+└── tests/                  590 pruebas + 263 de jugabilidad + las del editor +
                             bot que se pasa los niveles + emuladores y navegador
 ```
 

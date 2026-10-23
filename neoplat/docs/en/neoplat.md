@@ -435,16 +435,22 @@ Three things come out, **with the version in the name** (the same one
 
 | | |
 |---|---|
-| `neoplat-docs-1.55.zip` | the documentation only: this front page and all of `docs/`. It is what you take if you want to read it or pass it on to another project |
-| `neoplat-kit-1.55.zip` | the whole kit: engine, tools, example and tests, without the generated files or the history |
-| `neoplat-windows-1.55.zip` | the `ngplat.exe` and its README |
+| `neoplat-docs-1.56.zip` | the documentation only: this front page and all of `docs/`. It is what you take if you want to read it or pass it on to another project |
+| `neoplat-kit-1.56.zip` | the whole kit: engine, tools, example and tests, without the generated files or the history |
+| `neoplat-windows-1.56.zip` | the `NeoPlat.exe` (the editor, in its window), the command-line `ngplat.exe` and its README |
 
-The `.exe` carries the interpreter, the engine in C, the preview and the
-templates inside; it needs neither Python nor anything installed. With a
-**double click** —without typing a single command— it asks what you want to do
-(create a game, open the editor on one that already exists, or compile it) and
-waits for you to press Enter before closing the window. Building it from Linux
-is possible with Wine and a Windows Python:
+The Windows ZIP brings **two programs**, and what changes is the way in.
+**`NeoPlat.exe`** is the editor: double click and up it comes, in its own
+window, with no console behind it —if there is a game beside it, it opens it;
+if there are several, it asks which; and if there are none, it lets you create
+one—. **`ngplat.exe`** is the same kit from the command line, for compiling and
+the rest; with a double click it asks what you want to do and waits for you to
+press Enter before closing the window.
+
+Both carry the interpreter, the engine in C, the preview and the templates
+inside: they need neither Python nor anything installed. The editor's window
+needs Edge or Chrome, which on Windows 10 and 11 is already there. Building
+them from Linux is possible with Wine and a Windows Python:
 
 ```bash
 make paquetes-exe PYTHON_WINDOWS="wine /path/to/python.exe"
@@ -486,6 +492,7 @@ comes up before distribution.
 | `ngplat nuevo <folder> --estilo hierro` | The same, but drawn with six colours and ready for the Amiga's dual playfield |
 | `ngplat comprobar [project]` | Validates the `game.yaml` and says how much room the game takes |
 | `ngplat probar [project]` | Opens the preview and the editor, and keeps serving it |
+| `ngplat app [project]` | The same, but **in a window of its own**: no address bar and no tabs, and it stops the server when you close it |
 | `ngplat compilar [project]` | Generates `build/<machine>/` with the C, the graphics and the Makefile |
 | `ngplat compilar --make` | Also builds the ROM or the floppy |
 | `ngplat copia [project]` | Saves a copy of the project into its history |
@@ -561,7 +568,7 @@ neoplat/
 │   ├── bosque-magico/      example game ready to compile
 │   ├── cueva-de-hierro/    the same engine with six colours and Amiga parallax
 │   └── costa-y-montana/    a driving game: the roadway is not a drawing
-└── tests/                  577 tests + 263 gameplay ones + the editor's +
+└── tests/                  590 tests + 263 gameplay ones + the editor's +
                             a bot that finishes the levels + emulators and browser
 ```
 

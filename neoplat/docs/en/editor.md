@@ -14,6 +14,41 @@ playing where you were.
 ngplat probar          # opens the game; press E to edit
 ```
 
+## In a window of its own, with no browser around it
+
+`ngplat probar` opens it in the browser, with its address bar, its tabs and
+—on Windows— a black console window behind it. It works, but it does not look
+like a program for making games: it looks like a web page.
+
+```bash
+ngplat app             # the same, but in its own window
+```
+
+No address bar, no tabs, its own icon in the taskbar, and **it stops the server
+when you close it** — which is what is needed when there is no console to go
+back to and press Ctrl+C in. Inside it is the same `ngplat probar` serving on
+127.0.0.1, so saving and compiling work just the same.
+
+On **Windows** that is what **`NeoPlat.exe`** does: double click and the editor
+comes up. If there is a game beside it, it opens it; if there are several, it
+asks which; and if there are none, it lets you create one. The usual
+`ngplat.exe` is still there for the command line.
+
+> **What is needed, and what is not.** The window is opened by Edge or Chrome
+> in their *application mode* (`--app=`), which is what that mode exists for.
+> Edge comes with Windows 10 and 11, so there is normally nothing to install;
+> if neither is there, the editor opens in your usual browser and NeoPlat tells
+> you so. With `NEOPLAT_NAVEGADOR` you tell it which one to use if you keep it
+> somewhere unusual.
+>
+> **The editor has not been rewritten, and that is deliberate.** It is fifteen
+> thousand lines of JavaScript that draw sprites freehand, play animations at
+> 60 pictures per second and run the game itself inside. Packaging a whole
+> browser (Electron and company) is 150 MB and a toolchain the kit does not
+> have —the whole kit takes less than that— and redoing it in a windowing
+> library would be months to end up with less than there already is. What
+> changes is the frame; what is inside is the same editor.
+
 Everything you change ends up in your `game.yaml`, keeping comments, order and
 formatting: the editor only touches the lines you have changed.
 
