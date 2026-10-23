@@ -71,7 +71,13 @@ def mensaje(titulo: str, texto: str, error: bool = False) -> None:
             return
         except Exception:
             pass
-    print("%s: %s" % (titulo, texto), file=sys.stderr)
+    try:
+        print("%s: %s" % (titulo, texto), file=sys.stderr)
+    except Exception:
+        # Ultimo recurso del ultimo recurso: en un programa sin consola
+        # `sys.stderr` puede ser None o estar cerrado. Que no haya donde
+        # escribir no puede ser lo que tire el programa.
+        pass
 
 
 def preguntar(titulo: str, texto: str) -> bool:
