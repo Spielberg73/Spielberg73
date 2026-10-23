@@ -2,8 +2,49 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.56.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.57.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.57
+
+**El `.exe` del editor ya funciona de verdad.** En 1.56 se construía, pero no
+servía: estaba construido **sin diálogos**, y un programa sin consola que no
+puede sacar un cuadro de diálogo es un programa que se cierra sin decir nada.
+Que es justo lo peor que le puede pasar a quien acaba de hacer doble clic.
+
+**Qué pasaba.** El Python que cabe dentro de un `.exe` de ocho megas es el
+*embebido*, y el embebido **no trae tkinter**. El lanzador pedía sus diálogos a
+tkinter, así que PyInstaller lo dejaba fuera avisando en una línea del log
+—`tkinter installation is broken`— que es facilísima de no leer, y el binario
+salía entero y aparentemente bien. `NeoPlat.exe` arrancaba, buscaba juegos y,
+en el momento de preguntar cuál abrir o de avisar de un error, se moría en
+silencio.
+
+**Cómo se ha arreglado.** Los diálogos son ahora **del sistema**, no de
+tkinter: `MessageBoxW` para los avisos y las preguntas y `SHBrowseForFolderW`
+para elegir carpeta, llamados con `ctypes`, que sí viene con cualquier Python.
+Las dos están en cualquier Windows desde hace treinta años, así que no hay nada
+que instalar ni nada que se pueda quedar fuera al empaquetar. Y el `.exe` de
+Windows se construye ya **excluyendo tkinter a propósito**, para que el log no
+avise de una avería que no existe.
+
+Al elegir el juego tampoco hay ya una lista hecha a mano: con un solo juego al
+lado —el caso de siempre, el `.exe` junto a la carpeta— **no pregunta nada**, y
+con varios o con ninguno abre el diálogo de carpetas de Windows, que es lo que
+un programa de Windows hace aquí. Si la carpeta que eliges tiene cosas dentro y
+no es un juego, **no se toca**: se dice y se para. Elegir el escritorio por
+error no puede acabar con un `game.yaml` y unos gráficos de ejemplo sembrados
+entre los papeles de nadie.
+
+Fuera de Windows —donde esto se prueba— se sigue usando tkinter si está, y si
+no, la consola. Ahí siempre hay una.
+
+**Siete pruebas nuevas**, y la que explica el cambio le quita tkinter al
+lanzador a propósito y exige que el aviso **salga igual**. Las demás van de lo
+que no se tiene que hacer: no preguntar cuando hay un solo juego, no sembrar
+nada en una carpeta ajena, no abrir una ventana vacía cuando lo que se ha
+pasado no es un juego, y no quedarse esperando una respuesta que nadie va a
+dar.
 
 ## 1.56
 

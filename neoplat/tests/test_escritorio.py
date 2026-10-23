@@ -154,6 +154,29 @@ class TestAlCerrarLaVentanaSeParaElServidor(unittest.TestCase):
                 proceso.wait(timeout=10)
 
 
+def _lanzador():
+    """neoplat_app.py cargado aparte, para poder cambiarle las piezas.
+
+    Se carga por ruta y no con `import`: el lanzador vive en la raiz del kit,
+    no es parte del paquete, y lo que se prueba aqui es precisamente lo que
+    hace cuando los dialogos no estan.
+    """
+    import importlib.util as u
+
+    carga = u.spec_from_file_location("neoplat_app",
+                                      os.path.join(KIT, "neoplat_app.py"))
+    modulo = u.module_from_spec(carga)
+    carga.loader.exec_module(modulo)
+    return modulo
+
+
+def _explota(porque: str):
+    """Una pieza que no se tenia que llamar. Si se llama, se nota."""
+    def saltar(*_a, **_k):
+        raise AssertionError(porque)
+    return saltar
+
+
 class TestElLanzadorSinConsola(unittest.TestCase):
     """neoplat_app.py es lo que se empaqueta como NeoPlat.exe."""
 
@@ -189,6 +212,132 @@ class TestElLanzadorSinConsola(unittest.TestCase):
         # y los dos se llevan los mismos datos dentro
         self.assertEqual([a for a in consola if a == "--add-data"],
                          [a for a in ventana if a == "--add-data"])
+
+    def test_el_exe_de_windows_se_construye_sin_tkinter(self):
+        """Para que el log del empaquetado no avise de una averia que no hay.
+
+        El Python embebido no trae tkinter y PyInstaller lo dice a gritos
+        ("tkinter installation is broken") antes de dejarlo fuera. En Windows
+        no se usa -los dialogos son del sistema-, asi que se excluye a
+        proposito. En Linux y en Mac si es el respaldo, y ahi se queda.
+        """
+        sys.path.insert(0, KIT)
+        import empaquetar
+
+        for ventana in (False, True):
+            windows = empaquetar.opciones_pyinstaller(True, ventana=ventana)
+            self.assertIn("--exclude-module", windows)
+            self.assertEqual("tkinter",
+                             windows[windows.index("--exclude-module") + 1])
+            self.assertNotIn("--exclude-module",
+                             empaquetar.opciones_pyinstaller(False,
+                                                             ventana=ventana))
+
+
+    def test_avisa_aunque_no_haya_tkinter(self):
+        """La prueba que explica por que los dialogos son de Windows.
+
+        El Python que cabe dentro de un .exe de ocho megas no trae tkinter, y
+        PyInstaller lo deja fuera avisando en una linea del log que es facil no
+        leer. Si el lanzador dependiera de el, el programa se cerraria en
+        silencio al primer dialogo. Aqui se le quita tkinter a proposito y se
+        comprueba que el aviso sale igual: por la salida de errores si no hay
+        otra cosa, pero sale.
+        """
+        guion = (
+            "import sys\n"
+            "sys.path.insert(0, %r)\n"
+            "class Nada:\n"
+            "    def find_module(self, nombre, ruta=None):\n"
+            "        if nombre.split('.')[0] == 'tkinter':\n"
+            "            raise ImportError('aqui no hay tkinter')\n"
+            "    def find_spec(self, nombre, ruta=None, destino=None):\n"
+            "        return self.find_module(nombre, ruta)\n"
+            "sys.meta_path.insert(0, Nada())\n"
+            "for m in list(sys.modules):\n"
+            "    if m.split('.')[0] == 'tkinter':\n"
+            "        del sys.modules[m]\n"
+            "import importlib.util as u\n"
+            "e = u.spec_from_file_location('app', %r)\n"
+            "m = u.module_from_spec(e)\n"
+            "e.loader.exec_module(m)\n"
+            "m.mensaje('NeoPlat', 'esto se tiene que leer', error=True)\n"
+            "print('sigue vivo')\n"
+            % (os.path.join(KIT, "tools"), os.path.join(KIT, "neoplat_app.py")))
+        hecho = subprocess.run([sys.executable, "-c", guion],
+                               capture_output=True, text=True)
+        self.assertEqual(0, hecho.returncode, hecho.stderr)
+        self.assertIn("esto se tiene que leer", hecho.stderr)
+        self.assertIn("sigue vivo", hecho.stdout)
+
+    def test_sin_dialogos_tampoco_se_queda_colgado_preguntando(self):
+        """`preguntar` sin dialogos no puede quedarse esperando una respuesta
+        que nadie va a dar: devuelve que si, y aqui el si nunca borra nada."""
+        app = _lanzador()
+        app.ES_WINDOWS = False
+        import builtins
+
+        de_verdad = builtins.__import__
+
+        def sin_tkinter(nombre, *resto):
+            if nombre.split(".")[0] == "tkinter":
+                raise ImportError("aqui no hay tkinter")
+            return de_verdad(nombre, *resto)
+
+        builtins.__import__ = sin_tkinter
+        try:
+            self.assertTrue(app.preguntar("NeoPlat", "?"))
+            self.assertEqual("", app.elegir_carpeta("elige", ""))
+        finally:
+            builtins.__import__ = de_verdad
+
+    def test_con_un_solo_juego_al_lado_no_pregunta_nada(self):
+        """El caso de siempre: el .exe junto a la carpeta del juego. Ahi un
+        dialogo seria una molestia, asi que no sale ninguno."""
+        app = _lanzador()
+        app.mensaje = _explota("no tenia que avisar de nada")
+        app.preguntar = _explota("no tenia que preguntar nada")
+        app.elegir_carpeta = _explota("no tenia que pedir carpeta")
+        self.assertEqual("C:\\juegos\\mijuego",
+                         app.elegir_proyecto(["C:\\juegos\\mijuego"], "C:\\juegos"))
+
+    def test_una_carpeta_con_cosas_que_no_es_un_juego_no_se_toca(self):
+        """Elegir ahi el escritorio por error no puede acabar con un game.yaml
+        y unos graficos de ejemplo sembrados entre los papeles de nadie."""
+        app = _lanzador()
+        ajeno = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, ajeno, True)
+        with open(os.path.join(ajeno, "la_tesis.odt"), "w") as f:
+            f.write("mia")
+        dichos = []
+        app.mensaje = lambda t, x, error=False: dichos.append(x)
+        app.preguntar = lambda t, x: True
+        app.elegir_carpeta = lambda t, desde="": ajeno
+        self.assertEqual("", app.elegir_proyecto([], tempfile.gettempdir()))
+        self.assertEqual(["la_tesis.odt"], os.listdir(ajeno))
+        self.assertTrue(any("vacia" in d for d in dichos), dichos)
+
+    def test_una_carpeta_vacia_se_vuelve_un_juego(self):
+        app = _lanzador()
+        destino = os.path.join(tempfile.mkdtemp(), "ELCAMPEON")
+        self.addCleanup(shutil.rmtree, os.path.dirname(destino), True)
+        app.mensaje = _explota("no habia nada que avisar")
+        app.preguntar = lambda t, x: True
+        app.elegir_carpeta = lambda t, desde="": destino
+        self.assertEqual(destino, app.elegir_proyecto([], tempfile.gettempdir()))
+        with open(os.path.join(destino, "game.yaml")) as f:
+            self.assertIn("ELCAMPEON", f.read())
+
+    def test_una_carpeta_sin_game_yaml_se_dice_y_no_se_abre(self):
+        """Pasar una carpeta cualquiera por la linea de ordenes -o arrastrarla
+        encima del .exe- no puede acabar en una ventana vacia."""
+        app = _lanzador()
+        vacia = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, vacia, True)
+        dichos = []
+        app.mensaje = lambda t, x, error=False: dichos.append(x)
+        self.assertEqual(2, app.main([vacia]))
+        self.assertTrue(any("game.yaml" in d for d in dichos), dichos)
 
 
 def _yaml_kungfu() -> str:

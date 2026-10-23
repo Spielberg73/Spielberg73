@@ -174,6 +174,15 @@ def opciones_pyinstaller(para_windows: bool, ventana: bool = False):
         "--paths", "tools",
         "--noconfirm", "--clean", "--log-level", "WARN",
     ]
+    if para_windows:
+        # En Windows los dialogos del lanzador son del sistema -user32 por
+        # ctypes-, asi que tkinter no se usa para nada. Y el Python embebido
+        # con el que esto se construye no lo trae, asi que sin esta linea
+        # PyInstaller avisa de una "instalacion de tkinter rota" en medio del
+        # log y deja el modulo fuera: el mismo resultado, pero avisando de algo
+        # que suena a averia y no lo es. Fuera de Windows tkinter si es el
+        # respaldo para los dialogos, asi que ahi se queda dentro.
+        orden += ["--exclude-module", "tkinter"]
     for origen, dentro in DATOS:
         orden += ["--add-data", origen + separador + dentro]
     orden.append("neoplat_app.py" if ventana else "ngplat")
