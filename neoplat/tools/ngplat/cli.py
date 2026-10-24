@@ -7,6 +7,8 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
+import time
 from typing import List, Optional
 
 from . import __version__
@@ -257,9 +259,26 @@ def _vigilar_la_ventana(servidor, proceso, apuntar=None) -> None:
     solo como una senyal mas, para el caso de una pagina que no late, y nunca
     se para nada antes de haber servido el editor una vez.
     """
+    try:
+        motivo = _esperar_a_que_se_cierre(servidor, proceso, apuntar)
+    except Exception as error:
+        # Un fallo aqui no puede parar el editor de nadie: se apunta y se deja
+        # el servidor en pie. Y se apunta porque la primera version de esto se
+        # moria en silencio -un `time` sin importar- y lo unico que se veia era
+        # un servidor que no se paraba nunca.
+        if apuntar:
+            apuntar("el vigilante de la ventana ha fallado (%s); el servidor "
+                    "se queda en pie" % error)
+        return
+    if apuntar:
+        apuntar("se para el servidor: %s" % motivo)
+    servidor.shutdown()
+
+
+def _esperar_a_que_se_cierre(servidor, proceso, apuntar=None) -> str:
+    """Espera a que la ventana se cierre y dice como se ha sabido."""
     arranque = time.monotonic()
     avisado = False
-    motivo = ""
     while True:
         time.sleep(1.0)
         ahora = time.monotonic()
@@ -275,27 +294,21 @@ def _vigilar_la_ventana(servidor, proceso, apuntar=None) -> None:
                             "proceso (codigo %s); se sigue sirviendo"
                             % proceso.returncode)
             if ahora - arranque > ESPERA_PRIMERA:
-                motivo = ("nadie ha abierto el editor en %d segundos"
-                          % int(ESPERA_PRIMERA))
-                break
+                return ("nadie ha abierto el editor en %d segundos"
+                        % int(ESPERA_PRIMERA))
             continue
 
         callado = ahora - (servidor.ultimo_latido or arranque)
         if callado <= SILENCIO:
             continue
         if servidor.latidos:
-            motivo = "la ventana lleva %d segundos sin latir" % int(callado)
-            break
+            return "la ventana lleva %d segundos sin latir" % int(callado)
         # No ha latido nunca: una pagina de otra version, o un navegador que
         # no ejecuta el script. Ahi vale la regla vieja -el proceso-, y sin
         # proceso no se para nada: mas vale un servidor de mas que un editor
         # sin servidor.
         if muerto:
-            motivo = "el navegador se ha cerrado y la pagina no late"
-            break
-    if apuntar:
-        apuntar("se para el servidor: %s" % motivo)
-    servidor.shutdown()
+            return "el navegador se ha cerrado y la pagina no late"
 
 
 def _servir(raiz: str, preview: str, puerto: int, ventana: bool = False,
@@ -311,9 +324,6 @@ def _servir(raiz: str, preview: str, puerto: int, ventana: bool = False,
     servidor se para **cuando se cierra esa ventana**: ahi no hay consola a la
     que volver a pulsar Ctrl+C.
     """
-    import threading
-    import time
-
     from .servidor import crear
 
     servidor, direccion = crear(raiz, preview, puerto)

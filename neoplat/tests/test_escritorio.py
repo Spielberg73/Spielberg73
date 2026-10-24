@@ -356,6 +356,7 @@ class TestElLanzadorSinConsola(unittest.TestCase):
         self.addCleanup(shutil.rmtree, vacia, True)
         dichos = []
         app.mensaje = lambda t, x, error=False: dichos.append(x)
+        app.donde_buscar = lambda: vacia    # y el registro, ahi dentro
         self.assertEqual(2, app.main([vacia]))
         self.assertTrue(any("game.yaml" in d for d in dichos), dichos)
 
