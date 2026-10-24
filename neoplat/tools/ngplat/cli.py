@@ -28,7 +28,13 @@ FIN = "\033[0m"
 
 
 def _color(text: str, code: str) -> str:
-    if not sys.stdout.isatty() or os.environ.get("NO_COLOR"):
+    # `isatty` con getattr y no a pelo: en Windows un programa enlazado sin
+    # consola arranca con `sys.stdout` a **None**, y ahi `sys.stdout.isatty()`
+    # revienta en vez de contestar que no hay colores que poner. Pasaba al
+    # abrir el editor desde NeoPlat.exe: la ventana salia y el servidor se
+    # moria antes de atender nada.
+    if not getattr(sys.stdout, "isatty", lambda: False)() \
+            or os.environ.get("NO_COLOR"):
         return text
     return code + text + FIN
 
@@ -79,7 +85,9 @@ def cmd_nuevo(args: argparse.Namespace) -> int:
     # se queda esperando en una tuberia.
     genero = getattr(args, "genero", None)
     if not genero:
-        genero = menu_de_generos() if sys.stdin.isatty() else GENEROS[0]
+        genero = (menu_de_generos()
+                  if getattr(sys.stdin, "isatty", lambda: False)()
+                  else GENEROS[0])
     creados = crear_proyecto(args.carpeta,
                              args.titulo or os.path.basename(args.carpeta.rstrip("/")),
                              args.autor or "", args.estilo, genero)

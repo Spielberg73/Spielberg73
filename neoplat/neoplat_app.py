@@ -29,6 +29,7 @@ la consola. Ahi siempre hay una.
 from __future__ import annotations
 
 import argparse
+import io
 import os
 import sys
 import traceback
@@ -45,6 +46,77 @@ MB_OKCANCEL = 0x00000001
 MB_ICONERROR = 0x00000010
 MB_ICONINFO = 0x00000040
 IDOK = 1
+
+
+class _Cuaderno(io.TextIOBase):
+    """Una salida de pega que se queda con las ultimas lineas.
+
+    En Windows, un programa enlazado **sin consola** arranca sin flujos
+    estandar: `sys.stdout` y `sys.stderr` valen **None**, no un sitio vacio
+    donde escribir. Y entonces cualquier `sys.stdout.write(...)` o
+    `sys.stdout.isatty()` -y los hay, aqui y en media biblioteca estandar- no
+    es que no escriba: **revienta** con un AttributeError en medio de lo que
+    estuviera haciendo.
+
+    Es lo que se llevo por delante a 1.57. El editor abria su ventana, y justo
+    despues, al ir a decir "servidor en 127.0.0.1:...", el programa se moria
+    ahi mismo sin llegar a atender una sola peticion. Lo que veia quien hacia
+    doble clic era una ventana con un enlace muerto.
+
+    Asi que donde Windows no pone nada se pone esto. No escribe en ninguna
+    parte -no hay donde-, pero se queda con las ultimas lineas, y si algo
+    falla salen en el cuadro de dialogo. En un programa sin consola esa es
+    toda la informacion que va a haber.
+    """
+
+    LIMITE = 40
+
+    def __init__(self):
+        self.lineas = []
+        self._a_medias = ""
+
+    def write(self, texto: str) -> int:
+        self._a_medias += texto
+        while "\n" in self._a_medias:
+            linea, self._a_medias = self._a_medias.split("\n", 1)
+            self.lineas.append(linea)
+        # solo las ultimas: esto no es un registro, es lo que quepa en un
+        # cuadro de dialogo
+        del self.lineas[:-self.LIMITE]
+        return len(texto)
+
+    def flush(self) -> None:
+        pass
+
+    def writable(self) -> bool:
+        return True
+
+    def isatty(self) -> bool:
+        return False      # sin consola no hay colores que poner
+
+    def ultimas(self, cuantas: int = 12) -> str:
+        sueltas = [l for l in self.lineas[-cuantas:] if l.strip()]
+        return "\n".join(sueltas)
+
+
+CUADERNO = _Cuaderno()
+
+
+def apuntalar_salidas() -> None:
+    """Pone algo donde Windows no ha puesto nada.
+
+    Lo primero que hace el programa, antes de importar nada del kit: el kit
+    escribe por la salida de siempre y da por hecho que existe, que es lo
+    normal en cualquier sitio menos aqui.
+    """
+    if sys.stdout is None:
+        sys.stdout = CUADERNO
+    if sys.stderr is None:
+        sys.stderr = CUADERNO
+    if sys.stdin is None:
+        # Nadie va a teclear nada en un programa sin consola, pero preguntarlo
+        # tampoco puede reventar.
+        sys.stdin = io.StringIO("")
 
 
 def mensaje(titulo: str, texto: str, error: bool = False) -> None:
@@ -234,6 +306,7 @@ def elegir_proyecto(cerca, base: str) -> str:
 
 
 def main(argv) -> int:
+    apuntalar_salidas()
     from ngplat import cli
 
     ap = argparse.ArgumentParser(add_help=False)
@@ -259,7 +332,12 @@ if __name__ == "__main__":
     except SystemExit:
         raise
     except Exception:
-        # Sin consola, lo que no salga aqui no sale en ninguna parte.
-        mensaje("NeoPlat", "No se ha podido abrir el editor:\n\n%s"
-                % traceback.format_exc(limit=3), error=True)
+        # Sin consola, lo que no salga aqui no sale en ninguna parte: van el
+        # fallo y las ultimas lineas que el kit alcanzo a escribir, que es lo
+        # que dice **por donde** iba cuando se rompio.
+        ultimas = CUADERNO.ultimas()
+        mensaje("NeoPlat", "No se ha podido abrir el editor:\n\n%s%s"
+                % (traceback.format_exc(limit=3),
+                   ("\nLo ultimo que estaba haciendo:\n" + ultimas)
+                   if ultimas else ""), error=True)
         raise SystemExit(1)

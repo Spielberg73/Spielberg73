@@ -435,9 +435,9 @@ Three things come out, **with the version in the name** (the same one
 
 | | |
 |---|---|
-| `neoplat-docs-1.57.zip` | the documentation only: this front page and all of `docs/`. It is what you take if you want to read it or pass it on to another project |
-| `neoplat-kit-1.57.zip` | the whole kit: engine, tools, example and tests, without the generated files or the history |
-| `neoplat-windows-1.57.zip` | the `NeoPlat.exe` (the editor, in its window), the command-line `ngplat.exe` and its README |
+| `neoplat-docs-1.58.zip` | the documentation only: this front page and all of `docs/`. It is what you take if you want to read it or pass it on to another project |
+| `neoplat-kit-1.58.zip` | the whole kit: engine, tools, example and tests, without the generated files or the history |
+| `neoplat-windows-1.58.zip` | the `NeoPlat.exe` (the editor, in its window), the command-line `ngplat.exe` and its README |
 
 The Windows ZIP brings **two programs**, and what changes is the way in.
 **`NeoPlat.exe`** is the editor: double click and up it comes, in its own

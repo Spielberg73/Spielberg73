@@ -2,8 +2,52 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.57.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.58.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.58
+
+**El enlace del editor ya contesta.** En 1.57 `NeoPlat.exe` abría su ventana y
+lo que salía dentro era un enlace muerto. La ventana no tenía nada de malo: el
+que no llegaba a arrancar era el servidor que hay detrás.
+
+**Qué pasaba.** En Windows, un programa enlazado **sin consola** arranca sin
+flujos estándar: `sys.stdout` y `sys.stderr` no son un sitio vacío donde
+escribir, son **None**. Y entonces una línea tan tonta como
+`sys.stdout.isatty()` —la que decide si los mensajes van con color o sin él— no
+es que no escriba nada: **revienta**. El editor abría la ventana, iba a decir
+«servidor en 127.0.0.1:…», se moría en esa línea y no atendía una sola
+petición. Lo que veía quien hacía doble clic era el navegador diciendo que no
+puede acceder al sitio.
+
+Tiene su gracia que el fallo estuviera en el código de poner colores, que es lo
+primero que sobra en un programa sin consola.
+
+**Cómo se ha arreglado.** Dos cosas, y las dos hacían falta:
+
+- donde Windows no pone nada, el lanzador **pone algo** antes de importar el
+  kit: una salida de pega que no escribe en ninguna parte —no hay dónde— pero
+  **se queda con las últimas líneas**. Así el kit entero puede seguir
+  escribiendo como escribe en cualquier otro sitio;
+- y si algo falla, esas líneas salen en el cuadro de diálogo, debajo del error.
+  Sin consola no hay registro ninguno: lo último que se estaba haciendo es toda
+  la información que va a haber, y ahora se tiene.
+
+Además, las dos líneas del kit que daban por hecho que hay una salida
+(`sys.stdout.isatty()` para el color y `sys.stdin.isatty()` para preguntar el
+género) ya preguntan antes si la hay.
+
+**Cuatro pruebas nuevas**, y la que importa es de punta a punta y es la que
+faltaba: se lanza el editor **sin stdout y sin stderr**, como lo lanza el doble
+clic de Windows, y se exige que **el enlace conteste 200**. Mirar que el
+programa no reviente no valía: lo que hay que exigir es que sirva. Contra 1.57
+esa prueba falla con «el lanzador se ha muerto solo», que es exactamente lo que
+pasaba.
+
+**Por qué no se vio antes.** Porque el `.exe` se probó aquí bajo Wine con la
+salida enchufada a una tubería, y con una tubería los flujos **existen**. El
+caso que falla es justo el que no se puede dar en una terminal: que no haya
+ninguno. Ahora eso es una prueba, y se ejecuta en cada cambio.
 
 ## 1.57
 

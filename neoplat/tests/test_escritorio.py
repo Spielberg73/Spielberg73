@@ -340,6 +340,126 @@ class TestElLanzadorSinConsola(unittest.TestCase):
         self.assertTrue(any("game.yaml" in d for d in dichos), dichos)
 
 
+
+class TestSinFlujosEstandar(unittest.TestCase):
+    """La prueba que faltaba, y por la que 1.57 no servia.
+
+    En Windows un programa enlazado **sin consola** arranca sin flujos
+    estandar: `sys.stdout` y `sys.stderr` valen None. El kit escribe por ahi
+    -como todo el mundo-, asi que a la primera linea saltaba un AttributeError
+    y el programa se moria **justo despues de abrir la ventana**: lo que veia
+    quien hacia doble clic era un enlace muerto.
+
+    Esto lo hace de verdad: le quita los dos flujos al lanzador, lo lanza
+    contra un proyecto y exige que **el enlace conteste**. Aqui no vale mirar
+    que no reviente: lo que hay que exigir es que sirva.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix="neoplat-sinflujos-")
+        cls.proyecto = os.path.join(cls.tmp, "juego")
+        crear_proyecto(cls.proyecto, "SINCONSOLA", "TEST")
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_el_enlace_contesta_aunque_no_haya_donde_escribir(self):
+        falso = os.path.join(self.tmp, "ventana.py")
+        with open(falso, "w", encoding="utf-8") as fh:
+            fh.write("import sys, time\n"
+                     "open(sys.argv[1], 'w').write(' '.join(sys.argv[2:]))\n"
+                     "time.sleep(20)\n")
+        apunte = os.path.join(self.tmp, "apunte.txt")
+        lanzador = os.path.join(self.tmp, "lanzador")
+        with open(lanzador, "w", encoding="utf-8") as fh:
+            fh.write("#!/bin/sh\nexec %s %s %s \"$@\"\n"
+                     % (sys.executable, falso, apunte))
+        os.chmod(lanzador, 0o755)
+
+        # El doble clic de Windows, tal cual: sin stdout y sin stderr.
+        guion = os.path.join(self.tmp, "doble_clic.py")
+        with open(guion, "w", encoding="utf-8") as fh:
+            fh.write("import importlib.util as u, sys\n"
+                     "carga = u.spec_from_file_location('app', %r)\n"
+                     "app = u.module_from_spec(carga)\n"
+                     "carga.loader.exec_module(app)\n"
+                     "sys.stdout = None\n"
+                     "sys.stderr = None\n"
+                     "raise SystemExit(app.main([%r]))\n"
+                     % (os.path.join(KIT, "neoplat_app.py"), self.proyecto))
+
+        entorno = dict(os.environ, NEOPLAT_NAVEGADOR=lanzador)
+        entorno["PYTHONPATH"] = os.path.join(KIT, "tools")
+        proceso = subprocess.Popen([sys.executable, guion],
+                                   stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT, text=True,
+                                   env=entorno)
+        try:
+            direccion = ""
+            for _ in range(300):
+                if proceso.poll() is not None:
+                    self.fail("el lanzador se ha muerto solo:\n%s"
+                              % proceso.communicate()[0])
+                if os.path.exists(apunte):
+                    with open(apunte, encoding="utf-8") as fh:
+                        for trozo in fh.read().split():
+                            if trozo.startswith("--app="):
+                                direccion = trozo[len("--app="):]
+                    if direccion:
+                        break
+                time.sleep(0.1)
+            self.assertTrue(direccion, "la ventana no se ha llegado a abrir")
+
+            # Y lo que importa: que al otro lado del enlace haya algo.
+            with urllib.request.urlopen(direccion, timeout=15) as r:
+                self.assertEqual(200, r.status)
+                self.assertIn(b"<html", r.read(4096).lower())
+        finally:
+            if proceso.poll() is None:
+                proceso.kill()
+                proceso.wait(timeout=10)
+
+    def test_las_lineas_del_kit_se_guardan_para_el_cuadro_de_dialogo(self):
+        """Sin consola no hay registro: lo ultimo que se escribio es lo unico
+        que puede explicar un fallo, asi que se guarda para el dialogo."""
+        app = _lanzador()
+        cuaderno = app._Cuaderno()
+        for i in range(60):
+            cuaderno.write("linea %d\n" % i)
+        cuaderno.write("  ok  servidor en http://127.0.0.1:8777\n")
+        self.assertEqual(app._Cuaderno.LIMITE, len(cuaderno.lineas))
+        self.assertIn("servidor en", cuaderno.ultimas())
+        self.assertNotIn("linea 0\n", cuaderno.ultimas())
+        self.assertFalse(cuaderno.isatty())
+
+    def test_se_pone_algo_donde_windows_no_pone_nada(self):
+        app = _lanzador()
+        guardados = (sys.stdout, sys.stderr, sys.stdin)
+        try:
+            sys.stdout = sys.stderr = sys.stdin = None
+            app.apuntalar_salidas()
+            self.assertIsNotNone(sys.stdout)
+            self.assertIsNotNone(sys.stderr)
+            self.assertFalse(sys.stdout.isatty())
+            self.assertFalse(sys.stdin.isatty())
+            sys.stdout.write("algo\n")      # y esto no puede reventar
+        finally:
+            sys.stdout, sys.stderr, sys.stdin = guardados
+
+    def test_el_color_no_da_por_hecho_que_haya_salida(self):
+        """La linea exacta que mataba al programa: `sys.stdout.isatty()`."""
+        from ngplat import cli
+
+        guardado = sys.stdout
+        try:
+            sys.stdout = None
+            self.assertEqual("  ok  ", cli._color("  ok  ", cli.VERDE))
+        finally:
+            sys.stdout = guardado
+
+
 def _yaml_kungfu() -> str:
     """El game.yaml del genero, con los huecos rellenos de cualquier cosa."""
     from ngplat.scaffold import GAME_YAML_KUNGFU
