@@ -21,10 +21,12 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import types
 import unittest
 import urllib.error
+import urllib.parse
 import urllib.request
 
 from comun import KIT, crear_proyecto
@@ -598,10 +600,12 @@ class TestDondeSeBuscaElNavegador(unittest.TestCase):
 
         dichos = []
         app.mensaje = lambda t, x, error=False: dichos.append(x)
+        app.donde_buscar = lambda: tmp       # y el registro, en lo temporal
         guardadas = {}
         from ngplat import cli
 
-        def falso_servir(raiz, preview, puerto, ventana=False, avisar=None):
+        def falso_servir(raiz, preview, puerto, ventana=False, avisar=None,
+                         apuntar=None):
             guardadas["avisar"] = avisar
             if avisar is not None:
                 avisar("no encuentro Edge ni Chrome")
@@ -625,6 +629,225 @@ class TestDondeSeBuscaElNavegador(unittest.TestCase):
         self.assertIn("no encuentro Edge ni Chrome", texto)
         self.assertIn("NEOPLAT_NAVEGADOR", texto)
         self.assertIn("ngplat navegador", texto)
+
+
+
+class TestCuandoElNavegadorPasaLaVentanaAOtro(unittest.TestCase):
+    """El fallo de "127.0.0.1 rechazo la conexion", y es el bueno.
+
+    Edge y Chrome, cuando ya hay uno corriendo con el mismo perfil, no abren
+    la ventana ellos: **le pasan la orden al que ya estaba y el proceso que se
+    acaba de lanzar se muere en el acto**. Y como lo que se vigilaba era ese
+    proceso, el servidor se paraba dandose por cerrado. La ventana si se
+    abria -la abria el otro Edge-, y lo que salia dentro era la conexion
+    rechazada. Pasaba siempre, porque tener un Edge abierto es lo normal.
+
+    Aqui el "navegador" es un programa que escribe la direccion y **se muere
+    inmediatamente**, que es exactamente lo que hace Edge al traspasar. Lo que
+    se exige es que el servidor **siga en pie**.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix="neoplat-traspaso-")
+        cls.proyecto = os.path.join(cls.tmp, "juego")
+        crear_proyecto(cls.proyecto, "TRASPASO", "TEST")
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def _lanzar(self, guion_del_navegador):
+        falso = os.path.join(self.tmp, "ventana.py")
+        with open(falso, "w", encoding="utf-8") as fh:
+            fh.write(guion_del_navegador)
+        apunte = os.path.join(self.tmp, "apunte.txt")
+        if os.path.exists(apunte):
+            os.remove(apunte)
+        lanzador = os.path.join(self.tmp, "lanzador")
+        with open(lanzador, "w", encoding="utf-8") as fh:
+            fh.write("#!/bin/sh\nexec %s %s %s \"$@\"\n"
+                     % (sys.executable, falso, apunte))
+        os.chmod(lanzador, 0o755)
+        entorno = dict(os.environ, NEOPLAT_NAVEGADOR=lanzador)
+        entorno["PYTHONPATH"] = os.path.join(KIT, "tools")
+        proceso = subprocess.Popen(
+            [sys.executable, os.path.join(KIT, "ngplat"), "app", self.proyecto],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            env=entorno)
+        self.addCleanup(self._matar, proceso)
+        direccion = ""
+        for _ in range(300):
+            if os.path.exists(apunte):
+                with open(apunte, encoding="utf-8") as fh:
+                    for trozo in fh.read().split():
+                        if trozo.startswith("--app="):
+                            direccion = trozo[len("--app="):]
+                if direccion:
+                    break
+            time.sleep(0.1)
+        self.assertTrue(direccion, "la ventana no se ha llegado a abrir")
+        return proceso, direccion
+
+    @staticmethod
+    def _matar(proceso):
+        if proceso.poll() is None:
+            proceso.kill()
+            proceso.wait(timeout=10)
+
+    def test_el_servidor_sigue_en_pie_cuando_el_proceso_se_muere_solo(self):
+        """La prueba del fallo. Contra 1.59 el servidor se paraba aqui."""
+        proceso, direccion = self._lanzar(
+            "import sys\n"
+            "open(sys.argv[1], 'w').write(' '.join(sys.argv[2:]))\n")
+        # que se muera del todo, y un poco mas: el vigilante mira cada segundo
+        time.sleep(6)
+        self.assertIsNone(proceso.poll(),
+                          "el servidor se ha parado al morirse el navegador")
+        with urllib.request.urlopen(direccion, timeout=15) as r:
+            self.assertEqual(200, r.status)
+            self.assertIn(b"<html", r.read(4096).lower())
+
+    def test_y_al_dejar_de_latir_la_pagina_se_para(self):
+        """Pero sin dejar un servidor colgado: si la pagina deja de latir, se
+        para. Es lo que sustituye a vigilar el proceso."""
+        proceso, direccion = self._lanzar(
+            "import sys\n"
+            "open(sys.argv[1], 'w').write(' '.join(sys.argv[2:]))\n")
+        # se carga el editor y se manda un latido, como hace la pagina
+        with urllib.request.urlopen(direccion, timeout=15) as r:
+            self.assertEqual(200, r.status)
+        partes = urllib.parse.urlsplit(direccion)
+        latido = urllib.parse.urlunsplit(
+            (partes.scheme, partes.netloc, "/latido", partes.query, ""))
+        with urllib.request.urlopen(latido, timeout=15) as r:
+            self.assertEqual(204, r.status)
+        # y ahora se calla: el servidor tiene que irse detras
+        proceso.wait(timeout=90)
+        self.assertEqual(0, proceso.returncode)
+        with self.assertRaises((urllib.error.URLError, OSError)):
+            urllib.request.urlopen(direccion, timeout=5)
+
+
+class TestElLatido(unittest.TestCase):
+    """Lo que le dice al servidor que la ventana sigue abierta."""
+
+    def test_el_servidor_lo_apunta(self):
+        from ngplat.servidor import crear
+
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        preview = os.path.join(tmp, "preview.html")
+        with open(preview, "w", encoding="utf-8") as fh:
+            fh.write("<html><body>hola</body></html>")
+        servidor, direccion = crear(tmp, preview, 0)
+        self.addCleanup(servidor.server_close)
+        hilo = threading.Thread(target=servidor.serve_forever, daemon=True)
+        hilo.start()
+        self.addCleanup(servidor.shutdown)
+
+        # recien arrancado no se sabe nada de ninguna pagina
+        self.assertFalse(servidor.servida)
+        self.assertEqual(0, servidor.latidos)
+        self.assertIsNone(servidor.ultimo_latido)
+
+        with urllib.request.urlopen(direccion, timeout=10) as r:
+            self.assertEqual(200, r.status)
+        self.assertTrue(servidor.servida)
+        primero = servidor.ultimo_latido
+        self.assertIsNotNone(primero)
+
+        partes = urllib.parse.urlsplit(direccion)
+        latido = urllib.parse.urlunsplit(
+            (partes.scheme, partes.netloc, "/latido", partes.query, ""))
+        time.sleep(0.05)
+        with urllib.request.urlopen(latido, timeout=10) as r:
+            self.assertEqual(204, r.status)
+        self.assertEqual(1, servidor.latidos)
+        self.assertGreater(servidor.ultimo_latido, primero)
+
+    def test_sin_la_clave_no_cuenta(self):
+        """Un latido de cualquiera mantendria el servidor vivo para siempre."""
+        from ngplat.servidor import crear
+
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        preview = os.path.join(tmp, "preview.html")
+        with open(preview, "w", encoding="utf-8") as fh:
+            fh.write("<html></html>")
+        servidor, direccion = crear(tmp, preview, 0)
+        self.addCleanup(servidor.server_close)
+        hilo = threading.Thread(target=servidor.serve_forever, daemon=True)
+        hilo.start()
+        self.addCleanup(servidor.shutdown)
+        partes = urllib.parse.urlsplit(direccion)
+        sin_clave = urllib.parse.urlunsplit(
+            (partes.scheme, partes.netloc, "/latido", "", ""))
+        with self.assertRaises(urllib.error.HTTPError) as caja:
+            urllib.request.urlopen(sin_clave, timeout=10)
+        self.assertEqual(403, caja.exception.code)
+        self.assertEqual(0, servidor.latidos)
+
+    def test_la_pagina_late_y_solo_servida_desde_el_servidor(self):
+        """Abierta como file:// no hay a quien latir, y pedirlo seria un error
+        en la consola del navegador cada tres segundos."""
+        with open(os.path.join(KIT, "tools", "ngplat", "templates",
+                               "preview.html"), encoding="utf-8") as fh:
+            pagina = fh.read()
+        self.assertIn("/latido?t=", pagina)
+        self.assertIn("setInterval(latir", pagina)
+        # el latido va colgado de `disponible`, que es http + clave
+        trozo = pagina.split("this.disponible =", 1)[1][:900]
+        self.assertIn("if (this.disponible)", trozo)
+        self.assertIn("latir", trozo)
+
+
+class TestElRegistroDeNeoPlatExe(unittest.TestCase):
+    """Sin consola, un fallo que solo le pasa a quien lo usa no deja rastro.
+
+    Esto existe por una tarde entera de arreglar a ciegas: lo unico que llegaba
+    de vuelta era "sigue fallando". Ahora llega un fichero.
+    """
+
+    def test_apunta_al_lado_del_programa(self):
+        app = _lanzador()
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        app.donde_buscar = lambda: tmp
+        app.apuntar("probando el registro")
+        ruta = os.path.join(tmp, app.REGISTRO)
+        self.assertTrue(os.path.isfile(ruta))
+        with open(ruta, encoding="utf-8") as fh:
+            escrito = fh.read()
+        self.assertIn("probando el registro", escrito)
+        # con su hora, que es la mitad de la utilidad
+        self.assertRegex(escrito, r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
+
+    def test_si_no_se_puede_escribir_ahi_va_a_la_carpeta_temporal(self):
+        """Un .exe dentro de Program Files no puede escribir a su lado."""
+        app = _lanzador()
+        app.donde_buscar = lambda: os.path.join(os.sep, "no", "existe", "esto")
+        self.assertEqual(tempfile.gettempdir(),
+                         os.path.dirname(app.donde_apuntar()))
+
+    def test_apuntar_no_puede_fallar_nunca(self):
+        """Es un registro, no el trabajo: si no se puede, se sigue."""
+        app = _lanzador()
+
+        def no_hay_donde():
+            raise OSError("nada")
+
+        app.donde_apuntar = no_hay_donde
+        app.apuntar("esto no se va a poder apuntar")   # y no revienta
+
+    def test_el_aviso_dice_donde_esta_apuntado(self):
+        app = _lanzador()
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        app.donde_buscar = lambda: tmp
+        texto = app.con_registro("no encuentro Edge")
+        self.assertIn("no encuentro Edge", texto)
+        self.assertIn(app.REGISTRO, texto)
 
 
 def _yaml_kungfu() -> str:

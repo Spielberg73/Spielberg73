@@ -33,6 +33,8 @@ FECHA = (2025, 1, 1, 0, 0, 0)          # para que el ZIP sea repetible
 FUERA = {".git", "__pycache__", "build", "dist", "capturas", ".pytest_cache",
          ".neoplat"}          # las copias locales del historial no se reparten
 FUERA_EXT = {".pyc", ".pyo", ".adf", ".st", ".j64", ".bin", ".elf", ".o"}
+# El registro que deja NeoPlat.exe al lado: es de quien lo ejecuta, no del kit.
+FUERA_NOMBRES = {"NeoPlat-registro.txt"}
 
 DOCS = ["README.md", "CAMBIOS.md", "docs", "LICENSE"]
 KIT = ["README.md", "CAMBIOS.md", "docs", "engine", "preview", "tools", "tests",
@@ -45,6 +47,8 @@ from ngplat import __version__ as VERSION  # noqa: E402
 def _interesa(ruta: str) -> bool:
     partes = ruta.replace("\\", "/").split("/")
     if any(p in FUERA for p in partes):
+        return False
+    if partes[-1] in FUERA_NOMBRES:
         return False
     return os.path.splitext(ruta)[1] not in FUERA_EXT
 

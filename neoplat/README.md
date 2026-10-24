@@ -424,9 +424,9 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.59.zip` | sólo la documentación: este README, todo `docs/` —el castellano y su traducción al inglés— y **los dos PDF del manual encuadernado** |
-| `neoplat-kit-1.59.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.59.zip` | el `NeoPlat.exe` (el editor, en su ventana), el `ngplat.exe` de la línea de órdenes y su LEEME |
+| `neoplat-docs-1.60.zip` | sólo la documentación: este README, todo `docs/` —el castellano y su traducción al inglés— y **los dos PDF del manual encuadernado** |
+| `neoplat-kit-1.60.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.60.zip` | el `NeoPlat.exe` (el editor, en su ventana), el `ngplat.exe` de la línea de órdenes y su LEEME |
 
 El ZIP de Windows trae **dos programas**, y lo que cambia es por dónde se
 entra. **`NeoPlat.exe`** es el editor: doble clic y sale, en su ventana, sin

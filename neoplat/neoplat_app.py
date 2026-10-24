@@ -32,6 +32,8 @@ import argparse
 import io
 import os
 import sys
+import tempfile
+import time
 import traceback
 
 RAIZ = os.path.dirname(os.path.abspath(__file__))
@@ -305,6 +307,57 @@ def elegir_proyecto(cerca, base: str) -> str:
     return destino
 
 
+REGISTRO = "NeoPlat-registro.txt"
+
+
+def donde_apuntar() -> str:
+    """El fichero donde queda constancia de lo que ha hecho el programa.
+
+    Al lado del .exe, que es donde lo va a encontrar quien lo necesite sin que
+    haya que explicarle nada. Si ahi no se puede escribir -un .exe dentro de
+    Program Files, una carpeta de solo lectura-, en la carpeta temporal.
+
+    Esto existe por una tarde entera de arreglar a ciegas. Sin consola, un
+    fallo que solo le pasa a quien lo usa no deja ni rastro, y lo unico que
+    llega de vuelta es "sigue fallando". Con el registro, llega el fichero.
+    """
+    base = donde_buscar()
+    # Se pregunta, no se prueba escribiendo: una prueba de escritura dejaria
+    # el fichero creado aunque no hubiera nada que apuntar, y un registro
+    # vacio al lado del programa es basura que alguien tendra que barrer.
+    if base and os.access(base, os.W_OK):
+        return os.path.join(base, REGISTRO)
+    return os.path.join(tempfile.gettempdir(), REGISTRO)
+
+
+def con_registro(texto: str) -> str:
+    """El texto, y debajo donde esta apuntado todo. Para poder mandarlo."""
+    return "%s\n\nQueda todo apuntado en:\n%s" % (texto, donde_apuntar())
+
+
+def apuntar(texto: str) -> None:
+    """Una linea con su hora en el registro. No puede fallar nunca.
+
+    Si donde toca no se puede escribir, se intenta en la carpeta temporal; y
+    si tampoco, se pierde la linea y se sigue. Esto es el registro, no el
+    trabajo: que no se pueda apuntar no puede ser lo que tire el programa.
+    """
+    linea = "%s  %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), texto)
+    sitios = []
+    try:
+        sitios.append(donde_apuntar())
+    except Exception:
+        pass
+    sitios.append(os.path.join(tempfile.gettempdir(), REGISTRO))
+    for ruta in sitios:
+        try:
+            with open(ruta, "a", encoding="utf-8") as fh:
+                fh.write(linea)
+            return
+        except OSError:
+            continue
+
+
 def main(argv) -> int:
     apuntalar_salidas()
     from ngplat import cli
@@ -314,7 +367,9 @@ def main(argv) -> int:
     args, _ = ap.parse_known_args(argv)
 
     base = donde_buscar()
+    apuntar("--- NeoPlat %s arranca en %s" % (cli.__version__, base))
     proyecto = args.proyecto or elegir_proyecto(cli._proyectos_cerca(base), base)
+    apuntar("juego: %s" % (proyecto or "ninguno: no hay nada que abrir"))
     if not proyecto:
         return 0
     if not os.path.exists(os.path.join(proyecto, "game.yaml")):
@@ -328,7 +383,8 @@ def main(argv) -> int:
     # abriendose, sin ninguna explicacion.
     return cli.cmd_app(argparse.Namespace(proyecto=proyecto, salida=None,
                                           puerto=0, sistema=""),
-                       avisar=lambda texto: mensaje("NeoPlat", texto))
+                       avisar=lambda texto: mensaje("NeoPlat", con_registro(texto)),
+                       apuntar=apuntar)
 
 
 if __name__ == "__main__":
@@ -340,9 +396,11 @@ if __name__ == "__main__":
         # Sin consola, lo que no salga aqui no sale en ninguna parte: van el
         # fallo y las ultimas lineas que el kit alcanzo a escribir, que es lo
         # que dice **por donde** iba cuando se rompio.
+        apuntar("ha fallado: %s" % traceback.format_exc(limit=3).strip())
         ultimas = CUADERNO.ultimas()
-        mensaje("NeoPlat", "No se ha podido abrir el editor:\n\n%s%s"
-                % (traceback.format_exc(limit=3),
-                   ("\nLo ultimo que estaba haciendo:\n" + ultimas)
-                   if ultimas else ""), error=True)
+        mensaje("NeoPlat", con_registro(
+            "No se ha podido abrir el editor:\n\n%s%s"
+            % (traceback.format_exc(limit=3),
+               ("\nLo ultimo que estaba haciendo:\n" + ultimas)
+               if ultimas else "")), error=True)
         raise SystemExit(1)

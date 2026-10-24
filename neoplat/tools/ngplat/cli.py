@@ -169,7 +169,7 @@ def cmd_probar(args: argparse.Namespace) -> int:
     return _servir(project.root, destino, args.puerto)
 
 
-def cmd_app(args: argparse.Namespace, avisar=None) -> int:
+def cmd_app(args: argparse.Namespace, avisar=None, apuntar=None) -> int:
     """El editor en su propia ventana, sin navegador alrededor.
 
     Es `probar` con dos diferencias, y las dos son para que esto se use como un
@@ -180,13 +180,17 @@ def cmd_app(args: argparse.Namespace, avisar=None) -> int:
 
     `avisar` es por donde sale lo que no se puede escribir en una consola que
     no existe: NeoPlat.exe pasa aqui su cuadro de dialogo. Sin eso, los avisos
-    van a la salida de siempre, como en cualquier otra orden.
+    van a la salida de siempre, como en cualquier otra orden. Y `apuntar` es
+    donde se deja constancia de lo que ha ido pasando -que navegador, que
+    direccion, cuando se cerro la ventana-: en un programa sin consola eso es
+    lo unico que queda despues, y es con lo que se arregla un fallo que solo
+    le pasa a quien lo usa.
     """
     project, build, sistema = _cargar(args.proyecto, args.sistema)
     destino = args.salida or os.path.join(project.root, "preview.html")
     write_preview(build, destino)
     return _servir(project.root, destino, args.puerto, ventana=True,
-                   avisar=avisar)
+                   avisar=avisar, apuntar=apuntar)
 
 
 def cmd_navegador(args: argparse.Namespace) -> int:
@@ -230,8 +234,72 @@ def _abrir(direccion: str) -> None:
         _info("abrelo a mano en tu navegador")
 
 
+# Lo que se aguanta sin saber nada de la pagina antes de dar la ventana por
+# cerrada, y lo que se le espera para que se abra la primera vez. El latido va
+# cada tres segundos, asi que veinte son seis latidos perdidos: no es un
+# tropiezo, es que no esta.
+SILENCIO = 20.0
+ESPERA_PRIMERA = 300.0
+
+
+def _vigilar_la_ventana(servidor, proceso, apuntar=None) -> None:
+    """Para el servidor cuando se cierra la ventana, y **solo** entonces.
+
+    Lo evidente -esperar a que muera el proceso del navegador- esta mal, y era
+    el fallo: Edge y Chrome, cuando ya hay uno corriendo con el mismo perfil,
+    **le pasan la orden al que estaba y el que se acaba de lanzar se muere en
+    el acto**. El servidor se paraba creyendo que se habia cerrado la ventana,
+    y en la ventana que acababa de abrirse salia "127.0.0.1 rechazo la
+    conexion". Y pasaba siempre, porque un Edge abierto es lo normal.
+
+    Asi que lo que se vigila es la pagina, que es la unica que sabe de verdad
+    si sigue abierta: manda un latido cada tres segundos. El proceso cuenta
+    solo como una senyal mas, para el caso de una pagina que no late, y nunca
+    se para nada antes de haber servido el editor una vez.
+    """
+    arranque = time.monotonic()
+    avisado = False
+    motivo = ""
+    while True:
+        time.sleep(1.0)
+        ahora = time.monotonic()
+        muerto = proceso is not None and proceso.poll() is not None
+
+        if not servidor.servida:
+            # El editor no se ha cargado todavia: parar ahora seria dejar a la
+            # ventana con la conexion rechazada, que es justo lo que pasaba.
+            if muerto and not avisado:
+                avisado = True
+                if apuntar:
+                    apuntar("el navegador le ha pasado la ventana a otro "
+                            "proceso (codigo %s); se sigue sirviendo"
+                            % proceso.returncode)
+            if ahora - arranque > ESPERA_PRIMERA:
+                motivo = ("nadie ha abierto el editor en %d segundos"
+                          % int(ESPERA_PRIMERA))
+                break
+            continue
+
+        callado = ahora - (servidor.ultimo_latido or arranque)
+        if callado <= SILENCIO:
+            continue
+        if servidor.latidos:
+            motivo = "la ventana lleva %d segundos sin latir" % int(callado)
+            break
+        # No ha latido nunca: una pagina de otra version, o un navegador que
+        # no ejecuta el script. Ahi vale la regla vieja -el proceso-, y sin
+        # proceso no se para nada: mas vale un servidor de mas que un editor
+        # sin servidor.
+        if muerto:
+            motivo = "el navegador se ha cerrado y la pagina no late"
+            break
+    if apuntar:
+        apuntar("se para el servidor: %s" % motivo)
+    servidor.shutdown()
+
+
 def _servir(raiz: str, preview: str, puerto: int, ventana: bool = False,
-            avisar=None) -> int:
+            avisar=None, apuntar=None) -> int:
     """Sirve el preview desde localhost para que el editor pueda guardar y compilar.
 
     Abierto como file://, el editor solo puede exportar el game.yaml: una
@@ -244,15 +312,23 @@ def _servir(raiz: str, preview: str, puerto: int, ventana: bool = False,
     que volver a pulsar Ctrl+C.
     """
     import threading
+    import time
 
     from .servidor import crear
 
     servidor, direccion = crear(raiz, preview, puerto)
+    if apuntar:
+        apuntar("servidor en %s" % direccion)
     proceso = None
     if ventana:
         from . import escritorio
 
+        if apuntar:
+            apuntar("navegador: %s" % (escritorio.buscar_navegador()
+                                       or "no encuentro ninguno"))
         proceso, motivo = escritorio.abrir_con_motivo(direccion)
+        if apuntar and proceso is not None:
+            apuntar("ventana abierta, proceso %d" % proceso.pid)
         if proceso is None:
             texto = escritorio.explicacion(motivo)
             if avisar is not None:
@@ -270,14 +346,11 @@ def _servir(raiz: str, preview: str, puerto: int, ventana: bool = False,
         _info("y la pestana 'compilar' genera las ROMs")
         _info("Ctrl+C para parar")
         _abrir(direccion)
-    if proceso is not None:
-        # El que espera a la ventana es un hilo aparte: el servidor tiene que
+    if ventana:
+        # El que vigila la ventana es un hilo aparte: el servidor tiene que
         # seguir atendiendo al editor mientras tanto.
-        def esperar_a_la_ventana():
-            proceso.wait()
-            servidor.shutdown()
-
-        hilo = threading.Thread(target=esperar_a_la_ventana, daemon=True)
+        hilo = threading.Thread(target=_vigilar_la_ventana,
+                                args=(servidor, proceso, apuntar), daemon=True)
         hilo.start()
     try:
         servidor.serve_forever()

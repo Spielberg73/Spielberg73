@@ -9,3 +9,6 @@ dist/
 ngplat.spec
 .neoplat/
 sram.dat
+
+# el registro que deja NeoPlat.exe al lado del programa
+NeoPlat-registro.txt

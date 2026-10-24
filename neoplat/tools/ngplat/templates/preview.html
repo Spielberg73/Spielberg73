@@ -3476,6 +3476,27 @@
       this.clave = laClave;
       this.disponible = /^https?:$/.test(location.protocol) && !!laClave;
 
+      // Un latido cada tres segundos: es lo que le dice al servidor que esta
+      // ventana sigue abierta. Vigilar el proceso del navegador no sirve, y
+      // ese fue el fallo: Edge y Chrome, cuando ya hay uno corriendo con el
+      // mismo perfil, le pasan la orden al que estaba y el que se acaba de
+      // lanzar se muere en el acto. El servidor se paraba creyendo que se
+      // habia cerrado la ventana, y en la ventana recien abierta salia
+      // "127.0.0.1 rechazo la conexion".
+      if (this.disponible) {
+        var laSuya = this.clave;
+        var latir = function () {
+          try {
+            fetch("/latido?t=" + encodeURIComponent(laSuya),
+                  { cache: "no-store" }).catch(function () {});
+          } catch (e) {
+            // Si no llega, el servidor ya no esta y no hay nada que hacer.
+          }
+        };
+        latir();
+        setInterval(latir, 3000);
+      }
+
       var elige = document.getElementById("rom-sistema");
       var lista = (DATA.sistemas || []);
       for (var i = 0; i < lista.length; i++) {

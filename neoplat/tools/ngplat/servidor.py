@@ -22,6 +22,7 @@ import secrets
 import shutil
 import subprocess
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Dict, List, Tuple
 from urllib.parse import parse_qs, urlparse
@@ -282,13 +283,21 @@ class _Manejador(BaseHTTPRequestHandler):
         if not self._anfitrion_ok():
             return self._responder(403, b"solo localhost", "text/plain")
         camino = urlparse(self.path).path
-        if camino not in ("/", "/preview.html"):
+        if camino not in ("/", "/preview.html", "/latido"):
             return self._responder(404, b"no hay nada aqui", "text/plain")
         if not self._clave_ok():
             return self._responder(
                 403, "Falta la clave. Abre la direccion que imprimio "
                      "'ngplat probar'.".encode("utf-8"), "text/plain; charset=utf-8")
+        if camino == "/latido":
+            # La pagina dice "sigo abierta". Es lo que sustituye a vigilar el
+            # proceso del navegador, que no sirve: ver `latido` mas abajo.
+            self.server.ultimo_latido = time.monotonic()
+            self.server.latidos += 1
+            return self._responder(204, b"", "text/plain")
         with open(self.server.preview, "rb") as fh:
+            self.server.servida = True
+            self.server.ultimo_latido = time.monotonic()
             self._responder(200, fh.read(), "text/html; charset=utf-8")
 
     def do_POST(self) -> None:  # noqa: N802
@@ -438,6 +447,14 @@ def crear(raiz: str, preview: str, puerto: int = 0) -> Tuple[ThreadingHTTPServer
     servidor.preview = os.path.abspath(preview)
     servidor.clave = secrets.token_urlsafe(24)
     servidor.candado = threading.Lock()
+    # Senyales de vida de la pagina. `servida` dice si el editor ha llegado a
+    # cargarse alguna vez -y mientras no lo haya hecho, parar el servidor es
+    # siempre un error-, y `ultimo_latido` es cuando se supo de el por ultima
+    # vez. Con esto se sabe si la ventana sigue abierta sin tener que vigilar
+    # el proceso del navegador, que miente: ver `latido` en cli.py.
+    servidor.servida = False
+    servidor.latidos = 0
+    servidor.ultimo_latido = None
     puerto_real = servidor.server_address[1]
     servidor.origenes = ("http://127.0.0.1:%d" % puerto_real,
                          "http://localhost:%d" % puerto_real)

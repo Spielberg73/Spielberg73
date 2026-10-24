@@ -2,8 +2,63 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.59.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.60.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.60
+
+**`127.0.0.1 rechazó la conexión`.** La ventana ya salía —1.59 arregló que
+encontrase Edge—, y dentro salía eso. Este es el fallo bueno, y llevaba ahí
+desde 1.56.
+
+**Qué pasaba, y es bonito.** Edge y Chrome, cuando ya hay uno corriendo con el
+mismo perfil, **no abren la ventana ellos**: le pasan la orden al proceso que
+ya estaba y el que acabas de lanzar **se muere en el acto**. Y lo que NeoPlat
+vigilaba para saber si habías cerrado la ventana era justo ese proceso. Así que
+lo veía morir al segundo, daba la ventana por cerrada y **paraba el servidor**.
+La ventana sí se abría —la abría el otro Edge— y dentro no había nadie
+escuchando.
+
+Y pasaba **siempre**, porque tener un Edge abierto es lo normal. Lo raro era
+que funcionase.
+
+**Cómo se ha arreglado.** Lo que se vigila ya no es el proceso, que miente,
+sino **la página**, que es la única que sabe de verdad si sigue abierta: manda
+un latido cada tres segundos y el servidor se para cuando deja de latir. El
+proceso del navegador cuenta sólo como una señal más, para el caso de una
+página que no late —un editor de otra versión, un navegador sin JavaScript—, y
+sobre todo:
+
+> **nunca se para el servidor antes de haber servido el editor una vez.**
+
+Esa línea sola ya habría evitado el fallo: parar el servidor cuando nadie ha
+llegado a cargar la página es, por definición, dejar a alguien con la conexión
+rechazada.
+
+Veinte segundos de silencio son seis latidos perdidos: no es un tropiezo, es
+que la ventana se ha ido. Y mientras el proceso del navegador siga vivo, el
+silencio no cuenta, así que una compilación larga no puede matar al servidor
+que la está haciendo.
+
+### Y un registro, que debía existir desde el principio
+
+`NeoPlat.exe` escribe ahora un **`NeoPlat-registro.txt`** a su lado —o en la
+carpeta temporal, si ahí no se puede escribir— con qué navegador eligió, en qué
+dirección está sirviendo, qué proceso abrió, cuándo se murió y por qué paró. Si
+algo falla, el cuadro de diálogo dice dónde está apuntado.
+
+Esto existe por tres versiones de arreglar a ciegas. Sin consola, un fallo que
+sólo le pasa a quien lo usa no deja ningún rastro, y lo único que llegaba de
+vuelta era «sigue fallando». Ahora llega un fichero.
+
+**Nueve pruebas nuevas.** La que importa lanza el editor con un «navegador» que
+escribe la dirección y **se muere inmediatamente** —que es exactamente lo que
+hace Edge al traspasar— y exige que el servidor **siga en pie**. Contra 1.59
+esa prueba falla. Su pareja exige lo contrario: que al dejar de latir la página,
+el servidor se vaya detrás, para no dejar un proceso colgado. Las demás miran el
+latido (que cuente, que sin la clave no cuente, que la página sólo lata cuando
+está servida desde el servidor) y el registro (dónde escribe, qué hace si no
+puede, y que no reviente nunca).
 
 ## 1.59
 
