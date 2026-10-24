@@ -413,10 +413,13 @@ class TestSinFlujosEstandar(unittest.TestCase):
 
         entorno = dict(os.environ, NEOPLAT_NAVEGADOR=lanzador)
         entorno["PYTHONPATH"] = os.path.join(KIT, "tools")
+        # Se lanza **desde** la carpeta temporal: el registro que deja el
+        # programa va al lado del programa, y aqui eso es la carpeta de
+        # trabajo. Asi no se siembra un NeoPlat-registro.txt en tests/.
         proceso = subprocess.Popen([sys.executable, guion],
                                    stdout=subprocess.PIPE,
                                    stderr=subprocess.STDOUT, text=True,
-                                   env=entorno)
+                                   env=entorno, cwd=self.tmp)
         try:
             direccion = ""
             for _ in range(300):
@@ -437,6 +440,16 @@ class TestSinFlujosEstandar(unittest.TestCase):
             with urllib.request.urlopen(direccion, timeout=15) as r:
                 self.assertEqual(200, r.status)
                 self.assertIn(b"<html", r.read(4096).lower())
+
+            # Y de paso, lo que sustituye a la consola que aqui no hay: el
+            # registro, con la direccion en la que esta sirviendo.
+            registro = os.path.join(self.tmp, "NeoPlat-registro.txt")
+            self.assertTrue(os.path.isfile(registro),
+                            "no ha dejado constancia de nada")
+            with open(registro, encoding="utf-8") as fh:
+                apuntado = fh.read()
+            self.assertIn("servidor en", apuntado)
+            self.assertIn(direccion.split("?")[0], apuntado)
         finally:
             if proceso.poll() is None:
                 proceso.kill()
