@@ -2,8 +2,56 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.58.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.59.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.59
+
+**Ahora se le pregunta a Windows dónde está Edge, y si no sale, se dice.** El
+editor se abría en una pestaña normal, con su barra de direcciones, en vez de
+en su ventana. Y lo peor no era eso: era que **no había manera de saber por
+qué**.
+
+**Qué pasaba.** El navegador se buscaba sólo en `%ProgramFiles%` y en el PATH.
+Eso falla en más sitios de los que parece: una instalación en otra unidad, una
+variable de entorno que no ha llegado hasta el programa, un Edge puesto sólo
+para un usuario. Y cuando no se encontraba, el aviso que lo explicaba salía por
+la consola… que en `NeoPlat.exe` **no existe**. Así que lo único que se veía
+era una pestaña abriéndose, sin una palabra.
+
+Peor aún: *no encontrar Edge* y *encontrarlo y no poder arrancarlo* se veían
+exactamente igual desde fuera, y son cosas distintas —una se arregla
+instalando Edge y la otra no—.
+
+**Cómo se ha arreglado.** Tres cosas:
+
+- **se le pregunta a Windows.** La lista `App Paths` del registro es la que usa
+  el propio sistema para resolver `msedge` cuando lo escribes en Ejecutar: es
+  la respuesta buena, sea donde sea que esté instalado. Se mira en la rama del
+  usuario y en la de la máquina, pidiendo la vista de 64 bits para no leer
+  media verdad en `Wow6432Node`. Las rutas de `Program Files` se quedan detrás,
+  de respaldo, y ahora incluyen `%ProgramW6432%`, `%SystemDrive%` y un `C:\`
+  a pelo, para el caso de que no quede ni una variable de entorno en pie;
+- **el aviso llega.** `NeoPlat.exe` le pasa al kit por dónde avisar, así que lo
+  que antes se perdía en una consola inexistente **sale en un cuadro de
+  diálogo**: qué ha fallado, y qué hacer —la variable `NEOPLAT_NAVEGADOR` y la
+  orden de abajo—;
+- **y se puede contar desde lejos.** Orden nueva:
+
+  ```bash
+  ngplat navegador
+  ```
+
+  Saca la lista entera de sitios mirados, en orden, de dónde sale cada uno y si
+  hay algo allí. Un programa que se calla lo que ha intentado no se puede
+  arreglar desde la otra punta del mundo.
+
+**Siete pruebas nuevas.** Una monta un registro de Windows de mentira y exige
+que se lea `App Paths` y que se pida la vista de 64 bits; otra exige que lo que
+diga Windows vaya **antes** que una ruta adivinada; otra distingue los dos
+motivos —que no esté y que no arranque—, que es lo que no se podía distinguir;
+y otra comprueba que el lanzador sin consola le dice al kit por dónde avisar,
+que era el agujero por el que se caían todas las explicaciones.
 
 ## 1.58
 

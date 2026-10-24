@@ -22,6 +22,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import types
 import unittest
 import urllib.error
 import urllib.request
@@ -152,6 +153,23 @@ class TestAlCerrarLaVentanaSeParaElServidor(unittest.TestCase):
             if proceso.poll() is None:
                 proceso.kill()
                 proceso.wait(timeout=10)
+
+
+import contextlib
+
+
+@contextlib.contextmanager
+def _modulo_puesto(nombre, modulo):
+    """Mete un modulo de mentira en sys.modules mientras dure el bloque."""
+    antes = sys.modules.get(nombre)
+    sys.modules[nombre] = modulo
+    try:
+        yield
+    finally:
+        if antes is None:
+            sys.modules.pop(nombre, None)
+        else:
+            sys.modules[nombre] = antes
 
 
 def _lanzador():
@@ -458,6 +476,155 @@ class TestSinFlujosEstandar(unittest.TestCase):
             self.assertEqual("  ok  ", cli._color("  ok  ", cli.VERDE))
         finally:
             sys.stdout = guardado
+
+
+
+class TestDondeSeBuscaElNavegador(unittest.TestCase):
+    """Por que esto se reescribio.
+
+    En un Windows de verdad el editor se abria en una pestana normal en vez de
+    en su ventana, y lo unico que se sabia era eso: el aviso que lo explicaba
+    iba a una consola que en NeoPlat.exe no existe. Mirar solo en
+    `%ProgramFiles%` no basta -una instalacion puede estar en otra unidad, y
+    la variable puede no haber llegado hasta aqui-, asi que ahora se le
+    pregunta a Windows por el registro, y lo que se ha mirado se puede contar.
+    """
+
+    def test_se_le_pregunta_a_windows_por_el_registro(self):
+        """`App Paths` es como el propio Windows resuelve "msedge"."""
+        if not sys.platform.startswith("win"):
+            # Aqui no hay registro, asi que lo que se exige es que no invente
+            # nada y no reviente por no haberlo.
+            self.assertEqual([], escritorio._del_registro())
+        falso = types.ModuleType("winreg")
+        falso.HKEY_CURRENT_USER = 1
+        falso.HKEY_LOCAL_MACHINE = 2
+        falso.KEY_READ = 0x20019
+        falso.KEY_WOW64_64KEY = 0x0100
+        puesto = {}
+
+        class _Clave:
+            def __enter__(self): return self
+            def __exit__(self, *_): return False
+
+        def abrir(raiz, ruta, reservado, acceso):
+            puesto["ruta"] = ruta
+            puesto.setdefault("accesos", []).append(acceso)
+            if raiz == 2 and ruta.endswith("msedge.exe"):
+                return _Clave()
+            raise OSError("no esta")
+
+        falso.OpenKey = abrir
+        falso.QueryValueEx = lambda clave, nombre: (
+            r'"C:\Donde Sea\Edge\msedge.exe"', 1)
+
+        antes_plataforma = escritorio.sys.platform
+        with _modulo_puesto("winreg", falso):
+            escritorio.sys.platform = "win32"
+            try:
+                salio = escritorio._del_registro()
+            finally:
+                escritorio.sys.platform = antes_plataforma
+        # las comillas que trae el registro no son parte de la ruta
+        self.assertEqual([r"C:\Donde Sea\Edge\msedge.exe"], salio)
+        self.assertIn("App Paths", puesto["ruta"])
+        # y se pide la vista de 64 bits, para no leer media verdad
+        self.assertTrue(any(a & falso.KEY_WOW64_64KEY
+                            for a in puesto["accesos"]),
+                        puesto["accesos"])
+
+    def test_el_registro_va_antes_que_program_files(self):
+        """Lo que diga Windows manda sobre una ruta adivinada."""
+        orden = [de_donde for _, de_donde in escritorio.candidatos()]
+        sitios = [i for i, d in enumerate(orden) if "registro" in d]
+        carpetas = [i for i, d in enumerate(orden) if d == "Program Files"]
+        if sitios and carpetas:
+            self.assertLess(max(sitios), min(carpetas))
+
+    def test_lo_que_se_ha_mirado_se_puede_contar(self):
+        """La lista entera, con un si o un no al lado. Es lo que saca
+        `ngplat navegador`, y es lo que faltaba para arreglar esto de lejos."""
+        mirados = escritorio.donde_se_busca()
+        self.assertTrue(mirados)
+        for ruta, de_donde, hay in mirados:
+            self.assertTrue(ruta)
+            self.assertTrue(de_donde)
+            self.assertIsInstance(hay, bool)
+            self.assertEqual(os.path.isfile(ruta), hay)
+
+    def test_la_orden_navegador_lo_lista(self):
+        hecho = subprocess.run([sys.executable, os.path.join(KIT, "ngplat"),
+                                "navegador"],
+                               capture_output=True, text=True,
+                               env=dict(os.environ, NO_COLOR="1"))
+        self.assertEqual(0, hecho.returncode, hecho.stderr)
+        self.assertIn("Donde busco el navegador", hecho.stdout)
+        self.assertIn("PATH", hecho.stdout)
+
+    def test_no_es_lo_mismo_que_no_este_que_que_no_arranque(self):
+        """Los dos casos se veian igual desde fuera -un navegador normal- y
+        son cosas distintas: uno se arregla instalando Edge y el otro no."""
+        antes = os.environ.get("NEOPLAT_NAVEGADOR")
+        try:
+            os.environ["NEOPLAT_NAVEGADOR"] = "/no/existe/esto"
+            proceso, motivo = escritorio.abrir_con_motivo("http://127.0.0.1:9/")
+            self.assertIsNone(proceso)
+            self.assertIn("no encuentro", motivo)
+
+            # y ahora algo que existe pero no se puede ejecutar
+            ruta = os.path.join(tempfile.mkdtemp(), "no_ejecutable")
+            self.addCleanup(shutil.rmtree, os.path.dirname(ruta), True)
+            with open(ruta, "w", encoding="utf-8") as fh:
+                fh.write("esto no es un programa\n")
+            os.chmod(ruta, 0o644)
+            os.environ["NEOPLAT_NAVEGADOR"] = ruta
+            proceso, motivo = escritorio.abrir_con_motivo("http://127.0.0.1:9/")
+            self.assertIsNone(proceso)
+            self.assertIn("no he podido arrancar", motivo.lower())
+            self.assertIn(ruta, motivo)
+        finally:
+            if antes is None:
+                os.environ.pop("NEOPLAT_NAVEGADOR", None)
+            else:
+                os.environ["NEOPLAT_NAVEGADOR"] = antes
+
+    def test_sin_ventana_el_lanzador_lo_dice_en_un_dialogo(self):
+        """Lo que le faltaba a NeoPlat.exe: sin consola, el aviso de que no hay
+        Edge no se veia en ninguna parte y el usuario solo veia una pestana."""
+        app = _lanzador()
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        crear_proyecto(os.path.join(tmp, "juego"), "AVISO", "TEST")
+
+        dichos = []
+        app.mensaje = lambda t, x, error=False: dichos.append(x)
+        guardadas = {}
+        from ngplat import cli
+
+        def falso_servir(raiz, preview, puerto, ventana=False, avisar=None):
+            guardadas["avisar"] = avisar
+            if avisar is not None:
+                avisar("no encuentro Edge ni Chrome")
+            return 0
+
+        de_verdad = cli._servir
+        cli._servir = falso_servir
+        try:
+            self.assertEqual(0, app.main([os.path.join(tmp, "juego")]))
+        finally:
+            cli._servir = de_verdad
+        self.assertIsNotNone(guardadas.get("avisar"),
+                             "el lanzador no ha dicho por donde avisar")
+        self.assertTrue(any("Edge" in d for d in dichos), dichos)
+
+    def test_la_explicacion_dice_que_hacer(self):
+        """Un aviso que solo diga "no se puede" no sirve de nada: tiene que
+        decir **que hacer**, porque quien lo lee no tiene consola ni manual
+        delante."""
+        texto = escritorio.explicacion("no encuentro Edge ni Chrome")
+        self.assertIn("no encuentro Edge ni Chrome", texto)
+        self.assertIn("NEOPLAT_NAVEGADOR", texto)
+        self.assertIn("ngplat navegador", texto)
 
 
 def _yaml_kungfu() -> str:

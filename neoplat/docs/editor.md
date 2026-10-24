@@ -42,6 +42,18 @@ línea de órdenes.
 > lo dice. Con `NEOPLAT_NAVEGADOR` le dices cuál usar si lo tienes en un sitio
 > raro.
 >
+> **Si te sale una pestaña normal y la querías en su ventana**, esta orden dice
+> dónde ha buscado el navegador y qué ha encontrado en cada sitio:
+>
+> ```bash
+> ngplat navegador
+> ```
+>
+> Primero le pregunta a Windows —la lista `App Paths` del registro, la misma
+> con la que el sistema resuelve `msedge` cuando lo escribes en Ejecutar—, y
+> sólo después mira en `Program Files` y en el PATH. Así da igual en qué unidad
+> esté instalado.
+>
 > **El editor no se ha reescrito, y es a propósito.** Son quince mil líneas de
 > JavaScript que dibujan sprites a mano alzada, reproducen animaciones a 60
 > imágenes por segundo y juegan el propio juego dentro. Empaquetar un navegador

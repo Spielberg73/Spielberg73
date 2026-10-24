@@ -248,6 +248,15 @@ Para la ventana del editor hace falta Edge o Chrome. Edge viene con Windows 10
 y 11, asi que normalmente no hay nada que instalar; si no esta ninguno de los
 dos, el editor se abre en tu navegador de siempre y NeoPlat lo dice.
 
+Si el editor te sale en una pestana normal y lo querias en su ventana, esta
+orden dice donde ha buscado el navegador y que ha encontrado:
+
+    ngplat.exe navegador
+
+Y si lo tienes en un sitio que no mira, se le dice cual usar:
+
+    set NEOPLAT_NAVEGADOR=C:\ruta\al\msedge.exe
+
 Si prefieres escribir las ordenes tu, abre una ventana de simbolo del sistema
 en esta carpeta y prueba:
 

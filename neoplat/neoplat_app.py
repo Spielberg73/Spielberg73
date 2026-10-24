@@ -322,8 +322,13 @@ def main(argv) -> int:
                 "En esa carpeta no hay ningun game.yaml, asi que ahi no hay "
                 "juego que abrir:\n\n%s" % proyecto, error=True)
         return 2
+    # `avisar` es por donde el kit saca lo que aqui no se puede escribir en
+    # ninguna parte. Sin esto, un aviso como "no encuentro Edge" se iba a una
+    # consola que no existe y lo unico que se veia era un navegador normal
+    # abriendose, sin ninguna explicacion.
     return cli.cmd_app(argparse.Namespace(proyecto=proyecto, salida=None,
-                                          puerto=0, sistema=""))
+                                          puerto=0, sistema=""),
+                       avisar=lambda texto: mensaje("NeoPlat", texto))
 
 
 if __name__ == "__main__":

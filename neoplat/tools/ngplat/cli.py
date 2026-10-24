@@ -169,7 +169,7 @@ def cmd_probar(args: argparse.Namespace) -> int:
     return _servir(project.root, destino, args.puerto)
 
 
-def cmd_app(args: argparse.Namespace) -> int:
+def cmd_app(args: argparse.Namespace, avisar=None) -> int:
     """El editor en su propia ventana, sin navegador alrededor.
 
     Es `probar` con dos diferencias, y las dos son para que esto se use como un
@@ -177,11 +177,47 @@ def cmd_app(args: argparse.Namespace) -> int:
     pestanas, y **al cerrarla se para el servidor**. Con `probar` hay que
     volver a la consola y pulsar Ctrl+C, que es justo lo que no tiene sentido
     pedirle a quien ha abierto esto con doble clic.
+
+    `avisar` es por donde sale lo que no se puede escribir en una consola que
+    no existe: NeoPlat.exe pasa aqui su cuadro de dialogo. Sin eso, los avisos
+    van a la salida de siempre, como en cualquier otra orden.
     """
     project, build, sistema = _cargar(args.proyecto, args.sistema)
     destino = args.salida or os.path.join(project.root, "preview.html")
     write_preview(build, destino)
-    return _servir(project.root, destino, args.puerto, ventana=True)
+    return _servir(project.root, destino, args.puerto, ventana=True,
+                   avisar=avisar)
+
+
+def cmd_navegador(args: argparse.Namespace) -> int:
+    """Donde se busca el navegador de la ventana, y que hay en cada sitio.
+
+    Existe por un fallo que no se podia arreglar desde aqui: en un Windows el
+    editor se abria en una pestana normal en vez de en su ventana, y lo unico
+    que se sabia era eso. Que no encuentre Edge y que lo encuentre y no
+    arranque se ven igual desde fuera. Esta orden lo cuenta entero.
+    """
+    from . import escritorio
+
+    mirados = escritorio.donde_se_busca()
+    elegido = escritorio.buscar_navegador()
+    print()
+    print("  Donde busco el navegador de la ventana, en orden:")
+    print()
+    for ruta, de_donde, hay in mirados:
+        print("    %s  %-34s %s" % ("si" if hay else "  ", de_donde, ruta))
+    print()
+    if elegido:
+        _ok("la ventana se abriria con: %s" % elegido)
+    else:
+        _aviso("no hay con que abrir la ventana: el editor se abriria en tu "
+               "navegador de siempre")
+        _info("si lo tienes en otro sitio: NEOPLAT_NAVEGADOR=C:\\ruta\\al\\msedge.exe")
+    puesto = os.environ.get("NEOPLAT_NAVEGADOR", "").strip()
+    if puesto:
+        _info("NEOPLAT_NAVEGADOR esta puesto (%s), asi que manda sobre todo "
+              "lo demas" % puesto)
+    return 0
 
 
 def _abrir(direccion: str) -> None:
@@ -194,7 +230,8 @@ def _abrir(direccion: str) -> None:
         _info("abrelo a mano en tu navegador")
 
 
-def _servir(raiz: str, preview: str, puerto: int, ventana: bool = False) -> int:
+def _servir(raiz: str, preview: str, puerto: int, ventana: bool = False,
+            avisar=None) -> int:
     """Sirve el preview desde localhost para que el editor pueda guardar y compilar.
 
     Abierto como file://, el editor solo puede exportar el game.yaml: una
@@ -215,11 +252,16 @@ def _servir(raiz: str, preview: str, puerto: int, ventana: bool = False) -> int:
     if ventana:
         from . import escritorio
 
-        proceso = escritorio.abrir(direccion)
+        proceso, motivo = escritorio.abrir_con_motivo(direccion)
         if proceso is None:
-            _aviso("no hay Edge ni Chrome para abrir la ventana; "
-                   "se abre el navegador de siempre")
-            _info("si lo tienes en otro sitio, dilo con NEOPLAT_NAVEGADOR")
+            texto = escritorio.explicacion(motivo)
+            if avisar is not None:
+                # NeoPlat.exe: sin consola, esto es lo unico que se puede leer
+                avisar(texto)
+            else:
+                _aviso(motivo)
+                _info("se abre el navegador de siempre; "
+                      "'ngplat navegador' dice donde he buscado")
     _ok("servidor en %s" % direccion)
     if proceso is not None:
         _ok("editor abierto en su ventana; cierrala para parar")
@@ -649,6 +691,11 @@ def build_parser() -> argparse.ArgumentParser:
                        help="puerto del servidor local (0 = el que haya libre)")
     p_app.add_argument("--sistema", default="", help=_ayuda_sistemas())
     p_app.set_defaults(func=cmd_app)
+
+    p_nav = sub.add_parser("navegador", aliases=["browser"],
+                           help="dice donde busca el navegador de la ventana "
+                                "y que encuentra")
+    p_nav.set_defaults(func=cmd_navegador)
 
     p_build = sub.add_parser("compilar", aliases=["build"],
                              help="genera el proyecto en C y las ROMs graficas")

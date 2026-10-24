@@ -34,6 +34,19 @@ esta puesto y no hay nada que instalar. Las alternativas que se miraron:
 
 Asi que se usa el modo aplicacion, y si no hay con que, se dice y se abre el
 navegador de siempre en vez de dejar al usuario mirando una ventana vacia.
+
+**Donde se busca Edge, y por que ahi.** Mirar en `%ProgramFiles%` no basta:
+una instalacion puede estar en otra unidad, la variable puede no estar puesta
+en el entorno que hereda un programa lanzado con doble clic, y Edge no es el
+unico que cuenta. Asi que primero se le pregunta a **Windows**: la lista
+`App Paths` del registro es la que usa el propio sistema para resolver
+"msedge" cuando se escribe en Ejecutar, y es la respuesta buena sea donde sea
+que este instalado. Las rutas de `Program Files` se quedan detras, de
+respaldo, y `NEOPLAT_NAVEGADOR` manda sobre todo lo demas.
+
+Y si al final no sale ninguno, **eso se cuenta**: con `ngplat navegador` sale
+la lista entera de sitios mirados y lo que hay en cada uno. Un programa que se
+calla lo que ha intentado no se puede arreglar desde la otra punta del mundo.
 """
 
 from __future__ import annotations
@@ -54,6 +67,14 @@ NAVEGADORES_WINDOWS: Tuple[str, ...] = (
     r"%ProgramFiles%\Google\Chrome\Application\chrome.exe",
     r"%LocalAppData%\Google\Chrome\Application\chrome.exe",
     r"%ProgramFiles%\BraveSoftware\Brave-Browser\Application\brave.exe",
+    # Con %ProgramFiles% sin poner -pasa en entornos heredados de un doble
+    # clic- estas dos siguen valiendo, y la ultima pareja vale aunque no haya
+    # ni una variable de entorno en pie.
+    r"%ProgramW6432%\Microsoft\Edge\Application\msedge.exe",
+    r"%SystemDrive%\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+    r"%SystemDrive%\Program Files\Microsoft\Edge\Application\msedge.exe",
+    r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+    r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
 )
 
 ORDENES: Tuple[str, ...] = (
@@ -66,30 +87,125 @@ ORDENES: Tuple[str, ...] = (
 ANCHO, ALTO = 1280, 860
 
 
-def _de_windows() -> Optional[str]:
+# Las entradas del registro de Windows que dicen donde esta cada navegador.
+APP_PATHS = r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths"
+EJECUTABLES = ("msedge.exe", "chrome.exe", "brave.exe")
+
+
+def _del_registro() -> List[str]:
+    """Donde dice **Windows** que esta cada navegador.
+
+    `App Paths` es la lista con la que el propio sistema resuelve "msedge"
+    cuando se escribe en Ejecutar. Es la respuesta buena: no depende de que el
+    navegador este en Program Files, ni de que las variables de entorno hayan
+    llegado hasta aqui, ni del idioma en que se instalo Windows.
+
+    Se mira en las dos ramas -la del usuario primero, que es donde aparece una
+    instalacion que no pidio permisos de administrador- y pidiendo la vista de
+    64 bits, para que un programa de 32 no acabe leyendo Wow6432Node y viendo
+    media verdad.
+    """
+    if not sys.platform.startswith("win"):
+        return []
+    try:
+        import winreg
+    except ImportError:          # pragma: no cover - solo falta fuera de Windows
+        return []
+    encontrados = []
+    for raiz in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        for nombre in EJECUTABLES:
+            for vista in (getattr(winreg, "KEY_WOW64_64KEY", 0), 0):
+                try:
+                    with winreg.OpenKey(raiz, APP_PATHS + "\\" + nombre, 0,
+                                        winreg.KEY_READ | vista) as clave:
+                        valor = winreg.QueryValueEx(clave, None)[0]
+                except OSError:
+                    continue
+                ruta = str(valor).strip().strip('"')
+                if ruta and ruta not in encontrados:
+                    encontrados.append(ruta)
+                break        # leida esta entrada, la otra vista dice lo mismo
+    return encontrados
+
+
+def explicacion(motivo: str) -> str:
+    """Lo que se le cuenta a quien esperaba una ventana y no la ha tenido.
+
+    Esta aqui y no en quien llama porque lo lee **gente**, no un programa: va
+    tal cual al cuadro de dialogo de NeoPlat.exe, y lleva lo unico que hay que
+    saber para arreglarlo -la variable y la orden que lista los sitios-.
+    """
+    return ("No he podido abrir el editor en su ventana, asi que lo abro en "
+            "tu navegador de siempre.\n\n%s\n\n"
+            "Si tienes Edge o Chrome en otro sitio, dilo con la variable "
+            "NEOPLAT_NAVEGADOR. Para ver donde he buscado:\n"
+            "    ngplat navegador" % motivo)
+
+
+def _de_windows() -> List[str]:
+    """Las rutas de Program Files que se dejan de respaldo."""
+    rutas = []
     for plantilla in NAVEGADORES_WINDOWS:
         ruta = os.path.expandvars(plantilla)
-        if "%" not in ruta and os.path.isfile(ruta):
-            return ruta
-    return None
+        if "%" in ruta:
+            # La variable no esta puesta en este entorno: la plantilla se
+            # queda tal cual y no hay nada que mirar.
+            continue
+        if ruta not in rutas:
+            rutas.append(ruta)
+    return rutas
+
+
+def candidatos() -> List[Tuple[str, str]]:
+    """Todo lo que se va a mirar, en orden, con de donde ha salido cada cosa.
+
+    Lo devuelve entero -mire o no mire luego cada sitio- porque esta misma
+    lista es la que sale en `ngplat navegador`: lo que hay que poder contar no
+    es solo que no se encontro, sino **donde se busco**.
+    """
+    lista: List[Tuple[str, str]] = []
+
+    def anotar(ruta: str, de_donde: str) -> None:
+        if ruta and not any(ruta == r for r, _ in lista):
+            lista.append((ruta, de_donde))
+
+    puesto = os.environ.get("NEOPLAT_NAVEGADOR", "").strip()
+    if puesto:
+        anotar(puesto, "NEOPLAT_NAVEGADOR")
+        suelto = shutil.which(puesto)
+        if suelto:
+            anotar(suelto, "NEOPLAT_NAVEGADOR (por el PATH)")
+        # Con NEOPLAT_NAVEGADOR puesto no se mira nada mas: si quien lo puso
+        # se equivoco, mas vale que se note que arrancar otro por detras.
+        return lista
+
+    for ruta in _del_registro():
+        anotar(ruta, "registro de Windows (App Paths)")
+    for ruta in _de_windows():
+        anotar(ruta, "Program Files")
+    for orden in ORDENES:
+        ruta = shutil.which(orden)
+        if ruta:
+            anotar(ruta, "PATH (%s)" % orden)
+        else:
+            anotar(orden, "PATH (no esta)")
+    return lista
+
+
+def donde_se_busca() -> List[Tuple[str, str, bool]]:
+    """La lista de candidatos con un si o un no al lado. Para el diagnostico."""
+    return [(ruta, de_donde, os.path.isfile(ruta))
+            for ruta, de_donde in candidatos()]
 
 
 def buscar_navegador() -> Optional[str]:
     """El navegador con el que abrir la ventana, o None si no hay ninguno.
 
-    Se mira tambien `NEOPLAT_NAVEGADOR`, que es por donde se le dice a esto
-    cual usar cuando hay varios o cuando esta en un sitio raro.
+    `NEOPLAT_NAVEGADOR` manda: es por donde se le dice a esto cual usar cuando
+    hay varios o cuando esta en un sitio que no se le ocurriria mirar.
     """
-    puesto = os.environ.get("NEOPLAT_NAVEGADOR", "").strip()
-    if puesto:
-        return puesto if os.path.isfile(puesto) else shutil.which(puesto)
-    if sys.platform.startswith("win"):
-        encontrado = _de_windows()
-        if encontrado:
-            return encontrado
-    for orden in ORDENES:
-        ruta = shutil.which(orden)
-        if ruta:
+    for ruta, _ in candidatos():
+        if os.path.isfile(ruta):
             return ruta
     return None
 
@@ -131,19 +247,31 @@ def argumentos(navegador: str, direccion: str) -> List[str]:
     ]
 
 
-def abrir(direccion: str) -> Optional[subprocess.Popen]:
-    """Abre el editor en su ventana. Devuelve el proceso, o None si no se pudo.
+def abrir_con_motivo(direccion: str):
+    """Abre el editor en su ventana. Devuelve (proceso, motivo).
 
-    None no es un error: quiere decir "aqui no hay con que", y quien llama abre
-    el navegador de siempre y lo dice. Es lo que pasa en una maquina sin Edge
-    ni Chrome.
+    El motivo es lo que hacia falta y no habia: **no es lo mismo** que aqui no
+    haya Edge ni Chrome que encontrarlo y que no arranque, y las dos cosas se
+    veian igual desde fuera -un navegador normal abriendose- porque la unica
+    explicacion iba a una consola que en NeoPlat.exe no existe. Con el motivo
+    en la mano, quien llama lo puede poner en un cuadro de dialogo.
+
+    Con proceso, el motivo va vacio: no hay nada que contar.
     """
     navegador = buscar_navegador()
     if not navegador:
-        return None
+        mirados = sum(1 for _, _, hay in donde_se_busca() if not hay)
+        return None, ("no encuentro Edge ni Chrome (%d sitios mirados; "
+                      "'ngplat navegador' los lista)" % mirados)
     try:
-        return subprocess.Popen(argumentos(navegador, direccion),
-                                stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL)
-    except OSError:
-        return None
+        proceso = subprocess.Popen(argumentos(navegador, direccion),
+                                   stdout=subprocess.DEVNULL,
+                                   stderr=subprocess.DEVNULL)
+    except OSError as error:
+        return None, "no he podido arrancar %s: %s" % (navegador, error)
+    return proceso, ""
+
+
+def abrir(direccion: str) -> Optional[subprocess.Popen]:
+    """Lo mismo sin el motivo, para quien no lo necesita."""
+    return abrir_con_motivo(direccion)[0]

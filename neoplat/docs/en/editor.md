@@ -41,6 +41,18 @@ asks which; and if there are none, it lets you create one. The usual
 > you so. With `NEOPLAT_NAVEGADOR` you tell it which one to use if you keep it
 > somewhere unusual.
 >
+> **If you get an ordinary tab and you wanted the window**, this command says
+> where it looked for the browser and what it found in each place:
+>
+> ```bash
+> ngplat navegador
+> ```
+>
+> It asks Windows first — the registry's `App Paths` list, the same one the
+> system uses to resolve `msedge` when you type it into Run — and only then
+> looks in `Program Files` and on the PATH. So it does not matter which drive
+> it is installed on.
+>
 > **The editor has not been rewritten, and that is deliberate.** It is fifteen
 > thousand lines of JavaScript that draw sprites freehand, play animations at
 > 60 pictures per second and run the game itself inside. Packaging a whole
