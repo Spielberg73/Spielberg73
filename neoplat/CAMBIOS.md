@@ -2,8 +2,57 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.61.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.62.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.62
+
+**CIELO ROJO: el ejemplo de la bestia.** Un lateral de espada y capa en un
+páramo al atardecer, al estilo de *Shadow of the Beast* (Psygnosis, Amiga,
+1989). Es el cuarto ejemplo del kit, y se abre como los demás:
+
+```bash
+ngplat probar examples/cielo-rojo
+```
+
+De aquel juego no se copia ningún dibujo. Se copian **las tres decisiones** que
+hacían que se viera así:
+
+- **el cielo rojo**, con el sol enorme y bajo y todo lo demás recortado en
+  negro contra él. Aquello no podía pintar luz, así que pintaba siluetas;
+- **capas y capas**: cuatro planos de parallax, cada uno más rápido que el de
+  detrás. La sensación de fondo no la da el dibujo, la da la **diferencia**
+  entre lo que corre cada capa;
+- **el bicho es grande**: el protagonista ocupa 32×32 en vez de los 16×16 de
+  los demás ejemplos. Cuatro veces más tiles y cuatro veces más que mover, y a
+  cambio se le ve la cara.
+
+Va sobre el género `castlevania`, porque su física es la que hace falta y ya
+estaba hecha: **se pega, no se pisa**, el salto no se corrige en el aire y un
+golpe te tira para atrás. Con simas a los lados, eso último convierte cada
+enemigo en un problema de sitio y no de botones.
+
+**Y la verdad incómoda, que el propio `ngplat compilar` te dice una por una:
+las cuatro capas sólo se ven en la Neo Geo y en el X68000.** La Mega Drive, el
+Amiga, el A1200, el CD32 y la Jaguar dibujan **una** —se quedan con el cielo—,
+y el Atari ST, con cámara de scroll, no dibuja ninguna. No es un fallo del kit:
+un plano de parallax se paga en hardware y cada máquina tenía el suyo. El juego
+se juega igual en las ocho; lo que cambia es cuánto fondo se mueve.
+
+**Los dibujos.** Los del héroe y los del guerrero de sombra salen de una hoja
+de sprites que trajo quien usa el kit, bajada a 32×32 y a quince colores, que
+es lo que cabe en la paleta de estas máquinas. El guerrero de sombra **es la
+misma figura, apagada**: en un juego de siluetas, que lo que venga a por ti sea
+tu propia sombra es la idea entera. El resto —el cielo, las cuatro capas, el
+suelo, la espada y lo que se coge— sale de `tools/ngplat/art_bestia.py`.
+
+**Diez pruebas nuevas.** Las dos que importan son propias de este ejemplo: que
+las cuatro capas estén en orden y **cada una corra más que la de detrás** —se
+rompe sin que nadie se entere con sólo cambiar un número—, y que cada capa
+**case consigo misma** al repetirse, porque se pegan en bucle mientras el
+escenario se desliza y una costura se ve cada vuelta. Las demás exigen que el
+proyecto cargue sin un solo aviso, que ningún dibujo se pase de quince colores
+y que el ejemplo pase por el generador de **las ocho máquinas**.
 
 ## 1.61
 

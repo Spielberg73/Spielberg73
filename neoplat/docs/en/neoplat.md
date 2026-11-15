@@ -435,9 +435,9 @@ Three things come out, **with the version in the name** (the same one
 
 | | |
 |---|---|
-| `neoplat-docs-1.61.zip` | the documentation only: this front page and all of `docs/`. It is what you take if you want to read it or pass it on to another project |
-| `neoplat-kit-1.61.zip` | the whole kit: engine, tools, example and tests, without the generated files or the history |
-| `neoplat-windows-1.61.zip` | the `NeoPlat.exe` (the editor, in its window), the command-line `ngplat.exe` and its README |
+| `neoplat-docs-1.62.zip` | the documentation only: this front page and all of `docs/`. It is what you take if you want to read it or pass it on to another project |
+| `neoplat-kit-1.62.zip` | the whole kit: engine, tools, example and tests, without the generated files or the history |
+| `neoplat-windows-1.62.zip` | the `NeoPlat.exe` (the editor, in its window), the command-line `ngplat.exe` and its README |
 
 The Windows ZIP brings **two programs**, and what changes is the way in.
 **`NeoPlat.exe`** is the editor: double click and up it comes, in its own
@@ -563,11 +563,14 @@ neoplat/
 │   ├── np_yaml.js          rewrites the game.yaml without touching the rest
 │   ├── np_pixel.js         the graphics editor (sprites, tiles and backgrounds)
 │   ├── np_sonido.js        compiles notes, sweeps and noise (twin of sonido.py)
+│   ├── np_tracker.js       the tracker grid: from notes to cells and back
 │   └── np_bot.js           the bot that checks whether a level can be finished
 ├── examples/
 │   ├── bosque-magico/      example game ready to compile
 │   ├── cueva-de-hierro/    the same engine with six colours and Amiga parallax
-│   └── costa-y-montana/    a driving game: the roadway is not a drawing
+│   ├── costa-y-montana/    a driving game: the roadway is not a drawing
+│   └── cielo-rojo/         sword and cape at sunset, with four parallax
+│                           layers and a hero twice as tall
 └── tests/                  590 tests + 263 gameplay ones + the editor's +
                             a bot that finishes the levels + emulators and browser
 ```

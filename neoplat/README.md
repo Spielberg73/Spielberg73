@@ -424,9 +424,9 @@ Salen tres cosas, **con la versión en el nombre** (la misma que dice
 
 | | |
 |---|---|
-| `neoplat-docs-1.61.zip` | sólo la documentación: este README, todo `docs/` —el castellano y su traducción al inglés— y **los dos PDF del manual encuadernado** |
-| `neoplat-kit-1.61.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
-| `neoplat-windows-1.61.zip` | el `NeoPlat.exe` (el editor, en su ventana), el `ngplat.exe` de la línea de órdenes y su LEEME |
+| `neoplat-docs-1.62.zip` | sólo la documentación: este README, todo `docs/` —el castellano y su traducción al inglés— y **los dos PDF del manual encuadernado** |
+| `neoplat-kit-1.62.zip` | el kit entero: motor, herramientas, ejemplo y pruebas, sin lo generado ni el historial |
+| `neoplat-windows-1.62.zip` | el `NeoPlat.exe` (el editor, en su ventana), el `ngplat.exe` de la línea de órdenes y su LEEME |
 
 El ZIP de Windows trae **dos programas**, y lo que cambia es por dónde se
 entra. **`NeoPlat.exe`** es el editor: doble clic y sale, en su ventana, sin
@@ -550,11 +550,14 @@ neoplat/
 │   ├── np_yaml.js          reescribe el game.yaml sin tocar lo demás
 │   ├── np_pixel.js         el editor de dibujos (sprites, tiles y fondos)
 │   ├── np_sonido.js        compila notas, barridos y ruido (gemelo de sonido.py)
+│   ├── np_tracker.js       la rejilla del tracker: de notas a celdas y vuelta
 │   └── np_bot.js           el bot que comprueba si un nivel se puede terminar
 ├── examples/
 │   ├── bosque-magico/      juego de ejemplo listo para compilar
 │   ├── cueva-de-hierro/    el mismo motor con seis colores y parallax en Amiga
-│   └── costa-y-montana/    un juego de conducir: la calzada no es un dibujo
+│   ├── costa-y-montana/    un juego de conducir: la calzada no es un dibujo
+│   └── cielo-rojo/         espada y capa al atardecer, con cuatro capas de
+│                           parallax y un héroe del doble de alto
 └── tests/                  590 pruebas + 263 de jugabilidad + las del editor +
                             bot que se pasa los niveles + emuladores y navegador
 ```

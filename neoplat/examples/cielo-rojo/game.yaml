@@ -1,0 +1,259 @@
+# CIELO ROJO: el ejemplo de la bestia.
+#
+# Un lateral de espada y capa en un paramo al atardecer, al estilo de
+# *Shadow of the Beast* (Psygnosis, Amiga, 1989). De aquel juego no se copia
+# ningun dibujo -los de aqui son otros-: se copian las tres decisiones que
+# hacian que se viera asi, y que siguen funcionando treinta y seis anyos
+# despues.
+#
+#   1. EL CIELO ROJO. Un cielo naranja con el sol enorme y bajo, y todo lo
+#      demas recortado en negro contra el. Aquello no podia pintar luz, asi
+#      que pintaba siluetas y dejaba que el cielo hiciera el trabajo.
+#
+#   2. CAPAS Y CAPAS. El original presumia de doce planos de parallax. Aqui
+#      son cuatro -ver `fondos:` mas abajo-, pero el truco es el mismo: la
+#      sensacion de fondo no la da el dibujo, la da la **diferencia** entre lo
+#      que corre cada capa.
+#
+#      Y aqui va la verdad incomoda, que `ngplat compilar` te dice una por
+#      una: **las cuatro capas solo se ven en la Neo Geo y en el X68000**. La
+#      Mega Drive, el Amiga, el A1200, el CD32 y la Jaguar dibujan **una**, y
+#      se quedan con la primera -el cielo-; el Atari ST, con camara de scroll,
+#      no dibuja ninguna y dejan el color de fondo. No es un fallo del kit: es
+#      que un plano de parallax se paga en hardware y cada maquina tenia el
+#      suyo. El juego se juega igual en las ocho; lo que cambia es cuanto
+#      fondo se mueve.
+#
+#   3. EL BICHO ES GRANDE. El protagonista ocupa 32x32 en vez de los 16x16 de
+#      los demas ejemplos del kit: cuatro veces mas tiles y cuatro veces mas
+#      que mover, y a cambio se le ve la cara. Era medio juego.
+#
+# Sale del genero `castlevania` -`ngplat nuevo --genero castlevania`- porque
+# su fisica es la que hace falta y ya estaba hecha: aqui **se pega, no se
+# pisa**, el salto no se corrige en el aire y un golpe te tira para atras. Con
+# simas a los lados, eso ultimo es lo que convierte cada enemigo en un
+# problema de sitio y no de botones.
+#
+#   ngplat probar     -> abre el preview jugable en el navegador
+#   ngplat compilar   -> genera el proyecto en C y las ROMs graficas
+#
+# Los mandos:
+#
+#   izquierda/derecha .. andar
+#   saltar (Z) ......... saltar; en el aire ya no se corrige
+#   accion (X) ......... la espada
+#   arriba ............. trepar por las escaleras
+#
+# LOS DIBUJOS. Los del heroe y los del guerrero de sombra salen de una hoja de
+# sprites que trajo quien usa el kit, bajada de resolucion a 32x32 y a quince
+# colores, que es lo que cabe en la paleta de estas maquinas. El guerrero de
+# sombra es la misma figura apagada: en un juego de siluetas, que lo que venga
+# a por ti sea tu propia sombra es la idea entera. Lo demas -el cielo, las
+# cuatro capas, el suelo, la espada y lo que se coge- sale de
+# `tools/ngplat/art_bestia.py`, y hay una prueba que lo comprueba.
+
+juego:
+  titulo: "CIELO ROJO"
+  autor: ""
+  jugadores: 1
+  vidas: 3
+  tiempo: 0
+  camara: scroll
+  # En el Amiga, '8colores' es el modo que deja una capa de parallax; con
+  # '32colores' se ve mejor pero el fondo se queda quieto. En un ejemplo que
+  # va **de** parallax, el cambio vale la pena: siete colores por plano le
+  # sientan mal al heroe, y aun asi mover el cielo se nota mas.
+  amiga: 8colores
+  amiga_ram: 1M
+  fondo: "#1a0e1e"     # el color de la capa mas lejana: lo que se ve en los
+                       # huecos que dejan las capas
+
+jugador:
+  sprite: graficos/heroe.png
+  frame: [32, 32]      # el doble de alto que en los demas ejemplos
+  caja: [12, 28]       # la caja es del cuerpo, no de la capa ni de la espada
+  velocidad: 1.5
+  aceleracion: 0.28
+  friccion: 0.32
+  salto: 4.4
+  gravedad: 0.28
+  doble_salto: no
+  vida: 4
+  control_aire: 0.0    # el salto sale como sale: aqui se mide antes
+  pisar_enemigos: no   # se pega, no se pisa
+  retroceso: 3.2       # y el que te pega te manda para atras
+  aturdido: 24
+  velocidad_escalera: 0.8
+  agachado: no         # aqui no hay agacharse: ni falta ni hay dibujo
+  animaciones:
+    quieto: {frames: [0, 1], velocidad: 34}   # respira
+    correr: {frames: [2, 3, 4, 5], velocidad: 6}
+    saltar: {frames: [6]}
+    caer:   {frames: [7]}
+    atacar: {frames: [8, 9], velocidad: 6, bucle: no}
+    dano:   {frames: [10]}
+    subir:  {frames: [11]}
+  # La espada. `sprite:` es **el arma**: el motor la dibuja delante justo
+  # mientras el golpe hace dano, asi que lo que se ve es lo que llega.
+  ataque:
+    tipo: golpe
+    sprite: graficos/espada.png
+    frame: [48, 16]
+    caja: [44, 10]
+    desplazamiento: [0, 6]
+    alcance: 26
+    duracion: 14
+    preparacion: 5     # frames en los que la espada ya sale pero no hace dano
+    clavado: si        # mientras pegas no te mueves: hay que medir la distancia
+    espera: 18
+    dano: 1
+    mejoras: 2
+    alcance_mejora: 11
+    animaciones:
+      quieto: {frames: [0, 1, 2]}
+
+tiles:
+  imagen: graficos/tiles.png
+  leyenda:
+    '.': {tile: 0, tipo: vacio}
+    '#': {tile: 1, tipo: solido}
+    ',': {tile: 5, tipo: solido}
+    '=': {tile: 2, tipo: plataforma}
+    '^': {tile: 3, tipo: peligro}
+    'G': {tile: 4, tipo: meta}
+    '/': {tile: 6, tipo: escalera}
+    '|': {tile: 7, tipo: escalera_izquierda}
+    '!': {tile: 8, tipo: control}
+
+enemigos:
+  # El guerrero de sombra: tu misma silueta, apagada. Va y viene, y aguanta
+  # dos espadazos, que con el retroceso al lado de una sima ya es bastante.
+  sombra:
+    sprite: graficos/sombra.png
+    frame: [32, 32]
+    caja: [12, 28]
+    comportamiento: patrulla
+    velocidad: 0.4
+    vida: 2
+    puntos: 200
+    animaciones:
+      quieto: {frames: [0, 1], velocidad: 14}
+      correr: {frames: [0, 1], velocidad: 9}
+  # La cabeza que flota. No sigue a nadie: sube y baja por donde la pongas, y
+  # el problema es que tu si tienes que pasar por ahi.
+  cabeza:
+    sprite: graficos/cabeza.png
+    caja: [12, 10]
+    comportamiento: volador
+    velocidad: 0.65
+    amplitud: 28
+    periodo: 120
+    puntos: 150
+    animaciones:
+      quieto: {frames: [0, 1], velocidad: 6}
+
+objetos:
+  gema:
+    sprite: graficos/gema.png
+    caja: [10, 10]
+    puntos: 50
+    animaciones:
+      quieto: {frames: [0, 1], velocidad: 8}
+  llave:
+    sprite: graficos/llave.png
+    caja: [10, 12]
+    puntos: 100
+    efecto: llave
+    cantidad: 1
+    animaciones:
+      quieto: {frames: [0, 1], velocidad: 10}
+  corazon:
+    sprite: graficos/vida.png
+    caja: [12, 10]
+    puntos: 0
+    efecto: corazon     # esto es salud; 'municion' seria otra cosa
+    cantidad: 1
+    animaciones:
+      quieto: {frames: [0, 1], velocidad: 12}
+
+# Las cuatro capas, de la mas lejana a la mas cercana. `velocidad` es la
+# fraccion de lo que corre el escenario: el cielo casi no se mueve y los
+# troncos casi van contigo. Esa diferencia **es** el efecto; si las cuatro
+# fueran a la misma velocidad serian un dibujo de fondo y ya.
+fondos:
+  - nombre: cielo
+    imagen: graficos/cielo.png
+    velocidad: 0.08     # el sol, practicamente clavado en el horizonte
+    y: 0
+  - nombre: montes
+    imagen: graficos/montes.png
+    velocidad: 0.22
+    y: 72
+  - nombre: bosque
+    imagen: graficos/bosque.png
+    velocidad: 0.45
+    y: 104
+  - nombre: troncos
+    imagen: graficos/troncos.png
+    velocidad: 0.75     # lo que mas corre: es lo que da la sensacion de ir
+    y: 128
+
+sonido:
+  efectos:
+    empezar: {notas: "la3 mi4 la4", velocidad: 6}
+    salto:   {tipo: barrido, desde: 260, hasta: 700, duracion: 6}
+    moneda:  {notas: "mi6 la6", velocidad: 3}
+    pisar:   {tipo: barrido, desde: 700, hasta: 180, duracion: 6}
+    golpe:   {tipo: ruido, duracion: 9}
+    muerte:  {notas: "la4 fa4 re4 la3", velocidad: 8}
+    meta:    {notas: "la4 do5 mi5 la5", velocidad: 7}
+    disparo: {tipo: barrido, desde: 900, hasta: 260, duracion: 5}
+    romper:  {tipo: ruido, duracion: 6}
+  musica:
+    # Escritas en el tracker del editor (pestana "tracker"): los pasos hacia
+    # abajo y las dos pistas en columnas. Lo que hay aqui son las mismas dos
+    # lineas de notas de siempre, que es lo unico que guarda el tracker.
+    paramo:
+      velocidad: 11      # lento: esto no es un juego de correr
+      timbres: [organo, bajo]
+      pistas:
+        - "la3:2 do4   mi4:2 fa4   | mi4:4       re4:2 do4:2 | si3:2 re4   fa4:2 mi4   | re4:4       la3:4      "
+        - "la2:4       la2:4       | fa2:4       fa2:4       | re2:4       re2:4       | mi2:4       mi2:4      "
+    torre:
+      velocidad: 9
+      timbres: [flauta, bajo]
+      pistas:
+        - "mi4:2 sol4  la4:2 si4   | la4:4       sol4:2 mi4:2 | re4:2 fa4   la4:2 sol4  | fa4:4       mi4:4     "
+        - "la2:2 mi3:2 la2:2 mi3:2 | fa2:2 do3:2 fa2:2 do3:2 | re2:2 la2:2 re2:2 la2:2 | mi2:2 si2:2 mi2:4      "
+
+spawns:
+  s: sombra
+  v: cabeza
+  g: gema
+  k: llave
+  c: corazon
+
+niveles:
+  - nombre: "EL PARAMO"
+    fondo: "#1a0e1e"
+    musica: paramo
+    llaves: 1
+    # Noventa y seis casillas de ancho: hace falta sitio para que el parallax
+    # se note. En una pantalla quieta, cuatro capas son cuatro dibujos.
+    mapa: |
+      ................................................................................................
+      ................................................................................................
+      ................................................................................................
+      ................................................................................................
+      ................................................................................................
+      ................................................................................................
+      ....................................................................v...........................
+      ...............................................v................................................
+      ......................v..........................................................v..............
+      ................................................................................................
+      .....................................ggg.............................................gg.........
+      .............ggg....................=====......................gg..........c........====........
+      ............=====..........c.........................k........=====.......====..................
+      ..........................====......................=====.......................................
+      ..P...............s..............c..........s.........................s...................s..G..
+      ##########################....######################.....#################....##################
