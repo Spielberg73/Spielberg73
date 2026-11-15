@@ -316,6 +316,55 @@ Lo que se oye aquí es **exactamente** lo que va a sonar en la máquina: el
 navegador compila las notas con el mismo procedimiento que el kit, y hay una
 prueba que compara los dos paso a paso.
 
+## Tracker
+
+La pestaña **tracker** es la misma música, pero en rejilla: los pasos hacia
+abajo y las dos pistas en columnas, como en cualquier tracker desde el
+Soundtracker del Amiga.
+
+```
+      pista 1 - melodía    pista 2 - acompañamiento
+ 000  do4                  do3
+ 001  mi4                  -
+ 002  sol4                 do3
+ 003  mi4                  -
+ 004  fa4                  fa3
+```
+
+**El tracker es una vista, no un formato nuevo.** Lo que se escribe ahí son
+las dos mismas líneas de notas del `game.yaml` que hay en la pestaña de
+sonido; abrir la rejilla, escribir una nota y guardar deja el resto del
+fichero exactamente como estaba, y lo que compongas compila en las ocho
+máquinas sin que el tracker sepa que existen. Si prefieres escribir las notas
+a mano, sigue estando la pestaña de al lado, y las dos ven lo mismo.
+
+Se escribe **con el teclado**, que es lo que distingue a un tracker de una
+tabla:
+
+| tecla | qué hace |
+|---|---|
+| `z s x d c v g b h n j m` | las doce notas de la octava que marque el editor, con las negras donde están las negras de un piano |
+| `q 2 w 3 e r 5 t 6 y 7 u` | las mismas, una octava más arriba |
+| `-` | un silencio |
+| `*` | alarga hasta aquí la nota de arriba (es el `:2` del yaml) |
+| `Supr` | deja la fila en silencio |
+| flechas, `Tab` | mover el cursor y cambiar de pista |
+| `Intro` | tocar desde la fila donde estés |
+
+Cada nota suena al escribirla —componer a ciegas no es componer— y al tocar,
+**la fila por la que va la canción se pone verde**, así que se ve a qué altura
+está lo que oyes. *Tocar desde aquí* empieza por la fila del cursor y da
+vueltas, que es como se saca un compás que no acaba de sonar bien.
+
+Los botones de arriba suben o bajan de tono la nota del cursor (un semitono o
+una octava), añaden un compás al final y quitan la fila en la que estés. Una
+nota larga que cruza una barra de compás **sigue siendo una nota larga**: la
+barra es una raya para leer, no un corte.
+
+Lo que no hace todavía: crear canciones nuevas. Las que haya en el
+`game.yaml` se editan aquí; para añadir otra, se copia un bloque `musica:` en
+la pestaña de game.yaml y aparece en la lista.
+
 ## Revisar
 
 Una lista en vivo de lo que está mal en el nivel, con clic para ir al sitio:

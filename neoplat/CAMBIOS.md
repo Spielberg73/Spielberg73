@@ -2,8 +2,61 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.60.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.61.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.61
+
+**Un tracker para escribir la música.** Pestaña nueva en el editor: los pasos
+hacia abajo, las dos pistas en columnas y las notas con el teclado, como en
+cualquier tracker desde el Soundtracker del Amiga.
+
+```
+      pista 1 - melodía    pista 2 - acompañamiento
+ 000  do4                  do3
+ 001  mi4                  -
+ 002  sol4                 do3
+ 003  mi4                  -
+```
+
+Se escribe con `z s x d c v g b h n j m` —las doce notas de una octava, con
+las negras donde están las negras de un piano— y la fila de arriba
+(`q 2 w 3 e r 5 t 6 y 7 u`) es la octava siguiente. `-` pone un silencio, `*`
+alarga la nota de arriba, las flechas mueven, `Tab` cambia de pista e `Intro`
+toca desde donde estés. Cada nota suena al escribirla, y mientras toca **la
+fila por la que va la canción se pone verde**.
+
+**Y lo que hace que esto sea barato: el tracker es una vista, no un formato.**
+Lo que se escribe en la rejilla son las dos mismas líneas de notas del
+`game.yaml` que ya había. No hay fichero de música aparte, ni formato nuevo, ni
+nada que añadir al motor: por eso lo que compongas aquí compila en las ocho
+máquinas sin que el tracker sepa que existen, y por eso la pestaña de sonido de
+al lado sigue valiendo y las dos ven lo mismo.
+
+De ahí sale también la regla que más se agradece: **abrir una canción en la
+rejilla y guardarla sin tocar nada no cambia ni una coma del game.yaml**, y
+tocar una pista no reformatea la otra. Lo que salga en el diff es lo que hayas
+hecho.
+
+**Diecinueve pruebas nuevas**, y casi todas son la misma pregunta: *¿lo que
+entra sale?* La que más vale coge las canciones de los ejemplos y ciento veinte
+canciones al azar, las fuerza a pasar por la rejilla y compara **lo que suena**
+—los hercios y las duraciones, paso a paso, contra `sonido.py`, que es quien
+manda—. Otras tres abren el preview **en un Chromium de verdad**, se van al
+editor, pinchan una celda, escriben una nota con el teclado y exigen que
+aparezca en el `game.yaml`, que la fila verde vaya bajando y que no salte ni un
+error de JavaScript por el camino.
+
+Dos cosas que encontraron esas pruebas mientras se escribían, y que son el
+motivo de que estén:
+
+- una nota larga a caballo entre dos compases se partía en dos al guardar, y
+  eso **cambia la canción**: lo que suena no es una nota larga, son dos notas
+  repetidas. Una barra de compás es una raya para leer, no un corte;
+- y la rejilla dejaba escribir `do0`, que se entiende pero son 16 Hz y no la
+  toca ninguna de las ocho máquinas. Ahora pregunta al compilador antes de
+  dejarte escribir una nota, en vez de dejar que te enteres media hora después
+  al construir la ROM.
 
 ## 1.60
 

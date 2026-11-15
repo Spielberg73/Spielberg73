@@ -291,6 +291,12 @@ test compares them step by step over a batch of melodies, sweeps and noises
 (`tests/test_sonido.py::TestGemeloEnJavaScript`). It is covered in
 [editor.md](editor.md#sonido).
 
+And the music can be written **as a grid**, in the *tracker* tab: steps going
+down, tracks as columns and notes typed on the keyboard, like in any tracker.
+It is not another format —it is these same two lines of notes, seen another
+way—, so everything on this page still holds.
+See [editor.md](editor.md#tracker).
+
 ## What it does not do yet
 
 - **Digital samples on the Atari ST.** The other six already play them; the

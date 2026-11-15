@@ -441,7 +441,7 @@ def render_html(build: Build) -> str:
         core = fh.read()
     piezas = {}
     for nombre in ("np_editor.js", "np_yaml.js", "np_bot.js", "np_pixel.js",
-                   "np_sonido.js"):
+                   "np_sonido.js", "np_tracker.js"):
         with open(os.path.join(PREVIEW_DIR, nombre), "r", encoding="utf-8") as fh:
             piezas[nombre] = fh.read()
     with open(os.path.join(TEMPLATES_DIR, "preview.html"), "r", encoding="utf-8") as fh:
@@ -453,6 +453,7 @@ def render_html(build: Build) -> str:
     html = html.replace("@BOT@", piezas["np_bot.js"])
     html = html.replace("@PIXEL@", piezas["np_pixel.js"])
     html = html.replace("@SONIDO@", piezas["np_sonido.js"])
+    html = html.replace("@TRACKER@", piezas["np_tracker.js"])
     html = html.replace("@DATA@", data)
     sistema = build.sistema or sistemas.obtener(build.project.system)
     html = html.replace("@TITLE@", build.project.title)

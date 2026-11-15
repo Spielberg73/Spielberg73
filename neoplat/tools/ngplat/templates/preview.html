@@ -109,6 +109,35 @@
     border-radius: 5px; color: #cfd6e4; padding: 5px 7px; resize: vertical;
     font: 12px ui-monospace, monospace; line-height: 1.5;
   }
+  /* --- el tracker ---------------------------------------------------- */
+  .tracker {
+    margin-top: 8px; max-height: 58vh; overflow: auto; outline: none;
+    border: 1px solid #2b3245; border-radius: 6px; background: #0e1119;
+    width: max-content; max-width: 100%;
+  }
+  .tracker:focus-within, .tracker.enfocado { border-color: #f2b705; }
+  .tracker table { border-collapse: collapse; font: 13px ui-monospace, monospace; }
+  .tracker th {
+    position: sticky; top: 0; z-index: 1; background: #171b26; color: #8b95a8;
+    font-weight: normal; font-size: 11px; padding: 4px 10px; text-align: left;
+    border-bottom: 1px solid #2b3245;
+  }
+  .tracker td { padding: 1px 10px; color: #cfd6e4; white-space: pre; }
+  .tracker td.numero {
+    color: #5b6478; background: #131722; text-align: right; padding-right: 8px;
+    user-select: none;
+  }
+  /* El primer paso de cada compas, marcado: es lo que hace que una rejilla se
+   * lea de un vistazo en vez de ser una lista de notas. */
+  .tracker tr.compas td { border-top: 1px solid #262c3d; }
+  .tracker tr.compas td.numero { color: #8b95a8; }
+  .tracker td.silencio { color: #4a5266; }
+  .tracker td.sigue { color: #6f7795; }
+  .tracker td.fuera { color: #2b3245; background: #0b0e15; }
+  .tracker td.cursor { background: #2b3245; color: #fff; }
+  .tracker tr.sonando td { background: #1d2a1f; }
+  .tracker tr.sonando td.cursor { background: #3c4a3f; }
+  .tracker td:not(.numero):hover { background: #1b2030; cursor: pointer; }
   .problemas { display: flex; flex-direction: column; gap: 4px; }
   .problemas button {
     text-align: left; background: #161a25; border: 1px solid #2b3245;
@@ -282,6 +311,7 @@
     <button type="button" data-panel="actores">enemigos y objetos</button>
     <button type="button" data-panel="dibujos">dibujos</button>
     <button type="button" data-panel="sonido">sonido</button>
+    <button type="button" data-panel="tracker">tracker</button>
     <button type="button" data-panel="revisar">revisar<span class="contador" id="es-problemas" hidden>0</span></button>
     <button type="button" data-panel="yaml">game.yaml</button>
     <button type="button" data-panel="rom">compilar</button>
@@ -482,6 +512,45 @@
       una nota. Dos pistas como mucho: el tercer canal del chip es de los efectos.</p>
   </div>
 
+  <div class="panel" id="panel-tracker">
+    <div class="barra">
+      <span class="etiqueta">cancion</span>
+      <select id="tr-cancion"></select>
+      <button type="button" id="tr-tocar">tocar</button>
+      <button type="button" id="tr-aqui">tocar desde aqui</button>
+      <button type="button" id="tr-parar">parar</button>
+      <span class="etiqueta">octava</span>
+      <select id="tr-octava"></select>
+      <label class="campo" style="flex-direction:row;align-items:center;gap:6px">
+        <span>frames por paso</span>
+        <input type="number" id="tr-velocidad" min="1" max="60" step="1">
+      </label>
+    </div>
+    <div class="barra">
+      <span class="etiqueta">la nota de aqui</span>
+      <button type="button" id="tr-subir">+1 semitono</button>
+      <button type="button" id="tr-bajar">-1 semitono</button>
+      <button type="button" id="tr-octava-mas">+1 octava</button>
+      <button type="button" id="tr-octava-menos">-1 octava</button>
+      <span class="etiqueta">filas</span>
+      <button type="button" id="tr-mas-filas">anadir un compas</button>
+      <button type="button" id="tr-quitar-fila">quitar esta fila</button>
+      <span id="tr-timbres"></span>
+    </div>
+    <div class="tracker" id="tr-rejilla" tabindex="0"></div>
+    <p class="nota" id="tr-aviso"></p>
+    <p class="nota"><b>Se escribe con el teclado, como en cualquier tracker.</b>
+      La fila de abajo (<code>z s x d c v g b h n j m</code>) es una octava y la
+      de arriba (<code>q 2 w 3 e r 5 t 6 y 7 u</code>) la siguiente, con las
+      teclas negras donde estarian las negras de un piano. <code>-</code> pone
+      un silencio, <code>*</code> alarga la nota de arriba hasta aqui y
+      <code>Supr</code> deja la fila en silencio. Las flechas mueven,
+      <code>Tab</code> cambia de pista y <code>Intro</code> toca desde donde
+      estes. Lo que escribas aqui es lo mismo que si lo escribieras a mano en la
+      pestana de sonido: son las dos lineas de notas del game.yaml, vistas en
+      rejilla.</p>
+  </div>
+
   <div class="panel" id="panel-revisar">
     <div class="barra">
       <button type="button" id="ed-bot">¿se puede terminar?</button>
@@ -550,6 +619,9 @@
 </script>
 <script>
 @SONIDO@
+</script>
+<script>
+@TRACKER@
 </script>
 <script>
 @EDITOR@
@@ -928,12 +1000,23 @@
       this.darCuerda();
     },
 
-    escucharTema: function (tema) {
+    /**
+     * Toca una cancion ya compilada, sin que el juego se entere.
+     *
+     * `desde` es por donde empieza cada pista -lo que necesita el tracker para
+     * tocar desde la fila donde estes, en vez de desde el principio cada vez-
+     * y `bucle` que no se pare al acabar, que es como se compone: dando
+     * vueltas al mismo compas hasta que suena bien.
+     */
+    escucharTema: function (tema, desde, bucle) {
       this.iniciar();
       if (!this.ctx || !tema) return;
       this.pistas = [];
-      for (var i = 0; i < tema.pistas.length && i < 2; i++)
-        this.pistas.push({ pasos: tema.pistas[i], i: 0, resto: 0, bucle: 0 });
+      for (var i = 0; i < tema.pistas.length && i < 2; i++) {
+        this.pistas.push({ pasos: tema.pistas[i], resto: 0,
+                           i: (desde && desde[i]) || 0, bucle: bucle ? 1 : 0 });
+        this.timbre(i, (tema.timbres || [])[i]);
+      }
       /* que el bucle del juego vuelva a poner la cancion del nivel al salir */
       this.tema = -2;
       this.darCuerda();
@@ -1858,6 +1941,294 @@
           return p.reduce(function (t, paso) { return t + paso[1]; }, 0);
         }).concat([0])) / 60) + " segundos por vuelta";
     }
+  }
+
+
+  /* --- el tracker ------------------------------------------------------
+   *
+   * La rejilla. Las cuentas estan en np_tracker.js -de las dos lineas de
+   * notas a celdas y vuelta-; aqui solo esta la pantalla: dibujar la tabla,
+   * mover el cursor, escribir con el teclado y seguir lo que suena.
+   *
+   * Lo que se escribe aqui **son las mismas dos lineas de notas** de la
+   * pestana de sonido. No hay un formato del tracker ni un fichero aparte: por
+   * eso lo que compongas aqui compila en las ocho maquinas sin que el tracker
+   * sepa que existen.
+   */
+
+  var tracker = {
+    rejilla: null,      /* lo que devuelve NPTracker.aRejilla */
+    pista: 0,           /* donde esta el cursor */
+    fila: 0,
+    octava: 4,
+    sonando: null,      /* el reloj que mueve la fila verde */
+    mapa: null          /* de paso a fila, para saber que suena */
+  };
+
+  /* Los nombres de las canciones vienen en DATA -lo ya compilado- y lo que se
+   * edita esta en el modelo, igual que en la pestana de sonido: el modelo son
+   * las notas tal cual se escribieron y de ahi no sale un nombre. */
+  function cancionesDelTracker() {
+    return (DATA.sonido && DATA.sonido.musica) || [];
+  }
+
+  function cancionDelTracker() {
+    var lista = (editor.modelo.sonido && editor.modelo.sonido.musica) || [];
+    if (cancionElegida >= lista.length) cancionElegida = 0;
+    return lista[cancionElegida] || null;
+  }
+
+  /** Por que fila va cada paso, y por que paso empieza cada fila. */
+  function mapaDePasos(rejilla) {
+    return rejilla.pistas.map(function (p) {
+      var aFila = [], aPaso = [], paso = 0;
+      for (var fila = 0; fila < p.largo; fila++) {
+        aPaso.push(paso);
+        if (p.celdas[fila].tipo !== "sigue") { aFila.push(fila); paso += 1; }
+      }
+      return { aFila: aFila, aPaso: aPaso };
+    });
+  }
+
+  function textoDeCelda(celda) {
+    if (celda.tipo === "nota") return celda.nota;
+    if (celda.tipo === "silencio") return "-";
+    if (celda.tipo === "sigue") return "|";       /* la nota sigue sonando */
+    return " ";                                   /* fuera de esta pista */
+  }
+
+  function construirTracker() {
+    var lista = cancionesDelTracker();
+    var select = document.getElementById("tr-cancion");
+    var aviso = document.getElementById("tr-aviso");
+    select.innerHTML = "";
+    if (!lista.length) {
+      document.getElementById("tr-rejilla").innerHTML = "";
+      aviso.textContent = "este juego no tiene musica: anade un bloque " +
+        "'musica:' al game.yaml y vuelve a lanzar `ngplat probar`.";
+      return;
+    }
+    lista.forEach(function (m, i) {
+      var op = crearElemento(select, "option");
+      op.value = String(i);
+      op.textContent = m.nombre;
+    });
+    select.value = String(cancionElegida);
+    select.onchange = function () {
+      cancionElegida = Number(select.value);
+      tracker.fila = 0;
+      abrirEnTracker();
+      construirMusica();
+    };
+
+    var octavas = document.getElementById("tr-octava");
+    if (!octavas.options.length) {
+      for (var o = 1; o <= 7; o++) {
+        var op = crearElemento(octavas, "option");
+        op.value = String(o);
+        op.textContent = String(o);
+      }
+    }
+    octavas.value = String(tracker.octava);
+    octavas.onchange = function () { tracker.octava = Number(octavas.value); };
+
+    var fuente = cancionDelTracker();
+    var velocidad = document.getElementById("tr-velocidad");
+    velocidad.value = fuente.velocidad;
+    velocidad.onchange = function () {
+      var v = Math.max(1, Math.min(60, Number(velocidad.value) || 8));
+      velocidad.value = v;
+      editor.ponerPropiedad("musica", "velocidad", v, cancionElegida);
+      construirMusica();
+    };
+
+    var timbres = document.getElementById("tr-timbres");
+    timbres.textContent = (fuente.timbres || []).length
+      ? "timbres: " + fuente.timbres.join(" / ")
+      : "";
+
+    abrirEnTracker();
+  }
+
+  /** Lee la cancion del modelo y la deja en la rejilla. */
+  function abrirEnTracker() {
+    var fuente = cancionDelTracker();
+    if (!fuente) return;
+    tracker.rejilla = NPTracker.aRejilla(fuente);
+    tracker.mapa = mapaDePasos(tracker.rejilla);
+    if (tracker.pista >= tracker.rejilla.pistas.length) tracker.pista = 0;
+    pintarRejilla();
+  }
+
+  function pintarRejilla() {
+    var caja = document.getElementById("tr-rejilla");
+    var rejilla = tracker.rejilla;
+    caja.innerHTML = "";
+    if (!rejilla || !rejilla.pistas.length) return;
+    var compas = rejilla.compas || NPTracker.COMPAS_POR_DEFECTO;
+    var tabla = crearElemento(caja, "table");
+    var cabecera = crearElemento(crearElemento(tabla, "thead"), "tr");
+    crearElemento(cabecera, "th").textContent = "";
+    rejilla.pistas.forEach(function (p, i) {
+      crearElemento(cabecera, "th").textContent =
+        i === 0 ? "pista 1 - melodia" : "pista 2 - acompanamiento";
+    });
+    var cuerpo = crearElemento(tabla, "tbody");
+    for (var fila = 0; fila < rejilla.filas; fila++) {
+      var tr = crearElemento(cuerpo, "tr");
+      if (fila % compas === 0) tr.className = "compas";
+      tr.dataset.fila = String(fila);
+      crearElemento(tr, "td", "numero").textContent =
+        (fila < 100 ? (fila < 10 ? "00" : "0") : "") + fila;
+      rejilla.pistas.forEach(function (p, i) {
+        var celda = NPTracker.celda(rejilla, i, fila);
+        var td = crearElemento(tr, "td", celda.tipo === "nota" ? "" : celda.tipo);
+        td.textContent = textoDeCelda(celda);
+        td.dataset.pista = String(i);
+        td.dataset.fila = String(fila);
+        if (i === tracker.pista && fila === tracker.fila) {
+          td.className = (td.className + " cursor").trim();
+        }
+      });
+    }
+    caja.onclick = function (evento) {
+      var td = evento.target;
+      if (!td || td.dataset.pista === undefined) return;
+      tracker.pista = Number(td.dataset.pista);
+      tracker.fila = Number(td.dataset.fila);
+      caja.focus();
+      pintarRejilla();
+    };
+    contarTracker();
+  }
+
+  function contarTracker() {
+    var aviso = document.getElementById("tr-aviso");
+    var fuente = cancionDelTracker();
+    if (!fuente) return;
+    var salida = NPSonido.compilarMusica(fuente);
+    if (salida.error) {
+      aviso.style.color = "#e8756b";
+      aviso.textContent = salida.error;
+      return;
+    }
+    var frames = Math.max.apply(null, salida.pistas.map(function (p) {
+      return p.reduce(function (total, paso) { return total + paso[1]; }, 0);
+    }).concat([0]));
+    aviso.style.color = "";
+    aviso.textContent = tracker.rejilla.filas + " pasos, " +
+      (Math.round(frames / 60 * 10) / 10) + " segundos por vuelta" +
+      (tracker.rejilla.compas ? "" : " (los compases de esta cancion no son " +
+       "todos iguales, asi que las barras se quedan donde estaban)");
+  }
+
+  /** Lo que se haya tocado, al modelo. */
+  function guardarTracker() {
+    editor.ponerPropiedad("musica", "pistas",
+                          NPTracker.aPistas(tracker.rejilla), cancionElegida);
+    tracker.mapa = mapaDePasos(tracker.rejilla);
+    pintarRejilla();
+  }
+
+  function moverTracker(dpista, dfila) {
+    var rejilla = tracker.rejilla;
+    if (!rejilla) return;
+    tracker.pista = Math.max(0, Math.min(rejilla.pistas.length - 1,
+                                         tracker.pista + dpista));
+    tracker.fila = Math.max(0, Math.min(rejilla.filas - 1, tracker.fila + dfila));
+    pintarRejilla();
+    var puesto = document.querySelector("#tr-rejilla td.cursor");
+    if (puesto && puesto.scrollIntoView) {
+      puesto.scrollIntoView({ block: "nearest" });
+    }
+  }
+
+  function teclaDelTracker(evento) {
+    var rejilla = tracker.rejilla;
+    if (!rejilla || !rejilla.pistas.length) return;
+    var tecla = evento.key;
+    var bajo = String(tecla).toLowerCase();
+
+    if (tecla === "ArrowDown") { moverTracker(0, 1); }
+    else if (tecla === "ArrowUp") { moverTracker(0, -1); }
+    else if (tecla === "ArrowRight" || tecla === "Tab") { moverTracker(1, 0); }
+    else if (tecla === "ArrowLeft") { moverTracker(-1, 0); }
+    else if (tecla === "PageDown") { moverTracker(0, 8); }
+    else if (tecla === "PageUp") { moverTracker(0, -8); }
+    else if (tecla === "Enter") { tocarTracker(true); }
+    else if (tecla === "-") {
+      NPTracker.ponerSilencio(rejilla, tracker.pista, tracker.fila);
+      guardarTracker();
+      moverTracker(0, 1);
+    } else if (tecla === "*" || tecla === "+") {
+      NPTracker.ponerSigue(rejilla, tracker.pista, tracker.fila);
+      guardarTracker();
+      moverTracker(0, 1);
+    } else if (tecla === "Delete" || tecla === "Backspace") {
+      NPTracker.ponerSilencio(rejilla, tracker.pista, tracker.fila);
+      guardarTracker();
+      if (tecla === "Backspace") moverTracker(0, -1);
+    } else if (NPTracker.TECLAS[bajo] !== undefined) {
+      var nota = NPTracker.nombreDeNota(NPTracker.TECLAS[bajo], tracker.octava);
+      if (NPTracker.ponerNota(rejilla, tracker.pista, tracker.fila, nota)) {
+        guardarTracker();
+        /* Oirla al escribirla: componer a ciegas no es componer. */
+        var pasos = NPSonido.notas(nota, cancionDelTracker().velocidad, 15);
+        audio.escucharPasos(pasos.map(function (p) { return p; }));
+        moverTracker(0, 1);
+      } else {
+        var aviso = document.getElementById("tr-aviso");
+        aviso.style.color = "#e8756b";
+        aviso.textContent = "la nota " + nota + " no la toca ninguna de estas " +
+          "maquinas: prueba otra octava";
+      }
+    } else {
+      return;        /* cualquier otra tecla no es nuestra */
+    }
+    evento.preventDefault();
+  }
+
+  function pasosDesdeElCursor() {
+    /* Donde empieza cada pista para tocar desde la fila del cursor: la fila es
+     * la misma para las dos, pero el paso no, porque cada pista tiene sus
+     * notas largas. */
+    return (tracker.mapa || []).map(function (m) {
+      var fila = Math.min(tracker.fila, m.aPaso.length - 1);
+      return fila < 0 ? 0 : m.aPaso[fila];
+    });
+  }
+
+  function tocarTracker(desdeAqui) {
+    var fuente = cancionDelTracker();
+    if (!fuente) return;
+    var salida = NPSonido.compilarMusica(fuente);
+    if (salida.error) { contarTracker(); return; }
+    pararTracker();
+    audio.escucharTema({ pistas: salida.pistas, timbres: fuente.timbres },
+                       desdeAqui ? pasosDesdeElCursor() : null, true);
+    tracker.sonando = setInterval(seguirTracker, 1000 / 20);
+  }
+
+  function pararTracker() {
+    if (tracker.sonando) { clearInterval(tracker.sonando); tracker.sonando = null; }
+    audio.pararAudicion();
+    Array.prototype.forEach.call(
+      document.querySelectorAll("#tr-rejilla tr.sonando"), function (tr) {
+        tr.classList.remove("sonando");
+      });
+  }
+
+  /** La fila verde: donde va la cancion ahora mismo. */
+  function seguirTracker() {
+    var voz = audio.pistas && audio.pistas[0];
+    var mapa = tracker.mapa && tracker.mapa[0];
+    if (!voz || !mapa) { pararTracker(); return; }
+    var paso = Math.max(0, voz.i - 1);
+    var fila = mapa.aFila[Math.min(paso, mapa.aFila.length - 1)];
+    var antes = document.querySelector("#tr-rejilla tr.sonando");
+    if (antes) antes.classList.remove("sonando");
+    var ahora = document.querySelector('#tr-rejilla tr[data-fila="' + fila + '"]');
+    if (ahora) ahora.classList.add("sonando");
   }
 
   /* --- crear enemigos y objetos, con su dibujo ------------------------ */
@@ -3351,6 +3722,14 @@
       elTexto.value = editor.exportarYaml();
       refrescarPendientes();
     }
+    if (cual === "tracker") {
+      construirTracker();
+      document.getElementById("tr-rejilla").focus();
+    } else {
+      /* Salir de la pestana para la cancion: dos osciladores sonando detras
+       * mientras dibujas el mapa no se le hace a nadie. */
+      pararTracker();
+    }
     if (cual === "revisar") { editor.revisar(); refrescarProblemas(); }
     if (cual === "rom") document.getElementById("rom-estado").textContent = "";
     if (cual === "copias") copias.cargar();
@@ -3408,6 +3787,44 @@
     audio.escucharTema(DATA.sonido.musica[cancionElegida]);
   });
   conClic("son-parar", function () { audio.pararAudicion(); });
+
+  /* --- el tracker */
+  conClic("tr-tocar", function () { tocarTracker(false); });
+  conClic("tr-aqui", function () { tocarTracker(true); });
+  conClic("tr-parar", pararTracker);
+  conClic("tr-mas-filas", function () {
+    var compas = tracker.rejilla.compas || NPTracker.COMPAS_POR_DEFECTO;
+    var hasta = tracker.rejilla.filas + compas;
+    tracker.rejilla.pistas.forEach(function (p, i) {
+      NPTracker.ponerSilencio(tracker.rejilla, i, hasta - 1);
+    });
+    guardarTracker();
+  });
+  conClic("tr-quitar-fila", function () {
+    tracker.rejilla.pistas.forEach(function (p, i) {
+      NPTracker.quitarFila(tracker.rejilla, i, tracker.fila);
+    });
+    if (tracker.fila >= tracker.rejilla.filas) {
+      tracker.fila = Math.max(0, tracker.rejilla.filas - 1);
+    }
+    guardarTracker();
+  });
+  [["tr-subir", 1], ["tr-bajar", -1],
+   ["tr-octava-mas", 12], ["tr-octava-menos", -12]].forEach(function (par) {
+    conClic(par[0], function () {
+      if (NPTracker.transportar(tracker.rejilla, tracker.pista,
+                                tracker.fila, tracker.fila, par[1])) {
+        guardarTracker();
+      }
+    });
+  });
+  (function () {
+    var caja = document.getElementById("tr-rejilla");
+    if (!caja) return;
+    caja.addEventListener("keydown", teclaDelTracker);
+    caja.addEventListener("focus", function () { caja.classList.add("enfocado"); });
+    caja.addEventListener("blur", function () { caja.classList.remove("enfocado"); });
+  })();
   conClic("ed-nuevo-enemigo", function () { abrirCreador("enemigo"); });
   conClic("ed-nuevo-objeto", function () { abrirCreador("objeto"); });
   conClic("creador-crear", crearActorDesdeFormulario);

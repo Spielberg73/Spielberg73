@@ -317,6 +317,54 @@ What you hear here is **exactly** what will sound on the machine: the browser
 compiles the notes with the same procedure as the kit, and there is a test that
 compares the two step by step.
 
+## Tracker
+
+The **tracker** tab is the same music seen as a grid: steps going down and the
+two tracks as columns, like in every tracker since the Amiga's Soundtracker.
+
+```
+      track 1 - melody     track 2 - accompaniment
+ 000  do4                  do3
+ 001  mi4                  -
+ 002  sol4                 do3
+ 003  mi4                  -
+ 004  fa4                  fa3
+```
+
+**The tracker is a view, not a new format.** What you write there are the same
+two lines of notes of the `game.yaml` that the sound tab holds; opening the
+grid, writing a note and saving leaves the rest of the file exactly as it was,
+and whatever you compose compiles on all eight targets without the tracker
+knowing they exist. If you would rather type the notes by hand, the tab next
+door is still there, and both see the same thing.
+
+You write **with the keyboard**, which is what makes a tracker a tracker and
+not a table:
+
+| key | what it does |
+|---|---|
+| `z s x d c v g b h n j m` | the twelve notes of the octave the editor is set to, with the black keys where a piano's black keys are |
+| `q 2 w 3 e r 5 t 6 y 7 u` | the same ones, one octave up |
+| `-` | a rest |
+| `*` | holds the note above down to here (this is the yaml's `:2`) |
+| `Del` | leaves the row silent |
+| arrows, `Tab` | move the cursor and change track |
+| `Enter` | play from the row you are on |
+
+Each note sounds as you write it —composing blind is not composing— and while
+it plays, **the row the song is on turns green**, so you can see where in the
+grid what you are hearing is. *Play from here* starts at the cursor's row and
+loops, which is how you fix a bar that does not quite work.
+
+The buttons above raise or lower the note under the cursor (a semitone or an
+octave), add a bar at the end and remove the row you are on. A long note that
+crosses a bar line **stays one long note**: the bar is a line to read by, not
+a cut.
+
+What it does not do yet: create new songs. The ones in the `game.yaml` are
+edited here; to add another, copy a `musica:` block in the game.yaml tab and
+it shows up in the list.
+
 ## Check
 
 A live list of what is wrong with the level, with a click to go to the spot:

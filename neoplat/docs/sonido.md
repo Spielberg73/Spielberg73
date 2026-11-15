@@ -291,6 +291,12 @@ prueba los compara paso a paso sobre una tanda de melodías, barridos y ruidos
 (`tests/test_sonido.py::TestGemeloEnJavaScript`). Está contado en
 [editor.md](editor.md#sonido).
 
+Y la música se puede escribir **en rejilla**, en la pestaña *tracker*: los
+pasos hacia abajo, las pistas en columnas y las notas con el teclado, como en
+cualquier tracker. No es otro formato —son estas mismas dos líneas de notas,
+vistas de otra manera—, así que todo lo de esta página vale igual.
+Está en [editor.md](editor.md#tracker).
+
 ## Lo que aún no hace
 
 - **Muestras digitales en el Atari ST.** Las otras seis ya las tocan; el
