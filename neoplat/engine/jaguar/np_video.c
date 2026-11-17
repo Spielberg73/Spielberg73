@@ -19,7 +19,8 @@
 /* Cada objeto son dos frases de 64 bits y la lista tiene que estar alineada a
    16 bytes: el chip lee de dos en dos frases. `volatile` porque quien la lee
    es el chip, no el programa (ver la nota de np_jaguar.h). */
-#define NP_OBJETOS (4 + NP_ACTORES_MAX + NP_CARRETERA_OBJETOS + 1)
+#define NP_OBJETOS (4 + NP_ACTORES_MAX + NP_CARRETERA_OBJETOS \
+                    + NP_FONDOS_A_LA_VEZ + 1)
 static volatile uint64_t np_lista[NP_OBJETOS * 2] __attribute__((aligned(16)));
 static uint64_t np_copia[NP_OBJETOS * 2];       /* el original, para restaurarlo */
 static uint16_t np_usados;                      /* frases ocupadas este frame  */
@@ -293,25 +294,48 @@ static void np_redibujar_todo(const NpWorld *w)
  * El dibujo se pinta una vez al entrar en el nivel, repetido a lo ancho; a
  * partir de ahi mover la capa es cambiar dos numeros en la lista.
  */
+/* Donde ha quedado cada capa dentro del mapa de bits del fondo, y cuanto
+   mide. Se llena al entrar en el nivel: el nivel siguiente puede llevar otras
+   capas, otras alturas y otro orden. */
+static uint32_t np_fondo_off[NP_FONDOS_A_LA_VEZ];
+static int16_t np_fondo_alto[NP_FONDOS_A_LA_VEZ];
+static int16_t np_fondo_y[NP_FONDOS_A_LA_VEZ];
+static uint8_t np_fondo_n;
+
 static void np_pintar_fondo(const NpWorld *w)
 {
     uint32_t *p = (uint32_t *)(void *)np_fondo_bitmap;
     uint32_t i;
-    for (i = 0; i < (uint32_t)NP_MAPA_ANCHO * NP_FONDO_ALTO / 4; i++) *p++ = 0;
-    if (w->level->layer_count && np_layers[w->level->layers[0]].cols) {
-        const NpLayer *capa = &np_layers[w->level->layers[0]];
+    uint32_t usado = 0;
+    uint8_t cuantas = w->level->layer_count;
+
+    for (i = 0; i < (uint32_t)NP_FONDO_BYTES / 4; i++) *p++ = 0;
+    np_fondo_n = 0;
+    if (cuantas > NP_FONDOS_A_LA_VEZ) cuantas = NP_FONDOS_A_LA_VEZ;
+
+    for (i = 0; i < cuantas; i++) {
+        const NpLayer *capa = &np_layers[w->level->layers[i]];
+        int32_t alto = capa->rows * NP_TILE;
         int32_t columnas = NP_MAPA_ANCHO / NP_TILE;
         int32_t c, r;
+        if (!capa->cols || alto <= 0) continue;
+        if (alto > NP_FONDO_ALTO) alto = NP_FONDO_ALTO;
+        if (usado + (uint32_t)NP_MAPA_ANCHO * alto > (uint32_t)NP_FONDO_BYTES) break;
         for (c = 0; c < columnas; c++) {
             int32_t fuente = c % capa->cols;
             for (r = 0; r < capa->rows; r++) {
-                int32_t y = capa->offset_y + r * NP_TILE;
-                if (y < 0 || y + NP_TILE > NP_FONDO_ALTO) continue;
-                np_pegar_tile_en(np_fondo_bitmap,
+                int32_t y = r * NP_TILE;
+                if (y + NP_TILE > alto) continue;
+                np_pegar_tile_en(np_fondo_bitmap + usado,
                                  capa->tiles[r * capa->cols + fuente],
                                  c * NP_TILE, y);
             }
         }
+        np_fondo_off[np_fondo_n] = usado;
+        np_fondo_alto[np_fondo_n] = (int16_t)alto;
+        np_fondo_y[np_fondo_n] = (int16_t)capa->offset_y;
+        np_fondo_n++;
+        usado += (uint32_t)NP_MAPA_ANCHO * alto;
     }
     __asm__ __volatile__ ("" ::: "memory");
 }
@@ -409,33 +433,43 @@ static void np_objetos_carretera(const NpWorld *w)
 }
 #endif /* NP_VISTA_CARRETERA */
 
-/* Mete el objeto del parallax en la lista, ya desplazado. */
+/* Mete en la lista un objeto por capa, ya desplazados.
+ *
+ * Van en el orden del game.yaml -de la mas lejana a la mas cercana-, que es
+ * tambien el orden en el que se meten: la lista se dibuja de arriba abajo, asi
+ * que la primera queda al fondo. Como el color 0 es transparente y el Object
+ * Processor lo salta, las de delante dejan ver las de detras sin hacer nada.
+ */
 static void np_objeto_fondo(const NpWorld *w)
 {
-    int32_t sx = 0, sy = 0, periodo = 0;
+    uint8_t i;
     int32_t maximo = NP_MAPA_ANCHO - NP_SCREEN_W;
-    if (!w->level->layer_count) return;
-    {
-        const NpLayer *capa = &np_layers[w->level->layers[0]];
-        sx = ((int32_t)w->cam_x * capa->speed_x) >> 8;
-        sy = ((int32_t)w->cam_y * capa->speed_y) >> 8;
-        periodo = capa->cols * NP_TILE;
+    for (i = 0; i < np_fondo_n; i++) {
+        const NpLayer *capa = &np_layers[w->level->layers[i]];
+        int32_t sx = ((int32_t)w->cam_x * capa->speed_x) >> 8;
+        int32_t sy = ((int32_t)w->cam_y * capa->speed_y) >> 8;
+        int32_t periodo = capa->cols * NP_TILE;
+        int32_t alto = np_fondo_alto[i];
+        int32_t y0 = np_fondo_y[i];
+        /* el dibujo esta repetido a lo ancho, asi que al llegar a su ancho se
+           vuelve al principio sin que se note; una capa mas ancha que el
+           hueco se para en el borde */
+        if (periodo >= NP_TILE && periodo <= maximo) {
+            sx %= periodo;
+            if (sx < 0) sx += periodo;
+        } else {
+            if (sx < 0) sx = 0;
+            if (sx > maximo) sx = maximo;
+        }
+        if (sy < 0) sy = 0;
+        if (sy > alto - 1) sy = alto - 1;
+        if (alto - sy <= 0) continue;
+        np_objeto(NP_DIR(np_fondo_bitmap) + np_fondo_off[i]
+                  + (uint32_t)sy * NP_MAPA_ANCHO + ((uint32_t)sx & ~7u),
+                  (int16_t)(-(sx & 7)), (int16_t)y0,
+                  NP_SCREEN_W / 8 + 1, (uint16_t)(alto - sy),
+                  NP_MAPA_ANCHO / 8, 1);
     }
-    /* el dibujo esta repetido, asi que al llegar a su ancho se vuelve al
-       principio sin que se note; una capa mas ancha que el hueco se para */
-    if (periodo >= NP_TILE && periodo <= maximo) {
-        sx %= periodo;
-        if (sx < 0) sx += periodo;
-    } else {
-        if (sx < 0) sx = 0;
-        if (sx > maximo) sx = maximo;
-    }
-    if (sy < 0) sy = 0;
-    if (sy > NP_FONDO_ALTO - NP_SCREEN_H) sy = NP_FONDO_ALTO - NP_SCREEN_H;
-    np_objeto(NP_DIR(np_fondo_bitmap) + (uint32_t)sy * NP_MAPA_ANCHO
-              + ((uint32_t)sx & ~7u),
-              (int16_t)(-(sx & 7)), 0,
-              NP_SCREEN_W / 8 + 1, NP_SCREEN_H, NP_MAPA_ANCHO / 8, 1);
 }
 #endif /* NP_LAYER_COUNT */
 

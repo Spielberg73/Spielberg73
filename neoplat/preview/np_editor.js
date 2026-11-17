@@ -509,6 +509,50 @@
       };
     }
 
+    /**
+     * Una cancion nueva, vacia, al final de la lista.
+     *
+     * Hace falta tocar dos sitios y no uno: el **modelo** -las notas tal cual
+     * se escriben, que es lo que acaba en el game.yaml- y **DATA** -lo ya
+     * compilado, que es de donde salen el nombre y lo que suena-. El nombre
+     * solo vive en DATA: en el yaml es la clave del bloque, asi que en el
+     * modelo no hay donde guardarlo.
+     *
+     * Devuelve el indice de la cancion nueva, o -1 si el nombre no vale o ya
+     * esta cogido. Dos canciones con el mismo nombre serian una sola: en el
+     * yaml el segundo bloque pisaria al primero.
+     */
+    editor.nuevaCancion = function (nombre) {
+      var limpio = String(nombre || "").trim().toLowerCase()
+                     .replace(/[^a-z0-9_-]+/g, "");
+      if (!limpio) return -1;
+      var lista = (DATA.sonido && DATA.sonido.musica) || null;
+      if (!lista) return -1;
+      for (var i = 0; i < lista.length; i++) {
+        if (String(lista[i].nombre) === limpio) return -1;
+      }
+      /* Dieciseis pasos en silencio: un compas de cuatro por cuatro, que es
+         con lo que uno empieza a escribir. Vacia del todo -sin pistas- no
+         compilaria, y la rejilla no tendria donde pintar. */
+      var callado = "-    -    -    -    | -    -    -    -    " +
+                    "| -    -    -    -    | -    -    -    -";
+      var fuente = {
+        velocidad: 8, volumen: 11, bucle: true,
+        timbres: ["flauta", "bajo"],
+        pistas: [callado, callado]
+      };
+      cambioSuelto(function () {
+        editor.modelo.sonido.musica.push(clonar(fuente));
+        lista.push({
+          nombre: limpio, fuente: clonar(fuente), pistas: [[], []],
+          velocidad: fuente.velocidad, bucle: 1,
+          timbres: fuente.timbres.slice()
+        });
+      });
+      aplicarAlMotor();
+      return lista.length - 1;
+    };
+
     editor.duplicarNivel = function () {
       cambioSuelto(function () {
         var copia = filas().slice();
@@ -1421,9 +1465,13 @@
         /* la seccion se busca **cada vez**: escribir las pistas de una
            cancion mueve de sitio las lineas de las demas */
         var dentro = y.seccion(ALIAS_SONIDO, 0, undefined, 0);
-        var musica = dentro && y.seccion(ALIAS_MUSICA, dentro.inicio, dentro.fin,
-                                         y.sangriaHijos(dentro));
+        /* `asegurar` y no `seccion` a secas: una cancion recien creada en el
+           tracker todavia no tiene su bloque en el yaml, y un proyecto puede
+           no tener ni 'musica:'. Si no se crean, lo que se acaba de componer
+           se queda sin escribir y se pierde al guardar. */
+        var musica = dentro && y.asegurarSubseccion(dentro, ALIAS_MUSICA);
         var cancion = musica && y.seccion([nombre], musica.inicio, musica.fin);
+        if (!cancion) cancion = musica && y.asegurarSubseccion(musica, [nombre]);
         if (!cancion) return;
         y.ponerValor(cancion, ["velocidad"], NPYaml.numero(m.velocidad, 0));
         if (Number(m.volumen) !== 11)

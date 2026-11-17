@@ -297,6 +297,11 @@ It is not another format —it is these same two lines of notes, seen another
 way—, so everything on this page still holds.
 See [editor.md](editor.md#tracker).
 
+And to hear it **without opening the browser**, `ngplat sonar` writes each song
+to a `.wav` with its timbre's waveform: useful for sending it, playing it on a
+phone, or checking at a glance that what you just wrote sounds like what you
+meant.
+
 ## What it does not do yet
 
 - **Digital samples on the Atari ST.** The other six already play them; the

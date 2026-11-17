@@ -105,7 +105,23 @@
 #endif
 #define NP_TILE 16
 #define NP_HUD_ALTO 24
-#define NP_FONDO_ALTO 224           /* alto del mapa de bits del parallax     */
+/* El parallax. Cada capa se lleva su propio trozo del mapa de bits y entra en
+   la lista como **su propio objeto**: el Object Processor recorre la lista en
+   cada linea, asi que cuatro capas son cuatro entradas mas y cada una con su
+   X. Es la razon de que aqui si quepan varias y en la Mega Drive o el Amiga
+   no: alli hay dos planos y se acabo; aqui hay una lista.
+
+   NP_FONDO_ALTO es lo que mide, a lo alto, el trozo de una capa: la pantalla
+   entera, por si alguien pone una capa que la tapa. NP_FONDO_BYTES lo pone
+   gamedata.h con lo que de verdad ocupan las capas del juego, que casi
+   siempre es mucho menos. */
+#define NP_FONDO_ALTO 224           /* alto maximo de una capa               */
+#ifndef NP_FONDOS_A_LA_VEZ
+#define NP_FONDOS_A_LA_VEZ 1        /* capas del nivel que mas lleve         */
+#endif
+#ifndef NP_FONDO_BYTES
+#define NP_FONDO_BYTES (NP_MAPA_ANCHO * NP_FONDO_ALTO)
+#endif
 #define NP_HUD_COLOR 255            /* el ultimo color de la tabla           */
 #define NP_ACTORES_MAX 48           /* objetos de la lista para los actores  */
 /* Conduciendo, la carretera son **una linea, un objeto**: el Object Processor

@@ -297,6 +297,11 @@ cualquier tracker. No es otro formato —son estas mismas dos líneas de notas,
 vistas de otra manera—, así que todo lo de esta página vale igual.
 Está en [editor.md](editor.md#tracker).
 
+Y para oírla **sin abrir el navegador**, `ngplat sonar` saca cada canción a
+un `.wav` con la onda de su timbre: sirve para mandarla, para oírla en el
+móvil o para comprobar de un vistazo que lo que acabas de escribir suena a lo
+que querías.
+
 ## Lo que aún no hace
 
 - **Muestras digitales en el Atari ST.** Las otras seis ya las tocan; el

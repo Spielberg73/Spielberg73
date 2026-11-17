@@ -361,9 +361,25 @@ octave), add a bar at the end and remove the row you are on. A long note that
 crosses a bar line **stays one long note**: the bar is a line to read by, not
 a cut.
 
-What it does not do yet: create new songs. The ones in the `game.yaml` are
-edited here; to add another, copy a `musica:` block in the game.yaml tab and
-it shows up in the list.
+**New song** starts one from scratch: it asks for a name —the one levels will
+use to call it, so no spaces or accents—, adds it silent at the end of the list
+and leaves the cursor inside. To make it play in a level, pick it in the
+**level** tab. Two songs cannot share a name: in the `game.yaml` the name is the
+block's key, and the second would eat the first on save.
+
+### Hearing it outside the browser
+
+```bash
+ngplat sonar mygame --todas --salida musica/
+```
+
+Writes each song to a `.wav` so you can send it to someone, play it on a phone
+or put it in a video. The notes are compiled by the same code that fills the
+ROMs and the waveform comes from the table the Amiga, the A1200 and the CD32
+use, so what you hear there is literally what that machine plays. It comes out **16-bit mono**, reading the waveform interpolated and filtered.
+«8-bit like Paula» would be a mistake: what is 8-bit on those machines are *the
+wavetable's samples*, not the output, so an 8-bit WAV would sound worse than
+the machine. Use `--bits 8` to hear the table raw.
 
 ## Check
 

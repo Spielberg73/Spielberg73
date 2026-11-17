@@ -361,9 +361,27 @@ una octava), añaden un compás al final y quitan la fila en la que estés. Una
 nota larga que cruza una barra de compás **sigue siendo una nota larga**: la
 barra es una raya para leer, no un corte.
 
-Lo que no hace todavía: crear canciones nuevas. Las que haya en el
-`game.yaml` se editan aquí; para añadir otra, se copia un bloque `musica:` en
-la pestaña de game.yaml y aparece en la lista.
+**Canción nueva** empieza una de cero: pide un nombre —el que usarán los
+niveles para llamarla, así que sin espacios ni acentos—, la añade en silencio
+al final de la lista y te deja el cursor dentro. Para que suene en un nivel,
+elígela en la pestaña **nivel**. Dos canciones no pueden llamarse igual: en el
+`game.yaml` el nombre es la clave del bloque, y la segunda se comería a la
+primera al guardar.
+
+### Oírla fuera del navegador
+
+```bash
+ngplat sonar mijuego --todas --salida musica/
+```
+
+Saca cada canción a un `.wav` para mandársela a alguien, oírla en el móvil o
+meterla en un vídeo. Las notas las compila el mismo código que llena las ROMs y
+la forma de onda sale de la tabla que usan el Amiga, el A1200 y el CD32, así
+que lo que se oye ahí es literalmente lo que toca esa máquina. Sale en **16 bits y mono**, leyendo la onda interpolada y filtrada. Lo de
+«8 bits como Paula» sería un error: lo que es de 8 bits en aquellas máquinas
+son *las muestras de la tabla de onda*, no la salida, así que un WAV de 8
+sonaría peor que la máquina. Con `--bits 8` se saca de 8 para ver la tabla en
+crudo.
 
 ## Revisar
 

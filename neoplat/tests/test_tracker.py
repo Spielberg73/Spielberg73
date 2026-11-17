@@ -388,6 +388,26 @@ const ruta = process.argv[2];
   /* los nombres de las canciones, que salian en blanco */
   salida.canciones = await pagina.locator('#tr-cancion option')
                                  .allTextContents();
+
+  /* y una cancion nueva, escrita desde cero */
+  pagina.on('dialog', async d => { await d.accept('batalla'); });
+  await pagina.click('#tr-nueva');
+  await pagina.waitForTimeout(400);
+  salida.trasCrear = await pagina.locator('#tr-cancion option').allTextContents();
+  salida.elegida = await pagina.locator('#tr-cancion').inputValue();
+  await pagina.click('#tr-rejilla td[data-pista="0"][data-fila="0"]');
+  for (const k of ['z', 'x', 'c', 'v']) await pagina.keyboard.press(k);
+  await pagina.waitForTimeout(200);
+  await pagina.click('#pestanas button[data-panel="yaml"]');
+  await pagina.waitForTimeout(250);
+  salida.yamlConCancion = await pagina.locator('#ed-texto').inputValue();
+  /* crear una con el mismo nombre no puede colar: en el yaml seria un bloque
+     repitiendo la clave y el segundo pisaria al primero */
+  await pagina.click('#pestanas button[data-panel="tracker"]');
+  await pagina.click('#tr-nueva');
+  await pagina.waitForTimeout(300);
+  salida.trasRepetir = await pagina.locator('#tr-cancion option').allTextContents();
+  salida.avisoRepetir = await pagina.locator('#tr-aviso').textContent();
   salida.fallos = fallos;
   console.log(JSON.stringify(salida));
   await navegador.close();
@@ -476,6 +496,33 @@ class TestLaRejillaEnUnNavegadorDeVerdad(unittest.TestCase):
                          "al parar se queda una fila verde colgada")
         # tocar desde la fila 8 empieza por la 8, no por el principio
         self.assertIn(salida["desdeAqui"], ("008", "009", "010"))
+
+    def test_se_crea_una_cancion_y_llega_al_game_yaml(self):
+        """Lo que le faltaba al tracker: empezar una cancion de cero.
+
+        Y lo que importa no es que salga en la lista, es que **se escriba en
+        el game.yaml**: una cancion que solo existe en la pantalla se pierde
+        al cerrar.
+        """
+        salida = self._abrir()
+        self.assertEqual([], salida["fallos"])
+        self.assertEqual(["bosque", "cueva", "batalla"], salida["trasCrear"])
+        self.assertEqual("2", salida["elegida"],
+                         "la nueva tendria que quedarse elegida")
+        yaml = salida["yamlConCancion"]
+        self.assertIn("batalla:", yaml)
+        # con las cuatro notas que se han escrito, y en su bloque
+        trozo = yaml[yaml.index("batalla:"):]
+        self.assertIn("do4", trozo)
+        self.assertIn("fa4", trozo)
+        self.assertIn("pistas:", trozo)
+
+    def test_dos_canciones_no_pueden_llamarse_igual(self):
+        """En el yaml el nombre es la clave del bloque: dos iguales serian
+        una, y la segunda se comeria a la primera al guardar."""
+        salida = self._abrir()
+        self.assertEqual(["bosque", "cueva", "batalla"], salida["trasRepetir"])
+        self.assertIn("cogido", salida["avisoRepetir"])
 
     def test_las_canciones_tienen_nombre(self):
         """Salian en blanco: los nombres estan en lo ya compilado, no en el

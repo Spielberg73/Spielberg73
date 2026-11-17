@@ -516,6 +516,7 @@
     <div class="barra">
       <span class="etiqueta">cancion</span>
       <select id="tr-cancion"></select>
+      <button type="button" id="tr-nueva">cancion nueva</button>
       <button type="button" id="tr-tocar">tocar</button>
       <button type="button" id="tr-aqui">tocar desde aqui</button>
       <button type="button" id="tr-parar">parar</button>
@@ -548,7 +549,8 @@
       <code>Tab</code> cambia de pista y <code>Intro</code> toca desde donde
       estes. Lo que escribas aqui es lo mismo que si lo escribieras a mano en la
       pestana de sonido: son las dos lineas de notas del game.yaml, vistas en
-      rejilla.</p>
+      rejilla. <b>Cancion nueva</b> anade una en silencio al final de la lista;
+      para que suene en un nivel, eligela en la pestana <b>nivel</b>.</p>
   </div>
 
   <div class="panel" id="panel-revisar">
@@ -3789,6 +3791,27 @@
   conClic("son-parar", function () { audio.pararAudicion(); });
 
   /* --- el tracker */
+  conClic("tr-nueva", function () {
+    var nombre = window.prompt(
+      "Nombre de la cancion nueva (sin espacios ni acentos: es la clave con "
+      + "la que la llaman los niveles)", "cancion" +
+      (cancionesDelTracker().length + 1));
+    if (nombre === null) return;
+    var puesta = editor.nuevaCancion(nombre);
+    var aviso = document.getElementById("tr-aviso");
+    if (puesta < 0) {
+      aviso.style.color = "#e8756b";
+      aviso.textContent = "ese nombre no vale o ya esta cogido: usa letras, "
+        + "numeros, guion o guion bajo, y uno que no tenga ninguna otra";
+      return;
+    }
+    cancionElegida = puesta;
+    tracker.fila = 0;
+    tracker.pista = 0;
+    construirTracker();
+    construirMusica();
+    document.getElementById("tr-rejilla").focus();
+  });
   conClic("tr-tocar", function () { tocarTracker(false); });
   conClic("tr-aqui", function () { tocarTracker(true); });
   conClic("tr-parar", pararTracker);

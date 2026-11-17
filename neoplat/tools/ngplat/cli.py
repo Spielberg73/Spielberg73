@@ -195,6 +195,48 @@ def cmd_app(args: argparse.Namespace, avisar=None, apuntar=None) -> int:
                    avisar=avisar, apuntar=apuntar)
 
 
+def cmd_sonar(args: argparse.Namespace) -> int:
+    """Saca la musica a un WAV que se pueda oir fuera del navegador.
+
+    Existe para lo que el editor no cubre: mandarle una cancion a alguien,
+    oirla en el movil o comprobar sin abrir nada que lo que acabas de escribir
+    en el tracker suena a lo que querias.
+    """
+    from . import sonar
+
+    project = load_project(args.proyecto)
+    canciones = list(project.sound.musica.values())
+    if not canciones:
+        raise ProjectError("este juego no tiene musica",
+                           hint="anade un bloque 'musica:' en 'sonido:'")
+    if args.todas:
+        elegidas = canciones
+    else:
+        una = sonar.buscar(project.sound, args.cancion)
+        if una is None:
+            raise ProjectError("aqui no hay ninguna cancion que se llame '%s'"
+                               % args.cancion,
+                               hint="las que hay: %s"
+                                    % ", ".join(c.nombre for c in canciones))
+        elegidas = [una]
+
+    destino = args.salida or project.root
+    if len(elegidas) > 1 or os.path.isdir(destino):
+        os.makedirs(destino, exist_ok=True)
+        rutas = [os.path.join(destino, "%s.wav" % c.nombre) for c in elegidas]
+    else:
+        rutas = [destino if destino.lower().endswith(".wav")
+                 else destino + ".wav"]
+    for cancion, ruta in zip(elegidas, rutas):
+        sonar.escribir(cancion, ruta, args.ritmo, args.vueltas, args.bits)
+        _ok("%s  (%s, %.1f s por vuelta x%d)"
+            % (ruta, " + ".join(cancion.timbres) or "cuadrada",
+               sonar.duracion(cancion), args.vueltas))
+    _info("%d bits y mono, con la onda del timbre interpolada y filtrada"
+          % args.bits)
+    return 0
+
+
 def cmd_navegador(args: argparse.Namespace) -> int:
     """Donde se busca el navegador de la ventana, y que hay en cada sitio.
 
@@ -774,6 +816,24 @@ def build_parser() -> argparse.ArgumentParser:
                        help="puerto del servidor local (0 = el que haya libre)")
     p_app.add_argument("--sistema", default="", help=_ayuda_sistemas())
     p_app.set_defaults(func=cmd_app)
+
+    p_sonar = sub.add_parser("sonar", aliases=["musica", "wav"],
+                             help="saca la musica a un WAV que se pueda oir "
+                                  "fuera del navegador")
+    p_sonar.add_argument("proyecto", nargs="?", default=".")
+    p_sonar.add_argument("--cancion", default="",
+                         help="cual (por defecto, la primera)")
+    p_sonar.add_argument("--todas", action="store_true",
+                         help="todas, cada una a su archivo")
+    p_sonar.add_argument("--salida", default="",
+                         help="archivo .wav, o carpeta si son varias")
+    p_sonar.add_argument("--vueltas", type=int, default=1,
+                         help="cuantas veces se repite (por defecto 1)")
+    p_sonar.add_argument("--ritmo", type=int, default=44100,
+                         help="muestras por segundo (por defecto 44100)")
+    p_sonar.add_argument("--bits", type=int, default=16, choices=(8, 16),
+                         help="16 para oirlo, 8 para ver la tabla en crudo")
+    p_sonar.set_defaults(func=cmd_sonar)
 
     p_nav = sub.add_parser("navegador", aliases=["browser"],
                            help="dice donde busca el navegador de la ventana "

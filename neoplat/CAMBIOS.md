@@ -2,8 +2,107 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.62.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.64.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.64
+
+**La música sonaba mal, y era culpa del render.** Lo dijo quien lo usa y tenía
+razón. Tres cosas, y las tres se ven sin oír nada:
+
+- **Se leía la tabla de onda por el punto más cercano, sin interpolar.** Una
+  tabla de 512 puntos leída a saltos es muestrear una curva con armónicos por
+  encima de Nyquist: esos armónicos **se pliegan** hacia abajo y salen como un
+  zumbido metálico que no es de ninguna nota. Ahora se interpola entre los dos
+  puntos y se calculan **cuatro muestras por cada una** que sale, promediando.
+- **Salía a 8 bits usando media escala.** Lo de «8 bits como Paula» era un
+  error de concepto: lo que es de 8 bits en aquellas máquinas son **las
+  muestras de la tabla de onda**, no la salida. Sacar el WAV a 8 metía un ruido
+  de cuantización que el Amiga no tenía, así que sonaba *peor* que la máquina.
+  Ahora va a **16 bits y 44.100**, aprovechando el rango entero; con
+  `--bits 8` se saca de 8 para ver la tabla en crudo.
+- **Las notas eran planas.** Ahora tienen envolvente: arrancan en cuatro
+  milésimas, caen un poco mientras duran y se apagan en ocho. Una nota que
+  empieza y acaba de golpe suena a sirena, no a instrumento.
+
+### Y las tres canciones, reescritas
+
+El fallo de las primeras era de escritura, no de render: **el bajo arpegiado
+iba a cuatro frames por nota**, quince notas por segundo. Demasiado lento para
+que el oído las junte, así que lo que se oía era un bajo dando tumbos en vez de
+un acorde.
+
+Ahora van a **un frame por nota**: el arpegio cambia sesenta veces por segundo
+y un ciclo de tres notas da veinte acordes por segundo. Eso ya no se oye como
+notas sueltas. Es el truco del C64 y del Amiga, y es lo que hace que dos
+canales suenen a banda. A ese paso, una semicorchea son seis pasos y un compás
+noventa y seis, así que las melodías se escriben en semicorcheas y se
+multiplican.
+
+Las tres pasan de cinco segundos de bucle a **doce con ocho**, con ocho
+compases de recorrido armónico de verdad en vez de cuatro repetidos.
+
+**Dos pruebas nuevas** y las de antes al día: que el pico aproveche el rango
+—se quedaba a la mitad— y que `--bits 8` siga sacando un WAV de ocho. La que
+mide que `la4` da 440 Hz ahora lee bien los dos formatos: de 8 bits el WAV las
+guarda **sin signo** y de 16 **con signo**, y leer unas como las otras no da un
+error, da medidas sin sentido.
+
+## 1.63
+
+**El tracker ya crea canciones, y la música se puede oír fuera del navegador.**
+Las dos cosas que le faltaban a lo de la versión anterior.
+
+### Canción nueva
+
+Botón nuevo en el tracker: pide un nombre, añade la canción en silencio al
+final de la lista y te deja el cursor dentro. Hay que tocar **dos sitios y no
+uno** —el modelo, que son las notas tal cual se escriben, y lo ya compilado, de
+donde salen el nombre y lo que suena—, porque el nombre sólo vive en el segundo:
+en el `game.yaml` es la clave del bloque y en el modelo no hay dónde guardarlo.
+Y el escritor del yaml ahora **crea el bloque de la canción si no existe**; sin
+eso, lo que acabaras de componer se escribía en ninguna parte y se perdía al
+guardar.
+
+Dos canciones no pueden llamarse igual: en el yaml serían una sola y la segunda
+se comería a la primera.
+
+### `ngplat sonar`
+
+```bash
+ngplat sonar mijuego --todas --salida musica/
+```
+
+Saca cada canción a un `.wav`. No es un sintetizador nuevo: las notas las
+compila el mismo `sonido.py` que llena las ROMs y la onda sale de `fm.onda()`,
+la misma tabla con la que tocan el Amiga, el A1200 y el CD32. En esas tres, lo
+que se oye en el `.wav` es **literalmente** lo que toca la máquina; en la Neo
+Geo o la Mega Drive el chip es otro y el timbre no sale idéntico, pero las
+notas, los tiempos y el volumen sí.
+
+Sale en **8 bits y mono**, que no es una limitación nuestra: es lo que daba
+Paula, el chip del Amiga. Ruido de cuantización incluido.
+
+### Tres canciones nuevas en CIELO ROJO
+
+`cielorojo` (el tema, La menor con el bajo arpegiado), `lahuida` (Re menor a
+tres frames por paso: veinte notas por segundo) y `elguardian` (Mi frigio y el
+tritono, el intervalo que la Edad Media llamaba *el diablo en la música*).
+
+Las tres usan el mismo truco, que es el de siempre con dos canales: **el bajo
+desarma el acorde y lo toca nota a nota muy rápido**, y lo que se oye son tres
+notas donde sólo hay dos.
+
+**Doce pruebas nuevas.** Las que valen miden el sonido que sale: que `la4` dé
+**440 Hz** y la octava de arriba el doble —por autocorrelación, porque contar
+cruces por cero da el triple en una onda de FM, que no es una cuadrada limpia—,
+que un silencio salga **callado de verdad** y que ninguna canción se pase del
+rango y chasque. Dos más abren el preview en un Chromium y exigen que una
+canción creada en el tracker **llegue al `game.yaml`** con las notas escritas.
+
+Y una cosa que encontró el propio tracker mientras se escribían las canciones:
+`-:1` no es una nota. Un silencio no lleva duración, y la rejilla lo dijo antes
+de que llegara a ningún sitio.
 
 ## 1.62
 
