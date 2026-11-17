@@ -2,8 +2,25 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.65.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.66.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.66
+
+**Instalar los emuladores sacó un fallo que llevaba escondido desde que se
+escribió.** Tres pruebas leían el JSON que imprime un guion quedándose con **la
+última línea** de su salida. Y eso está mal: los emuladores escriben por su
+cuenta y cuando quieren —PUAE sigue contando lo que abre y lo que cierra
+después de que el guion haya impreso lo suyo—, así que la última línea puede
+ser cualquier cosa.
+
+No se veía porque con el emulador sin instalar las tres se saltaban solas. El
+día que se instaló, saltó una: la que comprueba que **la calzada cae en el
+mismo píxel en un A500 y en un A1200**, que es de las que más valen del kit.
+
+Ahora hay una sola función, `json_de()`, que busca de abajo arriba la última
+línea que de verdad sea JSON, y la usan las tres. La prueba del AGA pasa, y
+pasa habiendo arrancado dos Amigas de verdad.
 
 ## 1.65
 

@@ -29,7 +29,7 @@ import shutil
 import subprocess
 import unittest
 
-from comun import KIT
+from comun import KIT, json_de
 
 import sys
 sys.path.insert(0, os.path.join(KIT, "tools"))
@@ -460,7 +460,7 @@ class TestLaRejillaEnUnNavegadorDeVerdad(unittest.TestCase):
         if hecho.returncode == 3:
             self.skipTest("no se ha podido abrir el navegador: %s" % hecho.stderr)
         self.assertEqual(0, hecho.returncode, hecho.stderr)
-        salida = json.loads(hecho.stdout.strip().splitlines()[-1])
+        salida = json_de(hecho.stdout)
         TestLaRejillaEnUnNavegadorDeVerdad._visto = salida
         return salida
 

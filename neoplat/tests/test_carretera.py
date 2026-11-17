@@ -21,7 +21,7 @@ import tempfile
 import unittest
 
 import comun
-from comun import KIT
+from comun import KIT, json_de
 
 from ngplat import carretera, sistemas
 from ngplat.scaffold import crear_proyecto
@@ -572,7 +572,7 @@ class TestLaCarreteraEnAGA(unittest.TestCase):
                     [sys.executable, os.path.join(KIT, "tests", "calzada_amiga.py"),
                      os.path.join(out, "disco", adf), modelo, chip, tonos],
                     capture_output=True, text=True, check=True)
-                donde[maquina] = json.loads(salida.stdout.strip().splitlines()[-1])
+                donde[maquina] = json_de(salida.stdout)
                 if "saltar" in donde[maquina]:
                     self.skipTest(donde[maquina]["saltar"])
             self.assertTrue(any(v for v in donde["amiga"].values()),

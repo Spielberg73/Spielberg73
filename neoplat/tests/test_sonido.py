@@ -12,7 +12,7 @@ import sys
 import unittest
 
 import comun
-from comun import KIT
+from comun import KIT, json_de
 
 import z80sim
 from ngplat import fm as fm_mod
@@ -214,7 +214,7 @@ class TestElTimbreSeOyeEnElAmiga(unittest.TestCase):
             [sys.executable, os.path.join(KIT, "tests", "timbre_amiga.py"), adf],
             capture_output=True, text=True)
         self.assertEqual(hecho.returncode, 0, hecho.stdout + hecho.stderr)
-        return json.loads(hecho.stdout.strip().splitlines()[-1])
+        return json_de(hecho.stdout)
 
     def test_el_timbre_que_pide_el_yaml_es_el_que_toca_paula(self):
         import shutil

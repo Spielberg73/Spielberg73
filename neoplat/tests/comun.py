@@ -250,3 +250,29 @@ def proyecto_minimo(carpeta: str, yaml_texto: str = "") -> str:
         write_png(os.path.join(carpeta, nombre), Image(16, 16, [color] * (16 * 16)))
     texto = yaml_texto or (YAML_MINIMO % "\n".join("      " + f for f in MAPA_MINIMO.split("\n")))
     return escribir(os.path.join(carpeta, "game.yaml"), texto)
+
+
+def json_de(salida: str):
+    """El JSON que imprime un guion, de entre lo que escriba todo lo demas.
+
+    No vale quedarse con la ultima linea: **los emuladores escriben por su
+    cuenta** y lo hacen cuando quieren -PUAE sigue contando lo que abre y
+    cierra despues de que el guion haya impreso lo suyo-, asi que la ultima
+    linea puede ser cualquier cosa. Se busca de abajo arriba la ultima que de
+    verdad sea JSON.
+
+    Esto estaba mal en tres pruebas y no se veia: con el emulador sin instalar
+    se saltaban solas, y el dia que se instalo salto una.
+    """
+    import json
+
+    lineas = [l.strip() for l in str(salida).strip().splitlines()]
+    for linea in reversed(lineas):
+        if not linea or linea[0] not in "[{":
+            continue
+        try:
+            return json.loads(linea)
+        except ValueError:
+            continue
+    raise AssertionError("no hay ningun JSON en la salida:\n%s"
+                         % "\n".join(lineas[-12:]))
