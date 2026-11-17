@@ -32,6 +32,43 @@ MAX_TILES = 4096
 #                   entero de ancho.
 VENTANA_ANCHA = (704, 256)
 VENTANA_ALTA = (352, 512)
+
+# Cuantas capas de parallax caben a la vez.
+#
+# En la Jaguar esto no lo decide el hardware de video -como en la Mega Drive,
+# que tiene dos planos y se acabo- sino **la memoria**: cada capa se lleva su
+# propio trozo de mapa de bits, y cada trozo son 704 bytes por linea. Cuatro
+# capas de una pantalla de alto son 630 KB de los dos megas del cartucho, que
+# es mucho pero cabe. Cada una entra en la lista de objetos como una entrada
+# mas, y de eso el Object Processor no se entera.
+FONDOS_MAX = 4
+
+
+def _cabecera_fondos(build: Build, ancho: int) -> List[str]:
+    """Cuantas capas caben y cuanta memoria piden, para gamedata.h.
+
+    Se mide el nivel que mas lleve: la memoria se reserva una vez y la usan
+    todos los niveles por turnos, asi que lo que manda es el peor caso. Y se
+    mide **lo que miden las capas de verdad**, no la pantalla entera: una capa
+    de cielo de 96 pixeles de alto no tiene por que pagar 224.
+    """
+    alto_max = 0
+    for nivel in build.levels:
+        suma = 0
+        # `nivel.layers` son indices de `build.layers`, no nombres
+        for indice in nivel.layers[:FONDOS_MAX]:
+            if indice < 0 or indice >= len(build.layers):
+                continue
+            suma += min(build.layers[indice].rows * 16, 224)
+        alto_max = max(alto_max, suma)
+    if alto_max <= 0:
+        return []
+    return [
+        "#define NP_FONDOS_A_LA_VEZ %d"
+        % max(1, min(FONDOS_MAX, max((len(n.layers) for n in build.levels),
+                                     default=1))),
+        "#define NP_FONDO_BYTES (%d * %d)" % (ancho, alto_max),
+    ]
 MAPA_ANCHO, MAPA_ALTO = VENTANA_ANCHA  # el mapa de bits del escenario
 
 
@@ -164,7 +201,7 @@ class Jaguar(Sistema):
                 "#define NP_FONT_COUNT %d" % len(glifos),
                 "#define NP_MAPA_ANCHO %d" % ventana[0],
                 "#define NP_MAPA_ALTO %d" % ventana[1],
-            ],
+            ] + _cabecera_fondos(build, ventana[0]),
         }
 
     def comprobar(self, build: Build) -> List[str]:
@@ -199,10 +236,12 @@ class Jaguar(Sistema):
                     "vuelve a haber ancho de sobra" % (VENTANA_ANCHA[1] // 16),
                 )
         for nivel in build.levels:
-            if len(nivel.layers) > 1:
+            if len(nivel.layers) > FONDOS_MAX:
                 avisos.append(
-                    "la Jaguar dibuja una sola capa de parallax: en '%s' se usara "
-                    "la primera" % nivel.name)
+                    "la Jaguar dibuja hasta %d capas de parallax a la vez: en "
+                    "'%s' hay %d y se usaran las %d primeras, que son las de "
+                    "mas lejos" % (FONDOS_MAX, nivel.name, len(nivel.layers),
+                                   FONDOS_MAX))
                 break
 
         return avisos
@@ -365,7 +404,7 @@ def _graficos_c(build: Build, banco: gfx_jaguar.BancoJaguar) -> str:
         "uint8_t np_hud_bitmap[NP_SCREEN_W * NP_HUD_ALTO] __attribute__((aligned(8)));",
         "#if NP_LAYER_COUNT > 0",
         "/* el mapa de bits de la capa de parallax, que va en otro objeto */",
-        "uint8_t np_fondo_bitmap[NP_MAPA_ANCHO * NP_FONDO_ALTO]"
+        "uint8_t np_fondo_bitmap[NP_FONDO_BYTES]"
         " __attribute__((aligned(8)));",
         "#endif",
         "",
