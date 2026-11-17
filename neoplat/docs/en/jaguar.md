@@ -336,6 +336,30 @@ no window to miss.
 As a bonus, the game runs faster: it no longer spends two whole vertical blanks
 waiting for nothing.
 
+## Four parallax layers
+
+Four fit here, and this is the only machine in the kit —with the X68000— where
+all four are seen. It is not the video chip that decides, as on the Mega Drive,
+which has two planes and that is that: it is **memory**. Each layer takes its
+own slice of bitmap —704 bytes per line— and enters the object list as one more
+entry, and the Object Processor does not care: it walks the list on every scan
+line, so four layers are four entries, each with its own X.
+
+The size is measured on the level that carries the most layers, because the
+memory is reserved once and every level uses it in turn, and it measures **what
+the layers really are**: a 96-pixel-tall sky layer need not pay for 224. In
+CIELO ROJO that is 704×352, 242 KB, and the executable stays at 443 KB of the
+two megabytes.
+
+With more than four layers the compiler warns and draws the first four, which
+are the furthest away.
+
+That this works is not taken on trust: `tests/test_parallax.py` boots the
+cartridge in the emulator, walks twelve frames and measures how far each band of
+the screen shifts. It comes out 0, 4, 8, 12 and 16 pixels —the ground— which is
+exactly what the speeds declare. With a single layer it comes out 0, 0, 16, 1,
+16 and the order breaks, which is how you know the test measures what it says.
+
 ## What it does not do yet
 
 - **Making use of the 16-bit DACs.** The samples already sound —*Digital
@@ -343,8 +367,6 @@ waiting for nothing.
   byte per sample, unsigned and at the handler's 20,774 Hz. The DACs are
   **16-bit and stereo**, so real voices and percussion would fit here, and this
   would be the only one of the seven where that shows.
-- **More than one parallax layer.** One is drawn; more would fit, because each
-  layer is just one more object in the list.
 - **Direct colour.** The table's 256 are used. The Jaguar can do 16 bits per
   pixel, and it would be the only one of the seven where the PNGs would not
   have to be cut down: they would be seen as they are.

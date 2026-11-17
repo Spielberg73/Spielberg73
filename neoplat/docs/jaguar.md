@@ -332,6 +332,31 @@ ventana que perder.
 De propina, el juego va más deprisa: ya no gasta dos retrazos enteros
 esperando a nada.
 
+## Cuatro capas de parallax
+
+Aquí caben cuatro, y es la única máquina del kit —con el X68000— donde las
+cuatro se ven. No lo decide el chip de vídeo, como en la Mega Drive, que tiene
+dos planos y se acabó: lo decide **la memoria**. Cada capa se lleva su propio
+trozo de mapa de bits —704 bytes por línea— y entra en la lista de objetos como
+una entrada más, y de eso el Object Processor no se entera: recorre la lista en
+cada línea de barrido, así que cuatro capas son cuatro entradas y cada una con
+su X.
+
+El tamaño se mide sobre el nivel que más capas lleve, porque la memoria se
+reserva una vez y la usan todos los niveles por turnos, y se mide **lo que
+miden las capas de verdad**: una capa de cielo de 96 píxeles de alto no tiene
+por qué pagar 224. En CIELO ROJO son 704×352, 242 KB, y el ejecutable se queda
+en 443 KB de los dos megas.
+
+Con más de cuatro capas, el compilador avisa y dibuja las cuatro primeras, que
+son las de más lejos.
+
+Que esto funciona no se da por supuesto: `tests/test_parallax.py` arranca el
+cartucho en el emulador, anda doce frames y mide cuánto se desplaza cada franja
+de la pantalla. Sale 0, 4, 8, 12 y 16 píxeles —el suelo— que es exactamente lo
+que declaran las velocidades. Con una sola capa sale 0, 0, 16, 1, 16 y el orden
+se rompe, que es como se sabe que la prueba mide lo que dice medir.
+
 ## Lo que aún no hace
 
 - **Aprovechar los DAC de 16 bits.** Las muestras ya suenan —lo cuenta
@@ -339,8 +364,6 @@ esperando a nada.
   byte por muestra, sin signo y a los 20.774 Hz del manejador. Los DAC son de
   **16 bits y en estéreo**, así que aquí cabrían voces y percusión de verdad, y
   sería la única de las siete donde eso se nota.
-- **Más de una capa de parallax.** Se dibuja una; cabrían más, porque cada capa
-  es sólo un objeto más de la lista.
 - **Color directo.** Se usan los 256 de la tabla. La Jaguar puede hacer 16 bits
   por píxel, y sería la única de las siete donde los PNG no habría que
   recortarlos: se verían tal cual.

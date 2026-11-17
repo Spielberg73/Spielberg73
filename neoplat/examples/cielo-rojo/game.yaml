@@ -16,10 +16,10 @@
 #      que corre cada capa.
 #
 #      Y aqui va la verdad incomoda, que `ngplat compilar` te dice una por
-#      una: **las cuatro capas solo se ven en la Neo Geo y en el X68000**. La
-#      Mega Drive, el Amiga, el A1200, el CD32 y la Jaguar dibujan **una**, y
+#      una: **las cuatro capas solo se ven en la Neo Geo, el X68000 y la
+#      Jaguar**. La Mega Drive, el Amiga, el A1200 y el CD32 dibujan **una**, y
 #      se quedan con la primera -el cielo-; el Atari ST, con camara de scroll,
-#      no dibuja ninguna y dejan el color de fondo. No es un fallo del kit: es
+#      no dibuja ninguna y deja el color de fondo. No es un fallo del kit: es
 #      que un plano de parallax se paga en hardware y cada maquina tenia el
 #      suyo. El juego se juega igual en las ocho; lo que cambia es cuanto
 #      fondo se mueve.

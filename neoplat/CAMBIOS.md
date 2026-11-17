@@ -2,8 +2,56 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.64.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.65.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.65
+
+**La Jaguar dibuja ya sus cuatro capas de parallax**, y los emuladores que
+faltaban están puestos.
+
+### Cuatro capas en la Jaguar
+
+Dibujaba una. Ahora dibuja hasta cuatro, y es la única máquina del kit —con el
+X68000— donde las cuatro se ven. Aquí no lo decide el chip de vídeo, como en la
+Mega Drive, que tiene dos planos y se acabó: lo decide **la memoria**. Cada
+capa se lleva su propio trozo de mapa de bits y entra en la lista de objetos
+como una entrada más, y de eso el Object Processor no se entera — recorre la
+lista en cada línea de barrido, así que cuatro capas son cuatro entradas y cada
+una con su X.
+
+El tamaño se mide sobre el nivel que más lleve, y midiendo **lo que miden las
+capas de verdad**: una capa de cielo de 96 píxeles de alto no tiene por qué
+pagar 224. En CIELO ROJO son 704×352, 242 KB, y el ejecutable se queda en
+443 KB de los dos megas.
+
+### Los tres emuladores que faltaban
+
+Estaban sin instalar los cores de **Virtual Jaguar, Genesis Plus GX y PUAE**,
+así que seis pruebas se saltaban solas y de las ocho máquinas sólo se
+demostraba que arrancan cinco. Ya están, y las pruebas de máquina pasan de 7
+saltos a 7 con las tres corriendo.
+
+### Y la prueba que mide el parallax en la pantalla
+
+Que un juego **declare** cuatro capas no quiere decir que se dibujen cuatro, y
+que se dibujen no quiere decir que se muevan a velocidades distintas. Esto
+último no se ve en ninguna parte: hay que mirar la pantalla. Así que
+`tests/test_parallax.py` arranca CIELO ROJO en la Jaguar, anda y mide cuánto se
+desplaza cada franja, correlando fila a fila y quedándose con la mediana.
+
+Sale **0, 4, 8, 12 y 16 píxeles** —la última es el suelo, que va con la
+cámara—, que es exactamente lo que declaran las velocidades `0.08`, `0.22`,
+`0.45` y `0.75` sobre los 18 píxeles que corre la cámara.
+
+**Y la lección, que costó entenderla.** La primera versión andaba noventa
+frames y daba números que parecían razonables y no lo eran: pasaba igual con el
+parallax apagado. El motivo es que **las capas son dibujos que se repiten**: los
+árboles caen cada veintidós píxeles, así que un desplazamiento de cuarenta y
+cinco correlaciona igual de bien que uno de uno. Doce frames son dieciocho
+píxeles de cámara, menos de lo que mide el dibujo más apretado, y ahí ya no hay
+dos respuestas posibles. Con una sola capa la medida sale 0, 0, 16, 1, 16 y el
+orden se rompe: por eso ahora la prueba falla cuando tiene que fallar.
 
 ## 1.64
 
