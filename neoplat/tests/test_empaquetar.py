@@ -75,6 +75,53 @@ class TestZips(unittest.TestCase):
                                "k/examples/bosque-magico/game.yaml"):
             self.assertIn(imprescindible, nombres, "falta " + imprescindible)
 
+    def test_el_zip_de_windows_lleva_los_juegos_de_ejemplo(self):
+        """El fallo que lo hizo falta: lo que se descargaba era un editor de
+        juegos **sin un solo juego que abrir**.
+
+        Al hacer doble clic no habia nada que ensenyar, y la primera orden de
+        la documentacion -`ngplat.exe probar cielo-rojo`- no podia funcionar
+        porque esa carpeta no iba dentro. Ahora van los cuatro, y van **en la
+        raiz**: el programa busca juegos a su lado, asi que ahi es donde los
+        encuentra sin que nadie mueva nada.
+        """
+        import tempfile
+
+        sys.path.insert(0, KIT)
+        import empaquetar
+
+        falso = tempfile.mkdtemp(prefix="neoplat-win-")
+        self.addCleanup(shutil.rmtree, falso, True)
+        for nombre in ("NeoPlat.exe", "ngplat.exe", "LEEME.txt"):
+            with open(os.path.join(falso, nombre), "w") as fh:
+                fh.write("x")
+
+        dentro = [n for n, _ruta in empaquetar.archivos_de_windows(falso)]
+        self.assertIn("NeoPlat.exe", dentro)
+        self.assertIn("LEEME.txt", dentro)
+
+        juegos = sorted(set(n.split("/")[0] for n in dentro if "/" in n))
+        esperados = sorted(d for d in os.listdir(os.path.join(KIT, "examples"))
+                           if os.path.isdir(os.path.join(KIT, "examples", d)))
+        self.assertEqual(esperados, juegos,
+                         "los ejemplos del kit y los del ZIP de Windows no "
+                         "son los mismos")
+        for juego in juegos:
+            self.assertIn("%s/game.yaml" % juego, dentro,
+                          "'%s' va sin su game.yaml: ahi no hay juego" % juego)
+        # y sin carpeta de por medio: el programa los busca a su lado
+        self.assertNotIn("examples/cielo-rojo/game.yaml", dentro)
+
+    def test_el_leeme_de_windows_cuenta_lo_que_hay_dentro(self):
+        """Un LEEME que manda abrir algo que no viene es peor que no tenerlo."""
+        sys.path.insert(0, KIT)
+        import empaquetar
+
+        for juego in os.listdir(os.path.join(KIT, "examples")):
+            if os.path.isdir(os.path.join(KIT, "examples", juego)):
+                self.assertIn(juego, empaquetar.LEEME,
+                              "el LEEME no menciona '%s'" % juego)
+
     def test_no_se_cuela_lo_generado(self):
         nombres = self._hacer(empaquetar.KIT, "k")
         for nombre in nombres:

@@ -238,6 +238,16 @@ LEEME = """NeoPlat para Windows
 Este es el kit entero dentro de un solo archivo: no hace falta instalar Python
 ni nada mas.
 
+Dentro estan los dos programas y **cuatro juegos de ejemplo**, listos para
+abrir y para destripar:
+
+  bosque-magico     plataformas: saltar, pisar bichos y coger monedas
+  cueva-de-hierro   el mismo motor con seis colores y parallax en Amiga
+  costa-y-montana   conducir: la calzada no es un dibujo, son siete colores
+  cielo-rojo        espada y capa al atardecer, con cuatro capas de parallax
+                    y un heroe del doble de alto (el estilo de Shadow of the
+                    Beast)
+
 Hay dos programas, y lo que cambia es por donde se entra:
 
   NeoPlat.exe   el editor, en su ventana. Doble clic y ya: si al lado hay un
@@ -264,9 +274,9 @@ Y si lo tienes en un sitio que no mira, se le dice cual usar:
 Si prefieres escribir las ordenes tu, abre una ventana de simbolo del sistema
 en esta carpeta y prueba:
 
+    ngplat.exe probar cielo-rojo
     ngplat.exe nuevo mijuego
-    ngplat.exe probar mijuego
-    ngplat.exe compilar mijuego --sistema megadrive
+    ngplat.exe compilar cielo-rojo --sistema megadrive
 
 `nuevo` crea un juego jugable con sus graficos y sus sonidos; `probar` lo abre
 en el navegador con el editor incluido; `compilar` genera el proyecto en C y
@@ -279,6 +289,29 @@ listo y te dice que orden ejecutar.
 La documentacion completa va en el ZIP de docs, y el codigo fuente en el del
 kit.
 """
+
+
+def archivos_de_windows(carpeta: str):
+    """Lo que va dentro del ZIP de Windows: (nombre dentro, ruta de verdad).
+
+    Los dos programas y su LEEME, y **los juegos de ejemplo al lado**.
+
+    Lo de los ejemplos iba sin hacer, y era un error de los que se notan
+    enseguida: lo que se descargaba era un editor de juegos **sin un solo
+    juego que abrir**. Al hacer doble clic no habia nada que ensenyar -el
+    programa ofrecia crear uno de cero- y la primera orden de la
+    documentacion, `ngplat.exe probar cielo-rojo`, no podia funcionar porque
+    esa carpeta no estaba en ninguna parte. Son 276 KB sobre dieciseis megas.
+
+    Van en la raiz y no en una carpeta `ejemplos/` a proposito: el programa
+    busca juegos **a su lado**, asi que ahi es donde los encuentra sin que
+    nadie tenga que mover nada.
+    """
+    for nombre in sorted(os.listdir(carpeta)):
+        yield nombre, os.path.join(carpeta, nombre)
+    for relativo in _recorrer("examples"):
+        partes = relativo.replace("\\", "/").split("/")[1:]
+        yield "/".join(partes), os.path.join(RAIZ, relativo)
 
 
 def main(argv):
@@ -309,11 +342,12 @@ def main(argv):
             fh.write(LEEME)
         paquete = os.path.join(destino, "neoplat-windows-%s.zip" % VERSION)
         with zipfile.ZipFile(paquete, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
-            for nombre in sorted(os.listdir(carpeta)):
-                info = zipfile.ZipInfo(nombre, FECHA)
+            for dentro, entero in archivos_de_windows(carpeta):
+                info = zipfile.ZipInfo(dentro, FECHA)
                 info.compress_type = zipfile.ZIP_DEFLATED
-                info.external_attr = (0o755 if nombre.endswith(".exe") else 0o644) << 16
-                with open(os.path.join(carpeta, nombre), "rb") as fh:
+                info.external_attr = (0o755 if dentro.endswith(".exe")
+                                      else 0o644) << 16
+                with open(entero, "rb") as fh:
                     zf.writestr(info, fh.read())
         print("%s  (%d KB)" % (os.path.relpath(paquete, RAIZ),
                                os.path.getsize(paquete) // 1024))

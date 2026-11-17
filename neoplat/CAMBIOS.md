@@ -2,8 +2,32 @@
 
 Cada versión del kit, de la más nueva a la más vieja. La versión sube cada vez
 que se cambia algo que se reparte, y va en el nombre de los paquetes
-(`neoplat-kit-1.66.zip`) y en `ngplat --version`: así se sabe qué se está
+(`neoplat-kit-1.67.zip`) y en `ngplat --version`: así se sabe qué se está
 probando sin abrir nada.
+
+## 1.67
+
+**El ZIP de Windows iba sin un solo juego dentro.** Lo dijo quien lo usa: «no
+he encontrado el ejemplo». No lo había.
+
+Llevaba los dos programas y su LEEME, y nada más. Así que lo que se descargaba
+era **un editor de juegos sin ningún juego que abrir**: al hacer doble clic no
+había nada que enseñar —el programa ofrecía crear uno de cero— y la primera
+orden que decíamos para probarlo, `ngplat.exe probar cielo-rojo`, no podía
+funcionar porque esa carpeta no estaba en ninguna parte.
+
+Ahora van **los cuatro ejemplos** dentro, y van **en la raíz**, al lado del
+`.exe`: el programa busca juegos a su lado, así que ahí es donde los encuentra
+sin que nadie tenga que mover nada. Son 276 KB sobre dieciséis megas.
+
+El LEEME los lista y dice qué es cada uno, y la orden de ejemplo que da es una
+que de verdad se puede escribir.
+
+**Dos pruebas nuevas**: que los ejemplos del ZIP de Windows sean **los mismos**
+que los del kit —si alguien añade uno, entra solo— y que cada uno vaya con su
+`game.yaml`, porque una carpeta de gráficos sin yaml no es un juego. Y una
+tercera que exige que el LEEME **mencione todos los que van dentro**: un LEEME
+que manda abrir algo que no viene es peor que no tenerlo.
 
 ## 1.66
 
